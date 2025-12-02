@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Data files (don't commit user data)
+server/data/
+server/cortex-data.json
+server/cortex-data.json.backup
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.production
+
+# Build outputs
+client/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
