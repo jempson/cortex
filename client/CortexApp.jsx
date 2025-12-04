@@ -2476,7 +2476,10 @@ function MainApp() {
     if (data.type === 'new_message' || data.type === 'message_edited' || data.type === 'message_deleted' || data.type === 'wave_created' || data.type === 'wave_updated' || data.type === 'message_reaction') {
       loadWaves();
       // If the event is for the currently viewed wave, trigger a reload
-      if (selectedWave && data.waveId === selectedWave.id) {
+      // Extract waveId from different event structures
+      const eventWaveId = data.waveId || data.data?.wave_id || data.data?.waveId;
+      if (selectedWave && eventWaveId === selectedWave.id) {
+        console.log(`🔄 Reloading wave ${selectedWave.id} due to ${data.type} event`);
         setWaveReloadTrigger(prev => prev + 1);
       }
     } else if (data.type === 'wave_deleted') {
