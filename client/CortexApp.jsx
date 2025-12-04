@@ -914,6 +914,146 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
   );
 };
 
+// ============ SEARCH MODAL ============
+const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState([]);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const handleSearch = async () => {
+    if (searchQuery.trim().length < 2) {
+      showToast('Search query must be at least 2 characters', 'error');
+      return;
+    }
+
+    setSearching(true);
+    setHasSearched(true);
+    try {
+      const data = await fetchAPI(`/search?q=${encodeURIComponent(searchQuery)}`);
+      setResults(data.results || []);
+    } catch (err) {
+      showToast(err.message || 'Search failed', 'error');
+    }
+    setSearching(false);
+  };
+
+  const highlightMatch = (text, query) => {
+    if (!query) return text;
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    return parts.map((part, i) =>
+      part.toLowerCase() === query.toLowerCase()
+        ? <span key={i} style={{ background: '#ffd23f40', color: '#ffd23f', fontWeight: 'bold' }}>{part}</span>
+        : part
+    );
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: isMobile ? '20px' : '40px',
+      overflowY: 'auto',
+    }}>
+      <div style={{
+        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+        border: '2px solid #3bceac',
+        padding: isMobile ? '20px' : '24px',
+        width: '100%',
+        maxWidth: '700px',
+        maxHeight: '80vh',
+        overflowY: 'auto',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 style={{ color: '#3bceac', margin: 0, fontSize: isMobile ? '1.2rem' : '1.5rem' }}>SEARCH MESSAGES</h2>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer', fontSize: '1.5rem',
+            minHeight: isMobile ? '44px' : 'auto', minWidth: isMobile ? '44px' : 'auto',
+          }}>✕</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            placeholder="Search messages..."
+            style={{
+              flex: 1,
+              padding: isMobile ? '14px' : '12px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: '#0a100a',
+              border: '1px solid #2a3a2a',
+              color: '#c5d5c5',
+              fontSize: isMobile ? '1rem' : '0.9rem',
+              fontFamily: 'inherit',
+            }}
+          />
+          <button
+            onClick={handleSearch}
+            disabled={searching}
+            style={{
+              padding: isMobile ? '14px 20px' : '12px 24px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: '#3bceac20',
+              border: '1px solid #3bceac',
+              color: '#3bceac',
+              cursor: searching ? 'wait' : 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.9rem' : '0.85rem',
+            }}
+          >
+            {searching ? 'SEARCHING...' : 'SEARCH'}
+          </button>
+        </div>
+
+        {hasSearched && (
+          <div style={{ color: '#6a7a6a', fontSize: '0.85rem', marginBottom: '16px' }}>
+            Found {results.length} result{results.length !== 1 ? 's' : ''}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {results.map(result => (
+            <div
+              key={result.id}
+              onClick={() => onSelectMessage(result)}
+              style={{
+                padding: isMobile ? '14px' : '12px',
+                background: '#0a100a',
+                border: '1px solid #2a3a2a',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.borderColor = '#3bceac'}
+              onMouseLeave={(e) => e.currentTarget.style.borderColor = '#2a3a2a'}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.75rem' }}>
+                <span style={{ color: '#3bceac' }}>{result.waveName}</span>
+                <span style={{ color: '#6a7a6a' }}>
+                  {new Date(result.createdAt).toLocaleString()}
+                </span>
+              </div>
+              <div style={{ color: '#8a9a8a', fontSize: '0.8rem', marginBottom: '4px' }}>
+                @{result.authorHandle}
+              </div>
+              <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}>
+                {highlightMatch(result.content, searchQuery)}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {hasSearched && results.length === 0 && (
+          <div style={{ textAlign: 'center', color: '#6a7a6a', padding: '40px 20px' }}>
+            No messages found matching "{searchQuery}"
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ============ WAVE VIEW (Mobile Responsive) ============
 const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger }) => {
   const [waveData, setWaveData] = useState(null);
@@ -2446,6 +2586,7 @@ function MainApp() {
   const [selectedWave, setSelectedWave] = useState(null);
   const [showNewWave, setShowNewWave] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [waveReloadTrigger, setWaveReloadTrigger] = useState(0); // Increment to trigger WaveView reload
   const [typingUsers, setTypingUsers] = useState({}); // { waveId: { userId: { name, timestamp } } }
   const typingTimeoutsRef = useRef({});
@@ -2553,6 +2694,19 @@ function MainApp() {
     }
   };
 
+  const handleSearchResultClick = (result) => {
+    // Find the wave and open it
+    const wave = waves.find(w => w.id === result.waveId);
+    if (wave) {
+      setSelectedWave(wave);
+      setActiveView('waves');
+      setShowSearch(false);
+      // TODO: Scroll to the specific message (would need to pass messageId to WaveView)
+    } else {
+      showToastMsg('Wave not found or not accessible', 'error');
+    }
+  };
+
   const navItems = ['waves', 'groups', 'contacts', 'profile'];
 
   return (
@@ -2628,6 +2782,22 @@ function MainApp() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() => setShowSearch(true)}
+            style={{
+              padding: isMobile ? '12px' : '8px 12px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: 'transparent',
+              border: '1px solid #3bceac',
+              color: '#3bceac',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '1rem' : '0.8rem',
+            }}
+            title="Search messages"
+          >
+            🔍
+          </button>
           {!isMobile && (
             <div style={{ textAlign: 'right' }}>
               <div style={{ color: '#ffd23f', fontSize: '0.8rem' }}>{user?.displayName}</div>
@@ -2695,6 +2865,16 @@ function MainApp() {
 
       <NewWaveModal isOpen={showNewWave} onClose={() => setShowNewWave(false)}
         onCreate={handleCreateWave} contacts={contacts} groups={groups} />
+
+      {showSearch && (
+        <SearchModal
+          onClose={() => setShowSearch(false)}
+          fetchAPI={fetchAPI}
+          showToast={showToastMsg}
+          onSelectMessage={handleSearchResultClick}
+          isMobile={isMobile}
+        />
+      )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>

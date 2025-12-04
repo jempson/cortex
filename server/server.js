@@ -980,6 +980,58 @@ class Database {
 
     return true;
   }
+
+  searchMessages(query, filters = {}) {
+    const { waveId, authorId, fromDate, toDate } = filters;
+    const searchTerm = query.toLowerCase().trim();
+
+    if (!searchTerm) return [];
+
+    let results = this.messages.messages.filter(message => {
+      // Filter by search term in content
+      if (!message.content.toLowerCase().includes(searchTerm)) {
+        return false;
+      }
+
+      // Filter by wave
+      if (waveId && message.waveId !== waveId) {
+        return false;
+      }
+
+      // Filter by author
+      if (authorId && message.authorId !== authorId) {
+        return false;
+      }
+
+      // Filter by date range
+      if (fromDate && new Date(message.createdAt) < new Date(fromDate)) {
+        return false;
+      }
+      if (toDate && new Date(message.createdAt) > new Date(toDate)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // Enrich results with author and wave info
+    return results.map(message => {
+      const author = this.findUserById(message.authorId);
+      const wave = this.getWave(message.waveId);
+
+      return {
+        id: message.id,
+        content: message.content,
+        waveId: message.waveId,
+        waveName: wave?.name || 'Unknown Wave',
+        authorId: message.authorId,
+        authorName: author?.displayName || 'Unknown',
+        authorHandle: author?.handle || 'unknown',
+        createdAt: message.createdAt,
+        parentId: message.parentId,
+      };
+    }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Most recent first
+  }
 }
 
 const db = new Database();
@@ -1590,6 +1642,36 @@ app.post('/api/messages/:id/read', authenticateToken, (req, res) => {
 
   console.log(`✅ Message ${messageId} marked as read`);
   res.json({ success: true });
+});
+
+// Search messages
+app.get('/api/search', authenticateToken, (req, res) => {
+  const query = sanitizeInput(req.query.q || '');
+  const waveId = req.query.wave ? sanitizeInput(req.query.wave) : null;
+  const authorId = req.query.author ? sanitizeInput(req.query.author) : null;
+  const fromDate = req.query.from ? sanitizeInput(req.query.from) : null;
+  const toDate = req.query.to ? sanitizeInput(req.query.to) : null;
+
+  if (!query || query.length < 2) {
+    return res.status(400).json({ error: 'Search query must be at least 2 characters' });
+  }
+
+  const results = db.searchMessages(query, { waveId, authorId, fromDate, toDate });
+
+  // Filter results to only include waves the user has access to
+  const accessibleResults = results.filter(result => {
+    const wave = db.getWave(result.waveId);
+    if (!wave) return false;
+
+    // Public waves are accessible to all
+    if (wave.privacy === 'public') return true;
+
+    // Check if user is a participant
+    const participants = db.getWaveParticipants(result.waveId);
+    return participants.some(p => p.id === req.user.userId);
+  });
+
+  res.json({ results: accessibleResults, count: accessibleResults.length });
 });
 
 // ============ Health Check ============
