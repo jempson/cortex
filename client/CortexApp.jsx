@@ -389,11 +389,23 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
         const config = PRIVACY_LEVELS[wave.privacy] || PRIVACY_LEVELS.private;
         const isSelected = selectedWave?.id === wave.id;
         return (
-          <div key={wave.id} onClick={() => onSelectWave(wave)} style={{
+          <div key={wave.id} onClick={() => onSelectWave(wave)}
+            onMouseEnter={(e) => {
+              if (!isSelected) {
+                e.currentTarget.style.background = '#1a2a1a';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isSelected) {
+                e.currentTarget.style.background = 'transparent';
+              }
+            }}
+            style={{
             padding: '12px 16px', cursor: 'pointer',
             background: isSelected ? '#ffd23f10' : 'transparent',
             borderBottom: '1px solid #1a2a1a',
             borderLeft: `3px solid ${isSelected ? config.color : 'transparent'}`,
+            transition: 'background 0.2s ease',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', alignItems: 'center' }}>
               <div style={{ color: '#c5d5c5', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: '8px' }}>
@@ -426,7 +438,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ THREADED MESSAGE ============
-const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact }) => {
+const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -436,6 +448,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, currentUserId,
   const indentSize = isMobile ? 12 : 24;
   const indent = Math.min(depth, maxIndent) * indentSize;
   const canDelete = message.author_id === currentUserId;
+  const isEditing = editingMessageId === message.id;
   const [showReactionPicker, setShowReactionPicker] = useState(false);
 
   const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏'];
@@ -462,17 +475,68 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, currentUserId,
           </div>
           <PrivacyBadge level={message.privacy} compact />
         </div>
-        <div
-          style={{
-            color: '#9bab9b',
-            fontSize: isMobile ? '0.95rem' : '0.85rem',
-            lineHeight: 1.6,
-            marginBottom: '10px',
-            wordBreak: 'break-word',
-            whiteSpace: 'pre-wrap'
-          }}
-          dangerouslySetInnerHTML={{ __html: message.content }}
-        />
+        {isEditing ? (
+          <div style={{ marginBottom: '10px' }}>
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                  onSaveEdit(message.id);
+                } else if (e.key === 'Escape') {
+                  onCancelEdit();
+                }
+              }}
+              style={{
+                width: '100%',
+                minHeight: '80px',
+                padding: '8px',
+                background: '#0a100a',
+                border: '1px solid #ffd23f',
+                color: '#9bab9b',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.95rem' : '0.85rem',
+                resize: 'vertical',
+              }}
+              placeholder="Edit your message..."
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <button onClick={() => onSaveEdit(message.id)} style={{
+                padding: isMobile ? '10px 14px' : '6px 12px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: '#0ead6920',
+                border: '1px solid #0ead69',
+                color: '#0ead69',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.75rem',
+              }}>💾 SAVE (Ctrl+Enter)</button>
+              <button onClick={onCancelEdit} style={{
+                padding: isMobile ? '10px 14px' : '6px 12px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'transparent',
+                border: '1px solid #6a7a6a',
+                color: '#6a7a6a',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.75rem',
+              }}>✕ CANCEL (Esc)</button>
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              color: '#9bab9b',
+              fontSize: isMobile ? '0.95rem' : '0.85rem',
+              lineHeight: 1.6,
+              marginBottom: '10px',
+              wordBreak: 'break-word',
+              whiteSpace: 'pre-wrap'
+            }}
+            dangerouslySetInnerHTML={{ __html: message.content }}
+          />
+        )}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button onClick={() => onReply(message)} style={{
             padding: isMobile ? '10px 14px' : '4px 8px',
@@ -488,13 +552,21 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, currentUserId,
               color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
             }}>{isCollapsed ? `▶ ${message.children.length}` : '▼'}</button>
           )}
-          {canDelete && (
-            <button onClick={() => onDelete(message)} style={{
-              padding: isMobile ? '10px 14px' : '4px 8px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: 'transparent', border: '1px solid #ff6b3530',
-              color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-            }}>✕ DELETE</button>
+          {canDelete && !isEditing && (
+            <>
+              <button onClick={() => onEdit(message)} style={{
+                padding: isMobile ? '10px 14px' : '4px 8px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'transparent', border: '1px solid #ffd23f30',
+                color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+              }}>✏️ EDIT</button>
+              <button onClick={() => onDelete(message)} style={{
+                padding: isMobile ? '10px 14px' : '4px 8px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'transparent', border: '1px solid #ff6b3530',
+                color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+              }}>✕ DELETE</button>
+            </>
           )}
         </div>
 
@@ -590,6 +662,8 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, currentUserId,
         <div style={{ borderLeft: '1px solid #3a4a3a', marginLeft: '12px' }}>
           {message.children.map(child => (
             <ThreadedMessage key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
+              onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
+              editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
               currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
               onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} />
           ))}
@@ -826,6 +900,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showMediaInput, setShowMediaInput] = useState(false);
   const [mediaUrl, setMediaUrl] = useState('');
+  const [showPlayback, setShowPlayback] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editContent, setEditContent] = useState('');
   const playbackRef = useRef(null);
   const composeRef = useRef(null);
   const messagesRef = useRef(null);
@@ -861,6 +938,20 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }, 100);
     }
   }, [replyingTo, isMobile]);
+
+  // Auto-focus textarea when replying
+  useEffect(() => {
+    if (replyingTo && textareaRef.current) {
+      setTimeout(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+          textarea.focus();
+          const length = textarea.value.length;
+          textarea.setSelectionRange(length, length);
+        }
+      }, 150);
+    }
+  }, [replyingTo]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -947,6 +1038,38 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     setMessageToDelete(message);
   };
 
+  const handleStartEdit = (message) => {
+    setEditingMessageId(message.id);
+    // Strip HTML tags to get plain text for editing
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = message.content;
+    setEditContent(tempDiv.textContent || tempDiv.innerText || '');
+  };
+
+  const handleSaveEdit = async (messageId) => {
+    if (!editContent.trim()) {
+      showToast('Message cannot be empty', 'error');
+      return;
+    }
+    try {
+      await fetchAPI(`/messages/${messageId}`, {
+        method: 'PUT',
+        body: { content: editContent },
+      });
+      showToast('Message updated', 'success');
+      setEditingMessageId(null);
+      setEditContent('');
+      await loadWave();
+    } catch (err) {
+      showToast(err.message || 'Failed to update message', 'error');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditContent('');
+  };
+
   const handleReaction = async (messageId, emoji) => {
     try {
       await fetchAPI(`/messages/${messageId}/react`, {
@@ -1030,16 +1153,47 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       {/* Playback */}
       {total > 0 && (
-        <PlaybackControls isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)}
-          currentIndex={playbackIndex} totalMessages={total} onSeek={setPlaybackIndex}
-          onReset={() => { setPlaybackIndex(null); setIsPlaying(false); }}
-          playbackSpeed={playbackSpeed} onSpeedChange={setPlaybackSpeed} isMobile={isMobile} />
+        <div style={{ flexShrink: 0 }}>
+          <div style={{
+            padding: '4px 12px',
+            background: '#0a100a',
+            borderBottom: '1px solid #2a3a2a',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: '#5a6a5a', fontSize: '0.7rem', fontFamily: 'monospace' }}>
+              PLAYBACK MODE
+            </span>
+            <button
+              onClick={() => setShowPlayback(!showPlayback)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: config.color,
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                padding: '4px 8px'
+              }}
+            >
+              {showPlayback ? '▼ HIDE' : '▶ SHOW'}
+            </button>
+          </div>
+          {showPlayback && (
+            <PlaybackControls isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)}
+              currentIndex={playbackIndex} totalMessages={total} onSeek={setPlaybackIndex}
+              onReset={() => { setPlaybackIndex(null); setIsPlaying(false); }}
+              playbackSpeed={playbackSpeed} onSpeedChange={setPlaybackSpeed} isMobile={isMobile} />
+          )}
+        </div>
       )}
 
       {/* Messages */}
       <div ref={messagesRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '12px' : '20px' }}>
         {waveData.messages.map(msg => (
           <ThreadedMessage key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
+            onEdit={handleStartEdit} onSaveEdit={handleSaveEdit} onCancelEdit={handleCancelEdit}
+            editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={(id) => setCollapsed(p => ({ ...p, [id]: !p[id] }))} isMobile={isMobile}
             onReact={handleReaction} />
@@ -2231,7 +2385,7 @@ function MainApp() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div>
             <GlowText color="#ffd23f" size={isMobile ? '1.3rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            {!isMobile && <span style={{ color: '#5a6a5a', fontSize: '0.65rem', marginLeft: '8px' }}>v1.3.2c</span>}
+            {!isMobile && <span style={{ color: '#5a6a5a', fontSize: '0.65rem', marginLeft: '8px' }}>v1.3.3</span>}
           </div>
           {!isMobile && <ConnectionStatus wsConnected={wsConnected} apiConnected={apiConnected} />}
         </div>

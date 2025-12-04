@@ -123,15 +123,22 @@ const sanitizeMessageOptions = {
       tagName: 'a',
       attribs: { ...attribs, target: '_blank', rel: 'noopener noreferrer' }
     }),
-    'img': (tagName, attribs) => ({
-      tagName: 'img',
-      attribs: {
-        ...attribs,
-        style: 'max-width: 100%; height: auto;',
-        loading: 'lazy',
-        class: 'message-media'
-      }
-    })
+    'img': (tagName, attribs) => {
+      // Check if it's a GIF - load eagerly so animation plays immediately
+      const src = attribs.src || '';
+      const isGif = src.match(/\.gif(\?|$)/i) ||
+                    src.match(/(giphy\.com|tenor\.com)/i);
+
+      return {
+        tagName: 'img',
+        attribs: {
+          ...attribs,
+          style: 'max-width: 100%; height: auto;',
+          loading: isGif ? 'eager' : 'lazy',
+          class: 'message-media'
+        }
+      };
+    }
   }
 };
 
@@ -880,7 +887,11 @@ class Database {
       editedAt: new Date().toISOString(),
     });
 
-    message.content = sanitizeMessage(content);
+    // Sanitize and auto-embed media URLs (same as createMessage)
+    let processedContent = sanitizeMessage(content);
+    processedContent = detectAndEmbedMedia(processedContent);
+
+    message.content = processedContent;
     message.version += 1;
     message.editedAt = new Date().toISOString();
     this.saveMessages();
@@ -1643,7 +1654,7 @@ server.listen(PORT, () => {
 ║  ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗         ║
 ║  ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗        ║
 ║   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝        ║
-║  SECURE COMMUNICATIONS SYSTEM v1.3.2c                       ║
+║  SECURE COMMUNICATIONS SYSTEM v1.3.3                       ║
 ╠════════════════════════════════════════════════════════════╣
 ║  🔒 Security: Rate limiting, XSS protection, Helmet        ║
 ║  📁 Data: Separated files (users, waves, messages, groups) ║

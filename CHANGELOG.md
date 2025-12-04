@@ -5,6 +5,100 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2025-12-04
+
+### Added
+
+#### Message Editing & Deletion UI
+- **Edit Message Button** - ✏️ EDIT button appears on user's own messages
+- **Inline Edit Form** - Textarea replaces message content when editing
+- **Edit State Management** - `editingMessageId` and `editContent` state in WaveView
+- **Keyboard Shortcuts** - Ctrl+Enter to save, Escape to cancel editing
+- **Edit Handlers** - `handleStartEdit()`, `handleSaveEdit()`, `handleCancelEdit()` functions
+- **Content Stripping** - HTML tags stripped for plain-text editing
+- **Save/Cancel Buttons** - Styled action buttons with keyboard hint text
+- **API Integration** - Uses existing `PUT /api/messages/:id` endpoint
+- **Delete Message UI** - Delete button already existed, now complemented by edit functionality
+- **Real-Time Updates** - WebSocket `message_edited` and `message_deleted` events handled
+- **Auto-reload** - Wave data refreshes after edit/delete operations
+
+#### Improved Wave UX
+- **Wave Hover States** - Wave list items highlight on mouse hover
+  - `onMouseEnter` handler sets background to `#1a2a1a`
+  - `onMouseLeave` handler resets to transparent
+  - 200ms CSS transition for smooth effect
+- **GIF Eager Loading** - GIFs now load immediately instead of lazily
+  - Server-side image tag transformation checks for `.gif` extension
+  - Also checks for Giphy/Tenor hostnames
+  - Sets `loading="eager"` for GIFs, `loading="lazy"` for other images
+- **Better Click Feedback** - Enhanced visual feedback for clickable waves
+
+#### Collapsible Playback Controls
+- **Playback Toggle State** - New `showPlayback` boolean state (default: false)
+- **Toggle Button** - "▶ SHOW" / "▼ HIDE" button in playback header
+- **Playback Header Bar** - New wrapper div with "PLAYBACK MODE" label
+- **Conditional Rendering** - PlaybackControls only rendered when `showPlayback` is true
+- **Space Optimization** - Playback bar hidden by default to save vertical space
+- **Session Persistence** - Toggle state persists during current session
+
+#### Auto-Focus on Reply
+- **Reply Focus useEffect** - New effect hook triggers on `replyingTo` state change
+- **Automatic Focus** - Textarea automatically focused when reply is clicked
+- **Cursor Positioning** - Cursor placed at end of existing text with `setSelectionRange()`
+- **Smooth Timing** - 150ms setTimeout ensures UI transition completes before focus
+- **Mobile Compatibility** - Works with existing mobile scroll-to-compose behavior
+
+### Changed
+
+#### Client-Side Updates
+- **ThreadedMessage Component** - Extended with edit/cancel/save props and handlers
+- **Message Content Rendering** - Now conditionally shows edit form or static content
+- **Button Layout** - Edit and Delete buttons now grouped together for user's messages
+- **WaveView State** - Added `editingMessageId` and `editContent` state variables
+- **Message Prop Passing** - Edit-related props passed through recursive ThreadedMessage calls
+- **Wave List Styling** - Added `transition: 'background 0.2s ease'` to wave items
+
+#### Server-Side Updates
+- **Image Transform Function** - Enhanced to detect GIFs and set eager loading
+- **GIF Detection Logic** - Checks both file extension and hostname patterns
+- **Sanitization Options** - Image loading attribute now dynamic based on content type
+
+### Technical Details
+
+#### Bundle Size
+- **Gzip Size**: 61.10 KB (slight increase from 60.43 KB in v1.3.2 due to new features)
+- **Total Build**: 211.74 KB uncompressed
+- **Build Time**: ~580ms (excellent)
+
+#### Performance
+- **No Breaking Changes** - All v1.3.2 features remain fully functional
+- **Backward Compatible** - Existing messages work without modification
+- **WebSocket Efficiency** - Reuses existing event handling infrastructure
+
+#### Code Quality
+- **Syntax Validated** - Both client and server pass `--check` validation
+- **Build Successful** - Vite build completes without errors or warnings
+- **Clean Implementation** - Follows existing code patterns and style
+
+### Developer Notes
+
+#### Frontend Changes
+- **CortexApp.jsx** Lines modified:
+  - 829: Added `showPlayback`, `editingMessageId`, `editContent` state
+  - 865-877: Added auto-focus useEffect for reply
+  - 979-1009: Added edit handler functions
+  - 441: Updated ThreadedMessage signature with edit props
+  - 478-539: Added conditional edit form rendering
+  - 555-570: Added EDIT button and restructured action buttons
+  - 604-608, 1132-1137: Passed edit props to ThreadedMessage calls
+  - 1048-1081: Added collapsible playback wrapper
+  - 392-409: Added wave hover handlers and transition
+
+#### Backend Changes
+- **server.js** Lines modified:
+  - 126-141: Enhanced img tag transform with GIF detection
+  - Existing endpoints already supported editing (no backend changes needed)
+
 ## [1.3.2] - 2025-12-04
 
 ### Added

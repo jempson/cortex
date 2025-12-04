@@ -1,8 +1,35 @@
-# CORTEX - Secure Wave Communications v1.3.2
+# CORTEX - Secure Wave Communications v1.3.3
 
 A privacy-first, federated communication platform inspired by Google Wave with a Firefly aesthetic.
 
-## What's New in v1.3.2
+## What's New in v1.3.3
+
+### ✏️ Message Editing & Deletion
+- **Edit Messages**: Edit your own messages with inline editing interface
+- **Keyboard Shortcuts**: Ctrl+Enter to save, Escape to cancel
+- **Edit History**: Server tracks edit history with timestamps
+- **Delete Messages**: Delete your own messages with confirmation
+- **Real-Time Updates**: All participants see edits/deletions instantly via WebSocket
+
+### 🎯 Improved Wave UX
+- **Hover States**: Waves highlight on hover for better discoverability
+- **Smooth Transitions**: Polished 200ms transitions for visual feedback
+- **GIF Animation**: GIFs now load eagerly and animate immediately
+- **Clickable Clarity**: Enhanced visual feedback makes waves obviously interactive
+
+### 📊 Collapsible Playback Controls
+- **Space Saving**: Playback bar now hides by default
+- **Toggle Control**: Show/hide playback controls with one click
+- **Persistent State**: Remembers your preference during session
+- **Clean Interface**: Reduces clutter when not using playback mode
+
+### ⌨️ Auto-Focus on Reply
+- **Instant Focus**: Cursor automatically moves to input when clicking reply
+- **Smart Positioning**: Cursor placed at end of existing text
+- **Smooth Experience**: 150ms delay ensures smooth UI transition
+- **Works Everywhere**: Functions on mobile and desktop devices
+
+## What Was New in v1.3.2
 
 ### 🎨 Rich Content & Media Support
 - **Emoji Picker**: 16 common emojis in a convenient popup picker
