@@ -1630,6 +1630,9 @@ wss.on('connection', (ws, req) => {
         try {
           const decoded = jwt.verify(message.token, JWT_SECRET);
           userId = decoded.userId;
+          const user = db.findUserById(userId);
+          ws.userId = userId;
+          ws.userName = user?.displayName || 'Unknown';
           if (!clients.has(userId)) clients.set(userId, new Set());
           clients.get(userId).add(ws);
           db.updateUserStatus(userId, 'online');
@@ -1637,6 +1640,28 @@ wss.on('connection', (ws, req) => {
         } catch (err) {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'Invalid token' }));
         }
+      } else if (message.type === 'user_typing') {
+        // Broadcast typing indicator to other users in the wave
+        if (!userId) return; // Must be authenticated
+
+        const waveId = sanitizeInput(message.waveId);
+        if (!waveId) return;
+
+        // Verify user has access to this wave
+        const wave = db.getWave(waveId);
+        if (!wave) return;
+
+        const participant = db.getWaveParticipants(waveId).find(p => p.id === userId);
+        if (!participant) return; // User not in wave
+
+        // Broadcast to other users in the wave
+        broadcastToWave(waveId, {
+          type: 'user_typing',
+          waveId,
+          userId,
+          userName: ws.userName,
+          timestamp: Date.now()
+        }, ws); // Exclude sender
       }
     } catch (err) {
       console.error('WebSocket error:', err);
@@ -1654,21 +1679,21 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-function broadcastToWave(waveId, message) {
+function broadcastToWave(waveId, message, excludeWs = null) {
   const wave = db.getWave(waveId);
   if (!wave) return;
 
   // Get all users who should receive this
   let recipients = new Set();
-  
+
   // Direct participants
   db.getWaveParticipants(waveId).forEach(p => recipients.add(p.id));
-  
+
   // For group waves, all group members
   if (wave.privacy === 'group' && wave.groupId) {
     db.getGroupMembers(wave.groupId).forEach(m => recipients.add(m.id));
   }
-  
+
   // For public waves, all connected users (they can see it in their list)
   if (wave.privacy === 'public') {
     clients.forEach((_, userId) => recipients.add(userId));
@@ -1677,6 +1702,8 @@ function broadcastToWave(waveId, message) {
   for (const userId of recipients) {
     if (clients.has(userId)) {
       for (const ws of clients.get(userId)) {
+        // Skip the excluded WebSocket connection (e.g., the sender)
+        if (excludeWs && ws === excludeWs) continue;
         if (ws.readyState === 1) ws.send(JSON.stringify(message));
       }
     }

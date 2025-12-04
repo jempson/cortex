@@ -141,14 +141,14 @@ function useWebSocket(token, onMessage) {
 
   useEffect(() => {
     if (!token) return;
-    
+
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
       ws.send(JSON.stringify({ type: 'auth', token }));
     };
-    
+
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -159,14 +159,20 @@ function useWebSocket(token, onMessage) {
         console.error('WS parse error:', e);
       }
     };
-    
+
     ws.onclose = () => setConnected(false);
     ws.onerror = () => setConnected(false);
 
     return () => ws.close();
   }, [token, onMessage]);
 
-  return { connected };
+  const sendMessage = useCallback((message) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(message));
+    }
+  }, []);
+
+  return { connected, sendMessage };
 }
 
 // ============ UI COMPONENTS ============
@@ -909,7 +915,7 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -933,6 +939,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const textareaRef = useRef(null);
   const hasMarkedAsReadRef = useRef(false);
   const scrollPositionToRestore = useRef(null);
+  const lastTypingSentRef = useRef(null);
 
   useEffect(() => {
     loadWave();
@@ -1207,6 +1214,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   };
 
+  const handleTyping = () => {
+    if (!newMessage.trim() || !sendWSMessage) return;
+    const now = Date.now();
+    // Throttle: Send typing event max once every 2 seconds
+    if (!lastTypingSentRef.current || now - lastTypingSentRef.current > 2000) {
+      sendWSMessage({
+        type: 'user_typing',
+        waveId: wave.id
+      });
+      lastTypingSentRef.current = now;
+    }
+  };
+
   const config = PRIVACY_LEVELS[wave.privacy] || PRIVACY_LEVELS.private;
   if (loading) return <LoadingSpinner />;
   if (!waveData) return <div style={{ padding: '20px', color: '#6a7a6a' }}>Wave not found</div>;
@@ -1313,6 +1333,20 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         ))}
       </div>
 
+      {/* Typing Indicator */}
+      {typingUsers && Object.keys(typingUsers).length > 0 && (
+        <div style={{
+          padding: isMobile ? '8px 12px' : '6px 20px',
+          color: '#6a7a6a',
+          fontSize: isMobile ? '0.85rem' : '0.75rem',
+          fontStyle: 'italic',
+          borderTop: '1px solid #1a2a1a',
+          background: '#0a100a',
+        }}>
+          {Object.values(typingUsers).map(u => u.name).join(', ')} {Object.keys(typingUsers).length === 1 ? 'is' : 'are'} typing...
+        </div>
+      )}
+
       {/* Compose */}
       <div ref={composeRef} style={{
         flexShrink: 0,
@@ -1344,7 +1378,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           <textarea
             ref={textareaRef}
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              handleTyping();
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -2398,6 +2435,8 @@ function MainApp() {
   const [selectedWave, setSelectedWave] = useState(null);
   const [showNewWave, setShowNewWave] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [typingUsers, setTypingUsers] = useState({}); // { waveId: { userId: { name, timestamp } } }
+  const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
   // Calculate font scale from user preferences
@@ -2435,10 +2474,41 @@ function MainApp() {
         setActiveView('waves');
       }
       loadWaves();
+    } else if (data.type === 'user_typing') {
+      // Handle typing indicator
+      const { waveId, userId, userName } = data;
+
+      // Clear existing timeout for this user in this wave
+      const timeoutKey = `${waveId}-${userId}`;
+      if (typingTimeoutsRef.current[timeoutKey]) {
+        clearTimeout(typingTimeoutsRef.current[timeoutKey]);
+      }
+
+      // Add user to typing list
+      setTypingUsers(prev => ({
+        ...prev,
+        [waveId]: {
+          ...(prev[waveId] || {}),
+          [userId]: { name: userName, timestamp: Date.now() }
+        }
+      }));
+
+      // Remove user after 5 seconds
+      typingTimeoutsRef.current[timeoutKey] = setTimeout(() => {
+        setTypingUsers(prev => {
+          const waveTyping = { ...(prev[waveId] || {}) };
+          delete waveTyping[userId];
+          return {
+            ...prev,
+            [waveId]: waveTyping
+          };
+        });
+        delete typingTimeoutsRef.current[timeoutKey];
+      }, 5000);
     }
   }, [loadWaves, selectedWave, showToastMsg]);
 
-  const { connected: wsConnected } = useWebSocket(token, handleWSMessage);
+  const { connected: wsConnected, sendMessage: sendWSMessage } = useWebSocket(token, handleWSMessage);
 
   const loadContacts = useCallback(async () => {
     try { setContacts(await fetchAPI('/contacts')); } catch (e) { console.error(e); }
@@ -2566,7 +2636,9 @@ function MainApp() {
               {selectedWave ? (
                 <WaveView wave={selectedWave} onBack={() => setSelectedWave(null)}
                   fetchAPI={fetchAPI} showToast={showToastMsg} currentUser={user}
-                  groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile} />
+                  groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile}
+                  sendWSMessage={sendWSMessage}
+                  typingUsers={typingUsers[selectedWave?.id] || {}} />
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
                   <div style={{ textAlign: 'center' }}>
