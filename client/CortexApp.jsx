@@ -949,6 +949,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Reload wave when reloadTrigger changes (from WebSocket events)
   useEffect(() => {
     if (reloadTrigger > 0) {
+      // Save scroll position before reloading
+      if (messagesRef.current) {
+        scrollPositionToRestore.current = messagesRef.current.scrollTop;
+      }
       loadWave();
     }
   }, [reloadTrigger]);
