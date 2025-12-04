@@ -438,7 +438,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ THREADED MESSAGE ============
-const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact }) => {
+const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -450,19 +450,43 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   const canDelete = message.author_id === currentUserId;
   const isEditing = editingMessageId === message.id;
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const isUnread = message.is_unread && message.author_id !== currentUserId;
 
   const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏'];
 
   if (!isVisible) return null;
 
+  const handleMessageClick = () => {
+    if (isUnread && onMessageClick) {
+      onMessageClick(message.id);
+    }
+  };
+
   return (
     <div style={{ marginLeft: `${indent}px` }}>
-      <div style={{
-        padding: isMobile ? '10px 12px' : '12px 16px', marginBottom: '8px',
-        background: isHighlighted ? `${config.color}20` : 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-        border: `1px solid ${isHighlighted ? config.color : '#2a3a2a'}`,
-        borderLeft: `3px solid ${config.color}`,
-      }}>
+      <div
+        onClick={handleMessageClick}
+        style={{
+          padding: isMobile ? '10px 12px' : '12px 16px', marginBottom: '8px',
+          background: isHighlighted ? `${config.color}20` : isUnread ? '#ffd23f10' : 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+          border: `1px solid ${isHighlighted ? config.color : isUnread ? '#ffd23f' : '#2a3a2a'}`,
+          borderLeft: `3px solid ${isUnread ? '#ffd23f' : config.color}`,
+          cursor: isUnread ? 'pointer' : 'default',
+          transition: 'all 0.2s ease',
+        }}
+        onMouseEnter={(e) => {
+          if (isUnread) {
+            e.currentTarget.style.background = '#ffd23f20';
+            e.currentTarget.style.borderColor = '#ffd23f';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (isUnread) {
+            e.currentTarget.style.background = '#ffd23f10';
+            e.currentTarget.style.borderColor = isHighlighted ? config.color : '#ffd23f';
+          }
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
             <Avatar letter={message.sender_avatar || '?'} color={config.color} size={isMobile ? 32 : 32} />
@@ -665,7 +689,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
               editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
               currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
-              onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} />
+              onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick} />
           ))}
         </div>
       )}
@@ -907,14 +931,72 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const composeRef = useRef(null);
   const messagesRef = useRef(null);
   const textareaRef = useRef(null);
+  const hasMarkedAsReadRef = useRef(false);
+  const scrollPositionToRestore = useRef(null);
 
   useEffect(() => {
     loadWave();
-    // Mark wave as read when viewing
-    fetchAPI(`/waves/${wave.id}/read`, { method: 'POST' })
-      .then(() => onWaveUpdate?.())  // Refresh wave list to update unread counts
-      .catch(() => {});
-  }, [wave.id, fetchAPI, onWaveUpdate]);
+    hasMarkedAsReadRef.current = false; // Reset when switching waves
+  }, [wave.id]);
+
+  // Restore scroll position after wave data updates (for click-to-read and similar actions)
+  useEffect(() => {
+    if (scrollPositionToRestore.current !== null && messagesRef.current) {
+      setTimeout(() => {
+        if (messagesRef.current) {
+          messagesRef.current.scrollTop = scrollPositionToRestore.current;
+          scrollPositionToRestore.current = null;
+        }
+      }, 0);
+    }
+  }, [waveData]);
+
+  // Mark wave as read when user scrolls to bottom or views unread messages
+  useEffect(() => {
+    if (!waveData || !messagesRef.current || hasMarkedAsReadRef.current) return;
+
+    const markAsRead = () => {
+      if (hasMarkedAsReadRef.current) return; // Prevent duplicate calls
+      hasMarkedAsReadRef.current = true;
+
+      console.log(`📖 Marking wave ${wave.id} as read...`);
+      fetchAPI(`/waves/${wave.id}/read`, { method: 'POST' })
+        .then(() => {
+          console.log(`✅ Wave ${wave.id} marked as read, refreshing wave list`);
+          onWaveUpdate?.();
+        })
+        .catch((err) => {
+          console.error(`❌ Failed to mark wave ${wave.id} as read:`, err);
+          hasMarkedAsReadRef.current = false; // Allow retry on error
+        });
+    };
+
+    // Check if user has scrolled to bottom
+    const handleScroll = () => {
+      const container = messagesRef.current;
+      if (!container || hasMarkedAsReadRef.current) return;
+
+      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
+      if (isAtBottom) {
+        markAsRead();
+      }
+    };
+
+    const container = messagesRef.current;
+    container.addEventListener('scroll', handleScroll);
+
+    // Also mark as read if already at bottom on load
+    const checkInitialPosition = () => {
+      if (hasMarkedAsReadRef.current) return;
+      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
+      if (isAtBottom) {
+        markAsRead();
+      }
+    };
+    setTimeout(checkInitialPosition, 500);
+
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [waveData, wave.id, fetchAPI, onWaveUpdate]);
 
   useEffect(() => {
     if (isPlaying && waveData) {
@@ -985,7 +1067,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
+    const isReply = replyingTo !== null;
     try {
+      // Save scroll position if replying (so we don't jump around)
+      if (isReply && messagesRef.current) {
+        scrollPositionToRestore.current = messagesRef.current.scrollTop;
+      }
+
       await fetchAPI('/messages', {
         method: 'POST',
         body: { wave_id: wave.id, parent_id: replyingTo?.id || null, content: newMessage },
@@ -994,14 +1082,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       setReplyingTo(null);
       showToast('Message sent', 'success');
       await loadWave();
-      // Scroll to bottom after sending message
-      setTimeout(() => {
-        if (messagesRef.current) {
-          messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
-        }
-      }, 100);
+
+      // Only scroll to bottom if posting a root message (not a reply)
+      if (!isReply) {
+        setTimeout(() => {
+          if (messagesRef.current) {
+            messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+          }
+        }, 100);
+      }
+      // If it was a reply, scroll position will be restored by the useEffect
     } catch (err) {
       showToast('Failed to send message', 'error');
+      scrollPositionToRestore.current = null; // Clear on error
     }
   };
 
@@ -1091,6 +1184,26 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       loadWave();
     } catch (err) {
       showToast(err.message || 'Failed to delete message', 'error');
+    }
+  };
+
+  const handleMessageClick = async (messageId) => {
+    try {
+      console.log(`📖 Marking message ${messageId} as read...`);
+      // Save current scroll position before reloading
+      if (messagesRef.current) {
+        scrollPositionToRestore.current = messagesRef.current.scrollTop;
+      }
+      await fetchAPI(`/messages/${messageId}/read`, { method: 'POST' });
+      console.log(`✅ Message ${messageId} marked as read, refreshing wave`);
+      // Reload wave to update unread status
+      await loadWave();
+      // Also refresh wave list to update unread counts
+      onWaveUpdate?.();
+    } catch (err) {
+      console.error(`❌ Failed to mark message ${messageId} as read:`, err);
+      showToast('Failed to mark message as read', 'error');
+      scrollPositionToRestore.current = null; // Clear on error
     }
   };
 
@@ -1196,7 +1309,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={(id) => setCollapsed(p => ({ ...p, [id]: !p[id] }))} isMobile={isMobile}
-            onReact={handleReaction} />
+            onReact={handleReaction} onMessageClick={handleMessageClick} />
         ))}
       </div>
 

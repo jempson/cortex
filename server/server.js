@@ -651,15 +651,14 @@ class Database {
         const group = wave.groupId ? this.getGroup(wave.groupId) : null;
         const userParticipant = this.waves.participants.find(p => p.waveId === wave.id && p.userId === userId);
 
-        // Calculate unread count
-        const lastRead = userParticipant?.lastRead || null;
-        const unreadCount = lastRead
-          ? this.messages.messages.filter(m =>
-              m.waveId === wave.id &&
-              new Date(m.createdAt) > new Date(lastRead) &&
-              m.authorId !== userId  // Don't count own messages as unread
-            ).length
-          : this.messages.messages.filter(m => m.waveId === wave.id && m.authorId !== userId).length;
+        // Calculate unread count based on messages not read by user
+        const unreadCount = this.messages.messages.filter(m => {
+          if (m.waveId !== wave.id) return false;
+          if (m.authorId === userId) return false; // Don't count own messages
+          // Check if user has read this message
+          const readBy = m.readBy || [m.authorId];
+          return !readBy.includes(userId);
+        }).length;
 
         return {
           ...wave,
@@ -820,11 +819,14 @@ class Database {
   }
 
   // === Message Methods ===
-  getMessagesForWave(waveId) {
+  getMessagesForWave(waveId, userId = null) {
     return this.messages.messages
       .filter(m => m.waveId === waveId)
       .map(m => {
         const author = this.findUserById(m.authorId);
+        const readBy = m.readBy || [m.authorId];
+        const isUnread = userId ? !readBy.includes(userId) && m.authorId !== userId : false;
+
         return {
           ...m,
           sender_name: author?.displayName || 'Unknown',
@@ -835,6 +837,7 @@ class Database {
           wave_id: m.waveId,
           created_at: m.createdAt,
           edited_at: m.editedAt,
+          is_unread: isUnread,
         };
       })
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -856,6 +859,7 @@ class Database {
       createdAt: now,
       editedAt: null,
       reactions: {}, // { emoji: [userId1, userId2, ...] }
+      readBy: [data.authorId], // Author has read their own message
     };
     this.messages.messages.push(message);
     this.updateWaveTimestamp(data.waveId);
@@ -957,6 +961,24 @@ class Database {
     this.saveMessages();
 
     return { success: true, messageId, reactions: message.reactions, waveId: message.waveId };
+  }
+
+  markMessageAsRead(messageId, userId) {
+    const message = this.messages.messages.find(m => m.id === messageId);
+    if (!message) return false;
+
+    // Initialize readBy array if it doesn't exist (for old messages)
+    if (!message.readBy) {
+      message.readBy = [message.authorId]; // Author always has read their message
+    }
+
+    // Add user to readBy if not already there
+    if (!message.readBy.includes(userId)) {
+      message.readBy.push(userId);
+      this.saveMessages();
+    }
+
+    return true;
   }
 }
 
@@ -1332,7 +1354,7 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
 
   const creator = db.findUserById(wave.createdBy);
   const participants = db.getWaveParticipants(wave.id);
-  const allMessages = db.getMessagesForWave(wave.id);
+  const allMessages = db.getMessagesForWave(wave.id, req.user.userId);
   const group = wave.groupId ? db.getGroup(wave.groupId) : null;
 
   function buildMessageTree(messages, parentId = null) {
@@ -1431,10 +1453,13 @@ app.post('/api/waves/:id/archive', authenticateToken, (req, res) => {
 
 app.post('/api/waves/:id/read', authenticateToken, (req, res) => {
   const waveId = sanitizeInput(req.params.id);
+  console.log(`📖 Marking wave ${waveId} as read for user ${req.user.userId}`);
 
   if (!db.markWaveAsRead(waveId, req.user.userId)) {
+    console.log(`❌ Failed to mark wave ${waveId} as read`);
     return res.status(404).json({ error: 'Wave not found or access denied' });
   }
+  console.log(`✅ Wave ${waveId} marked as read`);
   res.json({ success: true });
 });
 
@@ -1550,6 +1575,21 @@ app.post('/api/messages/:id/react', authenticateToken, (req, res) => {
   });
 
   res.json({ success: true, reactions: result.reactions });
+});
+
+// Mark individual message as read
+app.post('/api/messages/:id/read', authenticateToken, (req, res) => {
+  const messageId = sanitizeInput(req.params.id);
+
+  console.log(`📖 Marking message ${messageId} as read for user ${req.user.userId}`);
+
+  if (!db.markMessageAsRead(messageId, req.user.userId)) {
+    console.log(`❌ Failed to mark message ${messageId} as read`);
+    return res.status(404).json({ error: 'Message not found' });
+  }
+
+  console.log(`✅ Message ${messageId} marked as read`);
+  res.json({ success: true });
 });
 
 // ============ Health Check ============
