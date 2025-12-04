@@ -2627,6 +2627,36 @@ function MainApp() {
         console.log(`🔄 Reloading wave ${selectedWave.id} due to ${data.type} event`);
         setWaveReloadTrigger(prev => prev + 1);
       }
+
+      // Desktop notifications for new messages
+      if (data.type === 'new_message' && data.data) {
+        const isViewingDifferentWave = !selectedWave || eventWaveId !== selectedWave.id;
+        const isBackgrounded = document.visibilityState === 'hidden';
+        const isOwnMessage = data.data.author_id === user?.id;
+
+        // Show notification if viewing different wave or tab is in background
+        if ((isViewingDifferentWave || isBackgrounded) && !isOwnMessage) {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            const waveName = waves.find(w => w.id === eventWaveId)?.name || 'Unknown Wave';
+            const notification = new Notification(`New message in ${waveName}`, {
+              body: `${data.data.sender_name}: ${data.data.content.substring(0, 100)}${data.data.content.length > 100 ? '...' : ''}`,
+              icon: '/favicon.ico',
+              tag: eventWaveId, // Group notifications by wave
+              requireInteraction: false,
+            });
+
+            notification.onclick = () => {
+              window.focus();
+              const wave = waves.find(w => w.id === eventWaveId);
+              if (wave) {
+                setSelectedWave(wave);
+                setActiveView('waves');
+              }
+              notification.close();
+            };
+          }
+        }
+      }
     } else if (data.type === 'wave_deleted') {
       showToastMsg(`Wave "${data.wave?.title || 'Unknown'}" was deleted`, 'info');
       if (selectedWave?.id === data.waveId) {
@@ -2666,7 +2696,7 @@ function MainApp() {
         delete typingTimeoutsRef.current[timeoutKey];
       }, 5000);
     }
-  }, [loadWaves, selectedWave, showToastMsg]);
+  }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView]);
 
   const { connected: wsConnected, sendMessage: sendWSMessage } = useWebSocket(token, handleWSMessage);
 
@@ -2683,6 +2713,23 @@ function MainApp() {
     loadContacts();
     loadGroups();
   }, [loadWaves, loadContacts, loadGroups]);
+
+  // Request notification permission on first load
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      // Request permission after a brief delay to avoid interrupting initial page load
+      const timer = setTimeout(() => {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            console.log('✅ Desktop notifications enabled');
+          } else {
+            console.log('❌ Desktop notifications denied');
+          }
+        });
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const handleCreateWave = async (data) => {
     try {
