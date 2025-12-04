@@ -265,9 +265,105 @@ Enhanced search with advanced filters and boolean operators.
 
 ---
 
+## 🛡️ Moderation & API Features (v1.6.0)
+
+### 11. Basic Moderation System
+**Priority:** Medium-High
+**Complexity:** Medium
+**Estimated Time:** 12-16 hours
+
+**Description:**
+Essential moderation tools for community management.
+
+**Requirements:**
+- **User Blocking/Muting:**
+  - Block users (hide their messages, prevent DMs)
+  - Mute users (hide messages but don't notify them)
+  - Manage blocked/muted users in settings
+  - Blocked users can't add you to waves
+- **Report System:**
+  - Report messages/waves for review
+  - Report reasons: spam, harassment, inappropriate, other
+  - Admin dashboard to view reports
+  - Mark reports as resolved/dismissed
+- **Admin Actions:**
+  - View all reports in admin panel
+  - See reported content with context
+  - Take action: delete content, warn user, dismiss
+  - Audit log of moderation actions
+
+**Backend Changes:**
+- Add `blocked: [userId, ...]` and `muted: [userId, ...]` to user schema
+- New collection: `reports.json` with report data
+- Endpoints:
+  - `POST /api/users/:id/block` - Block user
+  - `POST /api/users/:id/mute` - Mute user
+  - `GET /api/users/blocked` - Get blocked users list
+  - `POST /api/reports` - Create report
+  - `GET /api/admin/reports` - List all reports (admin only)
+  - `POST /api/admin/reports/:id/resolve` - Resolve report
+- Filter messages from blocked users in getMessagesForWave()
+
+**Frontend Changes:**
+- Block/Mute buttons in user profile/context menu
+- Report button on messages
+- Report modal with reason selection
+- Admin reports panel
+- Settings page: Blocked/Muted users management
+
+---
+
+### 12. Public REST API Documentation
+**Priority:** Medium
+**Complexity:** Low-Medium
+**Estimated Time:** 8-10 hours
+
+**Description:**
+Document and formalize existing API for third-party clients.
+
+**Requirements:**
+- **API Documentation:**
+  - Document all existing endpoints
+  - Request/response examples
+  - Authentication guide (JWT)
+  - Error codes and messages
+  - Rate limiting policies
+- **API Keys (Optional):**
+  - Generate API keys for applications
+  - API key authentication alongside JWT
+  - Per-key rate limiting
+  - Revoke API keys
+- **API Versioning:**
+  - Version prefix: `/api/v1/...`
+  - Deprecation notices
+- **Developer Portal:**
+  - Static documentation page
+  - Interactive API explorer (optional)
+  - Example code snippets
+
+**Backend Changes:**
+- Add API key model to users.json (if implementing keys)
+- Middleware for API key authentication
+- Update all endpoints with `/api/v1/` prefix (with backward compatibility)
+- API rate limiter per key/user
+
+**Frontend Changes:**
+- API documentation page (can be static HTML)
+- API key management in user settings (if implementing keys)
+
+**Note:** This is mostly organizational work - the API already exists, we're just documenting and formalizing it.
+
+---
+
 ## 🔮 Future Considerations (v2.0.0+)
 
 These features require significant architectural changes and are planned for future major versions:
+
+### Advanced API & Integrations
+- **Webhooks:** Outbound HTTP callbacks for events
+- **Bot Framework:** Create automated bots with special permissions
+- **OAuth Provider:** Let users auth to third-party apps with Cortex
+- **GraphQL API:** Alternative to REST for complex queries
 
 ### Federation & Cross-Server Communication
 - Connect to other Cortex servers
@@ -288,16 +384,11 @@ These features require significant architectural changes and are planned for fut
 - Screen sharing
 
 ### Advanced Moderation
-- User blocking/muting
-- Report system for inappropriate content
-- Moderator roles with permissions
-- Content filtering rules
-
-### API & Integrations
-- Public REST API for third-party clients
-- Webhooks for external integrations
-- Bot framework for automation
-- OAuth for external authentication
+- **AI Content Filtering:** Automatic detection of spam/harassment
+- **Moderator Roles:** Granular permissions for moderators
+- **Auto-moderation Rules:** Regex filters, word blacklists, rate limits
+- **Appeal System:** Users can appeal moderation decisions
+- **Shadowban:** Hide user's messages from others without notifying them
 
 ---
 
@@ -311,6 +402,8 @@ These features require significant architectural changes and are planned for fut
 | Read Receipts Display | Medium | Low | Medium | 2-3h |
 | GIF Search | Medium | Medium | Medium | 6-8h |
 | Threading Improvements | Medium | Medium | Medium | 6-8h |
+| **Basic Moderation** | **Med-High** | **Medium** | **High** | **12-16h** |
+| **Public API Docs** | **Medium** | **Low-Med** | **Medium** | **8-10h** |
 | Mobile PWA | Medium | High | High | 16-24h |
 | File Upload | Medium | High | Very High | 20-30h |
 | Export Wave | Low | Medium | Low | 8-12h |
@@ -332,6 +425,24 @@ For the next minor release (v1.5.0), we recommend focusing on high-impact, lower
 5. **Read Receipts Display** (2-3h) - Complements v1.4.0 read tracking
 
 **Total Estimated Time:** 23-33 hours (3-5 days of focused development)
+
+---
+
+## 🎯 Recommended v1.6.0 Scope (Moderation & API)
+
+For v1.6.0, focus on essential moderation and API features without requiring major architectural changes:
+
+### Core Features
+1. **Basic Moderation System** (12-16h) - User blocking, muting, and reporting
+2. **Public REST API Documentation** (8-10h) - Formalize existing API
+
+### Optional Additions
+3. **Threading Improvements** (6-8h) - Better navigation and visualization
+4. **Advanced Search Filters** (6-8h) - Boolean operators and filters
+
+**Total Estimated Time:** 32-42 hours (4-6 days of focused development)
+
+**Note:** Moderation and API features can be implemented independently and don't require database migration or major refactoring.
 
 ---
 
