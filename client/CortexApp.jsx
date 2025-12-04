@@ -1158,12 +1158,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Restore scroll position after wave data updates (for click-to-read and similar actions)
   useEffect(() => {
     if (scrollPositionToRestore.current !== null && messagesRef.current) {
-      setTimeout(() => {
+      // Use requestAnimationFrame for smoother restoration without visible jump
+      requestAnimationFrame(() => {
         if (messagesRef.current) {
           messagesRef.current.scrollTop = scrollPositionToRestore.current;
           scrollPositionToRestore.current = null;
         }
-      }, 0);
+      });
     }
   }, [waveData]);
 
