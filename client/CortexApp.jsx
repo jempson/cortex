@@ -915,7 +915,7 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -945,6 +945,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     loadWave();
     hasMarkedAsReadRef.current = false; // Reset when switching waves
   }, [wave.id]);
+
+  // Reload wave when reloadTrigger changes (from WebSocket events)
+  useEffect(() => {
+    if (reloadTrigger > 0) {
+      loadWave();
+    }
+  }, [reloadTrigger]);
 
   // Restore scroll position after wave data updates (for click-to-read and similar actions)
   useEffect(() => {
@@ -2435,6 +2442,7 @@ function MainApp() {
   const [selectedWave, setSelectedWave] = useState(null);
   const [showNewWave, setShowNewWave] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [waveReloadTrigger, setWaveReloadTrigger] = useState(0); // Increment to trigger WaveView reload
   const [typingUsers, setTypingUsers] = useState({}); // { waveId: { userId: { name, timestamp } } }
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
@@ -2467,6 +2475,10 @@ function MainApp() {
   const handleWSMessage = useCallback((data) => {
     if (data.type === 'new_message' || data.type === 'message_edited' || data.type === 'message_deleted' || data.type === 'wave_created' || data.type === 'wave_updated' || data.type === 'message_reaction') {
       loadWaves();
+      // If the event is for the currently viewed wave, trigger a reload
+      if (selectedWave && data.waveId === selectedWave.id) {
+        setWaveReloadTrigger(prev => prev + 1);
+      }
     } else if (data.type === 'wave_deleted') {
       showToastMsg(`Wave "${data.wave?.title || 'Unknown'}" was deleted`, 'info');
       if (selectedWave?.id === data.waveId) {
@@ -2638,7 +2650,8 @@ function MainApp() {
                   fetchAPI={fetchAPI} showToast={showToastMsg} currentUser={user}
                   groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile}
                   sendWSMessage={sendWSMessage}
-                  typingUsers={typingUsers[selectedWave?.id] || {}} />
+                  typingUsers={typingUsers[selectedWave?.id] || {}}
+                  reloadTrigger={waveReloadTrigger} />
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
                   <div style={{ textAlign: 'center' }}>
