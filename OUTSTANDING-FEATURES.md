@@ -115,7 +115,104 @@ Show who has read all messages in a wave (wave-level, not per-message).
 
 ---
 
-### 5. GIF Search Integration
+### 5. Push Notifications & Desktop Alerts
+**Priority:** Low-Medium
+**Complexity:** Low (Desktop) / High (PWA Push)
+**Estimated Time:** 4-6 hours (Desktop) / 16-20 hours (Full PWA)
+
+**Description:**
+Notify users of new messages even when they're not actively viewing the app or are on a different tab/wave.
+
+**User Story:**
+> As a user with Cortex open in a browser tab, I want to be notified when new messages arrive even when I'm viewing another tab or wave, so I don't miss important conversations.
+
+**Requested By:** Jared Empson
+
+**Current State:**
+- WebSocket connection provides real-time updates
+- Toast notifications show briefly in-app
+- No notifications when tab is in background
+- No notifications when viewing a different wave
+
+**Solution Phases:**
+
+#### Phase 1: Desktop Notifications (Low Complexity - v1.5.0)
+**Estimated Time:** 4-6 hours
+
+Use browser's Notification API for desktop notifications:
+
+```javascript
+// Request permission on first use
+if (Notification.permission === 'default') {
+  await Notification.requestPermission();
+}
+
+// When new message arrives via WebSocket
+if (Notification.permission === 'granted') {
+  new Notification('New message from Alice', {
+    body: 'Hey, are you free to chat?',
+    icon: '/cortex-icon.png',
+    badge: '/cortex-badge.png',
+    tag: 'wave-123',  // Group notifications by wave
+    requireInteraction: false,  // Auto-dismiss after timeout
+  });
+}
+```
+
+**Requirements:**
+- Request notification permission on login or in settings
+- Show desktop notification when:
+  - New message in any wave (if viewing different wave)
+  - New message while tab is in background
+  - User is mentioned with @handle
+- Notification settings in user preferences:
+  - Enable/disable notifications
+  - Notify on all messages vs mentions only
+  - Do Not Disturb mode
+- Click notification to focus wave
+- Group notifications by wave (don't spam)
+- Mute notifications for archived waves
+
+**Implementation:**
+- Add to WebSocket message handler in CortexApp.jsx
+- Check if current wave matches message wave
+- Check if tab is visible using `document.visibilityState`
+- Store notification preferences in user settings
+- Respect browser notification permission
+
+#### Phase 2: PWA Push Notifications (High Complexity - v1.7.0+)
+**Estimated Time:** 16-20 hours
+
+Full push notifications even when browser is closed (requires PWA):
+
+**Requirements:**
+- Service worker registration
+- Push subscription management
+- Backend push notification service (Web Push API)
+- HTTPS required
+- User subscription to push endpoint
+- Handle push events in service worker
+- Show notifications even when app is closed
+
+**Backend Changes:**
+- Store push subscriptions per user/device
+- Endpoint: `POST /api/push/subscribe` to register subscription
+- Endpoint: `POST /api/push/unsubscribe` to remove subscription
+- Integrate with Web Push library (e.g., `web-push` npm package)
+- Send push notifications on new messages
+- VAPID keys for push authentication
+
+**Frontend Changes:**
+- Service worker for push event handling
+- Push subscription UI in settings
+- Handle notification clicks (open wave)
+- Background sync for offline messages
+
+**Note:** Phase 2 requires significant PWA infrastructure and HTTPS. Recommend implementing Phase 1 first for quick wins.
+
+---
+
+### 6. GIF Search Integration
 **Priority:** Medium
 **Complexity:** Medium
 **Estimated Time:** 6-8 hours
@@ -142,7 +239,7 @@ Integrate Giphy or Tenor API for GIF search within message composer.
 
 ---
 
-### 6. Message Threading Improvements
+### 7. Message Threading Improvements
 **Priority:** Medium
 **Complexity:** Medium
 **Estimated Time:** 6-8 hours
@@ -166,7 +263,7 @@ Enhance message threading with better visualization and navigation.
 
 ## 🚀 Advanced Features (v1.5.0+)
 
-### 7. Mobile App Enhancements
+### 8. Mobile App Enhancements
 **Priority:** Medium
 **Complexity:** High
 **Estimated Time:** 16-24 hours
@@ -179,18 +276,18 @@ Advanced mobile features for better app-like experience.
 - Pull-to-refresh on wave list
 - Bottom navigation bar for primary actions
 - Progressive Web App (PWA) support with offline mode
-- Push notifications (requires service worker)
+- Push notifications (requires service worker - see Feature #5 Phase 2)
 - Install prompt for "Add to Home Screen"
 
 **Implementation:**
 - Add service worker for PWA
 - Implement touch gesture handlers
 - Create manifest.json for PWA
-- Set up Web Push API for notifications
+- Set up Web Push API for notifications (see Feature #5)
 
 ---
 
-### 8. File Upload Support
+### 9. File Upload Support
 **Priority:** Medium
 **Complexity:** High
 **Estimated Time:** 20-30 hours
@@ -221,7 +318,7 @@ Upload images and files directly (not just URLs).
 
 ---
 
-### 9. Export Wave as PDF/HTML
+### 10. Export Wave as PDF/HTML
 **Priority:** Low
 **Complexity:** Medium
 **Estimated Time:** 8-12 hours
@@ -243,7 +340,7 @@ Export entire waves for archival or sharing.
 
 ---
 
-### 10. Advanced Search with Filters
+### 11. Advanced Search with Filters
 **Priority:** Low
 **Complexity:** Medium
 **Estimated Time:** 6-8 hours
@@ -267,7 +364,7 @@ Enhanced search with advanced filters and boolean operators.
 
 ## 🛡️ Moderation & API Features (v1.6.0)
 
-### 11. Basic Moderation System
+### 12. Basic Moderation System
 **Priority:** Medium-High
 **Complexity:** Medium
 **Estimated Time:** 12-16 hours
@@ -313,7 +410,7 @@ Essential moderation tools for community management.
 
 ---
 
-### 12. Public REST API Documentation
+### 13. Public REST API Documentation
 **Priority:** Medium
 **Complexity:** Low-Medium
 **Estimated Time:** 8-10 hours
@@ -400,11 +497,12 @@ These features require significant architectural changes and are planned for fut
 | Message Search | High | Medium | High | 8-12h |
 | Typing Indicators | Medium | Low | Medium | 3-4h |
 | Read Receipts Display | Medium | Low | Medium | 2-3h |
+| **Desktop Notifications (Phase 1)** | **Low-Med** | **Low** | **High** | **4-6h** |
 | GIF Search | Medium | Medium | Medium | 6-8h |
 | Threading Improvements | Medium | Medium | Medium | 6-8h |
 | **Basic Moderation** | **Med-High** | **Medium** | **High** | **12-16h** |
 | **Public API Docs** | **Medium** | **Low-Med** | **Medium** | **8-10h** |
-| Mobile PWA | Medium | High | High | 16-24h |
+| Mobile PWA (incl. Push Phase 2) | Medium | High | High | 32-44h |
 | File Upload | Medium | High | Very High | 20-30h |
 | Export Wave | Low | Medium | Low | 8-12h |
 | Advanced Search | Low | Medium | Medium | 6-8h |
@@ -421,10 +519,13 @@ For the next minor release (v1.5.0), we recommend focusing on high-impact, lower
 3. **Typing Indicators** (3-4h) - Nice UX improvement, quick win
 
 ### Stretch Goals
-4. **GIF Search Integration** (6-8h) - Deferred from v1.3.3
-5. **Read Receipts Display** (2-3h) - Complements v1.4.0 read tracking
+4. **Desktop Notifications - Phase 1** (4-6h) - High user impact, low complexity (Requested by Jared)
+5. **GIF Search Integration** (6-8h) - Deferred from v1.3.3
+6. **Read Receipts Display** (2-3h) - Complements v1.4.0 read tracking
 
-**Total Estimated Time:** 23-33 hours (3-5 days of focused development)
+**Total Estimated Time:** 27-39 hours (3-5 days of focused development)
+
+**Note:** Desktop Notifications (Phase 1) uses browser's Notification API and requires no backend changes - perfect for v1.5.0. Phase 2 (full PWA push) deferred to v1.7.0+ with mobile enhancements.
 
 ---
 
