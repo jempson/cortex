@@ -1694,7 +1694,7 @@ server.listen(PORT, () => {
 ║  ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗         ║
 ║  ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗        ║
 ║   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝        ║
-║  SECURE COMMUNICATIONS SYSTEM v1.3.3                       ║
+║  SECURE COMMUNICATIONS SYSTEM v1.4.0                       ║
 ╠════════════════════════════════════════════════════════════╣
 ║  🔒 Security: Rate limiting, XSS protection, Helmet        ║
 ║  📁 Data: Separated files (users, waves, messages, groups) ║

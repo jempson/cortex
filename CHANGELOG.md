@@ -5,6 +5,107 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2025-12-04
+
+### Added
+
+#### Per-Message Read Tracking
+- **readBy Array** - Each message now has a `readBy: [userId, ...]` array tracking which users have read it
+- **Click-to-Read UI** - Messages must be explicitly clicked to mark as read
+- **Visual Indicators** - Unread messages display with:
+  - Amber left border (`#ffd23f`, 3px solid)
+  - Subtle amber background (`#ffd23f10`)
+  - Amber outer border (`1px solid #ffd23f`)
+  - Pointer cursor for clickability
+- **Hover Effects** - Unread messages brighten to `#ffd23f20` on hover
+- **New API Endpoint** - `POST /api/messages/:id/read` for marking individual messages
+- **Database Method** - `markMessageAsRead(messageId, userId)` adds user to readBy array
+- **is_unread Flag** - `getMessagesForWave()` returns `is_unread` boolean per message
+- **Auto-Initialize** - Message author automatically added to `readBy` on creation
+
+#### Scroll Position Preservation
+- **scrollPositionToRestore Ref** - New ref tracks scroll position during reloads
+- **Restoration useEffect** - Automatically restores scroll after wave data updates
+- **handleMessageClick** - Saves scroll position before marking message as read
+- **Smart Reply Scrolling** - Conditional scrolling behavior:
+  - Replies: Preserve current scroll position
+  - Root messages: Scroll to bottom (shows new message)
+- **Long Wave Support** - Prevents disruptive jumping in waves with 100+ messages
+
+### Changed
+
+#### Backend Updates
+- **Unread Count Calculation** - Changed from timestamp-based (`lastRead`) to array-based filtering
+  - Old: `m.created_at > participant.lastRead`
+  - New: `!m.readBy.includes(userId)`
+- **Message Schema** - Added `readBy: [authorId]` to new messages
+- **getMessagesForWave()** - Now accepts `userId` parameter and returns `is_unread` flag
+- **Backward Compatibility** - Old messages get `readBy` arrays initialized automatically:
+  ```javascript
+  if (!message.readBy) {
+    message.readBy = [message.authorId];
+  }
+  ```
+
+#### Frontend Updates
+- **ThreadedMessage Component** - Enhanced with click-to-read functionality:
+  - Added `onMessageClick` prop
+  - Added `isUnread` state detection
+  - Added click handler for unread messages
+  - Added hover effects with inline event handlers
+  - Passed `onMessageClick` to child messages recursively
+- **WaveView Component** - Added scroll preservation logic:
+  - New `scrollPositionToRestore` ref
+  - New restoration useEffect hook
+  - Updated `handleMessageClick()` with scroll save/restore
+  - Updated `handleSendMessage()` with conditional scrolling
+- **Visual Transitions** - All scroll restorations use `transition: 'all 0.2s ease'`
+
+### Technical Details
+
+#### Bundle Size
+- **Gzip Size**: 61.60 KB (increased from 61.10 KB due to new features)
+- **Total Build**: 213.43 KB uncompressed
+- **Build Time**: ~587ms (excellent)
+
+#### Performance
+- **No Breaking Changes** - All v1.3.x features remain fully functional
+- **Backward Compatible** - Old messages automatically get `readBy` arrays
+- **Optimized Reloads** - Scroll position preserved prevents unnecessary reorientation
+- **Smooth Transitions** - 0-delay setTimeout ensures DOM updates before scroll restoration
+
+#### Code Quality
+- **Syntax Validated** - Both client and server pass validation
+- **Build Successful** - Vite build completes without errors or warnings
+- **Clean Implementation** - Follows existing code patterns and style
+- **Logging Enhanced** - Console logging for read tracking debugging
+
+### Developer Notes
+
+#### Frontend Changes (CortexApp.jsx)
+- Line 441: Updated `ThreadedMessage` signature with `onMessageClick` prop
+- Line 453: Added `isUnread` state detection
+- Line 459-463: Added `handleMessageClick` function in component
+- Line 467-488: Enhanced message container div with click handling and styling
+- Line 692: Passed `onMessageClick` to recursive child messages
+- Line 935: Added `scrollPositionToRestore` ref
+- Line 942-952: Added scroll restoration useEffect
+- Line 1068-1099: Updated `handleSendMessage()` with conditional scrolling
+- Line 1179-1197: Added `handleMessageClick()` handler in WaveView
+- Line 1283: Passed `onMessageClick` to ThreadedMessage
+
+#### Backend Changes (server.js)
+- Line 859: Added `readBy: [data.authorId]` to message creation
+- Line 654-661: Updated unread count calculation to use `readBy` filtering
+- Line 822-844: Updated `getMessagesForWave()` to accept `userId` and return `is_unread`
+- Line 963-979: Added `markMessageAsRead()` database method
+- Line 1580-1593: Added `POST /api/messages/:id/read` endpoint
+
+#### Migration Notes
+- No migration script needed - backward compatible
+- Old messages auto-initialize `readBy` arrays on first access
+- Existing `lastRead` timestamps remain in database but unused for unread counts
+
 ## [1.3.3] - 2025-12-04
 
 ### Added

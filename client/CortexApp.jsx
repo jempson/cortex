@@ -2498,7 +2498,7 @@ function MainApp() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div>
             <GlowText color="#ffd23f" size={isMobile ? '1.3rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            {!isMobile && <span style={{ color: '#5a6a5a', fontSize: '0.65rem', marginLeft: '8px' }}>v1.3.3</span>}
+            {!isMobile && <span style={{ color: '#5a6a5a', fontSize: '0.65rem', marginLeft: '8px' }}>v1.4.0</span>}
           </div>
           {!isMobile && <ConnectionStatus wsConnected={wsConnected} apiConnected={apiConnected} />}
         </div>

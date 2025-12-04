@@ -87,6 +87,9 @@ Single-page React app with all components in one file:
 - Edit history tracked in `messages.history[]`
 - Content stored with version numbers
 - @mentions stored as UUIDs, rendered as current handles
+- Read tracking via `readBy[]` array containing user IDs who have read the message
+- Author automatically added to `readBy` on message creation
+- Click-to-read UI: Messages marked as read only when explicitly clicked
 
 **Groups:**
 - Separate `groups.groups[]` and `groups.members[]` arrays
@@ -159,6 +162,17 @@ Single-page React app with all components in one file:
 - **Theme Selection**: Firefly (default), High Contrast, Light Mode
 - **Font Size Control**: Small (0.9x), Medium (1x), Large (1.15x), X-Large (1.3x)
 - **Preferences API**: `PUT /api/profile/preferences` to update settings
+
+### Per-Message Read Tracking (v1.4.0+)
+- **Click-to-Read Pattern**: Messages marked as read only when explicitly clicked by user
+- **readBy Array**: Each message has `readBy: [userId, ...]` tracking which users have read it
+- **Visual Indicators**: Unread messages display with amber border (#ffd23f) and background
+- **Backend Endpoint**: `POST /api/messages/:id/read` marks individual message as read
+- **Unread Count**: Calculated by filtering messages where `!readBy.includes(userId)`
+- **Database Method**: `markMessageAsRead(messageId, userId)` adds user to readBy array
+- **Auto-Initialize**: Author automatically added to readBy on message creation
+- **Backward Compatible**: Old messages get readBy arrays initialized on first access
+- **Scroll Preservation**: Clicking messages or replying preserves scroll position to prevent disruptive jumping in long waves
 - **Client Storage**: Theme/font applied via CSS variables and inline styles
 - **Future**: Full CSS variable refactoring for complete theme support
 
@@ -194,6 +208,20 @@ Single-page React app with all components in one file:
   - Converts `username` → `handle`
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
+
+- **v1.4.0 (December 2025)** - Per-Message Read Tracking & Scroll Preservation
+  - Per-message read tracking with click-to-read UI
+  - Scroll position preservation during message interactions
+  - Granular unread status with readBy arrays
+  - Visual indicators for unread messages (amber border/background)
+  - Smart scrolling for replies vs root messages
+
+- **v1.3.3 (December 2025)** - Message Editing & UX Polish
+  - Message editing with inline edit interface
+  - Keyboard shortcuts (Ctrl+Enter save, Esc cancel)
+  - Improved wave hover states with transitions
+  - Collapsible playback controls
+  - Auto-focus on reply
 
 - **v1.3.2 (December 2025)** - Rich Content & UX Improvements
   - Added media embedding (images, GIFs) with auto-detection

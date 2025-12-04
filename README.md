@@ -1,8 +1,25 @@
-# CORTEX - Secure Wave Communications v1.3.3
+# CORTEX - Secure Wave Communications v1.4.0
 
 A privacy-first, federated communication platform inspired by Google Wave with a Firefly aesthetic.
 
-## What's New in v1.3.3
+## What's New in v1.4.0
+
+### 📖 Per-Message Read Tracking
+- **Click-to-Read**: Messages marked as read only when explicitly clicked
+- **Visual Indicators**: Unread messages have amber border (#ffd23f) and background
+- **Hover Effects**: Pointer cursor and brightening effect on unread messages
+- **Granular Tracking**: Each message tracks which users have read it via `readBy` array
+- **Backend Enhancement**: New `/api/messages/:id/read` endpoint for marking individual messages
+- **Backward Compatible**: Old messages automatically initialized with `readBy` arrays
+
+### 🔄 Scroll Position Preservation
+- **Click Stability**: Clicking unread messages preserves your scroll position
+- **Reply Stability**: Replying to messages maintains current scroll position
+- **Smart Scrolling**: Root messages still scroll to bottom (expected behavior)
+- **Long Wave Support**: No more disruptive jumping in waves with 100+ messages
+- **Seamless UX**: Scroll restoration happens automatically and smoothly
+
+## What Was New in v1.3.3
 
 ### ✏️ Message Editing & Deletion
 - **Edit Messages**: Edit your own messages with inline editing interface
