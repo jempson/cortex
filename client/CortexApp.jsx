@@ -502,7 +502,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ THREADED MESSAGE ============
-const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick }) => {
+const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [] }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -743,6 +743,57 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
             </div>
           )}
         </div>
+
+        {/* Read Receipts */}
+        {message.readBy && message.readBy.length > 0 && (
+          <details style={{
+            marginTop: '8px',
+            paddingTop: '8px',
+            borderTop: '1px solid #2a3a2a',
+            cursor: 'pointer'
+          }}>
+            <summary style={{
+              color: '#6a7a6a',
+              fontSize: isMobile ? '0.7rem' : '0.65rem',
+              userSelect: 'none',
+              fontFamily: 'monospace',
+              listStyle: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <span style={{ color: '#0ead69' }}>✓</span>
+              Seen by {message.readBy.length} {message.readBy.length === 1 ? 'person' : 'people'}
+            </summary>
+            <div style={{
+              marginTop: '6px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '4px'
+            }}>
+              {message.readBy.map(userId => {
+                const participant = participants.find(p => p.id === userId);
+                const displayName = participant ? participant.name : userId;
+                return (
+                  <span
+                    key={userId}
+                    title={participant?.handle || ''}
+                    style={{
+                      padding: '2px 6px',
+                      background: '#0ead6920',
+                      border: '1px solid #0ead69',
+                      color: '#0ead69',
+                      fontSize: isMobile ? '0.65rem' : '0.6rem',
+                      fontFamily: 'monospace'
+                    }}
+                  >
+                    {displayName}
+                  </span>
+                );
+              })}
+            </div>
+          </details>
+        )}
       </div>
       {hasChildren && !isCollapsed && (
         <div style={{ borderLeft: '1px solid #3a4a3a', marginLeft: `${indentSize}px` }}>
@@ -751,7 +802,8 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
               editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
               currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
-              onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick} />
+              onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
+              participants={participants} />
           ))}
         </div>
       )}
@@ -1499,6 +1551,97 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         </div>
       </div>
 
+      {/* Participants with Read Status */}
+      {waveData.participants && waveData.participants.length > 0 && (
+        <div style={{
+          padding: isMobile ? '8px 12px' : '8px 20px',
+          borderBottom: '1px solid #2a3a2a',
+          background: '#0a100a',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          flexWrap: 'wrap',
+          flexShrink: 0
+        }}>
+          <span style={{ color: '#6a7a6a', fontSize: '0.7rem', fontFamily: 'monospace' }}>
+            PARTICIPANTS:
+          </span>
+          {waveData.participants.map(p => {
+            // Check if participant has read the latest message
+            const latestMessage = waveData.all_messages.length > 0
+              ? waveData.all_messages[waveData.all_messages.length - 1]
+              : null;
+            const hasReadLatest = latestMessage
+              ? (latestMessage.readBy || [latestMessage.author_id]).includes(p.id)
+              : true;
+
+            return (
+              <div
+                key={p.id}
+                title={`${p.name} - ${hasReadLatest ? 'Read' : 'Unread'}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '4px 8px',
+                  background: hasReadLatest ? '#0ead6920' : '#2a3a2a',
+                  border: `1px solid ${hasReadLatest ? '#0ead69' : '#3a4a3a'}`,
+                  fontSize: isMobile ? '0.7rem' : '0.65rem',
+                  color: '#c5d5c5',
+                  fontFamily: 'monospace',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <span style={{ color: hasReadLatest ? '#0ead69' : '#6a7a6a' }}>
+                  {hasReadLatest ? '✓' : '○'}
+                </span>
+                {p.name}
+              </div>
+            );
+          })}
+          {/* Mark All Read Button */}
+          {waveData.messages.some(m => m.is_unread && m.author_id !== currentUser.id) && (
+            <button
+              onClick={async () => {
+                try {
+                  const unreadMessages = waveData.all_messages
+                    .filter(m => (m.readBy || [m.author_id]).includes(currentUser.id) === false && m.author_id !== currentUser.id);
+
+                  if (unreadMessages.length === 0) return;
+
+                  // Mark all as read in parallel
+                  await Promise.all(
+                    unreadMessages.map(m =>
+                      fetchAPI(`/messages/${m.id}/read`, { method: 'POST' })
+                    )
+                  );
+
+                  await loadWave();
+                  onWaveUpdate?.();
+                  showToast(`Marked ${unreadMessages.length} message${unreadMessages.length !== 1 ? 's' : ''} as read`, 'success');
+                } catch (err) {
+                  showToast('Failed to mark messages as read', 'error');
+                }
+              }}
+              style={{
+                padding: isMobile ? '6px 10px' : '4px 8px',
+                background: 'transparent',
+                border: '1px solid #ffd23f',
+                color: '#ffd23f',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#ffd23f20'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              MARK ALL READ
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Playback */}
       {total > 0 && (
         <div style={{ flexShrink: 0 }}>
@@ -1544,7 +1687,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={(id) => setCollapsed(p => ({ ...p, [id]: !p[id] }))} isMobile={isMobile}
-            onReact={handleReaction} onMessageClick={handleMessageClick} />
+            onReact={handleReaction} onMessageClick={handleMessageClick} participants={waveData.participants || []} />
         ))}
       </div>
 

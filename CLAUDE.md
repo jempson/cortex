@@ -301,3 +301,4 @@ The UI uses a dark green terminal aesthetic inspired by Firefly:
 - **Typography:** Monospace fonts (Courier New, Monaco)
 - **Effects:** CRT scanlines overlay, text glow, phosphor effect
 - **Design:** Retro-futuristic, terminal-like interface with minimal decoration
+- Always create a new branch before working on a version.
