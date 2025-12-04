@@ -1,8 +1,46 @@
-# CORTEX - Secure Wave Communications v1.4.0
+# CORTEX - Secure Wave Communications v1.5.0
 
 A privacy-first, federated communication platform inspired by Google Wave with a Firefly aesthetic.
 
-## What's New in v1.4.0
+## What's New in v1.5.0
+
+### ⌨️ Typing Indicators
+- **Real-Time Awareness**: See when others are typing in a wave
+- **Multi-User Display**: Shows "Alice, Bob are typing..." for multiple users
+- **Auto-Clear**: Indicators disappear after 5 seconds of inactivity
+- **Throttled Events**: Optimized to send max 1 event per 2 seconds
+- **Wave-Specific**: Only shows typing users in your current wave
+
+### 🎭 Message Reactions
+- **Emoji Support**: React to messages with 6 quick emojis (👍 ❤️ 😂 🎉 🤔 👏)
+- **Toggle Reactions**: Click same emoji again to remove your reaction
+- **Reaction Counts**: See count and list of users who reacted
+- **Real-Time Updates**: Reactions appear instantly across all clients
+- **Persistent**: Reactions saved and displayed after reload
+
+### 🔍 Message Search
+- **Full-Text Search**: Search across all your messages in all accessible waves
+- **Smart Security**: Only searches waves you have permission to view
+- **Search Modal**: Clean overlay UI with live search results
+- **Result Highlighting**: Search terms highlighted in yellow
+- **Jump to Message**: Click result to navigate directly to wave and message
+- **Rich Metadata**: Shows wave name, author, and date for each result
+
+### 🔔 Desktop Notifications
+- **Browser Notifications**: Native desktop notifications for new messages
+- **Smart Triggers**: Notifies when tab backgrounded or viewing different wave
+- **Click to Focus**: Clicking notification opens browser and focuses wave
+- **Auto-Permissions**: Requests permission automatically after login
+- **Privacy-Aware**: Never shows notifications for your own messages
+- **No Backend Needed**: Uses browser Notification API
+
+### 🐛 Critical Fixes
+- **WebSocket Stability**: Fixed disconnection issues with auto-reconnect and heartbeat ping
+- **Scroll Position**: Fixed race conditions causing scroll jumps on user actions
+- **Thread Nesting**: Fixed deep thread indentation going off-screen on mobile
+- **Real-Time Updates**: Fixed waveId extraction for proper message delivery
+
+## What Was New in v1.4.0
 
 ### 📖 Per-Message Read Tracking
 - **Click-to-Read**: Messages marked as read only when explicitly clicked
