@@ -2,20 +2,54 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CORTEX - Secure Communications</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+    <title>CORTEX - Secure Wave Communications</title>
     <style>
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
       body {
+        font-family: 'Courier New', Monaco, 'Lucida Console', monospace;
         background: #050805;
-        font-family: 'Courier New', monospace;
+        color: #c5d5c5;
+        text-rendering: optimizeLegibility;
+        -webkit-tap-highlight-color: rgba(255, 210, 63, 0.2);
       }
-      #root {
-        min-height: 100vh;
+
+      /* Custom scrollbar styling for better visibility on mobile */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: #2a3a2a #0a100a;
+      }
+
+      *::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      *::-webkit-scrollbar-track {
+        background: #0a100a;
+      }
+
+      *::-webkit-scrollbar-thumb {
+        background: #2a3a2a;
+        border-radius: 4px;
+      }
+
+      *::-webkit-scrollbar-thumb:hover {
+        background: #3a4a3a;
+      }
+
+      /* Make scrollbars always visible on mobile */
+      @media (max-width: 600px) {
+        *::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
       }
     </style>
   </head>

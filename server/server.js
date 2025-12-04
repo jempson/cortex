@@ -26,11 +26,11 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILES = {
   users: path.join(DATA_DIR, 'users.json'),
-  threads: path.join(DATA_DIR, 'threads.json'),
+  waves: path.join(DATA_DIR, 'waves.json'),
   messages: path.join(DATA_DIR, 'messages.json'),
   groups: path.join(DATA_DIR, 'groups.json'),
+  handleRequests: path.join(DATA_DIR, 'handle-requests.json'),
 };
-const LEGACY_DATA_FILE = path.join(__dirname, 'cortex-data.json');
 
 // CORS configuration
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
@@ -44,7 +44,7 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip + ':' + (req.body?.username || 'unknown'),
+  keyGenerator: (req) => req.ip + ':' + (req.body?.handle || req.body?.username || 'unknown'),
 });
 
 const registerLimiter = rateLimit({
@@ -68,8 +68,8 @@ const failedAttempts = new Map();
 const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_DURATION = 15 * 60 * 1000;
 
-function checkAccountLockout(username) {
-  const record = failedAttempts.get(username);
+function checkAccountLockout(handle) {
+  const record = failedAttempts.get(handle);
   if (!record) return { locked: false };
   if (record.lockedUntil && Date.now() < record.lockedUntil) {
     const remainingMs = record.lockedUntil - Date.now();
@@ -77,23 +77,23 @@ function checkAccountLockout(username) {
     return { locked: true, remainingMin };
   }
   if (record.lockedUntil && Date.now() >= record.lockedUntil) {
-    failedAttempts.delete(username);
+    failedAttempts.delete(handle);
   }
   return { locked: false };
 }
 
-function recordFailedAttempt(username) {
-  const record = failedAttempts.get(username) || { count: 0, lockedUntil: null };
+function recordFailedAttempt(handle) {
+  const record = failedAttempts.get(handle) || { count: 0, lockedUntil: null };
   record.count += 1;
   if (record.count >= LOCKOUT_THRESHOLD) {
     record.lockedUntil = Date.now() + LOCKOUT_DURATION;
-    console.log(`🔒 Account locked: ${username}`);
+    console.log(`🔒 Account locked: ${handle}`);
   }
-  failedAttempts.set(username, record);
+  failedAttempts.set(handle, record);
 }
 
-function clearFailedAttempts(username) {
-  failedAttempts.delete(username);
+function clearFailedAttempts(handle) {
+  failedAttempts.delete(handle);
 }
 
 // ============ Security: Input Sanitization ============
@@ -108,9 +108,57 @@ function sanitizeInput(input) {
   return sanitizeHtml(input, sanitizeOptions).trim();
 }
 
+const sanitizeMessageOptions = {
+  allowedTags: ['img', 'a', 'br', 'p', 'strong', 'em', 'code', 'pre'],
+  allowedAttributes: {
+    'img': ['src', 'alt', 'width', 'height', 'class'],
+    'a': ['href', 'target', 'rel'],
+  },
+  allowedSchemes: ['http', 'https', 'data'], // Allow data URIs for emojis
+  allowedSchemesByTag: {
+    img: ['http', 'https', 'data']
+  },
+  transformTags: {
+    'a': (tagName, attribs) => ({
+      tagName: 'a',
+      attribs: { ...attribs, target: '_blank', rel: 'noopener noreferrer' }
+    }),
+    'img': (tagName, attribs) => ({
+      tagName: 'img',
+      attribs: {
+        ...attribs,
+        style: 'max-width: 100%; height: auto;',
+        loading: 'lazy',
+        class: 'message-media'
+      }
+    })
+  }
+};
+
 function sanitizeMessage(content) {
   if (typeof content !== 'string') return '';
-  return sanitizeHtml(content, sanitizeOptions).trim().slice(0, 10000);
+  return sanitizeHtml(content, sanitizeMessageOptions).trim().slice(0, 10000);
+}
+
+function detectAndEmbedMedia(content) {
+  // First, auto-link plain URLs (that aren't already in HTML tags)
+  // This regex avoids matching URLs inside existing HTML tags
+  const urlRegex = /(?<!["'>])(https?:\/\/[^\s<]+)(?![^<]*>|[^<>]*<\/)/gi;
+
+  // Track which URLs are images to embed them
+  const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg)(\?[^\s]*)?$/i;
+  const imageHosts = /(media\.giphy\.com|i\.giphy\.com|media\.tenor\.com|c\.tenor\.com)/i;
+
+  content = content.replace(urlRegex, (match) => {
+    // Check if this URL should be embedded as an image
+    if (imageExtensions.test(match) || imageHosts.test(match)) {
+      return `<img src="${match}" alt="Embedded media" />`;
+    }
+    // Otherwise, make it a clickable link
+    return `<a href="${match}" target="_blank" rel="noopener noreferrer">${match}</a>`;
+  });
+
+  return content;
 }
 
 // ============ Security: Password Validation ============
@@ -131,9 +179,10 @@ function validatePassword(password) {
 class Database {
   constructor() {
     this.users = { users: [], contacts: [] };
-    this.threads = { threads: [], participants: [] };
+    this.waves = { waves: [], participants: [] };
     this.messages = { messages: [], history: [] };
     this.groups = { groups: [], members: [] };
+    this.handleRequests = { requests: [] };
     this.load();
   }
 
@@ -167,20 +216,14 @@ class Database {
   load() {
     this.ensureDataDir();
     
-    // Check for legacy single-file data and migrate
-    if (fs.existsSync(LEGACY_DATA_FILE) && !fs.existsSync(DATA_FILES.users)) {
-      this.migrateLegacyData();
-      return;
-    }
-
-    // Load separated files
     const hasData = fs.existsSync(DATA_FILES.users);
     
     if (hasData) {
       this.users = this.loadFile(DATA_FILES.users, { users: [], contacts: [] });
-      this.threads = this.loadFile(DATA_FILES.threads, { threads: [], participants: [] });
+      this.waves = this.loadFile(DATA_FILES.waves, { waves: [], participants: [] });
       this.messages = this.loadFile(DATA_FILES.messages, { messages: [], history: [] });
       this.groups = this.loadFile(DATA_FILES.groups, { groups: [], members: [] });
+      this.handleRequests = this.loadFile(DATA_FILES.handleRequests, { requests: [] });
       console.log('📂 Loaded data from separated files');
     } else {
       if (process.env.SEED_DEMO_DATA === 'true') {
@@ -191,47 +234,19 @@ class Database {
     }
   }
 
-  migrateLegacyData() {
-    console.log('🔄 Migrating legacy data to separated files...');
-    try {
-      const legacy = JSON.parse(fs.readFileSync(LEGACY_DATA_FILE, 'utf-8'));
-      
-      this.users = {
-        users: legacy.users || [],
-        contacts: legacy.contacts || [],
-      };
-      this.threads = {
-        threads: legacy.threads || [],
-        participants: legacy.threadParticipants || [],
-      };
-      this.messages = {
-        messages: legacy.messages || [],
-        history: legacy.messageHistory || [],
-      };
-      this.groups = { groups: [], members: [] };
-      
-      this.saveAll();
-      
-      // Rename legacy file as backup
-      fs.renameSync(LEGACY_DATA_FILE, LEGACY_DATA_FILE + '.backup');
-      console.log('✅ Migration complete. Legacy file backed up.');
-    } catch (err) {
-      console.error('Migration failed:', err);
-      this.initEmpty();
-    }
-  }
-
   saveAll() {
     this.saveFile(DATA_FILES.users, this.users);
-    this.saveFile(DATA_FILES.threads, this.threads);
+    this.saveFile(DATA_FILES.waves, this.waves);
     this.saveFile(DATA_FILES.messages, this.messages);
     this.saveFile(DATA_FILES.groups, this.groups);
+    this.saveFile(DATA_FILES.handleRequests, this.handleRequests);
   }
 
   saveUsers() { this.saveFile(DATA_FILES.users, this.users); }
-  saveThreads() { this.saveFile(DATA_FILES.threads, this.threads); }
+  saveWaves() { this.saveFile(DATA_FILES.waves, this.waves); }
   saveMessages() { this.saveFile(DATA_FILES.messages, this.messages); }
   saveGroups() { this.saveFile(DATA_FILES.groups, this.groups); }
+  saveHandleRequests() { this.saveFile(DATA_FILES.handleRequests, this.handleRequests); }
 
   initEmpty() {
     console.log('📝 Initializing empty database');
@@ -245,14 +260,21 @@ class Database {
     const now = new Date().toISOString();
 
     const demoUsers = [
-      { id: 'user-mal', username: 'mal', email: 'mal@serenity.ship', displayName: 'Malcolm Reynolds', avatar: 'M', nodeName: 'Serenity', status: 'offline' },
-      { id: 'user-zoe', username: 'zoe', email: 'zoe@serenity.ship', displayName: 'Zoe Washburne', avatar: 'Z', nodeName: 'Serenity', status: 'offline' },
-      { id: 'user-wash', username: 'wash', email: 'wash@serenity.ship', displayName: 'Hoban Washburne', avatar: 'W', nodeName: 'Serenity', status: 'offline' },
-      { id: 'user-kaylee', username: 'kaylee', email: 'kaylee@serenity.ship', displayName: 'Kaylee Frye', avatar: 'K', nodeName: 'Serenity', status: 'offline' },
-      { id: 'user-jayne', username: 'jayne', email: 'jayne@serenity.ship', displayName: 'Jayne Cobb', avatar: 'J', nodeName: 'Serenity', status: 'offline' },
+      { id: 'user-mal', handle: 'mal', email: 'mal@serenity.ship', displayName: 'Malcolm Reynolds', avatar: 'M', nodeName: 'Serenity', status: 'offline', isAdmin: true },
+      { id: 'user-zoe', handle: 'zoe', email: 'zoe@serenity.ship', displayName: 'Zoe Washburne', avatar: 'Z', nodeName: 'Serenity', status: 'offline', isAdmin: false },
+      { id: 'user-wash', handle: 'wash', email: 'wash@serenity.ship', displayName: 'Hoban Washburne', avatar: 'W', nodeName: 'Serenity', status: 'offline', isAdmin: false },
+      { id: 'user-kaylee', handle: 'kaylee', email: 'kaylee@serenity.ship', displayName: 'Kaylee Frye', avatar: 'K', nodeName: 'Serenity', status: 'offline', isAdmin: false },
+      { id: 'user-jayne', handle: 'jayne', email: 'jayne@serenity.ship', displayName: 'Jayne Cobb', avatar: 'J', nodeName: 'Serenity', status: 'offline', isAdmin: false },
     ];
 
-    this.users.users = demoUsers.map(u => ({ ...u, passwordHash, createdAt: now, lastSeen: now }));
+    this.users.users = demoUsers.map(u => ({ 
+      ...u, 
+      passwordHash, 
+      createdAt: now, 
+      lastSeen: now,
+      handleHistory: [],
+      lastHandleChange: null,
+    }));
     
     // Create a demo group
     this.groups.groups = [
@@ -265,16 +287,32 @@ class Database {
       joinedAt: now,
     }));
 
-    // Demo thread
-    this.threads.threads = [
-      { id: 'thread-1', title: 'Welcome to Cortex', privacy: 'public', createdBy: 'user-mal', createdAt: now, updatedAt: now },
+    // Demo waves with different privacy levels
+    this.waves.waves = [
+      { id: 'wave-1', title: 'Welcome to Cortex', privacy: 'public', createdBy: 'user-mal', createdAt: now, updatedAt: now },
+      { id: 'wave-2', title: 'Private Chat Test', privacy: 'private', createdBy: 'user-mal', createdAt: now, updatedAt: now },
+      { id: 'wave-3', title: 'Crew Discussion', privacy: 'group', groupId: 'group-crew', createdBy: 'user-mal', createdAt: now, updatedAt: now },
+      { id: 'wave-4', title: 'Zoe Private Wave', privacy: 'private', createdBy: 'user-zoe', createdAt: now, updatedAt: now },
+      { id: 'wave-5', title: 'Wash Public Wave', privacy: 'public', createdBy: 'user-wash', createdAt: now, updatedAt: now },
     ];
-    this.threads.participants = [
-      { threadId: 'thread-1', userId: 'user-mal', joinedAt: now },
+    this.waves.participants = [
+      { waveId: 'wave-1', userId: 'user-mal', joinedAt: now, archived: false },
+      { waveId: 'wave-2', userId: 'user-mal', joinedAt: now, archived: false },
+      { waveId: 'wave-2', userId: 'user-zoe', joinedAt: now, archived: false },
+      { waveId: 'wave-3', userId: 'user-mal', joinedAt: now, archived: false },
+      { waveId: 'wave-3', userId: 'user-zoe', joinedAt: now, archived: false },
+      { waveId: 'wave-3', userId: 'user-wash', joinedAt: now, archived: false },
+      { waveId: 'wave-4', userId: 'user-zoe', joinedAt: now, archived: false },
+      { waveId: 'wave-4', userId: 'user-mal', joinedAt: now, archived: false },
+      { waveId: 'wave-5', userId: 'user-wash', joinedAt: now, archived: false },
     ];
 
     this.messages.messages = [
-      { id: 'msg-1', threadId: 'thread-1', parentId: null, authorId: 'user-mal', content: 'Welcome to Cortex! This is a public thread visible to everyone.', privacy: 'public', version: 1, createdAt: now, editedAt: null },
+      { id: 'msg-1', waveId: 'wave-1', parentId: null, authorId: 'user-mal', content: 'Welcome to Cortex! This is a public wave visible to everyone.', privacy: 'public', version: 1, createdAt: now, editedAt: null },
+      { id: 'msg-2', waveId: 'wave-2', parentId: null, authorId: 'user-mal', content: 'This is a private wave for testing.', privacy: 'private', version: 1, createdAt: now, editedAt: null },
+      { id: 'msg-3', waveId: 'wave-3', parentId: null, authorId: 'user-mal', content: 'This is a group wave for the crew.', privacy: 'group', version: 1, createdAt: now, editedAt: null },
+      { id: 'msg-4', waveId: 'wave-4', parentId: null, authorId: 'user-zoe', content: 'Zoe\'s private wave.', privacy: 'private', version: 1, createdAt: now, editedAt: null },
+      { id: 'msg-5', waveId: 'wave-5', parentId: null, authorId: 'user-wash', content: 'Wash\'s public wave.', privacy: 'public', version: 1, createdAt: now, editedAt: null },
     ];
 
     this.saveAll();
@@ -282,10 +320,10 @@ class Database {
   }
 
   // === User Methods ===
-  findUserByUsername(username) {
-    const sanitized = sanitizeInput(username)?.toLowerCase();
+  findUserByHandle(handle) {
+    const sanitized = sanitizeInput(handle)?.toLowerCase();
     return this.users.users.find(u => 
-      u.username.toLowerCase() === sanitized || 
+      u.handle.toLowerCase() === sanitized || 
       u.email.toLowerCase() === sanitized
     );
   }
@@ -295,8 +333,24 @@ class Database {
   }
 
   createUser(userData) {
-    const user = { ...userData, createdAt: new Date().toISOString(), lastSeen: new Date().toISOString() };
+    const user = {
+      ...userData,
+      createdAt: new Date().toISOString(),
+      lastSeen: new Date().toISOString(),
+      handleHistory: [],
+      lastHandleChange: null,
+      isAdmin: this.users.users.length === 0, // First user is admin
+      preferences: { theme: 'firefly', fontSize: 'medium' },
+    };
     this.users.users.push(user);
+    this.saveUsers();
+    return user;
+  }
+
+  updateUser(userId, updates) {
+    const user = this.findUserById(userId);
+    if (!user) return null;
+    Object.assign(user, updates);
     this.saveUsers();
     return user;
   }
@@ -310,16 +364,121 @@ class Database {
     }
   }
 
+  async changePassword(userId, currentPassword, newPassword) {
+    const user = this.findUserById(userId);
+    if (!user) return { success: false, error: 'User not found' };
+    
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) return { success: false, error: 'Current password is incorrect' };
+    
+    const errors = validatePassword(newPassword);
+    if (errors.length > 0) return { success: false, error: errors.join('. ') };
+    
+    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    this.saveUsers();
+    return { success: true };
+  }
+
+  requestHandleChange(userId, newHandle) {
+    const user = this.findUserById(userId);
+    if (!user) return { success: false, error: 'User not found' };
+    
+    // Check if handle is taken
+    const existing = this.users.users.find(u => 
+      u.handle.toLowerCase() === newHandle.toLowerCase() && u.id !== userId
+    );
+    if (existing) return { success: false, error: 'Handle is already taken' };
+    
+    // Check cooldown (30 days)
+    if (user.lastHandleChange) {
+      const daysSince = (Date.now() - new Date(user.lastHandleChange).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSince < 30) {
+        return { success: false, error: `You can change your handle again in ${Math.ceil(30 - daysSince)} days` };
+      }
+    }
+    
+    // Check if handle was recently used by someone else
+    const recentlyUsed = this.users.users.some(u => 
+      u.handleHistory?.some(h => 
+        h.handle.toLowerCase() === newHandle.toLowerCase() &&
+        (Date.now() - new Date(h.changedAt).getTime()) < 90 * 24 * 60 * 60 * 1000
+      )
+    );
+    if (recentlyUsed) return { success: false, error: 'This handle was recently used and is reserved for 90 days' };
+    
+    // Create request
+    const request = {
+      id: `req-${uuidv4()}`,
+      userId,
+      currentHandle: user.handle,
+      newHandle: sanitizeInput(newHandle),
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    this.handleRequests.requests.push(request);
+    this.saveHandleRequests();
+    
+    return { success: true, request };
+  }
+
+  approveHandleChange(requestId, adminId) {
+    const admin = this.findUserById(adminId);
+    if (!admin?.isAdmin) return { success: false, error: 'Not authorized' };
+    
+    const request = this.handleRequests.requests.find(r => r.id === requestId);
+    if (!request || request.status !== 'pending') {
+      return { success: false, error: 'Request not found or already processed' };
+    }
+    
+    const user = this.findUserById(request.userId);
+    if (!user) return { success: false, error: 'User not found' };
+    
+    // Store old handle in history
+    if (!user.handleHistory) user.handleHistory = [];
+    user.handleHistory.push({ handle: user.handle, changedAt: new Date().toISOString() });
+    
+    // Update handle
+    user.handle = request.newHandle;
+    user.lastHandleChange = new Date().toISOString();
+    
+    request.status = 'approved';
+    request.processedAt = new Date().toISOString();
+    request.processedBy = adminId;
+    
+    this.saveUsers();
+    this.saveHandleRequests();
+    
+    return { success: true };
+  }
+
+  rejectHandleChange(requestId, adminId, reason) {
+    const admin = this.findUserById(adminId);
+    if (!admin?.isAdmin) return { success: false, error: 'Not authorized' };
+    
+    const request = this.handleRequests.requests.find(r => r.id === requestId);
+    if (!request || request.status !== 'pending') {
+      return { success: false, error: 'Request not found or already processed' };
+    }
+    
+    request.status = 'rejected';
+    request.reason = reason;
+    request.processedAt = new Date().toISOString();
+    request.processedBy = adminId;
+    
+    this.saveHandleRequests();
+    return { success: true };
+  }
+
   searchUsers(query, excludeUserId) {
     if (!query || query.length < 2) return [];
     const lowerQuery = query.toLowerCase();
     return this.users.users
       .filter(u => u.id !== excludeUserId &&
-        (u.username.toLowerCase().includes(lowerQuery) ||
+        (u.handle.toLowerCase().includes(lowerQuery) ||
          u.displayName.toLowerCase().includes(lowerQuery)))
       .slice(0, 10)
       .map(u => ({
-        id: u.id, username: u.username, displayName: u.displayName,
+        id: u.id, handle: u.handle, displayName: u.displayName,
         avatar: u.avatar, status: u.status, nodeName: u.nodeName,
       }));
   }
@@ -331,7 +490,7 @@ class Database {
       .map(c => {
         const contact = this.findUserById(c.contactId);
         return contact ? {
-          id: contact.id, username: contact.username, name: contact.displayName,
+          id: contact.id, handle: contact.handle, name: contact.displayName,
           avatar: contact.avatar, status: contact.status, nodeName: contact.nodeName,
         } : null;
       })
@@ -379,7 +538,7 @@ class Database {
       .map(m => {
         const user = this.findUserById(m.userId);
         return user ? {
-          id: user.id, username: user.username, name: user.displayName,
+          id: user.id, handle: user.handle, name: user.displayName,
           avatar: user.avatar, status: user.status, role: m.role, joinedAt: m.joinedAt,
         } : null;
       })
@@ -461,80 +620,94 @@ class Database {
     return true;
   }
 
-  // === Thread Methods ===
-  getThreadsForUser(userId) {
-    const participantThreadIds = this.threads.participants
-      .filter(p => p.userId === userId)
-      .map(p => p.threadId);
+  // === Wave Methods ===
+  getWavesForUser(userId, includeArchived = false) {
+    const participantWaveIds = this.waves.participants
+      .filter(p => p.userId === userId && (includeArchived || !p.archived))
+      .map(p => p.waveId);
 
     // Get user's groups
     const userGroupIds = this.groups.members
       .filter(m => m.userId === userId)
       .map(m => m.groupId);
 
-    return this.threads.threads
-      .filter(t => 
-        participantThreadIds.includes(t.id) || 
-        t.privacy === 'public' ||
-        (t.privacy === 'group' && t.groupId && userGroupIds.includes(t.groupId))
+    return this.waves.waves
+      .filter(w =>
+        participantWaveIds.includes(w.id) ||
+        w.privacy === 'public' ||
+        (w.privacy === 'group' && w.groupId && userGroupIds.includes(w.groupId))
       )
-      .map(thread => {
-        const creator = this.findUserById(thread.createdBy);
-        const participants = this.getThreadParticipants(thread.id);
-        const messageCount = this.messages.messages.filter(m => m.threadId === thread.id).length;
-        const group = thread.groupId ? this.getGroup(thread.groupId) : null;
+      .map(wave => {
+        const creator = this.findUserById(wave.createdBy);
+        const participants = this.getWaveParticipants(wave.id);
+        const messageCount = this.messages.messages.filter(m => m.waveId === wave.id).length;
+        const group = wave.groupId ? this.getGroup(wave.groupId) : null;
+        const userParticipant = this.waves.participants.find(p => p.waveId === wave.id && p.userId === userId);
+
+        // Calculate unread count
+        const lastRead = userParticipant?.lastRead || null;
+        const unreadCount = lastRead
+          ? this.messages.messages.filter(m =>
+              m.waveId === wave.id &&
+              new Date(m.createdAt) > new Date(lastRead) &&
+              m.authorId !== userId  // Don't count own messages as unread
+            ).length
+          : this.messages.messages.filter(m => m.waveId === wave.id && m.authorId !== userId).length;
 
         return {
-          ...thread,
+          ...wave,
           creator_name: creator?.displayName || 'Unknown',
           creator_avatar: creator?.avatar || '?',
+          creator_handle: creator?.handle || 'unknown',
           participants,
           message_count: messageCount,
-          is_participant: participantThreadIds.includes(thread.id),
+          unread_count: unreadCount,
+          is_participant: participantWaveIds.includes(wave.id),
+          is_archived: userParticipant?.archived || false,
           group_name: group?.name,
         };
       })
       .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
   }
 
-  getThread(threadId) {
-    return this.threads.threads.find(t => t.id === threadId);
+  getWave(waveId) {
+    return this.waves.waves.find(w => w.id === waveId);
   }
 
-  getThreadParticipants(threadId) {
-    return this.threads.participants
-      .filter(p => p.threadId === threadId)
+  getWaveParticipants(waveId) {
+    return this.waves.participants
+      .filter(p => p.waveId === waveId)
       .map(p => {
         const user = this.findUserById(p.userId);
-        return user ? { id: user.id, name: user.displayName, avatar: user.avatar, status: user.status } : null;
+        return user ? { id: user.id, name: user.displayName, avatar: user.avatar, status: user.status, handle: user.handle } : null;
       })
       .filter(Boolean);
   }
 
-  canAccessThread(threadId, userId) {
-    const thread = this.getThread(threadId);
-    if (!thread) return false;
+  canAccessWave(waveId, userId) {
+    const wave = this.getWave(waveId);
+    if (!wave) return false;
     
-    // Public threads are accessible to all
-    if (thread.privacy === 'public') return true;
+    // Public waves are accessible to all
+    if (wave.privacy === 'public') return true;
     
     // Check if participant
-    if (this.threads.participants.some(p => p.threadId === threadId && p.userId === userId)) {
+    if (this.waves.participants.some(p => p.waveId === waveId && p.userId === userId)) {
       return true;
     }
     
-    // Group threads - check group membership
-    if (thread.privacy === 'group' && thread.groupId) {
-      return this.isGroupMember(thread.groupId, userId);
+    // Group waves - check group membership
+    if (wave.privacy === 'group' && wave.groupId) {
+      return this.isGroupMember(wave.groupId, userId);
     }
     
     return false;
   }
 
-  createThread(data) {
+  createWave(data) {
     const now = new Date().toISOString();
-    const thread = {
-      id: `thread-${uuidv4()}`,
+    const wave = {
+      id: `wave-${uuidv4()}`,
       title: sanitizeInput(data.title).slice(0, 200),
       privacy: data.privacy || 'private',
       groupId: data.groupId || null,
@@ -542,66 +715,117 @@ class Database {
       createdAt: now,
       updatedAt: now,
     };
-    this.threads.threads.push(thread);
+    this.waves.waves.push(wave);
 
     // Add creator as participant
-    this.threads.participants.push({ threadId: thread.id, userId: data.createdBy, joinedAt: now });
+    this.waves.participants.push({ waveId: wave.id, userId: data.createdBy, joinedAt: now, archived: false });
 
     // Add other participants
     if (data.participants) {
       for (const userId of data.participants) {
         if (userId !== data.createdBy) {
-          this.threads.participants.push({ threadId: thread.id, userId, joinedAt: now });
+          this.waves.participants.push({ waveId: wave.id, userId, joinedAt: now, archived: false });
         }
       }
     }
 
-    this.saveThreads();
-    return thread;
+    this.saveWaves();
+    return wave;
   }
 
-  updateThreadPrivacy(threadId, privacy, groupId = null) {
-    const thread = this.getThread(threadId);
-    if (!thread) return null;
+  updateWavePrivacy(waveId, privacy, groupId = null) {
+    const wave = this.getWave(waveId);
+    if (!wave) return null;
     
-    thread.privacy = privacy;
-    thread.groupId = privacy === 'group' ? groupId : null;
-    thread.updatedAt = new Date().toISOString();
+    wave.privacy = privacy;
+    wave.groupId = privacy === 'group' ? groupId : null;
+    wave.updatedAt = new Date().toISOString();
     
-    this.saveThreads();
-    return thread;
+    this.saveWaves();
+    return wave;
   }
 
-  updateThreadTimestamp(threadId) {
-    const thread = this.getThread(threadId);
-    if (thread) {
-      thread.updatedAt = new Date().toISOString();
-      this.saveThreads();
+  updateWaveTimestamp(waveId) {
+    const wave = this.getWave(waveId);
+    if (wave) {
+      wave.updatedAt = new Date().toISOString();
+      this.saveWaves();
     }
   }
 
-  addThreadParticipant(threadId, userId) {
-    const existing = this.threads.participants.find(p => p.threadId === threadId && p.userId === userId);
+  addWaveParticipant(waveId, userId) {
+    const existing = this.waves.participants.find(p => p.waveId === waveId && p.userId === userId);
     if (existing) return false;
-    this.threads.participants.push({ threadId, userId, joinedAt: new Date().toISOString() });
-    this.saveThreads();
+    this.waves.participants.push({ waveId, userId, joinedAt: new Date().toISOString(), archived: false });
+    this.saveWaves();
     return true;
   }
 
+  archiveWaveForUser(waveId, userId, archived = true) {
+    const participant = this.waves.participants.find(p => p.waveId === waveId && p.userId === userId);
+    if (!participant) return false;
+    participant.archived = archived;
+    this.saveWaves();
+    return true;
+  }
+
+  markWaveAsRead(waveId, userId) {
+    let participant = this.waves.participants.find(p => p.waveId === waveId && p.userId === userId);
+
+    // If user is not a participant yet but can access (public/group wave), add them
+    if (!participant && this.canAccessWave(waveId, userId)) {
+      this.addWaveParticipant(waveId, userId);
+      participant = this.waves.participants.find(p => p.waveId === waveId && p.userId === userId);
+    }
+
+    if (!participant) return false;
+
+    participant.lastRead = new Date().toISOString();
+    this.saveWaves();
+    return true;
+  }
+
+  deleteWave(waveId, userId) {
+    const wave = this.getWave(waveId);
+    if (!wave) return { success: false, error: 'Wave not found' };
+    if (wave.createdBy !== userId) return { success: false, error: 'Only wave creator can delete' };
+
+    // Get all participants before deletion for notification
+    const participants = this.getWaveParticipants(waveId);
+
+    // Delete wave
+    this.waves.waves = this.waves.waves.filter(w => w.id !== waveId);
+
+    // Delete participants
+    this.waves.participants = this.waves.participants.filter(p => p.waveId !== waveId);
+
+    // Delete messages
+    this.messages.messages = this.messages.messages.filter(m => m.waveId !== waveId);
+
+    // Delete message history for this wave
+    const messageIds = this.messages.messages.filter(m => m.waveId === waveId).map(m => m.id);
+    this.messages.history = this.messages.history.filter(h => !messageIds.includes(h.messageId));
+
+    this.saveWaves();
+    this.saveMessages();
+
+    return { success: true, wave, participants };
+  }
+
   // === Message Methods ===
-  getMessagesForThread(threadId) {
+  getMessagesForWave(waveId) {
     return this.messages.messages
-      .filter(m => m.threadId === threadId)
+      .filter(m => m.waveId === waveId)
       .map(m => {
         const author = this.findUserById(m.authorId);
         return {
           ...m,
           sender_name: author?.displayName || 'Unknown',
           sender_avatar: author?.avatar || '?',
-          sender_handle: author?.username || 'unknown',
+          sender_handle: author?.handle || 'unknown',
           author_id: m.authorId,
           parent_id: m.parentId,
-          thread_id: m.threadId,
+          wave_id: m.waveId,
           created_at: m.createdAt,
           edited_at: m.editedAt,
         };
@@ -611,19 +835,23 @@ class Database {
 
   createMessage(data) {
     const now = new Date().toISOString();
+    let content = sanitizeMessage(data.content);
+    content = detectAndEmbedMedia(content); // Auto-embed media URLs
+
     const message = {
       id: `msg-${uuidv4()}`,
-      threadId: data.threadId,
+      waveId: data.waveId,
       parentId: data.parentId || null,
       authorId: data.authorId,
-      content: sanitizeMessage(data.content),
+      content: content,
       privacy: data.privacy || 'private',
       version: 1,
       createdAt: now,
       editedAt: null,
+      reactions: {}, // { emoji: [userId1, userId2, ...] }
     };
     this.messages.messages.push(message);
-    this.updateThreadTimestamp(data.threadId);
+    this.updateWaveTimestamp(data.waveId);
     this.saveMessages();
 
     const author = this.findUserById(data.authorId);
@@ -631,10 +859,10 @@ class Database {
       ...message,
       sender_name: author?.displayName || 'Unknown',
       sender_avatar: author?.avatar || '?',
-      sender_handle: author?.username || 'unknown',
+      sender_handle: author?.handle || 'unknown',
       author_id: message.authorId,
       parent_id: message.parentId,
-      thread_id: message.threadId,
+      wave_id: message.waveId,
       created_at: message.createdAt,
       edited_at: message.editedAt,
     };
@@ -662,13 +890,62 @@ class Database {
       ...message,
       sender_name: author?.displayName || 'Unknown',
       sender_avatar: author?.avatar || '?',
-      sender_handle: author?.username || 'unknown',
+      sender_handle: author?.handle || 'unknown',
       author_id: message.authorId,
       parent_id: message.parentId,
-      thread_id: message.threadId,
+      wave_id: message.waveId,
       created_at: message.createdAt,
       edited_at: message.editedAt,
     };
+  }
+
+  deleteMessage(messageId, userId) {
+    const message = this.messages.messages.find(m => m.id === messageId);
+    if (!message) return { success: false, error: 'Message not found' };
+    if (message.authorId !== userId) return { success: false, error: 'Only message author can delete' };
+
+    const waveId = message.waveId;
+
+    // Remove the message
+    this.messages.messages = this.messages.messages.filter(m => m.id !== messageId);
+
+    // Remove history for this message
+    this.messages.history = this.messages.history.filter(h => h.messageId !== messageId);
+
+    this.saveMessages();
+
+    return { success: true, messageId, waveId };
+  }
+
+  toggleMessageReaction(messageId, userId, emoji) {
+    const message = this.messages.messages.find(m => m.id === messageId);
+    if (!message) return { success: false, error: 'Message not found' };
+
+    // Initialize reactions if not present
+    if (!message.reactions) message.reactions = {};
+
+    // Initialize emoji array if not present
+    if (!message.reactions[emoji]) {
+      message.reactions[emoji] = [];
+    }
+
+    // Check if user already reacted with this emoji
+    const userIndex = message.reactions[emoji].indexOf(userId);
+    if (userIndex > -1) {
+      // Remove reaction
+      message.reactions[emoji].splice(userIndex, 1);
+      // Remove emoji key if no reactions left
+      if (message.reactions[emoji].length === 0) {
+        delete message.reactions[emoji];
+      }
+    } else {
+      // Add reaction
+      message.reactions[emoji].push(userId);
+    }
+
+    this.saveMessages();
+
+    return { success: true, messageId, reactions: message.reactions, waveId: message.waveId };
   }
 }
 
@@ -705,16 +982,16 @@ function authenticateToken(req, res, next) {
 // ============ Auth Routes ============
 app.post('/api/auth/register', registerLimiter, async (req, res) => {
   try {
-    const username = sanitizeInput(req.body.username);
+    const handle = sanitizeInput(req.body.handle || req.body.username);
     const email = sanitizeInput(req.body.email);
     const password = req.body.password;
     const displayName = sanitizeInput(req.body.displayName);
 
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Username, email and password are required' });
+    if (!handle || !email || !password) {
+      return res.status(400).json({ error: 'Handle, email and password are required' });
     }
-    if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-      return res.status(400).json({ error: 'Username must be 3-20 characters, letters/numbers/underscores only' });
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) {
+      return res.status(400).json({ error: 'Handle must be 3-20 characters, letters/numbers/underscores only' });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: 'Invalid email format' });
@@ -724,27 +1001,27 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
       return res.status(400).json({ error: passwordErrors.join('. ') });
     }
 
-    const existing = db.findUserByUsername(username) || db.findUserByUsername(email);
+    const existing = db.findUserByHandle(handle) || db.findUserByHandle(email);
     if (existing) {
-      return res.status(409).json({ error: 'Username or email already exists' });
+      return res.status(409).json({ error: 'Handle or email already exists' });
     }
 
     const id = `user-${uuidv4()}`;
     const passwordHash = await bcrypt.hash(password, 12);
-    const avatar = (displayName || username)[0].toUpperCase();
+    const avatar = (displayName || handle)[0].toUpperCase();
 
     const user = db.createUser({
-      id, username: username.toLowerCase(), email: email.toLowerCase(),
-      passwordHash, displayName: displayName || username, avatar,
+      id, handle: handle.toLowerCase(), email: email.toLowerCase(),
+      passwordHash, displayName: displayName || handle, avatar,
       nodeName: 'Local', status: 'online',
     });
 
-    const token = jwt.sign({ userId: id, username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-    console.log(`✅ New user registered: ${username}`);
+    const token = jwt.sign({ userId: id, handle: user.handle }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    console.log(`✅ New user registered: ${handle}`);
 
     res.status(201).json({
       token,
-      user: { id: user.id, username: user.username, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: user.status },
+      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
     });
   } catch (err) {
     console.error('Registration error:', err);
@@ -754,39 +1031,39 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
 
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
-    const username = sanitizeInput(req.body.username);
+    const handle = sanitizeInput(req.body.handle || req.body.username);
     const password = req.body.password;
 
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
+    if (!handle || !password) {
+      return res.status(400).json({ error: 'Handle and password are required' });
     }
 
-    const lockout = checkAccountLockout(username);
+    const lockout = checkAccountLockout(handle);
     if (lockout.locked) {
       return res.status(429).json({ error: `Account temporarily locked. Try again in ${lockout.remainingMin} minutes.` });
     }
 
-    const user = db.findUserByUsername(username);
+    const user = db.findUserByHandle(handle);
     if (!user) {
-      recordFailedAttempt(username);
+      recordFailedAttempt(handle);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const validPassword = await bcrypt.compare(password, user.passwordHash);
     if (!validPassword) {
-      recordFailedAttempt(username);
+      recordFailedAttempt(handle);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    clearFailedAttempts(username);
+    clearFailedAttempts(handle);
     db.updateUserStatus(user.id, 'online');
 
-    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-    console.log(`✅ User logged in: ${username}`);
+    const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    console.log(`✅ User logged in: ${handle}`);
 
     res.json({
       token,
-      user: { id: user.id, username: user.username, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: 'online' },
+      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: 'online', isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -797,11 +1074,92 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json({ id: user.id, username: user.username, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: user.status });
+  res.json({ id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } });
 });
 
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
   db.updateUserStatus(req.user.userId, 'offline');
+  res.json({ success: true });
+});
+
+// ============ Profile Routes ============
+app.put('/api/profile', authenticateToken, (req, res) => {
+  const updates = {};
+  if (req.body.displayName) updates.displayName = sanitizeInput(req.body.displayName).slice(0, 50);
+  if (req.body.avatar) updates.avatar = sanitizeInput(req.body.avatar).slice(0, 2);
+  
+  const user = db.updateUser(req.user.userId, updates);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  res.json({ id: user.id, handle: user.handle, displayName: user.displayName, avatar: user.avatar, preferences: user.preferences });
+});
+
+app.post('/api/profile/password', authenticateToken, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const result = await db.changePassword(req.user.userId, currentPassword, newPassword);
+  if (!result.success) return res.status(400).json({ error: result.error });
+  res.json({ success: true });
+});
+
+app.post('/api/profile/handle-request', authenticateToken, (req, res) => {
+  const newHandle = sanitizeInput(req.body.newHandle);
+  if (!newHandle || !/^[a-zA-Z0-9_]{3,20}$/.test(newHandle)) {
+    return res.status(400).json({ error: 'Handle must be 3-20 characters, letters/numbers/underscores only' });
+  }
+
+  const result = db.requestHandleChange(req.user.userId, newHandle);
+  if (!result.success) return res.status(400).json({ error: result.error });
+  res.json({ success: true, message: 'Handle change request submitted for review' });
+});
+
+app.put('/api/profile/preferences', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const updates = {};
+  const validThemes = ['firefly', 'highContrast', 'light'];
+  const validFontSizes = ['small', 'medium', 'large', 'xlarge'];
+
+  if (req.body.theme && validThemes.includes(req.body.theme)) {
+    updates.theme = req.body.theme;
+  }
+  if (req.body.fontSize && validFontSizes.includes(req.body.fontSize)) {
+    updates.fontSize = req.body.fontSize;
+  }
+
+  if (!user.preferences) {
+    user.preferences = { theme: 'firefly', fontSize: 'medium' };
+  }
+
+  user.preferences = { ...user.preferences, ...updates };
+  db.saveUsers();
+
+  res.json({ success: true, preferences: user.preferences });
+});
+
+// Admin handle request management
+app.get('/api/admin/handle-requests', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user?.isAdmin) return res.status(403).json({ error: 'Not authorized' });
+  
+  const requests = db.handleRequests.requests
+    .filter(r => r.status === 'pending')
+    .map(r => {
+      const requestUser = db.findUserById(r.userId);
+      return { ...r, displayName: requestUser?.displayName };
+    });
+  res.json(requests);
+});
+
+app.post('/api/admin/handle-requests/:id/approve', authenticateToken, (req, res) => {
+  const result = db.approveHandleChange(req.params.id, req.user.userId);
+  if (!result.success) return res.status(400).json({ error: result.error });
+  res.json({ success: true });
+});
+
+app.post('/api/admin/handle-requests/:id/reject', authenticateToken, (req, res) => {
+  const result = db.rejectHandleChange(req.params.id, req.user.userId, req.body.reason);
+  if (!result.success) return res.status(400).json({ error: result.error });
   res.json({ success: true });
 });
 
@@ -822,8 +1180,8 @@ app.get('/api/contacts', authenticateToken, (req, res) => {
 });
 
 app.post('/api/contacts', authenticateToken, (req, res) => {
-  const username = sanitizeInput(req.body.username);
-  const contact = db.findUserByUsername(username);
+  const handle = sanitizeInput(req.body.handle || req.body.username);
+  const contact = db.findUserByHandle(handle);
   if (!contact) return res.status(404).json({ error: 'User not found' });
   if (contact.id === req.user.userId) return res.status(400).json({ error: 'Cannot add yourself' });
   
@@ -832,7 +1190,7 @@ app.post('/api/contacts', authenticateToken, (req, res) => {
   }
   res.status(201).json({
     success: true,
-    contact: { id: contact.id, username: contact.username, name: contact.displayName, avatar: contact.avatar, status: contact.status, nodeName: contact.nodeName },
+    contact: { id: contact.id, handle: contact.handle, name: contact.displayName, avatar: contact.avatar, status: contact.status, nodeName: contact.nodeName },
   });
 });
 
@@ -947,23 +1305,24 @@ app.put('/api/groups/:id/members/:userId', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
-// ============ Thread Routes ============
-app.get('/api/threads', authenticateToken, (req, res) => {
-  res.json(db.getThreadsForUser(req.user.userId));
+// ============ Wave Routes (renamed from Thread) ============
+app.get('/api/waves', authenticateToken, (req, res) => {
+  const includeArchived = req.query.archived === 'true';
+  res.json(db.getWavesForUser(req.user.userId, includeArchived));
 });
 
-app.get('/api/threads/:id', authenticateToken, (req, res) => {
-  const threadId = sanitizeInput(req.params.id);
-  const thread = db.getThread(threadId);
-  if (!thread) return res.status(404).json({ error: 'Thread not found' });
-  if (!db.canAccessThread(threadId, req.user.userId)) {
+app.get('/api/waves/:id', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const wave = db.getWave(waveId);
+  if (!wave) return res.status(404).json({ error: 'Wave not found' });
+  if (!db.canAccessWave(waveId, req.user.userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
 
-  const creator = db.findUserById(thread.createdBy);
-  const participants = db.getThreadParticipants(thread.id);
-  const allMessages = db.getMessagesForThread(thread.id);
-  const group = thread.groupId ? db.getGroup(thread.groupId) : null;
+  const creator = db.findUserById(wave.createdBy);
+  const participants = db.getWaveParticipants(wave.id);
+  const allMessages = db.getMessagesForWave(wave.id);
+  const group = wave.groupId ? db.getGroup(wave.groupId) : null;
 
   function buildMessageTree(messages, parentId = null) {
     return messages
@@ -972,33 +1331,34 @@ app.get('/api/threads/:id', authenticateToken, (req, res) => {
   }
 
   res.json({
-    ...thread,
+    ...wave,
     creator_name: creator?.displayName || 'Unknown',
+    creator_handle: creator?.handle || 'unknown',
     participants,
     messages: buildMessageTree(allMessages),
     all_messages: allMessages,
     group_name: group?.name,
-    can_edit: thread.createdBy === req.user.userId,
+    can_edit: wave.createdBy === req.user.userId,
   });
 });
 
-app.post('/api/threads', authenticateToken, (req, res) => {
+app.post('/api/waves', authenticateToken, (req, res) => {
   const title = sanitizeInput(req.body.title);
   if (!title) return res.status(400).json({ error: 'Title is required' });
   
   const privacy = ['private', 'group', 'crossServer', 'public'].includes(req.body.privacy) 
     ? req.body.privacy : 'private';
   
-  // Validate group access for group threads
+  // Validate group access for group waves
   if (privacy === 'group') {
     const groupId = sanitizeInput(req.body.groupId);
-    if (!groupId) return res.status(400).json({ error: 'Group ID required for group threads' });
+    if (!groupId) return res.status(400).json({ error: 'Group ID required for group waves' });
     if (!db.isGroupMember(groupId, req.user.userId)) {
       return res.status(403).json({ error: 'Must be group member' });
     }
   }
 
-  const thread = db.createThread({
+  const wave = db.createWave({
     title,
     privacy,
     groupId: privacy === 'group' ? sanitizeInput(req.body.groupId) : null,
@@ -1007,22 +1367,23 @@ app.post('/api/threads', authenticateToken, (req, res) => {
   });
 
   const result = {
-    ...thread,
+    ...wave,
     creator_name: db.findUserById(req.user.userId)?.displayName || 'Unknown',
-    participants: db.getThreadParticipants(thread.id),
+    creator_handle: db.findUserById(req.user.userId)?.handle || 'unknown',
+    participants: db.getWaveParticipants(wave.id),
     message_count: 0,
   };
 
-  broadcastToThread(thread.id, { type: 'thread_created', thread: result });
+  broadcastToWave(wave.id, { type: 'wave_created', wave: result });
   res.status(201).json(result);
 });
 
-app.put('/api/threads/:id', authenticateToken, (req, res) => {
-  const threadId = sanitizeInput(req.params.id);
-  const thread = db.getThread(threadId);
-  if (!thread) return res.status(404).json({ error: 'Thread not found' });
-  if (thread.createdBy !== req.user.userId) {
-    return res.status(403).json({ error: 'Only thread creator can modify' });
+app.put('/api/waves/:id', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const wave = db.getWave(waveId);
+  if (!wave) return res.status(404).json({ error: 'Wave not found' });
+  if (wave.createdBy !== req.user.userId) {
+    return res.status(403).json({ error: 'Only wave creator can modify' });
   }
 
   const privacy = req.body.privacy;
@@ -1035,47 +1396,89 @@ app.put('/api/threads/:id', authenticateToken, (req, res) => {
         return res.status(403).json({ error: 'Must be group member' });
       }
     }
-    db.updateThreadPrivacy(threadId, privacy, groupId);
+    db.updateWavePrivacy(waveId, privacy, groupId);
   }
 
   if (req.body.title) {
-    thread.title = sanitizeInput(req.body.title).slice(0, 200);
-    db.saveThreads();
+    wave.title = sanitizeInput(req.body.title).slice(0, 200);
+    db.saveWaves();
   }
 
-  broadcastToThread(threadId, { type: 'thread_updated', thread });
-  res.json(thread);
+  broadcastToWave(waveId, { type: 'wave_updated', wave });
+  res.json(wave);
+});
+
+app.post('/api/waves/:id/archive', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const archived = req.body.archived !== false;
+
+  if (!db.archiveWaveForUser(waveId, req.user.userId, archived)) {
+    return res.status(404).json({ error: 'Wave not found or not a participant' });
+  }
+  res.json({ success: true, archived });
+});
+
+app.post('/api/waves/:id/read', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+
+  if (!db.markWaveAsRead(waveId, req.user.userId)) {
+    return res.status(404).json({ error: 'Wave not found or access denied' });
+  }
+  res.json({ success: true });
+});
+
+app.delete('/api/waves/:id', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const wave = db.getWave(waveId);
+
+  if (!wave) return res.status(404).json({ error: 'Wave not found' });
+  if (wave.createdBy !== req.user.userId) {
+    return res.status(403).json({ error: 'Only wave creator can delete' });
+  }
+
+  const result = db.deleteWave(waveId, req.user.userId);
+  if (!result.success) return res.status(400).json({ error: result.error });
+
+  // Broadcast deletion to all participants
+  broadcastToWave(waveId, {
+    type: 'wave_deleted',
+    waveId,
+    deletedBy: req.user.userId,
+    wave: result.wave
+  });
+
+  res.json({ success: true });
 });
 
 // ============ Message Routes ============
 app.post('/api/messages', authenticateToken, (req, res) => {
-  const threadId = sanitizeInput(req.body.thread_id);
+  const waveId = sanitizeInput(req.body.wave_id || req.body.thread_id);
   const content = req.body.content;
-  if (!threadId || !content) return res.status(400).json({ error: 'Thread ID and content required' });
+  if (!waveId || !content) return res.status(400).json({ error: 'Wave ID and content required' });
 
-  const thread = db.getThread(threadId);
-  if (!thread) return res.status(404).json({ error: 'Thread not found' });
+  const wave = db.getWave(waveId);
+  if (!wave) return res.status(404).json({ error: 'Wave not found' });
 
-  const canAccess = db.canAccessThread(threadId, req.user.userId);
+  const canAccess = db.canAccessWave(waveId, req.user.userId);
   if (!canAccess) return res.status(403).json({ error: 'Access denied' });
 
-  // Auto-join public threads
-  const isParticipant = db.threads.participants.some(p => p.threadId === threadId && p.userId === req.user.userId);
-  if (!isParticipant && thread.privacy === 'public') {
-    db.addThreadParticipant(threadId, req.user.userId);
+  // Auto-join public waves
+  const isParticipant = db.waves.participants.some(p => p.waveId === waveId && p.userId === req.user.userId);
+  if (!isParticipant && wave.privacy === 'public') {
+    db.addWaveParticipant(waveId, req.user.userId);
   }
 
   if (content.length > 10000) return res.status(400).json({ error: 'Message too long' });
 
   const message = db.createMessage({
-    threadId,
+    waveId,
     parentId: req.body.parent_id ? sanitizeInput(req.body.parent_id) : null,
     authorId: req.user.userId,
     content,
-    privacy: thread.privacy,
+    privacy: wave.privacy,
   });
 
-  broadcastToThread(threadId, { type: 'new_message', data: message });
+  broadcastToWave(waveId, { type: 'new_message', data: message });
   res.status(201).json(message);
 });
 
@@ -1089,13 +1492,58 @@ app.put('/api/messages/:id', authenticateToken, (req, res) => {
   if (content.length > 10000) return res.status(400).json({ error: 'Message too long' });
 
   const updated = db.updateMessage(messageId, content);
-  broadcastToThread(message.threadId, { type: 'message_edited', data: updated });
+  broadcastToWave(message.waveId, { type: 'message_edited', data: updated });
   res.json(updated);
+});
+
+app.delete('/api/messages/:id', authenticateToken, (req, res) => {
+  const messageId = sanitizeInput(req.params.id);
+  const message = db.messages.messages.find(m => m.id === messageId);
+
+  if (!message) return res.status(404).json({ error: 'Message not found' });
+  if (message.authorId !== req.user.userId) {
+    return res.status(403).json({ error: 'Only message author can delete' });
+  }
+
+  const result = db.deleteMessage(messageId, req.user.userId);
+  if (!result.success) return res.status(400).json({ error: result.error });
+
+  // Broadcast deletion to all participants
+  broadcastToWave(result.waveId, {
+    type: 'message_deleted',
+    messageId: result.messageId,
+    waveId: result.waveId
+  });
+
+  res.json({ success: true });
+});
+
+// Toggle emoji reaction on message
+app.post('/api/messages/:id/react', authenticateToken, (req, res) => {
+  const messageId = sanitizeInput(req.params.id);
+  const emoji = req.body.emoji;
+
+  if (!emoji || typeof emoji !== 'string' || emoji.length > 10) {
+    return res.status(400).json({ error: 'Invalid emoji' });
+  }
+
+  const result = db.toggleMessageReaction(messageId, req.user.userId, emoji);
+  if (!result.success) return res.status(400).json({ error: result.error });
+
+  // Broadcast reaction update to all participants
+  broadcastToWave(result.waveId, {
+    type: 'message_reaction',
+    messageId: result.messageId,
+    reactions: result.reactions,
+    waveId: result.waveId,
+  });
+
+  res.json({ success: true, reactions: result.reactions });
 });
 
 // ============ Health Check ============
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.2.0', uptime: process.uptime() });
+  res.json({ status: 'ok', version: '1.3.1', uptime: process.uptime() });
 });
 
 // ============ WebSocket Setup ============
@@ -1155,29 +1603,29 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-function broadcastToThread(threadId, message) {
-  const thread = db.getThread(threadId);
-  if (!thread) return;
+function broadcastToWave(waveId, message) {
+  const wave = db.getWave(waveId);
+  if (!wave) return;
 
   // Get all users who should receive this
   let recipients = new Set();
   
   // Direct participants
-  db.getThreadParticipants(threadId).forEach(p => recipients.add(p.id));
+  db.getWaveParticipants(waveId).forEach(p => recipients.add(p.id));
   
-  // For group threads, all group members
-  if (thread.privacy === 'group' && thread.groupId) {
-    db.getGroupMembers(thread.groupId).forEach(m => recipients.add(m.id));
+  // For group waves, all group members
+  if (wave.privacy === 'group' && wave.groupId) {
+    db.getGroupMembers(wave.groupId).forEach(m => recipients.add(m.id));
   }
   
-  // For public threads, all connected users (they can see it in their list)
-  if (thread.privacy === 'public') {
-    clients.forEach((_, oderId) => recipients.add(oderId));
+  // For public waves, all connected users (they can see it in their list)
+  if (wave.privacy === 'public') {
+    clients.forEach((_, userId) => recipients.add(userId));
   }
 
-  for (const oderId of recipients) {
-    if (clients.has(oderId)) {
-      for (const ws of clients.get(oderId)) {
+  for (const userId of recipients) {
+    if (clients.has(userId)) {
+      for (const ws of clients.get(userId)) {
         if (ws.readyState === 1) ws.send(JSON.stringify(message));
       }
     }
@@ -1195,12 +1643,14 @@ server.listen(PORT, () => {
 ║  ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗         ║
 ║  ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗        ║
 ║   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝        ║
-║  SECURE COMMUNICATIONS SYSTEM v1.2.0                       ║
+║  SECURE COMMUNICATIONS SYSTEM v1.3.2c                       ║
 ╠════════════════════════════════════════════════════════════╣
 ║  🔒 Security: Rate limiting, XSS protection, Helmet        ║
-║  📁 Data: Separated files (users, threads, messages, groups)║
-║  👥 Groups: Create groups, manage members, group threads   ║
-║  🔄 Thread Privacy: Change visibility level anytime        ║
+║  📁 Data: Separated files (users, waves, messages, groups) ║
+║  👥 Groups: Create groups, manage members, group waves     ║
+║  🆔 Identity: UUID-based with changeable handles           ║
+║  📝 Profiles: Change password, display name, avatar        ║
+║  📦 Archives: Personal wave archiving                      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  PORT=${PORT} | JWT=${JWT_SECRET === 'cortex-default-secret-CHANGE-ME' ? '⚠️ DEFAULT' : '✅ Custom'} | CORS=${ALLOWED_ORIGINS ? '✅' : '⚠️ All'}
 ║  DEMO_DATA=${demoEnabled ? '✅' : '❌'} | Server: http://localhost:${PORT}

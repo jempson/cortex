@@ -1,8 +1,19 @@
 import React, { useState, useEffect, useRef, createContext, useContext, useCallback } from 'react';
 
 // ============ CONFIGURATION ============
-const API_URL = 'http://localhost:3001/api';
-const WS_URL = 'ws://localhost:3001';
+// Auto-detect production vs development
+const isProduction = window.location.hostname !== 'localhost';
+const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const hostname = isProduction ? window.location.hostname : 'localhost';
+const port = isProduction ? '' : ':3001';
+
+const API_URL = isProduction
+  ? `${protocol}//${hostname}/api`
+  : 'http://localhost:3001/api';
+const WS_URL = isProduction
+  ? `${wsProtocol}//${hostname}/ws`
+  : 'ws://localhost:3001';
 
 // ============ CONTEXTS ============
 const AuthContext = createContext();
@@ -16,6 +27,29 @@ const PRIVACY_LEVELS = {
   public: { name: 'Public', color: '#0ead69', bgColor: 'rgba(14, 173, 105, 0.15)', icon: '○', desc: 'Visible to everyone' },
 };
 
+// ============ THEMES ============
+const THEMES = {
+  firefly: {
+    name: 'Firefly (Default)',
+    baseFontSize: '16px',
+  },
+  highContrast: {
+    name: 'High Contrast',
+    baseFontSize: '16px',
+  },
+  light: {
+    name: 'Light Mode',
+    baseFontSize: '16px',
+  },
+};
+
+const FONT_SIZES = {
+  small: { name: 'Small', multiplier: 0.9 },
+  medium: { name: 'Medium', multiplier: 1 },
+  large: { name: 'Large', multiplier: 1.15 },
+  xlarge: { name: 'X-Large', multiplier: 1.3 },
+};
+
 // ============ STORAGE ============
 const storage = {
   getToken: () => localStorage.getItem('cortex_token'),
@@ -25,6 +59,55 @@ const storage = {
   setUser: (user) => localStorage.setItem('cortex_user', JSON.stringify(user)),
   removeUser: () => localStorage.removeItem('cortex_user'),
 };
+
+// ============ EMOJI PICKER COMPONENT ============
+const EmojiPicker = ({ onSelect, onClose, isMobile }) => {
+  const emojis = ['😀', '😂', '😍', '🤔', '👍', '👎', '🎉', '🔥', '💯', '❤️', '😎', '🚀', '✨', '💪', '👏', '🙌'];
+  return (
+    <div style={{
+      position: 'absolute', bottom: '100%', left: 0, marginBottom: '8px',
+      background: '#0d150d', border: '1px solid #2a3a2a',
+      padding: isMobile ? '12px' : '8px', display: 'grid',
+      gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(6, 1fr)',
+      gap: isMobile ? '8px' : '4px',
+      zIndex: 10,
+      maxWidth: isMobile ? '100%' : '300px',
+    }}>
+      {emojis.map(emoji => (
+        <button key={emoji} onClick={() => onSelect(emoji)} style={{
+          padding: isMobile ? '12px' : '8px',
+          minHeight: isMobile ? '44px' : 'auto',
+          background: 'transparent', border: '1px solid #2a3a2a',
+          cursor: 'pointer', fontSize: isMobile ? '1.5rem' : '1.2rem',
+        }}>{emoji}</button>
+      ))}
+      <button onClick={onClose} style={{
+        gridColumn: 'span 2', padding: isMobile ? '12px' : '8px',
+        minHeight: isMobile ? '44px' : 'auto',
+        background: 'transparent',
+        border: '1px solid #3a4a3a', color: '#6a7a6a', cursor: 'pointer',
+        fontSize: isMobile ? '0.85rem' : '0.7rem', fontFamily: 'monospace',
+      }}>CLOSE</button>
+    </div>
+  );
+};
+
+// ============ RESPONSIVE HOOK ============
+function useWindowSize() {
+  const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  useEffect(() => {
+    const handleResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Multiple breakpoints for better responsive design
+  const isMobile = size.width < 600;      // Phone screens
+  const isTablet = size.width >= 600 && size.width < 1024;  // Tablet screens
+  const isDesktop = size.width >= 1024;   // Desktop screens
+
+  return { ...size, isMobile, isTablet, isDesktop };
+}
 
 // ============ API HOOK ============
 function useAPI() {
@@ -99,7 +182,7 @@ const GlowText = ({ children, color = '#ffd23f', size = '1rem', weight = 400 }) 
 );
 
 const Avatar = ({ letter, color = '#ffd23f', size = 40, status }) => (
-  <div style={{ position: 'relative' }}>
+  <div style={{ position: 'relative', flexShrink: 0 }}>
     <div style={{
       width: size, height: size,
       background: `linear-gradient(135deg, ${color}40, ${color}10)`,
@@ -130,9 +213,10 @@ const PrivacyBadge = ({ level, compact = false }) => {
       border: `1px solid ${config.color}50`,
       borderRadius: '2px',
       fontSize: compact ? '0.7rem' : '0.75rem',
+      flexShrink: 0,
     }}>
       <span style={{ color: config.color }}>{config.icon}</span>
-      <span style={{ color: config.color }}>{config.name}</span>
+      {!compact && <span style={{ color: config.color }}>{config.name}</span>}
     </div>
   );
 };
@@ -146,6 +230,7 @@ const Toast = ({ message, type = 'info', onClose }) => {
       padding: '12px 24px', background: '#0d150d',
       border: `1px solid ${colors[type]}`, color: colors[type],
       fontFamily: 'monospace', fontSize: '0.85rem', zIndex: 200,
+      maxWidth: '90vw', textAlign: 'center',
     }}>
       {message}
     </div>
@@ -167,20 +252,21 @@ const LoadingSpinner = () => (
 const LoginScreen = () => {
   const { login, register } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
-  const [username, setUsername] = useState('');
+  const [handle, setHandle] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { isMobile, isTablet, isDesktop } = useWindowSize();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      if (isRegistering) await register(username, email, password, displayName);
-      else await login(username, password);
+      if (isRegistering) await register(handle, email, password, displayName);
+      else await login(handle, password);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -198,26 +284,26 @@ const LoginScreen = () => {
     <div style={{
       minHeight: '100vh', background: 'linear-gradient(180deg, #0d150d, #050805)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontFamily: "'Courier New', monospace",
+      fontFamily: "'Courier New', monospace", padding: isMobile ? '20px' : '0',
     }}>
       <ScanLines />
       <div style={{
-        width: '400px', padding: '40px',
+        width: '100%', maxWidth: '400px', padding: isMobile ? '24px' : '40px',
         background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
         border: '2px solid #ffd23f40',
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <GlowText color="#ffd23f" size="2.5rem" weight={700}>CORTEX</GlowText>
+          <GlowText color="#ffd23f" size={isMobile ? '2rem' : '2.5rem'} weight={700}>CORTEX</GlowText>
           <div style={{ color: '#5a6a5a', fontSize: '0.8rem', marginTop: '8px' }}>SECURE COMMUNICATIONS</div>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
-              {isRegistering ? 'USERNAME' : 'USERNAME / EMAIL'}
+              {isRegistering ? 'HANDLE' : 'HANDLE / EMAIL'}
             </label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-              placeholder={isRegistering ? 'Choose username' : 'Enter username or email'} style={inputStyle} />
+            <input type="text" value={handle} onChange={(e) => setHandle(e.target.value)}
+              placeholder={isRegistering ? 'Choose handle' : 'Enter handle or email'} style={inputStyle} />
           </div>
 
           {isRegistering && (
@@ -266,38 +352,71 @@ const LoginScreen = () => {
   );
 };
 
-// ============ THREAD LIST ============
-const ThreadList = ({ threads, selectedThread, onSelectThread, onNewThread }) => (
-  <div style={{ width: '300px', borderRight: '1px solid #2a3a2a', display: 'flex', flexDirection: 'column', height: '100%' }}>
-    <div style={{ padding: '16px', borderBottom: '1px solid #2a3a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <GlowText color="#ffd23f" size="0.9rem">THREADS</GlowText>
-      <button onClick={onNewThread} style={{
-        padding: '6px 12px', background: '#ffd23f20', border: '1px solid #ffd23f50',
-        color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
-      }}>+ NEW</button>
+// ============ WAVE LIST (Mobile Responsive) ============
+const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile }) => (
+  <div style={{ 
+    width: isMobile ? '100%' : '300px', 
+    minWidth: isMobile ? 'auto' : '280px',
+    borderRight: isMobile ? 'none' : '1px solid #2a3a2a', 
+    display: 'flex', flexDirection: 'column', height: '100%',
+    borderBottom: isMobile ? '1px solid #2a3a2a' : 'none',
+  }}>
+    <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid #2a3a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+      <GlowText color="#ffd23f" size={isMobile ? '1rem' : '0.9rem'}>WAVES</GlowText>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button onClick={onToggleArchived} style={{
+          padding: isMobile ? '12px 14px' : '6px 10px',
+          minHeight: isMobile ? '44px' : 'auto',
+          minWidth: isMobile ? '44px' : 'auto',
+          background: showArchived ? '#3bceac20' : 'transparent',
+          border: `1px solid ${showArchived ? '#3bceac' : '#3a4a3a'}`,
+          color: showArchived ? '#3bceac' : '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+        }}>{showArchived ? '📦' : '📬'}</button>
+        <button onClick={onNewWave} style={{
+          padding: isMobile ? '12px 16px' : '6px 12px',
+          minHeight: isMobile ? '44px' : 'auto',
+          background: '#ffd23f20', border: '1px solid #ffd23f50',
+          color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.75rem',
+        }}>+ NEW</button>
+      </div>
     </div>
     <div style={{ flex: 1, overflowY: 'auto' }}>
-      {threads.length === 0 ? (
+      {waves.length === 0 ? (
         <div style={{ padding: '20px', textAlign: 'center', color: '#5a6a5a', fontSize: '0.85rem' }}>
-          No threads yet. Create one!
+          {showArchived ? 'No archived waves' : 'No waves yet. Create one!'}
         </div>
-      ) : threads.map(thread => {
-        const config = PRIVACY_LEVELS[thread.privacy] || PRIVACY_LEVELS.private;
-        const isSelected = selectedThread?.id === thread.id;
+      ) : waves.map(wave => {
+        const config = PRIVACY_LEVELS[wave.privacy] || PRIVACY_LEVELS.private;
+        const isSelected = selectedWave?.id === wave.id;
         return (
-          <div key={thread.id} onClick={() => onSelectThread(thread)} style={{
-            padding: '14px 16px', cursor: 'pointer',
+          <div key={wave.id} onClick={() => onSelectWave(wave)} style={{
+            padding: '12px 16px', cursor: 'pointer',
             background: isSelected ? '#ffd23f10' : 'transparent',
             borderBottom: '1px solid #1a2a1a',
             borderLeft: `3px solid ${isSelected ? config.color : 'transparent'}`,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <div style={{ color: '#c5d5c5', fontSize: '0.9rem', fontWeight: 500 }}>{thread.title}</div>
-              <span style={{ color: config.color }}>{config.icon}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', alignItems: 'center' }}>
+              <div style={{ color: '#c5d5c5', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: '8px' }}>
+                {wave.is_archived && '📦 '}{wave.title}
+              </div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                {wave.unread_count > 0 && (
+                  <span style={{
+                    background: '#ff6b35',
+                    color: '#fff',
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: '10px',
+                    boxShadow: '0 0 8px rgba(255, 107, 53, 0.6)',
+                  }}>{wave.unread_count}</span>
+                )}
+                <span style={{ color: config.color }}>{config.icon}</span>
+              </div>
             </div>
-            <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>
-              {thread.creator_name} • {thread.message_count} msgs
-              {thread.group_name && <span> • {thread.group_name}</span>}
+            <div style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.7rem' }}>
+              @{wave.creator_handle || 'unknown'} • {wave.message_count} msgs
+              {wave.group_name && <span> • {wave.group_name}</span>}
             </div>
           </div>
         );
@@ -307,55 +426,172 @@ const ThreadList = ({ threads, selectedThread, onSelectThread, onNewThread }) =>
 );
 
 // ============ THREADED MESSAGE ============
-const ThreadedMessage = ({ message, depth = 0, onReply, highlightId, playbackIndex, collapsed, onToggleCollapse }) => {
+const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
   const hasChildren = message.children?.length > 0;
   const isCollapsed = collapsed[message.id];
-  const indent = Math.min(depth, 6) * 24;
+  const maxIndent = isMobile ? 3 : 6;
+  const indentSize = isMobile ? 12 : 24;
+  const indent = Math.min(depth, maxIndent) * indentSize;
+  const canDelete = message.author_id === currentUserId;
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
+
+  const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏'];
 
   if (!isVisible) return null;
 
   return (
     <div style={{ marginLeft: `${indent}px` }}>
       <div style={{
-        padding: '12px 16px', marginBottom: '8px',
+        padding: isMobile ? '10px 12px' : '12px 16px', marginBottom: '8px',
         background: isHighlighted ? `${config.color}20` : 'linear-gradient(135deg, #0d150d, #1a2a1a)',
         border: `1px solid ${isHighlighted ? config.color : '#2a3a2a'}`,
         borderLeft: `3px solid ${config.color}`,
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Avatar letter={message.sender_avatar || '?'} color={config.color} size={32} />
-            <div>
-              <div style={{ color: '#c5d5c5', fontSize: '0.85rem' }}>{message.sender_name}</div>
-              <div style={{ color: '#5a6a5a', fontSize: '0.65rem', fontFamily: 'monospace' }}>
-                {message.sender_handle} • {new Date(message.created_at).toLocaleString()}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <Avatar letter={message.sender_avatar || '?'} color={config.color} size={isMobile ? 32 : 32} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.sender_name}</div>
+              <div style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.65rem', fontFamily: 'monospace' }}>
+                @{message.sender_handle} • {new Date(message.created_at).toLocaleString()}
               </div>
             </div>
           </div>
           <PrivacyBadge level={message.privacy} compact />
         </div>
-        <div style={{ color: '#9bab9b', fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '10px' }}>{message.content}</div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div
+          style={{
+            color: '#9bab9b',
+            fontSize: isMobile ? '0.95rem' : '0.85rem',
+            lineHeight: 1.6,
+            marginBottom: '10px',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap'
+          }}
+          dangerouslySetInnerHTML={{ __html: message.content }}
+        />
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button onClick={() => onReply(message)} style={{
-            padding: '4px 10px', background: 'transparent', border: '1px solid #3a4a3a',
-            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
+            padding: isMobile ? '10px 14px' : '4px 8px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent', border: '1px solid #3a4a3a',
+            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
           }}>↵ REPLY</button>
           {hasChildren && (
             <button onClick={() => onToggleCollapse(message.id)} style={{
-              padding: '4px 10px', background: 'transparent', border: '1px solid #3a4a3a',
-              color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
-            }}>{isCollapsed ? `▶ ${message.children.length} replies` : '▼ collapse'}</button>
+              padding: isMobile ? '10px 14px' : '4px 8px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: 'transparent', border: '1px solid #3a4a3a',
+              color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+            }}>{isCollapsed ? `▶ ${message.children.length}` : '▼'}</button>
+          )}
+          {canDelete && (
+            <button onClick={() => onDelete(message)} style={{
+              padding: isMobile ? '10px 14px' : '4px 8px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: 'transparent', border: '1px solid #ff6b3530',
+              color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+            }}>✕ DELETE</button>
+          )}
+        </div>
+
+        {/* Reactions Display */}
+        {message.reactions && Object.keys(message.reactions).length > 0 && (
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px', marginBottom: '8px' }}>
+            {Object.entries(message.reactions).map(([emoji, userIds]) => {
+              const hasReacted = userIds.includes(currentUserId);
+              return (
+                <button
+                  key={emoji}
+                  onClick={() => onReact(message.id, emoji)}
+                  style={{
+                    padding: isMobile ? '6px 10px' : '4px 8px',
+                    minHeight: isMobile ? '38px' : 'auto',
+                    background: hasReacted ? '#ffd23f20' : 'transparent',
+                    border: `1px solid ${hasReacted ? '#ffd23f' : '#3a4a3a'}`,
+                    color: hasReacted ? '#ffd23f' : '#6a7a6a',
+                    cursor: 'pointer',
+                    fontSize: isMobile ? '1.1rem' : '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <span>{emoji}</span>
+                  <span style={{ fontSize: isMobile ? '0.8rem' : '0.7rem', fontFamily: 'monospace' }}>
+                    {userIds.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Quick React Buttons */}
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px', position: 'relative' }}>
+          <button
+            onClick={() => setShowReactionPicker(!showReactionPicker)}
+            style={{
+              padding: isMobile ? '6px 10px' : '4px 8px',
+              minHeight: isMobile ? '38px' : 'auto',
+              background: 'transparent',
+              border: '1px solid #3a4a3a',
+              color: '#6a7a6a',
+              cursor: 'pointer',
+              fontSize: isMobile ? '1rem' : '0.9rem',
+            }}
+          >
+            {showReactionPicker ? '✕' : '😀+'}
+          </button>
+
+          {showReactionPicker && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              marginTop: '4px',
+              background: '#0d150d',
+              border: '1px solid #2a3a2a',
+              padding: '8px',
+              display: 'flex',
+              gap: '4px',
+              zIndex: 10,
+              flexWrap: 'wrap',
+              maxWidth: isMobile ? '200px' : '250px',
+            }}>
+              {quickReactions.map(emoji => (
+                <button
+                  key={emoji}
+                  onClick={() => {
+                    onReact(message.id, emoji);
+                    setShowReactionPicker(false);
+                  }}
+                  style={{
+                    padding: isMobile ? '8px' : '6px',
+                    minHeight: isMobile ? '38px' : 'auto',
+                    minWidth: isMobile ? '38px' : 'auto',
+                    background: 'transparent',
+                    border: '1px solid #2a3a2a',
+                    cursor: 'pointer',
+                    fontSize: isMobile ? '1.3rem' : '1.1rem',
+                  }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       </div>
       {hasChildren && !isCollapsed && (
         <div style={{ borderLeft: '1px solid #3a4a3a', marginLeft: '12px' }}>
           {message.children.map(child => (
-            <ThreadedMessage key={child.id} message={child} depth={depth + 1} onReply={onReply}
-              highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
+            <ThreadedMessage key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
+              currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
+              onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} />
           ))}
         </div>
       )}
@@ -363,82 +599,152 @@ const ThreadedMessage = ({ message, depth = 0, onReply, highlightId, playbackInd
   );
 };
 
-// ============ PLAYBACK CONTROLS ============
-const PlaybackControls = ({ isPlaying, onTogglePlay, currentIndex, totalMessages, onSeek, onReset, playbackSpeed, onSpeedChange }) => (
+// ============ PLAYBACK CONTROLS (Mobile Responsive) ============
+const PlaybackControls = ({ isPlaying, onTogglePlay, currentIndex, totalMessages, onSeek, onReset, playbackSpeed, onSpeedChange, isMobile }) => (
   <div style={{
-    padding: '12px 16px', background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
-    borderBottom: '1px solid #2a3a2a', display: 'flex', alignItems: 'center', gap: '16px',
+    flexShrink: 0,
+    padding: isMobile ? '8px 12px' : '12px 16px', background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
+    borderBottom: '1px solid #2a3a2a', display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '16px', flexWrap: 'wrap',
   }}>
     <GlowText color="#3bceac" size="0.8rem">PLAYBACK</GlowText>
-    <div style={{ display: 'flex', gap: '8px' }}>
-      <button onClick={onReset} style={{ padding: '6px 10px', background: 'transparent', border: '1px solid #3a4a3a', color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace' }}>⟲</button>
+    <div style={{ display: 'flex', gap: '4px' }}>
+      <button onClick={onReset} style={{ padding: '4px 8px', background: 'transparent', border: '1px solid #3a4a3a', color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem' }}>⟲</button>
       <button onClick={onTogglePlay} style={{
-        padding: '6px 16px', background: isPlaying ? '#ff6b3520' : '#0ead6920',
+        padding: '4px 12px', background: isPlaying ? '#ff6b3520' : '#0ead6920',
         border: `1px solid ${isPlaying ? '#ff6b35' : '#0ead69'}`,
-        color: isPlaying ? '#ff6b35' : '#0ead69', cursor: 'pointer', fontFamily: 'monospace',
-      }}>{isPlaying ? '⏸ PAUSE' : '▶ PLAY'}</button>
+        color: isPlaying ? '#ff6b35' : '#0ead69', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
+      }}>{isPlaying ? '⏸' : '▶'}</button>
     </div>
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px' }}>
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', minWidth: '100px' }}>
       <input type="range" min={0} max={totalMessages - 1} value={currentIndex ?? totalMessages - 1}
-        onChange={(e) => onSeek(parseInt(e.target.value))} style={{ flex: 1, accentColor: '#3bceac' }} />
-      <span style={{ color: '#6a7a6a', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-        {(currentIndex ?? totalMessages - 1) + 1} / {totalMessages}
+        onChange={(e) => onSeek(parseInt(e.target.value))} style={{ flex: 1, accentColor: '#3bceac', minWidth: '60px' }} />
+      <span style={{ color: '#6a7a6a', fontSize: '0.7rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+        {(currentIndex ?? totalMessages - 1) + 1}/{totalMessages}
       </span>
     </div>
-    <div style={{ display: 'flex', gap: '4px' }}>
-      {[0.5, 1, 2, 4].map(speed => (
-        <button key={speed} onClick={() => onSpeedChange(speed)} style={{
-          padding: '4px 8px', background: playbackSpeed === speed ? '#3bceac20' : 'transparent',
-          border: `1px solid ${playbackSpeed === speed ? '#3bceac' : '#3a4a3a'}`,
-          color: playbackSpeed === speed ? '#3bceac' : '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
-        }}>{speed}x</button>
-      ))}
-    </div>
+    {!isMobile && (
+      <div style={{ display: 'flex', gap: '4px' }}>
+        {[0.5, 1, 2, 4].map(speed => (
+          <button key={speed} onClick={() => onSpeedChange(speed)} style={{
+            padding: '4px 6px', background: playbackSpeed === speed ? '#3bceac20' : 'transparent',
+            border: `1px solid ${playbackSpeed === speed ? '#3bceac' : '#3a4a3a'}`,
+            color: playbackSpeed === speed ? '#3bceac' : '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.65rem',
+          }}>{speed}x</button>
+        ))}
+      </div>
+    )}
   </div>
 );
 
-// ============ THREAD SETTINGS MODAL ============
-const ThreadSettingsModal = ({ isOpen, onClose, thread, groups, fetchAPI, showToast, onUpdate }) => {
-  const [privacy, setPrivacy] = useState(thread?.privacy || 'private');
-  const [selectedGroup, setSelectedGroup] = useState(thread?.groupId || null);
-  const [title, setTitle] = useState(thread?.title || '');
+// ============ DELETE CONFIRM MODAL ============
+const DeleteConfirmModal = ({ isOpen, onClose, waveTitle, onConfirm, isMobile }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
+    }} onClick={onClose}>
+      <div style={{
+        width: '100%', maxWidth: '450px',
+        background: 'linear-gradient(135deg, #1a0a0a, #0d150d)',
+        border: '2px solid #ff6b3580', padding: isMobile ? '20px' : '24px',
+      }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ marginBottom: '20px' }}>
+          <GlowText color="#ff6b35" size={isMobile ? '1rem' : '1.1rem'}>Delete Wave</GlowText>
+        </div>
+
+        <div style={{ marginBottom: '24px' }}>
+          <div style={{
+            color: '#c5d5c5',
+            fontSize: isMobile ? '0.9rem' : '0.95rem',
+            lineHeight: 1.6,
+            marginBottom: '12px'
+          }}>
+            Are you sure you want to delete <span style={{ color: '#ffd23f', fontWeight: 600 }}>"{waveTitle}"</span>?
+          </div>
+          <div style={{
+            color: '#ff6b35',
+            fontSize: isMobile ? '0.85rem' : '0.9rem',
+            lineHeight: 1.5,
+            background: '#ff6b3515',
+            padding: '12px',
+            border: '1px solid #ff6b3530',
+          }}>
+            ⚠ This action cannot be undone. All messages will be permanently deleted and all participants will be notified.
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button onClick={onClose} style={{
+            padding: isMobile ? '12px 20px' : '10px 20px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent',
+            border: '1px solid #3a4a3a',
+            color: '#6a7a6a',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.9rem' : '0.85rem',
+          }}>CANCEL</button>
+          <button onClick={() => { onConfirm(); onClose(); }} style={{
+            padding: isMobile ? '12px 20px' : '10px 20px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: '#ff6b35',
+            border: '1px solid #ff6b35',
+            color: '#fff',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.9rem' : '0.85rem',
+            fontWeight: 600,
+          }}>DELETE WAVE</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ WAVE SETTINGS MODAL ============
+const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast, onUpdate }) => {
+  const [privacy, setPrivacy] = useState(wave?.privacy || 'private');
+  const [selectedGroup, setSelectedGroup] = useState(wave?.groupId || null);
+  const [title, setTitle] = useState(wave?.title || '');
 
   useEffect(() => {
-    if (thread) {
-      setPrivacy(thread.privacy);
-      setSelectedGroup(thread.groupId);
-      setTitle(thread.title);
+    if (wave) {
+      setPrivacy(wave.privacy);
+      setSelectedGroup(wave.groupId);
+      setTitle(wave.title);
     }
-  }, [thread]);
+  }, [wave]);
 
-  if (!isOpen || !thread) return null;
+  if (!isOpen || !wave) return null;
 
   const handleSave = async () => {
     try {
-      await fetchAPI(`/threads/${thread.id}`, {
+      await fetchAPI(`/waves/${wave.id}`, {
         method: 'PUT',
         body: { title, privacy, groupId: privacy === 'group' ? selectedGroup : null },
       });
-      showToast('Thread updated', 'success');
+      showToast('Wave updated', 'success');
       onUpdate();
       onClose();
     } catch (err) {
-      showToast(err.message || 'Failed to update thread', 'error');
+      showToast(err.message || 'Failed to update wave', 'error');
     }
   };
 
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
     }}>
       <div style={{
-        width: '450px', maxHeight: '80vh', overflowY: 'auto',
+        width: '100%', maxWidth: '450px', maxHeight: '80vh', overflowY: 'auto',
         background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
         border: '2px solid #3bceac40', padding: '24px',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <GlowText color="#3bceac" size="1.1rem">Thread Settings</GlowText>
+          <GlowText color="#3bceac" size="1.1rem">Wave Settings</GlowText>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
         </div>
 
@@ -504,9 +810,9 @@ const ThreadSettingsModal = ({ isOpen, onClose, thread, groups, fetchAPI, showTo
   );
 };
 
-// ============ THREAD VIEW ============
-const ThreadView = ({ thread, onBack, fetchAPI, showToast, currentUser, groups, onThreadUpdate }) => {
-  const [threadData, setThreadData] = useState(null);
+// ============ WAVE VIEW (Mobile Responsive) ============
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile }) => {
+  const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
   const [newMessage, setNewMessage] = useState('');
@@ -515,15 +821,27 @@ const ThreadView = ({ thread, onBack, fetchAPI, showToast, currentUser, groups, 
   const [playbackIndex, setPlaybackIndex] = useState(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [messageToDelete, setMessageToDelete] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showMediaInput, setShowMediaInput] = useState(false);
+  const [mediaUrl, setMediaUrl] = useState('');
   const playbackRef = useRef(null);
+  const composeRef = useRef(null);
+  const messagesRef = useRef(null);
+  const textareaRef = useRef(null);
 
   useEffect(() => {
-    loadThread();
-  }, [thread.id]);
+    loadWave();
+    // Mark wave as read when viewing
+    fetchAPI(`/waves/${wave.id}/read`, { method: 'POST' })
+      .then(() => onWaveUpdate?.())  // Refresh wave list to update unread counts
+      .catch(() => {});
+  }, [wave.id, fetchAPI, onWaveUpdate]);
 
   useEffect(() => {
-    if (isPlaying && threadData) {
-      const total = threadData.all_messages.length;
+    if (isPlaying && waveData) {
+      const total = waveData.all_messages.length;
       playbackRef.current = setInterval(() => {
         setPlaybackIndex(prev => {
           const next = (prev ?? -1) + 1;
@@ -533,18 +851,43 @@ const ThreadView = ({ thread, onBack, fetchAPI, showToast, currentUser, groups, 
       }, 1500 / playbackSpeed);
     }
     return () => { if (playbackRef.current) clearInterval(playbackRef.current); };
-  }, [isPlaying, playbackSpeed, threadData]);
+  }, [isPlaying, playbackSpeed, waveData]);
 
-  const loadThread = async () => {
+  // Scroll to compose area when replying on mobile
+  useEffect(() => {
+    if (replyingTo && isMobile && composeRef.current) {
+      setTimeout(() => {
+        composeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 100);
+    }
+  }, [replyingTo, isMobile]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+    }
+  }, [newMessage]);
+
+  const loadWave = async () => {
     setLoading(true);
     try {
-      const data = await fetchAPI(`/threads/${thread.id}`);
+      const data = await fetchAPI(`/waves/${wave.id}`);
       let idx = 0;
       const addIndices = (msgs) => msgs.forEach(m => { m._index = idx++; if (m.children) addIndices(m.children); });
       addIndices(data.messages);
-      setThreadData(data);
+      console.log('Wave data loaded:', {
+        title: data.title,
+        privacy: data.privacy,
+        can_edit: data.can_edit,
+        createdBy: data.createdBy,
+        currentUserId: currentUser?.id
+      });
+      setWaveData(data);
     } catch (err) {
-      showToast('Failed to load thread', 'error');
+      showToast('Failed to load wave', 'error');
     }
     setLoading(false);
   };
@@ -554,50 +897,135 @@ const ThreadView = ({ thread, onBack, fetchAPI, showToast, currentUser, groups, 
     try {
       await fetchAPI('/messages', {
         method: 'POST',
-        body: { thread_id: thread.id, parent_id: replyingTo?.id || null, content: newMessage },
+        body: { wave_id: wave.id, parent_id: replyingTo?.id || null, content: newMessage },
       });
       setNewMessage('');
       setReplyingTo(null);
       showToast('Message sent', 'success');
-      loadThread();
+      await loadWave();
+      // Scroll to bottom after sending message
+      setTimeout(() => {
+        if (messagesRef.current) {
+          messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+        }
+      }, 100);
     } catch (err) {
       showToast('Failed to send message', 'error');
     }
   };
 
-  const config = PRIVACY_LEVELS[thread.privacy] || PRIVACY_LEVELS.private;
-  if (loading) return <LoadingSpinner />;
-  if (!threadData) return <div style={{ padding: '20px', color: '#6a7a6a' }}>Thread not found</div>;
+  const handleArchive = async () => {
+    try {
+      await fetchAPI(`/waves/${wave.id}/archive`, {
+        method: 'POST',
+        body: { archived: !waveData?.is_archived },
+      });
+      showToast(waveData?.is_archived ? 'Wave restored' : 'Wave archived', 'success');
+      onWaveUpdate?.();
+      onBack();
+    } catch (err) {
+      showToast('Failed to archive wave', 'error');
+    }
+  };
 
-  const total = threadData.all_messages.length;
+  const handleDeleteWave = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteWave = async () => {
+    try {
+      await fetchAPI(`/waves/${wave.id}`, { method: 'DELETE' });
+      showToast('Wave deleted', 'success');
+      onBack();
+      onWaveUpdate?.();
+    } catch (err) {
+      showToast(err.message || 'Failed to delete wave', 'error');
+    }
+  };
+
+  const handleDeleteMessage = (message) => {
+    setMessageToDelete(message);
+  };
+
+  const handleReaction = async (messageId, emoji) => {
+    try {
+      await fetchAPI(`/messages/${messageId}/react`, {
+        method: 'POST',
+        body: { emoji },
+      });
+      // Reload wave data immediately to show the reaction
+      await loadWave();
+    } catch (err) {
+      showToast(err.message || 'Failed to add reaction', 'error');
+    }
+  };
+
+  const confirmDeleteMessage = async () => {
+    if (!messageToDelete) return;
+    try {
+      await fetchAPI(`/messages/${messageToDelete.id}`, { method: 'DELETE' });
+      showToast('Message deleted', 'success');
+      loadWave();
+    } catch (err) {
+      showToast(err.message || 'Failed to delete message', 'error');
+    }
+  };
+
+  const config = PRIVACY_LEVELS[wave.privacy] || PRIVACY_LEVELS.private;
+  if (loading) return <LoadingSpinner />;
+  if (!waveData) return <div style={{ padding: '20px', color: '#6a7a6a' }}>Wave not found</div>;
+
+  const total = waveData.all_messages.length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {/* Header */}
       <div style={{
-        padding: '16px 20px', background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
-        borderBottom: '1px solid #2a3a2a', display: 'flex', alignItems: 'center', gap: '16px',
+        padding: isMobile ? '12px' : '16px 20px', background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
+        borderBottom: '1px solid #2a3a2a', display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '16px', flexWrap: 'wrap',
+        flexShrink: 0,
       }}>
         <button onClick={onBack} style={{
-          padding: '6px 12px', background: 'transparent', border: '1px solid #3a4a3a',
-          color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace',
-        }}>← BACK</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ color: '#c5d5c5', fontSize: '1.1rem' }}>{threadData.title}</span>
-            {threadData.group_name && <span style={{ color: '#5a6a5a', fontSize: '0.8rem' }}>({threadData.group_name})</span>}
+          padding: '6px 10px', background: 'transparent', border: '1px solid #3a4a3a',
+          color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+        }}>←</button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '1.1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{waveData.title}</span>
+            {waveData.group_name && <span style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>({waveData.group_name})</span>}
           </div>
-          <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>
-            {threadData.participants.length} participants • {total} messages
+          <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>
+            {waveData.participants.length} participants • {total} messages
           </div>
         </div>
-        <PrivacyBadge level={thread.privacy} />
-        {threadData.can_edit && (
-          <button onClick={() => setShowSettings(true)} style={{
-            padding: '6px 12px', background: 'transparent', border: '1px solid #3bceac50',
-            color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem',
-          }}>⚙ SETTINGS</button>
-        )}
+        <PrivacyBadge level={wave.privacy} compact={isMobile} />
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button onClick={handleArchive} style={{
+            padding: isMobile ? '10px 12px' : '6px 10px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent', border: '1px solid #3a4a3a',
+            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+          }}>{waveData.is_archived ? '📬' : '📦'}</button>
+          {/* Settings and Delete buttons only show for wave creator (all privacy levels) */}
+          {waveData.can_edit && (
+            <>
+              <button onClick={() => setShowSettings(true)} style={{
+                padding: isMobile ? '10px 12px' : '6px 10px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'transparent', border: '1px solid #3bceac50',
+                color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+              }}>⚙</button>
+              <button onClick={handleDeleteWave} style={{
+                padding: isMobile ? '10px 14px' : '6px 12px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: '#ff6b3520',
+                border: '1px solid #ff6b35',
+                color: '#ff6b35', cursor: 'pointer',
+                fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.75rem',
+              }}>DELETE</button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Playback */}
@@ -605,53 +1033,216 @@ const ThreadView = ({ thread, onBack, fetchAPI, showToast, currentUser, groups, 
         <PlaybackControls isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)}
           currentIndex={playbackIndex} totalMessages={total} onSeek={setPlaybackIndex}
           onReset={() => { setPlaybackIndex(null); setIsPlaying(false); }}
-          playbackSpeed={playbackSpeed} onSpeedChange={setPlaybackSpeed} />
+          playbackSpeed={playbackSpeed} onSpeedChange={setPlaybackSpeed} isMobile={isMobile} />
       )}
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-        {threadData.messages.map(msg => (
-          <ThreadedMessage key={msg.id} message={msg} onReply={setReplyingTo}
-            highlightId={replyingTo?.id} playbackIndex={playbackIndex}
-            collapsed={collapsed} onToggleCollapse={(id) => setCollapsed(p => ({ ...p, [id]: !p[id] }))} />
+      <div ref={messagesRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '12px' : '20px' }}>
+        {waveData.messages.map(msg => (
+          <ThreadedMessage key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
+            currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
+            collapsed={collapsed} onToggleCollapse={(id) => setCollapsed(p => ({ ...p, [id]: !p[id] }))} isMobile={isMobile}
+            onReact={handleReaction} />
         ))}
       </div>
 
       {/* Compose */}
-      <div style={{ padding: '16px 20px', background: 'linear-gradient(0deg, #0d150d, #1a2a1a)', borderTop: '1px solid #2a3a2a' }}>
+      <div ref={composeRef} style={{
+        flexShrink: 0,
+        padding: isMobile ? '12px' : '16px 20px',
+        paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom, 0px))' : '16px',
+        background: 'linear-gradient(0deg, #0d150d, #1a2a1a)',
+        borderTop: '1px solid #2a3a2a'
+      }}>
         {replyingTo && (
           <div style={{
-            padding: '8px 12px', marginBottom: '10px', background: '#0a100a',
-            border: `1px solid ${config.color}40`, display: 'flex', justifyContent: 'space-between',
+            padding: isMobile ? '10px 14px' : '8px 12px',
+            marginBottom: '10px', background: '#0a100a',
+            border: `1px solid ${config.color}40`, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
             <div>
-              <span style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>REPLYING TO </span>
-              <span style={{ color: config.color, fontSize: '0.75rem' }}>{replyingTo.sender_name}</span>
+              <span style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.7rem' }}>REPLYING TO </span>
+              <span style={{ color: config.color, fontSize: isMobile ? '0.9rem' : '0.75rem' }}>{replyingTo.sender_name}</span>
             </div>
-            <button onClick={() => setReplyingTo(null)} style={{ background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer' }}>✕</button>
+            <button onClick={() => setReplyingTo(null)} style={{
+              background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer',
+              minHeight: isMobile ? '44px' : 'auto',
+              minWidth: isMobile ? '44px' : 'auto',
+              padding: isMobile ? '12px' : '4px',
+              fontSize: isMobile ? '1.2rem' : '1rem',
+            }}>✕</button>
           </div>
         )}
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-            placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}...` : 'Type a message...'}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', position: 'relative' }}>
+          <textarea
+            ref={textareaRef}
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a message... (Shift+Enter for new line)'}
+            rows={1}
             style={{
-              flex: 1, padding: '12px 16px', background: '#0a100a', border: '1px solid #2a3a2a',
-              color: '#c5d5c5', fontSize: '0.9rem', fontFamily: 'inherit',
-            }} />
-          <button onClick={handleSendMessage} disabled={!newMessage.trim()} style={{
-            padding: '12px 24px',
-            background: newMessage.trim() ? '#ffd23f20' : 'transparent',
-            border: `1px solid ${newMessage.trim() ? '#ffd23f' : '#3a4a3a'}`,
-            color: newMessage.trim() ? '#ffd23f' : '#5a6a5a',
-            cursor: newMessage.trim() ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
-          }}>SEND</button>
+              flex: 1,
+              padding: isMobile ? '14px 16px' : '12px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              maxHeight: '200px',
+              background: '#0a100a',
+              border: '1px solid #2a3a2a',
+              color: '#c5d5c5',
+              fontSize: isMobile ? '1rem' : '0.9rem',
+              fontFamily: 'inherit',
+              resize: 'none',
+              overflowY: 'auto',
+            }}
+          />
+          <button
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            style={{
+              padding: isMobile ? '14px' : '10px 12px',
+              minHeight: isMobile ? '44px' : 'auto',
+              minWidth: isMobile ? '44px' : 'auto',
+              background: showEmojiPicker ? '#ffd23f20' : 'transparent',
+              border: `1px solid ${showEmojiPicker ? '#ffd23f' : '#2a3a2a'}`,
+              color: '#ffd23f',
+              cursor: 'pointer',
+              fontSize: isMobile ? '1.5rem' : '1.2rem',
+            }}
+          >
+            😀
+          </button>
+          <button
+            onClick={() => setShowMediaInput(!showMediaInput)}
+            style={{
+              padding: isMobile ? '14px' : '10px 12px',
+              minHeight: isMobile ? '44px' : 'auto',
+              minWidth: isMobile ? '44px' : 'auto',
+              background: showMediaInput ? '#3bceac20' : 'transparent',
+              border: `1px solid ${showMediaInput ? '#3bceac' : '#2a3a2a'}`,
+              color: '#3bceac',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '1rem' : '0.8rem',
+            }}
+          >
+            🖼️
+          </button>
+          <button
+            onClick={handleSendMessage}
+            disabled={!newMessage.trim()}
+            style={{
+              padding: isMobile ? '14px 20px' : '12px 24px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: newMessage.trim() ? '#ffd23f20' : 'transparent',
+              border: `1px solid ${newMessage.trim() ? '#ffd23f' : '#3a4a3a'}`,
+              color: newMessage.trim() ? '#ffd23f' : '#5a6a5a',
+              cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.9rem' : '0.85rem',
+            }}
+          >
+            SEND
+          </button>
+          {showEmojiPicker && (
+            <EmojiPicker
+              onSelect={(emoji) => {
+                setNewMessage(prev => prev + emoji);
+                setShowEmojiPicker(false);
+              }}
+              onClose={() => setShowEmojiPicker(false)}
+              isMobile={isMobile}
+            />
+          )}
         </div>
+        {showMediaInput && (
+          <div style={{ padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a', marginTop: '8px' }}>
+            <input
+              type="url"
+              value={mediaUrl}
+              onChange={(e) => setMediaUrl(e.target.value)}
+              placeholder="Image or GIF URL (e.g., https://...)"
+              style={{
+                width: '100%',
+                padding: isMobile ? '12px' : '10px',
+                background: '#050805',
+                border: '1px solid #2a3a2a',
+                color: '#c5d5c5',
+                fontFamily: 'inherit',
+                marginBottom: '8px',
+                fontSize: isMobile ? '1rem' : '0.9rem',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => {
+                  if (mediaUrl) {
+                    setNewMessage(prev => prev + '\n' + mediaUrl);
+                    setMediaUrl('');
+                    setShowMediaInput(false);
+                  }
+                }}
+                disabled={!mediaUrl}
+                style={{
+                  padding: isMobile ? '10px 16px' : '6px 12px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: mediaUrl ? '#3bceac20' : 'transparent',
+                  border: `1px solid ${mediaUrl ? '#3bceac' : '#3a4a3a'}`,
+                  color: mediaUrl ? '#3bceac' : '#5a6a5a',
+                  cursor: mediaUrl ? 'pointer' : 'not-allowed',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.85rem' : '0.75rem',
+                }}
+              >
+                INSERT
+              </button>
+              <button
+                onClick={() => {
+                  setShowMediaInput(false);
+                  setMediaUrl('');
+                }}
+                style={{
+                  padding: isMobile ? '10px 16px' : '6px 12px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: 'transparent',
+                  border: '1px solid #3a4a3a',
+                  color: '#6a7a6a',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.85rem' : '0.75rem',
+                }}
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      <ThreadSettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)}
-        thread={threadData} groups={groups} fetchAPI={fetchAPI} showToast={showToast}
-        onUpdate={() => { loadThread(); onThreadUpdate?.(); }} />
+      <WaveSettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)}
+       wave={waveData} groups={groups} fetchAPI={fetchAPI} showToast={showToast}
+        onUpdate={() => { loadWave(); onWaveUpdate?.(); }} />
+
+      <DeleteConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        waveTitle={waveData.title}
+        onConfirm={confirmDeleteWave}
+        isMobile={isMobile}
+      />
+
+      {messageToDelete && (
+        <DeleteConfirmModal
+          isOpen={!!messageToDelete}
+          onClose={() => setMessageToDelete(null)}
+          waveTitle={`message from ${messageToDelete.sender_name}`}
+          onConfirm={confirmDeleteMessage}
+          isMobile={isMobile}
+        />
+      )}
     </div>
   );
 };
@@ -662,6 +1253,7 @@ const ContactsView = ({ contacts, fetchAPI, showToast, onContactsChange }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
   useEffect(() => {
     if (searchQuery.length < 2) { setSearchResults([]); return; }
@@ -676,12 +1268,12 @@ const ContactsView = ({ contacts, fetchAPI, showToast, onContactsChange }) => {
     return () => clearTimeout(timeout);
   }, [searchQuery, fetchAPI]);
 
-  const handleAddContact = async (username) => {
+  const handleAddContact = async (handle) => {
     try {
-      await fetchAPI('/contacts', { method: 'POST', body: { username } });
+      await fetchAPI('/contacts', { method: 'POST', body: { handle } });
       showToast('Contact added', 'success');
       onContactsChange();
-      setSearchResults(prev => prev.map(r => r.username === username ? { ...r, isContact: true } : r));
+      setSearchResults(prev => prev.map(r => r.handle === handle ? { ...r, isContact: true } : r));
     } catch (err) {
       showToast(err.message || 'Failed to add contact', 'error');
     }
@@ -698,8 +1290,8 @@ const ContactsView = ({ contacts, fetchAPI, showToast, onContactsChange }) => {
   };
 
   return (
-    <div style={{ flex: 1, padding: '20px', overflowY: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+    <div style={{ flex: 1, padding: isMobile ? '16px' : '20px', overflowY: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <GlowText color="#ffd23f" size="1.1rem">CONTACTS</GlowText>
         <button onClick={() => setShowSearch(!showSearch)} style={{
           padding: '8px 16px', background: showSearch ? '#3bceac20' : '#ffd23f20',
@@ -711,7 +1303,7 @@ const ContactsView = ({ contacts, fetchAPI, showToast, onContactsChange }) => {
       {showSearch && (
         <div style={{ marginBottom: '24px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #3bceac40' }}>
           <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by username or name..."
+            placeholder="Search by handle or name..."
             style={{
               width: '100%', padding: '12px', boxSizing: 'border-box', marginBottom: '16px',
               background: '#0a100a', border: '1px solid #2a3a2a', color: '#c5d5c5', fontFamily: 'inherit',
@@ -723,19 +1315,19 @@ const ContactsView = ({ contacts, fetchAPI, showToast, onContactsChange }) => {
           {searchResults.map(user => (
             <div key={user.id} style={{
               padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
-              marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ displa: 'flex', alignItems: 'center', gap: '12px' }}>
                 <Avatar letter={user.avatar || user.displayName[0]} color="#ffd23f" size={36} status={user.status} />
                 <div>
                   <div style={{ color: '#c5d5c5' }}>{user.displayName}</div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{user.username}</div>
+                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{user.handle}</div>
                 </div>
               </div>
               {user.isContact ? (
                 <span style={{ color: '#0ead69', fontSize: '0.75rem' }}>✓ CONTACT</span>
               ) : (
-                <button onClick={() => handleAddContact(user.username)} style={{
+                <button onClick={() => handleAddContact(user.handle)} style={{
                   padding: '6px 12px', background: '#3bceac20', border: '1px solid #3bceac',
                   color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace',
                 }}>+ ADD</button>
@@ -751,22 +1343,22 @@ const ContactsView = ({ contacts, fetchAPI, showToast, onContactsChange }) => {
           <div>No contacts yet</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? '100%' : '280px'}, 1fr))`, gap: '12px' }}>
           {contacts.map(contact => (
             <div key={contact.id} style={{
               padding: '16px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
               border: '1px solid #2a3a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                 <Avatar letter={contact.avatar || contact.name[0]} color="#ffd23f" size={44} status={contact.status} />
-                <div>
-                  <div style={{ color: '#c5d5c5' }}>{contact.name}</div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{contact.username}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</div>
+                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{contact.handle}</div>
                 </div>
               </div>
               <button onClick={() => handleRemoveContact(contact.id)} style={{
                 padding: '6px 10px', background: 'transparent', border: '1px solid #ff6b3550',
-                color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
+                color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem', flexShrink: 0,
               }}>✕</button>
             </div>
           ))}
@@ -786,6 +1378,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
   const [showAddMember, setShowAddMember] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
   useEffect(() => {
     if (selectedGroup) {
@@ -872,9 +1465,15 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', height: '100%' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: '100%' }}>
       {/* Group list */}
-      <div style={{ width: '300px', borderRight: '1px solid #2a3a2a', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ 
+        width: isMobile ? '100%' : '300px', 
+        borderRight: isMobile ? 'none' : '1px solid #2a3a2a', 
+        borderBottom: isMobile ? '1px solid #2a3a2a' : 'none',
+        display: 'flex', flexDirection: 'column',
+        maxHeight: isMobile ? '250px' : 'none',
+      }}>
         <div style={{ padding: '16px', borderBottom: '1px solid #2a3a2a' }}>
           <button onClick={() => setShowNewGroup(true)} style={{
             width: '100%', padding: '10px', background: '#ffd23f15', border: '1px solid #ffd23f50',
@@ -885,8 +1484,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
           {groups.length === 0 ? (
             <div style={{ padding: '20px', textAlign: 'center', color: '#5a6a5a' }}>No groups yet</div>
           ) : groups.map(g => (
-            <div key={g.id} onClick={() => setSelectedGroup(g.id)} style={{
-              padding: '14px 16px', cursor: 'pointer',
+            <div key={g.id} onClick={() => setSelectedGroup(g.id)} style={{ padding: '14px 16px', cursor: 'pointer',
               background: selectedGroup === g.id ? '#ffd23f10' : 'transparent',
               borderBottom: '1px solid #1a2a1a',
               borderLeft: `3px solid ${selectedGroup === g.id ? '#ffd23f' : 'transparent'}`,
@@ -899,7 +1497,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
       </div>
 
       {/* Group details */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!selectedGroup ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
             <div style={{ textAlign: 'center' }}>
@@ -915,7 +1513,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
               padding: '20px', borderBottom: '1px solid #2a3a2a',
               background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
                   <div style={{ color: '#c5d5c5', fontSize: '1.2rem', marginBottom: '4px' }}>{groupDetails.name}</div>
                   {groupDetails.description && (
@@ -935,7 +1533,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
             </div>
 
             <div style={{ padding: '20px', borderBottom: '1px solid #2a3a2a' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
                 <GlowText color="#ffd23f" size="0.9rem">MEMBERS</GlowText>
                 {groupDetails.isAdmin && (
                   <button onClick={() => setShowAddMember(!showAddMember)} style={{
@@ -976,13 +1574,13 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
                   padding: '12px', marginTop: '8px',
                   background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
                   border: '1px solid #2a3a2a',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <Avatar letter={member.avatar || member.name[0]} color={member.role === 'admin' ? '#ffd23f' : '#6a7a6a'} size={36} status={member.status} />
                     <div>
                       <div style={{ color: '#c5d5c5' }}>{member.name}</div>
-                      <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>@{member.username} • {member.role}</div>
+                      <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>@{member.handle} • {member.role}</div>
                     </div>
                   </div>
                   {groupDetails.isAdmin && (
@@ -990,11 +1588,11 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
                       <button onClick={() => handleToggleAdmin(member.id, member.role)} style={{
                         padding: '4px 8px', background: 'transparent', border: '1px solid #3a4a3a',
                         color: '#6a7a6a', cursor: 'pointer', fontSize: '0.65rem', fontFamily: 'monospace',
-                      }}>{member.role === 'admin' ? '↓ MEMBER' : '↑ ADMIN'}</button>
+                      }}>{member.role === 'admin' ? '↓' : '↑'}</button>
                       <button onClick={() => handleRemoveMember(member.id)} style={{
                         padding: '4px 8px', background: 'transparent', border: '1px solid #ff6b3550',
                         color: '#ff6b35', cursor: 'pointer', fontSize: '0.65rem', fontFamily: 'monospace',
-                      }}>REMOVE</button>
+                      }}>✕</button>
                     </div>
                   )}
                 </div>
@@ -1008,14 +1606,14 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
       {showNewGroup && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
         }}>
           <div style={{
-            width: '400px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+            width: '100%', maxWidth: '400px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
             border: '2px solid #ffd23f40', padding: '24px',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <GlowText color="#ffd23f" size="1.1rem">New Group</GlowText>
+              <GlowText color="#ffd23f" size="1.1rem">Create Group</GlowText>
               <button onClick={() => setShowNewGroup(false)} style={{ background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer' }}>✕</button>
             </div>
             <div style={{ marginBottom: '16px' }}>
@@ -1056,8 +1654,329 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
   );
 };
 
-// ============ NEW THREAD MODAL ============
-const NewThreadModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
+// ============ HANDLE REQUESTS LIST (ADMIN) ============
+const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadRequests = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchAPI('/admin/handle-requests');
+      setRequests(data);
+    } catch (err) {
+      showToast(err.message || 'Failed to load requests', 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, []);
+
+  const handleApprove = async (requestId) => {
+    try {
+      await fetchAPI(`/admin/handle-requests/${requestId}/approve`, { method: 'POST' });
+      showToast('Handle change approved', 'success');
+      loadRequests();
+    } catch (err) {
+      showToast(err.message || 'Failed to approve', 'error');
+    }
+  };
+
+  const handleReject = async (requestId) => {
+    const reason = prompt('Rejection reason (optional):');
+    try {
+      await fetchAPI(`/admin/handle-requests/${requestId}/reject`, {
+        method: 'POST',
+        body: { reason }
+      });
+      showToast('Handle change rejected', 'success');
+      loadRequests();
+    } catch (err) {
+      showToast(err.message || 'Failed to reject', 'error');
+    }
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  if (requests.length === 0) {
+    return (
+      <div style={{
+        padding: '20px', textAlign: 'center',
+        color: '#5a6a5a', fontSize: isMobile ? '0.9rem' : '0.85rem',
+        background: '#0a100a', border: '1px solid #2a3a2a',
+        marginTop: '16px',
+      }}>
+        No pending handle change requests
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: '16px' }}>
+      {requests.map(req => (
+        <div key={req.id} style={{
+          padding: isMobile ? '14px' : '16px',
+          background: '#0a100a',
+          border: '1px solid #2a3a2a',
+          marginBottom: '12px',
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            marginBottom: '12px',
+            flexWrap: 'wrap',
+            gap: '8px',
+          }}>
+            <div>
+              <div style={{ color: '#c5d5c5', fontSize: isMobile ? '1rem' : '0.9rem', marginBottom: '4px' }}>
+                {req.displayName}
+              </div>
+              <div style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.75rem', fontFamily: 'monospace' }}>
+                @{req.currentHandle} → @{req.newHandle}
+              </div>
+              <div style={{ color: '#6a7a6a', fontSize: isMobile ? '0.8rem' : '0.7rem', marginTop: '4px' }}>
+                Requested: {new Date(req.createdAt).toLocaleString()}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button onClick={() => handleApprove(req.id)} style={{
+              padding: isMobile ? '10px 16px' : '8px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: '#0ead6920',
+              border: '1px solid #0ead69', color: '#0ead69',
+              cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.75rem',
+            }}>APPROVE</button>
+
+            <button onClick={() => handleReject(req.id)} style={{
+              padding: isMobile ? '10px 16px' : '8px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: '#ff6b3520',
+              border: '1px solid #ff6b35', color: '#ff6b35',
+              cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.75rem',
+            }}>REJECT</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ============ PROFILE SETTINGS ============
+const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate }) => {
+  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [avatar, setAvatar] = useState(user?.avatar || '');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newHandle, setNewHandle] = useState('');
+  const [showHandleRequests, setShowHandleRequests] = useState(false);
+  const { width, isMobile, isTablet, isDesktop } = useWindowSize();
+
+  const handleSaveProfile = async () => {
+    try {
+      const updated = await fetchAPI('/profile', { method: 'PUT', body: { displayName, avatar } });
+      showToast('Profile updated', 'success');
+      onUserUpdate?.(updated);
+    } catch (err) {
+      showToast(err.message || 'Failed to update profile', 'error');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword) return;
+    try {
+      await fetchAPI('/profile/password', { method: 'POST', body: { currentPassword, newPassword } });
+      showToast('Password changed', 'success');
+      setCurrentPassword('');
+      setNewPassword('');
+    } catch (err) {
+      showToast(err.message || 'Failed to change password', 'error');
+    }
+  };
+
+  const handleRequestHandleChange = async () => {
+    if (!newHandle) return;
+    try {
+      await fetchAPI('/profile/handle-request', { method: 'POST', body: { newHandle } });
+      showToast('Handle change request submitted', 'success');
+      setNewHandle('');
+    } catch (err) {
+      showToast(err.message || 'Failed to request handle change', 'error');
+    }
+  };
+
+  const handleUpdatePreferences = async (updates) => {
+    try {
+      const result = await fetchAPI('/profile/preferences', { method: 'PUT', body: updates });
+      showToast('Preferences updated', 'success');
+      // Update user with new preferences
+      onUserUpdate?.({ ...user, preferences: result.preferences });
+    } catch (err) {
+      showToast(err.message || 'Failed to update preferences', 'error');
+    }
+  };
+
+  const inputStyle = {
+    width: '100%', padding: '10px 12px', boxSizing: 'border-box',
+    background: '#0a100a', border: '1px solid #2a3a2a',
+    color: '#c5d5c5', fontSize: '0.9rem', fontFamily: 'inherit',
+  };
+
+  return (
+    <div style={{ flex: 1, padding: isMobile ? '16px' : '20px', overflowY: 'auto' }}>
+      <GlowText color="#ffd23f" size="1.1rem">PROFILE SETTINGS</GlowText>
+
+      {/* Profile Info */}
+      <div style={{ marginTop: '24px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+        <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '16px' }}>PROFILE</div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <Avatar letter={avatar || displayName?.[0] || '?'} color="#ffd23f" size={60} />
+          <div>
+            <div style={{ color: '#c5d5c5', fontSize: '1.1rem' }}>{displayName || user?.displayName}</div>
+            <div style={{ color: '#5a6a5a', fontSize: '0.8rem' }}>@{user?.handle}</div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>DISPLAY NAME</label>
+          <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={inputStyle} />
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>AVATAR (1-2 characters)</label>
+          <input type="text" value={avatar} onChange={(e) => setAvatar(e.target.value.slice(0, 2))} maxLength={2} style={inputStyle} />
+        </div>
+
+        <button onClick={handleSaveProfile} style={{
+          padding: '10px 20px', background: '#ffd23f20', border: '1px solid #ffd23f',
+          color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace',
+        }}>SAVE PROFILE</button>
+      </div>
+
+      {/* Handle Change */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+        <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '16px' }}>HANDLE CHANGE</div>
+        <div style={{ color: '#5a6a5a', fontSize: '0.75rem', marginBottom: '12px' }}>
+          Handle changes require admin approval. You can change your handle once every 30 days.
+        </div>
+        <div style={{ marginBottom: '16px' }}>
+          <input type="text" value={newHandle} onChange={(e) => setNewHandle(e.target.value)}
+            placeholder="New handle..." style={inputStyle} />
+        </div>
+        <button onClick={handleRequestHandleChange} disabled={!newHandle} style={{
+          padding: '10px 20px',
+          background: newHandle ? '#3bceac20' : 'transparent',
+          border: `1px solid ${newHandle ? '#3bceac' : '#3a4a3a'}`,
+          color: newHandle ? '#3bceac' : '#5a6a5a',
+          cursor: newHandle ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+        }}>REQUEST CHANGE</button>
+      </div>
+
+      {/* Password Change */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+        <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '12px' }}>CHANGE PASSWORD</div>
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>CURRENT PASSWORD</label>
+          <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={inputStyle} />
+        </div>
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>NEW PASSWORD</label>
+          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Min 8 chars, upper, lower, number" style={inputStyle} />
+        </div>
+        <button onClick={handleChangePassword} disabled={!currentPassword || !newPassword} style={{
+          padding: '10px 20px',
+          background: currentPassword && newPassword ? '#ff6b3520' : 'transparent',
+          border: `1px solid ${currentPassword && newPassword ? '#ff6b35' : '#3a4a3a'}`,
+          color: currentPassword && newPassword ? '#ff6b35' : '#5a6a5a',
+          cursor: currentPassword && newPassword ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+        }}>CHANGE PASSWORD</button>
+      </div>
+
+      {/* Display Preferences */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+        <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '12px' }}>DISPLAY PREFERENCES</div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>THEME</label>
+          <select
+            value={user?.preferences?.theme || 'firefly'}
+            onChange={(e) => handleUpdatePreferences({ theme: e.target.value })}
+            style={{
+              ...inputStyle,
+              cursor: 'pointer',
+            }}
+          >
+            {Object.entries(THEMES).map(([key, config]) => (
+              <option key={key} value={key}>{config.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>FONT SIZE</label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {Object.entries(FONT_SIZES).map(([key, config]) => (
+              <button
+                key={key}
+                onClick={() => handleUpdatePreferences({ fontSize: key })}
+                style={{
+                  padding: isMobile ? '10px 16px' : '8px 16px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: (user?.preferences?.fontSize || 'medium') === key ? '#ffd23f20' : 'transparent',
+                  border: `1px solid ${(user?.preferences?.fontSize || 'medium') === key ? '#ffd23f' : '#2a3a2a'}`,
+                  color: (user?.preferences?.fontSize || 'medium') === key ? '#ffd23f' : '#6a7a6a',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: key === 'small' ? '0.75rem' : key === 'large' ? '1rem' : key === 'xlarge' ? '1.1rem' : '0.85rem',
+                }}
+              >
+                {config.name.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ color: '#5a6a5a', fontSize: '0.7rem', padding: '10px', background: '#0a100a', border: '1px solid #2a3a2a' }}>
+          ℹ️ Theme customization will change colors throughout the app (coming soon). Font size changes take effect immediately.
+        </div>
+      </div>
+
+      {/* Admin Panel */}
+      {user?.isAdmin && (
+        <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #1a2a1a, #0d150d)', border: '2px solid #ffd23f40' }}>
+          <GlowText color="#ffd23f" size={isMobile ? '1rem' : '0.9rem'}>ADMIN PANEL</GlowText>
+
+          <div style={{ marginTop: '16px' }}>
+            <button
+              onClick={() => setShowHandleRequests(!showHandleRequests)}
+              style={{
+                padding: isMobile ? '12px 20px' : '10px 20px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: showHandleRequests ? '#ffd23f20' : 'transparent',
+                border: `1px solid ${showHandleRequests ? '#ffd23f' : '#3a4a3a'}`,
+                color: showHandleRequests ? '#ffd23f' : '#6a7a6a',
+                cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.9rem' : '0.85rem',
+              }}
+            >
+              {showHandleRequests ? 'HIDE' : 'SHOW'} HANDLE REQUESTS
+            </button>
+          </div>
+
+          {showHandleRequests && <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============ NEW WAVE MODAL ============
+const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
   const [title, setTitle] = useState('');
   const [privacy, setPrivacy] = useState('private');
   const [selectedParticipants, setSelectedParticipants] = useState([]);
@@ -1078,22 +1997,22 @@ const NewThreadModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
     }}>
       <div style={{
-        width: '450px', maxHeight: '80vh', overflowY: 'auto',
+        width: '100%', maxWidth: '450px', maxHeight: '80vh', overflowY: 'auto',
         background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
         border: '2px solid #ffd23f40', padding: '24px',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <GlowText color="#ffd23f" size="1.1rem">New Thread</GlowText>
+          <GlowText color="#ffd23f" size="1.1rem">New Wave</GlowText>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer' }}>✕</button>
         </div>
 
         <div style={{ marginBottom: '16px' }}>
           <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>TITLE</div>
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-            placeholder="Thread title..."
+            placeholder="Wave title..."
             style={{
               width: '100%', padding: '10px', boxSizing: 'border-box',
               background: '#0a100a', border: '1px solid #2a3a2a', color: '#c5d5c5', fontFamily: 'inherit',
@@ -1167,7 +2086,7 @@ const NewThreadModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
           <button onClick={handleCreate} disabled={!canCreate} style={{
             flex: 1, padding: '12px',
             background: canCreate ? '#ffd23f20' : 'transparent',
-            border: `1px solid ${canCreate ? '#ffd23f' : '#3a4a3a'}`,
+            border: `1px solid ${canCreate ? '#ffd23f' : '#5a6a5a'}`,
             color: canCreate ? '#ffd23f' : '#5a6a5a',
             cursor: canCreate ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
           }}>CREATE</button>
@@ -1201,34 +2120,58 @@ const ConnectionStatus = ({ wsConnected, apiConnected }) => (
 
 // ============ MAIN APP ============
 function MainApp() {
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, updateUser } = useAuth();
   const { fetchAPI } = useAPI();
   const [toast, setToast] = useState(null);
-  const [activeView, setActiveView] = useState('threads');
+  const [activeView, setActiveView] = useState('waves');
   const [apiConnected, setApiConnected] = useState(false);
-  const [threads, setThreads] = useState([]);
+  const [waves, setWaves] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [groups, setGroups] = useState([]);
-  const [selectedThread, setSelectedThread] = useState(null);
-  const [showNewThread, setShowNewThread] = useState(false);
+  const [selectedWave, setSelectedWave] = useState(null);
+  const [showNewWave, setShowNewWave] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
-  const handleWSMessage = useCallback((data) => {
-    if (data.type === 'new_message' || data.type === 'thread_created' || data.type === 'thread_updated') {
-      loadThreads();
-    }
-  }, []);
+  // Calculate font scale from user preferences
+  const fontSizePreference = user?.preferences?.fontSize || 'medium';
+  const fontScale = FONT_SIZES[fontSizePreference]?.multiplier || 1;
 
-  const { connected: wsConnected } = useWebSocket(token, handleWSMessage);
+  // Apply font scaling to the root HTML element so rem units scale properly
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${fontScale * 100}%`;
+    return () => {
+      document.documentElement.style.fontSize = '100%';
+    };
+  }, [fontScale]);
 
   const showToastMsg = useCallback((message, type) => setToast({ message, type }), []);
 
-  const loadThreads = useCallback(async () => {
+  const loadWaves = useCallback(async () => {
     try {
-      const data = await fetchAPI('/threads');
-      setThreads(data);
+      const data = await fetchAPI(`/waves?archived=${showArchived}`);
+      setWaves(data);
       setApiConnected(true);
-    } catch { setApiConnected(false); }
-  }, [fetchAPI]);
+    } catch (err) {
+      console.error('loadWaves failed:', err);
+      setApiConnected(false);
+    }
+  }, [fetchAPI, showArchived]);
+
+  const handleWSMessage = useCallback((data) => {
+    if (data.type === 'new_message' || data.type === 'message_edited' || data.type === 'message_deleted' || data.type === 'wave_created' || data.type === 'wave_updated' || data.type === 'message_reaction') {
+      loadWaves();
+    } else if (data.type === 'wave_deleted') {
+      showToastMsg(`Wave "${data.wave?.title || 'Unknown'}" was deleted`, 'info');
+      if (selectedWave?.id === data.waveId) {
+        setSelectedWave(null);
+        setActiveView('waves');
+      }
+      loadWaves();
+    }
+  }, [loadWaves, selectedWave, showToastMsg]);
+
+  const { connected: wsConnected } = useWebSocket(token, handleWSMessage);
 
   const loadContacts = useCallback(async () => {
     try { setContacts(await fetchAPI('/contacts')); } catch (e) { console.error(e); }
@@ -1239,20 +2182,22 @@ function MainApp() {
   }, [fetchAPI]);
 
   useEffect(() => {
-    loadThreads();
+    loadWaves();
     loadContacts();
     loadGroups();
-  }, [loadThreads, loadContacts, loadGroups]);
+  }, [loadWaves, loadContacts, loadGroups]);
 
-  const handleCreateThread = async (data) => {
+  const handleCreateWave = async (data) => {
     try {
-      await fetchAPI('/threads', { method: 'POST', body: data });
-      showToastMsg('Thread created', 'success');
-      loadThreads();
+      await fetchAPI('/waves', { method: 'POST', body: data });
+      showToastMsg('Wave created', 'success');
+      loadWaves();
     } catch (err) {
-      showToastMsg(err.message || 'Failed to create thread', 'error');
+      showToastMsg(err.message || 'Failed to create wave', 'error');
     }
   };
+
+  const navItems = ['waves', 'groups', 'contacts', 'profile'];
 
   return (
     <div style={{
@@ -1261,61 +2206,105 @@ function MainApp() {
       display: 'flex', flexDirection: 'column',
     }}>
       <ScanLines />
+      <style>{`
+        .message-media {
+          max-width: 100%;
+          max-height: 400px;
+          height: auto;
+          border: 1px solid #2a3a2a;
+          border-radius: 2px;
+          margin: 8px 0;
+          display: block;
+        }
+        /* Font scaling: base font size is set on root div and scales all content */
+        /* Elements with explicit fontSize will maintain their relative proportions */
+      `}</style>
 
       {/* Header */}
       <header style={{
-        padding: '12px 24px', borderBottom: '2px solid #ffd23f40',
+        padding: isMobile ? '10px 12px' : '12px 24px',
+        paddingTop: isMobile ? 'calc(10px + env(safe-area-inset-top, 0px))' : '12px',
+        borderBottom: '2px solid #ffd23f40',
         background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: isMobile ? '10px' : '8px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div>
-            <GlowText color="#ffd23f" size="1.5rem" weight={700}>CORTEX</GlowText>
-            <span style={{ color: '#5a6a5a', fontSize: '0.7rem', marginLeft: '8px' }}>v1.2.0</span>
-          </div>
-          <ConnectionStatus wsConnected={wsConnected} apiConnected={apiConnected} />
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {['threads', 'groups', 'contacts'].map(view => (
-            <button key={view} onClick={() => setActiveView(view)} style={{
-              padding: '8px 16px',
-              background: activeView === view ? '#ffd23f15' : 'transparent',
-              border: `1px solid ${activeView === view ? '#ffd23f50' : '#3a4a3a'}`,
-              color: activeView === view ? '#ffd23f' : '#6a7a6a',
-              cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', textTransform: 'uppercase',
-            }}>{view}</button>
-          ))}
-        </div>
-
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#ffd23f', fontSize: '0.8rem' }}>{user?.displayName}</div>
-            <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{user?.username}</div>
+          <div>
+            <GlowText color="#ffd23f" size={isMobile ? '1.3rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
+            {!isMobile && <span style={{ color: '#5a6a5a', fontSize: '0.65rem', marginLeft: '8px' }}>v1.3.2c</span>}
           </div>
+          {!isMobile && <ConnectionStatus wsConnected={wsConnected} apiConnected={apiConnected} />}
+        </div>
+
+        <div style={{ display: 'flex', gap: isMobile ? '6px' : '4px', flexWrap: 'wrap' }}>
+          {navItems.map(view => {
+            const totalUnread = view === 'waves' ? waves.reduce((sum, w) => sum + (w.unread_count || 0), 0) : 0;
+            return (
+              <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); }} style={{
+                padding: isMobile ? '12px 14px' : '8px 16px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: activeView === view ? '#ffd23f15' : 'transparent',
+                border: `1px solid ${activeView === view ? '#ffd23f50' : '#3a4a3a'}`,
+                color: activeView === view ? '#ffd23f' : '#6a7a6a',
+                cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.8rem', textTransform: 'uppercase',
+                position: 'relative',
+              }}>
+                {view === 'profile' ? '⚙' : view.slice(0, isMobile ? 3 : 10)}
+                {totalUnread > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    background: '#ff6b35',
+                    color: '#fff',
+                    fontSize: '0.6rem',
+                    fontWeight: 700,
+                    padding: '2px 5px',
+                    borderRadius: '10px',
+                    minWidth: '18px',
+                    textAlign: 'center',
+                    boxShadow: '0 0 8px rgba(255, 107, 53, 0.8)',
+                  }}>{totalUnread}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {!isMobile && (
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ color: '#ffd23f', fontSize: '0.8rem' }}>{user?.displayName}</div>
+              <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{user?.handle}</div>
+            </div>
+          )}
           <button onClick={logout} style={{
-            padding: '6px 12px', background: 'transparent', border: '1px solid #3a4a3a',
+            padding: '6px 10px', background: 'transparent', border: '1px solid #3a4a3a',
             color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
-          }}>LOGOUT</button>
+          }}>⏻</button>
         </div>
       </header>
 
       {/* Main */}
-      <main style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {activeView === 'threads' && (
+      <main style={{ flex: 1, display: 'flex', overflow: 'hidden', flexDirection: isMobile && selectedWave ? 'column' : 'row' }}>
+        {activeView === 'waves' && (
           <>
-            <ThreadList threads={threads} selectedThread={selectedThread}
-              onSelectThread={setSelectedThread} onNewThread={() => setShowNewThread(true)} />
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              {selectedThread ? (
-                <ThreadView thread={selectedThread} onBack={() => setSelectedThread(null)}
+            {(!isMobile || !selectedWave) && (
+              <WaveList waves={waves} selectedWave={selectedWave}
+                onSelectWave={setSelectedWave} onNewWave={() => setShowNewWave(true)}
+                showArchived={showArchived} onToggleArchived={() => { setShowArchived(!showArchived); loadWaves(); }}
+                isMobile={isMobile} />
+            )}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+              {selectedWave ? (
+                <WaveView wave={selectedWave} onBack={() => setSelectedWave(null)}
                   fetchAPI={fetchAPI} showToast={showToastMsg} currentUser={user}
-                  groups={groups} onThreadUpdate={loadThreads} />
-              ) : (
+                  groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile} />
+              ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '4rem', marginBottom: '16px' }}>◎</div>
-                    <div>Select a thread or create a new one</div>
+                    <div>Select a wave or create a new one</div>
                   </div>
                 </div>
               )}
@@ -1330,19 +2319,23 @@ function MainApp() {
         {activeView === 'contacts' && (
           <ContactsView contacts={contacts} fetchAPI={fetchAPI} showToast={showToastMsg} onContactsChange={loadContacts} />
         )}
+
+        {activeView === 'profile' && (
+          <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} />
+        )}
       </main>
 
       {/* Footer */}
       <footer style={{
-        padding: '8px 24px', background: '#050805', borderTop: '1px solid #2a3a2a',
-        display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', fontFamily: 'monospace',
+        padding: '8px 12px', background: '#050805', borderTop: '1px solid #2a3a2a',
+        display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
       }}>
-        <div style={{ color: '#5a6a5a' }}><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED • LOCAL CACHE</div>
-        <div style={{ color: '#5a6a5a' }}>THREADS: {threads.length} • GROUPS: {groups.length} • CONTACTS: {contacts.length}</div>
+        <div style={{ color: '#5a6a5a' }}><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</div>
+        <div style={{ color: '#5a6a5a' }}>WAVES: {waves.length} • GROUPS: {groups.length} • CONTACTS: {contacts.length}</div>
       </footer>
 
-      <NewThreadModal isOpen={showNewThread} onClose={() => setShowNewThread(false)}
-        onCreate={handleCreateThread} contacts={contacts} groups={groups} />
+      <NewWaveModal isOpen={showNewWave} onClose={() => setShowNewWave(false)}
+        onCreate={handleCreateWave} contacts={contacts} groups={groups} />
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
@@ -1359,7 +2352,10 @@ function AuthProvider({ children }) {
     if (token) {
       fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.ok ? res.json() : Promise.reject())
-        .then(setUser)
+        .then(userData => {
+          setUser(userData);
+          storage.setUser(userData); // Save to localStorage
+        })
         .catch(() => { storage.removeToken(); storage.removeUser(); setToken(null); setUser(null); })
         .finally(() => setLoading(false));
     } else {
@@ -1367,10 +2363,10 @@ function AuthProvider({ children }) {
     }
   }, [token]);
 
-  const login = async (username, password) => {
+  const login = async (handle, password) => {
     const res = await fetch(`${API_URL}/auth/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ handle, password }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Login failed');
@@ -1378,10 +2374,10 @@ function AuthProvider({ children }) {
     setToken(data.token); setUser(data.user);
   };
 
-  const register = async (username, email, password, displayName) => {
+  const register = async (handle, email, password, displayName) => {
     const res = await fetch(`${API_URL}/auth/register`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password, displayName }),
+      body: JSON.stringify({ handle, email, password, displayName }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
@@ -1394,10 +2390,16 @@ function AuthProvider({ children }) {
     setToken(null); setUser(null);
   };
 
+  const updateUser = (updates) => {
+    const updatedUser = { ...user, ...updates };
+    setUser(updatedUser);
+    storage.setUser(updatedUser);
+  };
+
   if (loading) return <LoadingSpinner />;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

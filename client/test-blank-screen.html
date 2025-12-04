@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>Debug Test</title></head>
+<body>
+<script>
+// Test if localStorage has user data
+console.log('Token:', localStorage.getItem('cortex_token'));
+console.log('User:', localStorage.getItem('cortex_user'));
+
+// Test if we can parse user
+try {
+  const user = JSON.parse(localStorage.getItem('cortex_user'));
+  console.log('Parsed user:', user);
+} catch (e) {
+  console.error('Failed to parse user:', e);
+}
+</script>
+<h1>Check browser console (F12)</h1>
+</body>
+</html>

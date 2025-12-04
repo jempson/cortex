@@ -6,6 +6,9 @@ server/data/
 server/cortex-data.json
 server/cortex-data.json.backup
 
+# Version ZIP Files (do not commit)
+versions/
+
 # Environment files (contain secrets)
 .env
 .env.local

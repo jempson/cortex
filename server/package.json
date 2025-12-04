@@ -1,6 +1,7 @@
 {
   "name": "cortex-server",
-  "version": "1.2.0",
+  "version": "1.3.2",
+  "description": "Cortex - Privacy-First Federated Communication Platform",
   "type": "module",
   "scripts": {
     "start": "node server.js",
@@ -16,5 +17,8 @@
     "sanitize-html": "^2.13.0",
     "uuid": "^10.0.0",
     "ws": "^8.18.0"
-  }
+  },
+  "keywords": ["communication", "federation", "privacy", "waves"],
+  "author": "Cortex Project",
+  "license": "MIT"
 }
