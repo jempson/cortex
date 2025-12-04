@@ -1323,6 +1323,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   const handleReaction = async (messageId, emoji) => {
     try {
+      // Save scroll position before reloading
+      if (messagesRef.current) {
+        scrollPositionToRestore.current = messagesRef.current.scrollTop;
+      }
+
       await fetchAPI(`/messages/${messageId}/react`, {
         method: 'POST',
         body: { emoji },
@@ -1331,6 +1336,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       await loadWave();
     } catch (err) {
       showToast(err.message || 'Failed to add reaction', 'error');
+      scrollPositionToRestore.current = null; // Clear on error
     }
   };
 
