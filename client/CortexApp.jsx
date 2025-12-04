@@ -138,33 +138,91 @@ function useAPI() {
 function useWebSocket(token, onMessage) {
   const wsRef = useRef(null);
   const [connected, setConnected] = useState(false);
+  const onMessageRef = useRef(onMessage);
+  const reconnectTimeoutRef = useRef(null);
+  const pingIntervalRef = useRef(null);
+
+  // Keep onMessage ref updated without triggering reconnection
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   useEffect(() => {
     if (!token) return;
 
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
+    let intentionallyClosed = false;
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'auth', token }));
+    const connect = () => {
+      console.log('🔌 Connecting to WebSocket...');
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('✅ WebSocket connected');
+        ws.send(JSON.stringify({ type: 'auth', token }));
+
+        // Start heartbeat ping every 30 seconds to keep connection alive
+        pingIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 30000);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'auth_success') {
+            setConnected(true);
+            console.log('✅ WebSocket authenticated');
+          } else if (data.type === 'auth_error') {
+            setConnected(false);
+            console.error('❌ WebSocket auth failed');
+          } else if (data.type === 'pong') {
+            // Heartbeat response, ignore
+          } else {
+            onMessageRef.current?.(data);
+          }
+        } catch (e) {
+          console.error('WS parse error:', e);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('🔌 WebSocket disconnected');
+        setConnected(false);
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
+        }
+
+        // Auto-reconnect after 3 seconds unless intentionally closed
+        if (!intentionallyClosed) {
+          console.log('🔄 Reconnecting in 3 seconds...');
+          reconnectTimeoutRef.current = setTimeout(connect, 3000);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('❌ WebSocket error:', error);
+        setConnected(false);
+      };
     };
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'auth_success') setConnected(true);
-        else if (data.type === 'auth_error') setConnected(false);
-        else onMessage?.(data);
-      } catch (e) {
-        console.error('WS parse error:', e);
+    connect();
+
+    return () => {
+      intentionallyClosed = true;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
       }
     };
-
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setConnected(false);
-
-    return () => ws.close();
-  }, [token, onMessage]);
+  }, [token]);
 
   const sendMessage = useCallback((message) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
