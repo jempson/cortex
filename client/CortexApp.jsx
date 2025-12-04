@@ -747,7 +747,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
         </div>
       </div>
       {hasChildren && !isCollapsed && (
-        <div style={{ borderLeft: '1px solid #3a4a3a', marginLeft: '12px' }}>
+        <div style={{ borderLeft: '1px solid #3a4a3a', marginLeft: isMobile ? '6px' : '12px' }}>
           {message.children.map(child => (
             <ThreadedMessage key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
               onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
@@ -1147,8 +1147,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Reload wave when reloadTrigger changes (from WebSocket events)
   useEffect(() => {
     if (reloadTrigger > 0) {
-      // Save scroll position before reloading
-      if (messagesRef.current) {
+      // Only save scroll position if not already pending restoration
+      // (prevents overwriting correct position during race conditions)
+      if (messagesRef.current && scrollPositionToRestore.current === null) {
         scrollPositionToRestore.current = messagesRef.current.scrollTop;
       }
       loadWave();
