@@ -508,9 +508,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
   const hasChildren = message.children?.length > 0;
   const isCollapsed = collapsed[message.id];
-  const maxIndent = isMobile ? 3 : 6;
   const indentSize = isMobile ? 12 : 24;
-  const indent = Math.min(depth, maxIndent) * indentSize;
   const canDelete = message.author_id === currentUserId;
   const isEditing = editingMessageId === message.id;
   const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -527,7 +525,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   };
 
   return (
-    <div style={{ marginLeft: `${indent}px` }}>
+    <div>
       <div
         onClick={handleMessageClick}
         style={{
@@ -747,7 +745,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
         </div>
       </div>
       {hasChildren && !isCollapsed && (
-        <div style={{ borderLeft: '1px solid #3a4a3a', marginLeft: isMobile ? '6px' : '12px' }}>
+        <div style={{ borderLeft: '1px solid #3a4a3a', marginLeft: `${indentSize}px` }}>
           {message.children.map(child => (
             <ThreadedMessage key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
               onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
