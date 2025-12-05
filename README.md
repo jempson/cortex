@@ -1,8 +1,58 @@
-# CORTEX - Secure Wave Communications v1.7.0
+# CORTEX - Secure Wave Communications v1.8.0-alpha
 
 A privacy-first, federated communication platform inspired by Google Wave with a Firefly aesthetic.
 
-## What's New in v1.7.0
+## What's New in v1.8.0
+
+### 🖼️ Profile Images
+Upload custom profile pictures to replace letter avatars.
+
+- **Image Upload**: Upload jpg, png, gif, or webp images (up to 2MB)
+- **Auto-Processing**: Images resized to 256×256 and converted to efficient webp format
+- **Privacy**: EXIF metadata automatically stripped from uploads
+- **Fallback**: Letter avatar shown if no image set or if image fails to load
+- **Message Display**: Profile images appear next to your messages in waves
+
+### 📝 About Me / Bio
+Add a bio to your profile that others can view.
+
+- **500 Characters**: Express yourself with a generous character limit
+- **Public Profile**: Bio visible when others view your profile
+- **Character Counter**: Real-time count shows remaining characters
+
+### 👤 User Profile Modal
+Click on any user's name or avatar to view their profile.
+
+- **Profile Display**: Large avatar, display name, @handle, bio, join date
+- **Quick Actions**: Add Contact, Block, or Mute directly from profile
+- **Universal**: Works in messages, participants list, and contacts
+
+### 🎨 Cleaner UI
+Display names now shown instead of @handles in most places.
+
+- **Simplified Display**: Only display names shown in messages, participants, wave list
+- **@handle Preserved**: Still visible in Profile Settings and User Profile Modal
+- **Clickable**: Names/avatars open the profile modal
+
+### 📦 Message Layout Cleanup
+Consolidated message footer for a more compact view.
+
+- **Before**: 4 rows (Reply/Edit/Delete → Reactions → Emoji picker → Seen by)
+- **After**: 2 rows (Actions + reactions inline → Compact read count)
+- **Icon Buttons**: Edit (✏️) and Delete (✕) shortened to icons only
+- **Inline Reactions**: Reactions now appear on same row as action buttons
+- **Compact Read Count**: "✓3" instead of "Seen by 3 people" (expandable)
+
+### 😀 Emoji Picker Improvements
+Fixed and improved the message composer emoji picker.
+
+- **Centering Fix**: Emojis properly centered at all font sizes
+- **Cleaner UI**: Removed redundant CLOSE button (click EMO to dismiss)
+- **Compact Grid**: 8-column layout on desktop (16 emojis in 2 rows)
+
+---
+
+## What Was New in v1.7.0
 
 ### 📬 Contact Request System
 Users must send and accept contact requests before becoming contacts.
@@ -299,12 +349,19 @@ Demo accounts (password: `demo123`):
 ### User Account Management (New in v1.3)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| PUT | `/api/users/profile` | Update display name, avatar |
+| PUT | `/api/users/profile` | Update display name, avatar, bio |
 | PUT | `/api/users/password` | Change password |
 | PUT | `/api/profile/preferences` | Update theme, font size (v1.3.2+) |
 | POST | `/api/users/handle/request` | Request handle change |
 | GET | `/api/users/handle/requests` | Get user's handle requests |
 | GET | `/api/users/handle/history` | Get handle change history |
+
+### Profile Images (v1.8.0+)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/profile/avatar` | Upload profile image (jpg, png, gif, webp, max 2MB) |
+| DELETE | `/api/profile/avatar` | Remove profile image (revert to letter) |
+| GET | `/api/users/:id/profile` | Get user's public profile (avatar, bio, etc.) |
 
 ### Admin Endpoints (New in v1.3)
 | Method | Endpoint | Description |
@@ -384,6 +441,8 @@ Demo accounts (password: `demo123`):
   handle: "mal",                   // Changeable (admin-approved)
   displayName: "Malcolm Reynolds", // Freely changeable
   avatar: "M",                     // Freely changeable (1-2 chars)
+  avatarUrl: "/uploads/avatars/user-xxx.webp", // v1.8.0+ Profile image URL
+  bio: "Captain of the Serenity",  // v1.8.0+ About me (max 500 chars)
   handleHistory: [
     { handle: "mal", from: "2025-01-01", to: null }
   ],
@@ -518,9 +577,18 @@ server {
 - [x] App icons and manifest
 - [x] Install prompt and offline indicator
 
-### v1.8 - Scale & Organization
+### Completed in v1.8.0
+- [x] Profile images (avatar upload with sharp processing)
+- [x] About Me / Bio section (500 char)
+- [x] User Profile Modal (view other users' profiles)
+- [x] Display name simplification (hide @handle in most UI)
+- [x] Profile images in wave messages
+- [x] Message layout cleanup (compact 2-row footer)
+- [x] Emoji picker improvements (centering, no close button)
+
+### v1.8 - Remaining (Scale & Organization)
 - [ ] SQLite migration
-- [ ] Image/file upload (not just URL embedding)
+- [ ] Image/file upload for messages (not just URL embedding)
 - [ ] Message pagination/virtual scrolling
 - [ ] Full-text search with database FTS
 - [ ] Content reporting system

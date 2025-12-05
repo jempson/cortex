@@ -12,6 +12,8 @@ import { createServer } from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
+import sharp from 'sharp';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,15 +42,44 @@ const DATA_FILES = {
   groupInvitations: path.join(DATA_DIR, 'group-invitations.json'),
 };
 
+// Uploads directory for avatars
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const AVATARS_DIR = path.join(UPLOADS_DIR, 'avatars');
+
+// Ensure uploads directories exist
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+if (!fs.existsSync(AVATARS_DIR)) fs.mkdirSync(AVATARS_DIR, { recursive: true });
+
+// Multer configuration for avatar uploads
+const avatarStorage = multer.memoryStorage();
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB max
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Allowed: jpg, png, gif, webp'), false);
+    }
+  },
+});
+
 // CORS configuration
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : null;
 
 // ============ Security: Rate Limiting ============
+// Configurable via .env - set higher values for development/testing
+const RATE_LIMIT_LOGIN_MAX = parseInt(process.env.RATE_LIMIT_LOGIN_MAX) || 30;
+const RATE_LIMIT_REGISTER_MAX = parseInt(process.env.RATE_LIMIT_REGISTER_MAX) || 15;
+const RATE_LIMIT_API_MAX = parseInt(process.env.RATE_LIMIT_API_MAX) || 300;
+const RATE_LIMIT_GIF_MAX = parseInt(process.env.RATE_LIMIT_GIF_MAX) || 30;
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: RATE_LIMIT_LOGIN_MAX,
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -57,7 +88,7 @@ const loginLimiter = rateLimit({
 
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 15,
+  max: RATE_LIMIT_REGISTER_MAX,
   message: { error: 'Too many registration attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -65,7 +96,7 @@ const registerLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 300,
+  max: RATE_LIMIT_API_MAX,
   message: { error: 'Too many requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -73,16 +104,17 @@ const apiLimiter = rateLimit({
 
 const gifSearchLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 30,  // 30 searches per minute per user
+  max: RATE_LIMIT_GIF_MAX,
   message: { error: 'Too many GIF searches. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 // ============ Security: Account Lockout ============
+// Configurable via .env
 const failedAttempts = new Map();
-const LOCKOUT_THRESHOLD = 15;
-const LOCKOUT_DURATION = 15 * 60 * 1000;
+const LOCKOUT_THRESHOLD = parseInt(process.env.LOCKOUT_THRESHOLD) || 15;
+const LOCKOUT_DURATION = (parseInt(process.env.LOCKOUT_DURATION_MINUTES) || 15) * 60 * 1000;
 
 function checkAccountLockout(handle) {
   const record = failedAttempts.get(handle);
@@ -380,6 +412,8 @@ class Database {
       lastHandleChange: null,
       isAdmin: this.users.users.length === 0, // First user is admin
       preferences: { theme: 'firefly', fontSize: 'medium' },
+      bio: null, // About me section (max 500 chars)
+      avatarUrl: null, // Profile image URL
     };
     this.users.users.push(user);
     this.saveUsers();
@@ -1423,6 +1457,7 @@ class Database {
           ...m,
           sender_name: author?.displayName || 'Unknown',
           sender_avatar: author?.avatar || '?',
+          sender_avatar_url: author?.avatarUrl || null,
           sender_handle: author?.handle || 'unknown',
           author_id: m.authorId,
           parent_id: m.parentId,
@@ -1463,6 +1498,7 @@ class Database {
       ...message,
       sender_name: author?.displayName || 'Unknown',
       sender_avatar: author?.avatar || '?',
+      sender_avatar_url: author?.avatarUrl || null,
       sender_handle: author?.handle || 'unknown',
       author_id: message.authorId,
       parent_id: message.parentId,
@@ -1499,6 +1535,7 @@ class Database {
       ...message,
       sender_name: author?.displayName || 'Unknown',
       sender_avatar: author?.avatar || '?',
+      sender_avatar_url: author?.avatarUrl || null,
       sender_handle: author?.handle || 'unknown',
       author_id: message.authorId,
       parent_id: message.parentId,
@@ -1652,6 +1689,13 @@ app.use(express.json({ limit: '100kb' }));
 app.use('/api/', apiLimiter);
 app.set('trust proxy', 1);
 
+// Serve uploaded files (avatars, etc.) with cross-origin headers for dev mode
+app.use('/uploads', (req, res, next) => {
+  // Allow cross-origin access for images (needed when client runs on different port)
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(UPLOADS_DIR));
+
 // ============ Auth Middleware ============
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -1707,7 +1751,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
 
     res.status(201).json({
       token,
-      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
+      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
     });
   } catch (err) {
     console.error('Registration error:', err);
@@ -1749,7 +1793,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: 'online', isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
+      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: 'online', isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -1760,7 +1804,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json({ id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } });
+  res.json({ id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } });
 });
 
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
@@ -1773,11 +1817,105 @@ app.put('/api/profile', authenticateToken, (req, res) => {
   const updates = {};
   if (req.body.displayName) updates.displayName = sanitizeInput(req.body.displayName).slice(0, 50);
   if (req.body.avatar) updates.avatar = sanitizeInput(req.body.avatar).slice(0, 2);
-  
+  if (req.body.bio !== undefined) updates.bio = req.body.bio ? sanitizeInput(req.body.bio).slice(0, 500) : null;
+
   const user = db.updateUser(req.user.userId, updates);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  res.json({ id: user.id, handle: user.handle, displayName: user.displayName, avatar: user.avatar, preferences: user.preferences });
+  res.json({ id: user.id, handle: user.handle, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, preferences: user.preferences, bio: user.bio });
+});
+
+// Get public profile for any user
+app.get('/api/users/:id/profile', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  // Return only public profile fields (no email, passwordHash, preferences, etc.)
+  res.json({
+    id: user.id,
+    handle: user.handle,
+    displayName: user.displayName,
+    avatar: user.avatar,
+    avatarUrl: user.avatarUrl || null,
+    bio: user.bio || null,
+    createdAt: user.createdAt,
+  });
+});
+
+// Upload profile avatar image
+app.post('/api/profile/avatar', authenticateToken, (req, res, next) => {
+  avatarUpload.single('avatar')(req, res, (err) => {
+    if (err) {
+      // Handle multer errors (file too large, invalid type, etc.)
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large. Maximum size is 2MB' });
+      }
+      return res.status(400).json({ error: err.message || 'File upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Generate unique filename
+    const filename = `${user.id}-${Date.now()}.webp`;
+    const filepath = path.join(AVATARS_DIR, filename);
+
+    // Process image with sharp: resize to 256x256, convert to webp, strip metadata
+    await sharp(req.file.buffer)
+      .resize(256, 256, { fit: 'cover', position: 'center' })
+      .webp({ quality: 85 })
+      .toFile(filepath);
+
+    // Delete old avatar if exists
+    if (user.avatarUrl) {
+      const oldFilename = path.basename(user.avatarUrl);
+      const oldFilepath = path.join(AVATARS_DIR, oldFilename);
+      if (fs.existsSync(oldFilepath)) {
+        fs.unlinkSync(oldFilepath);
+      }
+    }
+
+    // Update user with new avatar URL
+    const avatarUrl = `/uploads/avatars/${filename}`;
+    db.updateUser(user.id, { avatarUrl });
+
+    res.json({ success: true, avatarUrl });
+  } catch (err) {
+    console.error('Avatar upload error:', err);
+    res.status(500).json({ error: 'Failed to upload avatar' });
+  }
+});
+
+// Delete profile avatar image
+app.delete('/api/profile/avatar', authenticateToken, (req, res) => {
+  try {
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.avatarUrl) {
+      // Delete the file
+      const filename = path.basename(user.avatarUrl);
+      const filepath = path.join(AVATARS_DIR, filename);
+      if (fs.existsSync(filepath)) {
+        fs.unlinkSync(filepath);
+      }
+
+      // Update user to remove avatar URL
+      db.updateUser(user.id, { avatarUrl: null });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Avatar delete error:', err);
+    res.status(500).json({ error: 'Failed to delete avatar' });
+  }
 });
 
 app.post('/api/profile/password', authenticateToken, async (req, res) => {

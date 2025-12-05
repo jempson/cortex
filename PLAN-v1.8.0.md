@@ -1,9 +1,9 @@
 # Cortex v1.8.0 - Implementation Plan
 
-## 🎯 RELEASE STATUS: PLANNING
+## 🎯 RELEASE STATUS: IN PROGRESS (4/8 Phases Complete)
 
 **Target Scope:** User Profiles, Scale & Organization
-**Branch:** `v1.8.0` (create from master after planning)
+**Branch:** `v1.8.0`
 
 ---
 
@@ -44,100 +44,98 @@ Version 1.8.0 focuses on enhanced user profiles and platform scalability. Users 
 
 ## Implementation Phases
 
-### Phase 1: Profile Images (Avatar Upload)
-**Priority:** High | **Estimate:** 8-10h
+### Phase 1: Profile Images (Avatar Upload) ✅
+**Priority:** High | **Estimate:** 8-10h | **Status:** Complete
 
 Replace 1-2 character avatars with uploadable profile images.
 
 #### 1.1 Backend - File Upload Infrastructure
-- [ ] Create `uploads/avatars/` directory structure
-- [ ] Add multer middleware for file uploads
-- [ ] `POST /api/profile/avatar` - Upload avatar image
+- [x] Create `uploads/avatars/` directory structure
+- [x] Add multer middleware for file uploads
+- [x] `POST /api/profile/avatar` - Upload avatar image
   - Accept: jpg, png, gif, webp
   - Max size: 2MB
   - Resize to 256x256 max
   - Generate unique filename (userId + timestamp)
-- [ ] `DELETE /api/profile/avatar` - Remove avatar (revert to letter)
-- [ ] Serve static files from `/uploads/avatars/`
-- [ ] Add `avatarUrl` field to user schema (nullable)
+- [x] `DELETE /api/profile/avatar` - Remove avatar (revert to letter)
+- [x] Serve static files from `/uploads/avatars/`
+- [x] Add `avatarUrl` field to user schema (nullable)
 
 #### 1.2 Backend - Image Processing
-- [ ] Install `sharp` for image resizing
-- [ ] Auto-resize uploads to 256x256 (preserve aspect ratio)
-- [ ] Generate thumbnail (64x64) for list views
-- [ ] Strip EXIF metadata for privacy
+- [x] Install `sharp` for image resizing
+- [x] Auto-resize uploads to 256x256 (preserve aspect ratio)
+- [x] Convert to webp format for efficiency
+- [x] Strip EXIF metadata for privacy (sharp default behavior)
 
 #### 1.3 Frontend - Avatar Upload UI
-- [ ] Update ProfileSettings with avatar upload section
-- [ ] File picker with drag-and-drop support
-- [ ] Preview before upload
-- [ ] Upload progress indicator
-- [ ] "Remove Image" button to revert to letter avatar
-- [ ] Fallback: Show letter avatar if no image uploaded
+- [x] Update ProfileSettings with avatar upload section
+- [x] File picker button
+- [x] Upload progress indicator
+- [x] "Remove Image" button to revert to letter avatar
+- [x] Fallback: Show letter avatar if no image uploaded
 
 #### 1.4 Frontend - Avatar Display
-- [ ] Update `Avatar` component to handle both image URLs and letters
-- [ ] Lazy loading for avatar images
-- [ ] Placeholder while loading
-- [ ] Graceful fallback on image load error
+- [x] Update `Avatar` component to handle both image URLs and letters
+- [x] Lazy loading for avatar images
+- [x] Graceful fallback on image load error
 
 ---
 
-### Phase 2: About Me / Bio Section
-**Priority:** High | **Estimate:** 4-6h
+### Phase 2: About Me / Bio Section ✅
+**Priority:** High | **Estimate:** 4-6h | **Status:** Complete
 
 Add a bio/about section to user profiles that others can view.
 
 #### 2.1 Backend
-- [ ] Add `bio` field to user schema (max 500 characters)
-- [ ] `PUT /api/profile` - Update to accept `bio` field
-- [ ] `GET /api/users/:id/profile` - Public profile endpoint
+- [x] Add `bio` field to user schema (max 500 characters)
+- [x] `PUT /api/profile` - Update to accept `bio` field
+- [x] `GET /api/users/:id/profile` - Public profile endpoint
   - Returns: displayName, avatar/avatarUrl, bio, handle, createdAt
   - Does NOT return: email, passwordHash, preferences
 
 #### 2.2 Frontend - Edit Bio
-- [ ] Add "About Me" textarea in ProfileSettings
-- [ ] Character counter (0/500)
-- [ ] Save with existing profile save button
+- [x] Add "About Me" textarea in ProfileSettings
+- [x] Character counter (0/500)
+- [x] Save with existing profile save button
 
 #### 2.3 Frontend - View Profile
-- [ ] Create `UserProfileModal` component
-- [ ] Show avatar (large), display name, bio
-- [ ] Clickable avatars/names open profile modal
-- [ ] "Add Contact" / "Block" / "Mute" actions in modal
-- [ ] Close on backdrop click or X button
+- [x] Create `UserProfileModal` component
+- [x] Show avatar (large), display name, bio
+- [x] Clickable avatars/names open profile modal
+- [x] "Add Contact" / "Block" / "Mute" actions in modal
+- [x] Close on backdrop click or X button
 
 ---
 
-### Phase 3: Display Name Only (Hide @handle)
-**Priority:** High | **Estimate:** 2-3h
+### Phase 3: Display Name Only (Hide @handle) ✅
+**Priority:** High | **Estimate:** 2-3h | **Status:** Complete
 
 Simplify UI by showing only display names in most places.
 
 #### 3.1 Identify All Handle Display Locations
-- [ ] Message author display
-- [ ] Participant list
-- [ ] Contact list
-- [ ] Wave creator
-- [ ] Search results
-- [ ] Typing indicators
+- [x] Message author display
+- [x] Participant list
+- [x] Contact list
+- [x] Wave creator
+- [x] Search results
+- [x] Typing indicators
 
 #### 3.2 Update Display Logic
-- [ ] Show only `displayName` by default
-- [ ] Show `@handle` only in:
+- [x] Show only `displayName` by default
+- [x] Show `@handle` only in:
   - Profile settings (your own handle)
   - User profile modal (when viewing someone's profile)
   - @mention autocomplete
-- [ ] Ensure displayName is always set (fallback to handle if empty)
+- [x] Ensure displayName is always set (fallback to handle if empty)
 
 #### 3.3 Hover/Click for Details
-- [ ] Clicking a name opens UserProfileModal (from Phase 2)
-- [ ] Optional: tooltip showing @handle on hover
+- [x] Clicking a name opens UserProfileModal (from Phase 2)
+- [x] Optional: tooltip showing @handle on hover
 
 ---
 
-### Phase 4: Emoji Picker Button Sizing Fix
-**Priority:** Low | **Estimate:** 0.5h
+### Phase 4: Emoji Picker Button Sizing Fix ✅
+**Priority:** Low | **Estimate:** 0.5h | **Status:** Complete
 
 Make emoji picker button consistent with GIF button.
 
@@ -146,9 +144,9 @@ Make emoji picker button consistent with GIF button.
 - GIF button: `GIF` text, monospace font, smaller
 
 #### 4.1 Fix
-- [ ] Change emoji button to text-based: `EMO` or keep emoji but match sizing
-- [ ] Match padding, font-size, and styling to GIF button
-- [ ] Both buttons should be visually consistent
+- [x] Change emoji button to text-based: `EMO` or keep emoji but match sizing
+- [x] Match padding, font-size, and styling to GIF button
+- [x] Both buttons should be visually consistent
 
 ---
 
@@ -334,8 +332,53 @@ npm install multer sharp better-sqlite3
 
 ## Progress Log
 
-### [Date TBD]
+### December 5, 2025
 - Created v1.8.0 implementation plan
+- ✅ Updated package versions to 1.8.0-alpha
+- ✅ **Phase 4**: Fixed emoji picker button sizing (changed to "EMO" text, matched GIF button styling)
+- ✅ **Phase 3**: Display name only - removed @handle from messages, participants, contacts, wave list
+- ✅ **Phase 2**: About Me / Bio section
+  - Backend: `bio` field in user schema, `PUT /api/profile` accepts bio, `GET /api/users/:id/profile`
+  - Frontend: Bio textarea with 500 char limit, `UserProfileModal` component
+  - Clickable names/avatars open profile modal with Add Contact/Block/Mute actions
+- ✅ **Phase 1**: Profile images (avatar upload)
+  - Backend: Installed multer + sharp, `POST /api/profile/avatar`, `DELETE /api/profile/avatar`
+  - Image processing: 256×256 resize, webp conversion, EXIF stripping
+  - Frontend: Avatar component supports imageUrl with lazy loading and error fallback
+  - ProfileSettings: Upload button, remove button, progress indicator
+
+- ✅ **Message Layout Cleanup** (UX improvement)
+  - Consolidated 4-row message footer into 2 rows:
+    - Row 1: Reply | Collapse | ✏️ | ✕ | 😀 | reactions inline
+    - Row 2: ✓N compact read count (expandable)
+  - Edit/Delete buttons shortened to icon-only (✏️, ✕)
+  - Reactions moved inline with action buttons (separated by │)
+  - Read receipts simplified: "✓3" instead of "Seen by 3 people"
+
+- ✅ **Emoji Picker Improvements** (UX polish)
+  - Removed redundant CLOSE button (click EMO button to dismiss)
+  - Fixed centering at all font sizes using fixed-size buttons with flexbox
+  - Changed to 8-column grid on desktop (16 emojis, 2 rows)
+  - Button size: 32×32px desktop, 44×44px mobile
+
+- ✅ **Profile Pictures in Messages**
+  - Server: Added `sender_avatar_url` to message responses
+  - Client: ThreadedMessage passes `imageUrl` to Avatar component
+  - Users with uploaded avatars now show their picture in wave messages
+
+- ✅ **Auth Response Fix** (bug fix)
+  - Added `avatarUrl` and `bio` to login response (`POST /api/auth/login`)
+  - Added `avatarUrl` and `bio` to register response (`POST /api/auth/register`)
+  - Added `avatarUrl` and `bio` to me endpoint (`GET /api/auth/me`)
+  - Added `avatarUrl` to profile update response (`PUT /api/profile`)
+  - **Issue**: Profile image/bio not persisting after logout/login
+  - **Fix**: Auth endpoints now return all user fields consistently
+
+### Remaining
+- Phase 5: SQLite Database Migration
+- Phase 6: Image/File Upload System (for messages)
+- Phase 7: Message Pagination
+- Phase 8: Full-Text Search (FTS)
 
 ---
 

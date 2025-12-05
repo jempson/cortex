@@ -70,6 +70,8 @@ Single-page React app with all components in one file:
 - `id`: Immutable UUID (used in all references)
 - `handle`: Changeable username (admin-approved, 30-day cooldown)
 - `displayName`, `avatar`: Freely changeable
+- `avatarUrl`: Profile image URL (uploaded via `/api/profile/avatar`)
+- `bio`: About me text (max 500 characters)
 - `handleHistory[]`: Audit trail of handle changes
 - `preferences`: User customization settings (theme, fontSize, colorMode)
   - `theme`: 'firefly' (default), 'highContrast', 'light'
@@ -204,17 +206,17 @@ Single-page React app with all components in one file:
 - **OfflineIndicator Component**: Orange banner when offline
 - **iOS Support**: apple-touch-icon, status bar styling
 
-### Read Receipts Display (v1.6.0+)
+### Read Receipts Display (v1.6.0+, updated v1.8.0)
 Visual UI for the per-message read tracking system (builds on v1.4.0 backend).
 
 - **Participant Read Status Bar**: Wave header shows all participants
   - Green ✓ for users who've read latest message
   - Gray ○ for users with unread messages
   - Located below wave title
-- **Per-Message Receipts**: Expandable "Seen by X people" on each message
-  - `<details>` element for expand/collapse
-  - Lists all users who read that message with green badges
-  - Located at bottom of message after reactions
+- **Per-Message Receipts**: Compact "✓N" display (updated v1.8.0)
+  - Shows checkmark and count: `✓3` instead of "Seen by 3 people"
+  - `<details>` element expands to show names with green badges
+  - Located below action buttons row
 - **Mark All Read Button**: One-click to mark all unread as read
   - Only appears when unread messages exist
   - Calls `POST /api/messages/:id/read` for each unread message
@@ -308,6 +310,52 @@ GIPHY API integration for searching and inserting GIFs into messages.
   - Click GIF to insert URL into message (auto-embedded on send)
 - **GIPHY Attribution**: Footer in modal as required by GIPHY terms
 
+### Profile Images (v1.8.0+)
+Uploadable profile pictures with automatic processing.
+
+- **Upload Endpoint**: `POST /api/profile/avatar`
+  - Accepts: jpg, jpeg, png, gif, webp (max 2MB)
+  - Processing: Resize to 256×256, convert to webp, strip EXIF metadata
+  - Storage: `/uploads/avatars/{userId}-{timestamp}.webp`
+- **Delete Endpoint**: `DELETE /api/profile/avatar`
+- **Static Serving**: Files served from `/uploads/avatars/`
+- **User Schema**: `avatarUrl` field stores URL path
+- **Avatar Component**: Supports both `imageUrl` and letter fallback
+  - Lazy loading with `loading="lazy"`
+  - Error handling falls back to letter avatar
+- **Message Display**: Messages include `sender_avatar_url` field
+  - Profile images appear next to messages in waves
+  - ThreadedMessage passes `imageUrl` to Avatar component
+- **Auth Responses**: Login, register, and `/api/auth/me` all return `avatarUrl`
+- **Dependencies**: `multer` (file upload), `sharp` (image processing)
+
+### About Me / Bio (v1.8.0+)
+User bio/about section visible on profiles.
+
+- **User Schema**: `bio` field (max 500 characters, nullable)
+- **Update**: `PUT /api/profile` accepts `bio` field
+- **Public Profile**: `GET /api/users/:id/profile` returns public fields:
+  - `id`, `handle`, `displayName`, `avatar`, `avatarUrl`, `bio`, `createdAt`
+  - Does NOT expose: email, passwordHash, preferences
+- **UI**: Textarea with character counter in Profile Settings
+
+### User Profile Modal (v1.8.0+)
+Modal for viewing other users' public profiles.
+
+- **Component**: `UserProfileModal`
+- **Trigger**: Click on user avatar/name in messages, participants, contacts
+- **Display**: Large avatar, display name, @handle, bio, join date
+- **Actions**: Add Contact, Block, Mute (for non-current user)
+- **Props**: `userId`, `currentUser`, `contacts`, `blockedUsers`, `mutedUsers`, handlers
+
+### Display Name Simplification (v1.8.0+)
+Cleaner UI showing display names instead of @handles.
+
+- **@handle Hidden In**: Message headers, wave list, participant list, contacts, search results
+- **@handle Shown In**: Profile Settings (own handle), User Profile Modal
+- **Implementation**: Removed `@{handle}` lines from various components
+- **Clickable Names**: Names/avatars open UserProfileModal via `onShowProfile` prop
+
 ### Message Threading
 - Messages have `parentId` (null for root messages)
 - Client renders recursively with depth tracking
@@ -333,6 +381,33 @@ GIPHY API integration for searching and inserting GIFs into messages.
   - Converts `username` → `handle`
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
+
+- **v1.8.0 (December 2025)** - User Profiles & UX Polish
+  - **Profile Images**: Upload avatar images (jpg, png, gif, webp up to 2MB)
+    - `POST /api/profile/avatar` with multer + sharp processing
+    - Auto-resize to 256×256, convert to webp
+    - `DELETE /api/profile/avatar` to remove image
+    - Avatar component supports both image URLs and letter fallback
+    - Profile images display in wave messages via `sender_avatar_url`
+  - **About Me / Bio**: 500-character bio field viewable by others
+    - `GET /api/users/:id/profile` public profile endpoint
+    - Bio textarea in Profile Settings
+  - **User Profile Modal**: Click on user names/avatars to view profiles
+    - Shows avatar (large), display name, @handle, bio, join date
+    - Action buttons: Add Contact, Block, Mute
+  - **Display Name Simplification**: @handle hidden in most UI
+    - Display name only shown in messages, participants, contacts
+    - @handle visible in Profile Settings and User Profile Modal
+  - **Message Layout Cleanup**: Consolidated message footer from 4 rows to 2
+    - Row 1: Reply | Collapse | ✏️ | ✕ | 😀 | reactions inline
+    - Row 2: ✓N compact read count (expandable to show names)
+    - Edit/Delete buttons shortened to icons only
+    - Reactions moved inline with action buttons
+  - **Emoji Picker Improvements**:
+    - Fixed centering at all font sizes (fixed 32×32px buttons with flexbox)
+    - Removed redundant CLOSE button (click EMO to dismiss)
+    - 8-column grid on desktop (16 emojis in 2 rows)
+  - **Auth Response Updates**: Login/register/me endpoints now return `avatarUrl` and `bio`
 
 - **v1.7.0 (December 2025)** - Contact & Invitation Approval System + Moderation + GIF Search
   - Contact Request System: Send/accept/decline contact requests

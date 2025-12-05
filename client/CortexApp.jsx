@@ -8,9 +8,10 @@ const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = isProduction ? window.location.hostname : 'localhost';
 const port = isProduction ? '' : ':3001';
 
-const API_URL = isProduction
-  ? `${protocol}//${hostname}/api`
-  : 'http://localhost:3001/api';
+const BASE_URL = isProduction
+  ? `${protocol}//${hostname}`
+  : 'http://localhost:3001';
+const API_URL = `${BASE_URL}/api`;
 const WS_URL = isProduction
   ? `${wsProtocol}//${hostname}/ws`
   : 'ws://localhost:3001';
@@ -92,33 +93,28 @@ const storage = {
 };
 
 // ============ EMOJI PICKER COMPONENT ============
-const EmojiPicker = ({ onSelect, onClose, isMobile }) => {
+const EmojiPicker = ({ onSelect, isMobile }) => {
   const emojis = ['😀', '😂', '😍', '🤔', '👍', '👎', '🎉', '🔥', '💯', '❤️', '😎', '🚀', '✨', '💪', '👏', '🙌'];
   return (
     <div style={{
       position: 'absolute', bottom: '100%', left: 0, marginBottom: '8px',
       background: '#0d150d', border: '1px solid #2a3a2a',
-      padding: isMobile ? '12px' : '8px', display: 'grid',
-      gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(6, 1fr)',
-      gap: isMobile ? '8px' : '4px',
+      padding: isMobile ? '10px' : '6px', display: 'grid',
+      gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(8, 1fr)',
+      gap: isMobile ? '6px' : '2px',
       zIndex: 10,
-      maxWidth: isMobile ? '100%' : '300px',
     }}>
       {emojis.map(emoji => (
         <button key={emoji} onClick={() => onSelect(emoji)} style={{
-          padding: isMobile ? '12px' : '8px',
-          minHeight: isMobile ? '44px' : 'auto',
+          width: isMobile ? '44px' : '32px',
+          height: isMobile ? '44px' : '32px',
+          padding: 0,
           background: 'transparent', border: '1px solid #2a3a2a',
-          cursor: 'pointer', fontSize: isMobile ? '1.5rem' : '1.2rem',
+          cursor: 'pointer', fontSize: isMobile ? '1.3rem' : '1.1rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          lineHeight: 1,
         }}>{emoji}</button>
       ))}
-      <button onClick={onClose} style={{
-        gridColumn: 'span 2', padding: isMobile ? '12px' : '8px',
-        minHeight: isMobile ? '44px' : 'auto',
-        background: 'transparent',
-        border: '1px solid #3a4a3a', color: '#6a7a6a', cursor: 'pointer',
-        fontSize: isMobile ? '0.85rem' : '0.7rem', fontFamily: 'monospace',
-      }}>CLOSE</button>
     </div>
   );
 };
@@ -700,27 +696,43 @@ const GlowText = ({ children, color = '#ffd23f', size = '1rem', weight = 400 }) 
   </span>
 );
 
-const Avatar = ({ letter, color = '#ffd23f', size = 40, status }) => (
-  <div style={{ position: 'relative', flexShrink: 0 }}>
-    <div style={{
-      width: size, height: size,
-      background: `linear-gradient(135deg, ${color}40, ${color}10)`,
-      border: `1px solid ${color}60`, borderRadius: '2px',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontFamily: 'monospace', color, fontSize: size * 0.4,
-    }}>
-      {letter}
-    </div>
-    {status && (
+const Avatar = ({ letter, color = '#ffd23f', size = 40, status, imageUrl }) => {
+  const [imgError, setImgError] = useState(false);
+  const showImage = imageUrl && !imgError;
+
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
       <div style={{
-        position: 'absolute', bottom: -2, right: -2,
-        width: '8px', height: '8px', borderRadius: '50%',
-        background: status === 'online' ? '#0ead69' : status === 'away' ? '#ffd23f' : '#5a6a5a',
-        boxShadow: status === 'online' ? '0 0 6px #0ead69' : 'none',
-      }} />
-    )}
-  </div>
-);
+        width: size, height: size,
+        background: showImage ? 'transparent' : `linear-gradient(135deg, ${color}40, ${color}10)`,
+        border: `1px solid ${color}60`, borderRadius: '2px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'monospace', color, fontSize: size * 0.4,
+        overflow: 'hidden',
+      }}>
+        {showImage ? (
+          <img
+            src={`${BASE_URL}${imageUrl}`}
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={() => setImgError(true)}
+            loading="lazy"
+          />
+        ) : (
+          letter
+        )}
+      </div>
+      {status && (
+        <div style={{
+          position: 'absolute', bottom: -2, right: -2,
+          width: '8px', height: '8px', borderRadius: '50%',
+          background: status === 'online' ? '#0ead69' : status === 'away' ? '#ffd23f' : '#5a6a5a',
+          boxShadow: status === 'online' ? '0 0 6px #0ead69' : 'none',
+        }} />
+      )}
+    </div>
+  );
+};
 
 const PrivacyBadge = ({ level, compact = false }) => {
   const config = PRIVACY_LEVELS[level] || PRIVACY_LEVELS.private;
@@ -946,7 +958,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
               </div>
             </div>
             <div style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.7rem' }}>
-              @{wave.creator_handle || 'unknown'} • {wave.message_count} msgs
+              {wave.creator_name || 'Unknown'} • {wave.message_count} msgs
               {wave.group_name && <span> • {wave.group_name}</span>}
             </div>
           </div>
@@ -957,7 +969,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ THREADED MESSAGE ============
-const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [] }) => {
+const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -1007,12 +1019,16 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-            <Avatar letter={message.sender_avatar || '?'} color={config.color} size={isMobile ? 32 : 32} />
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, cursor: onShowProfile ? 'pointer' : 'default' }}
+            onClick={onShowProfile && message.author_id ? (e) => { e.stopPropagation(); onShowProfile(message.author_id); } : undefined}
+            title={onShowProfile ? 'View profile' : undefined}
+          >
+            <Avatar letter={message.sender_avatar || '?'} color={config.color} size={isMobile ? 32 : 28} imageUrl={message.sender_avatar_url} />
             <div style={{ minWidth: 0 }}>
               <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.sender_name}</div>
               <div style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.65rem', fontFamily: 'monospace' }}>
-                @{message.sender_handle} • {new Date(message.created_at).toLocaleString()}
+                {new Date(message.created_at).toLocaleString()}
               </div>
             </div>
           </div>
@@ -1092,173 +1108,159 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
             dangerouslySetInnerHTML={{ __html: message.content }}
           />
         )}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {/* Actions Row: Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>
           <button onClick={() => onReply(message)} style={{
-            padding: isMobile ? '10px 14px' : '4px 8px',
-            minHeight: isMobile ? '44px' : 'auto',
+            padding: isMobile ? '8px 12px' : '4px 8px',
+            minHeight: isMobile ? '38px' : 'auto',
             background: 'transparent', border: '1px solid #3a4a3a',
-            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
           }}>↵ REPLY</button>
           {hasChildren && (
             <button onClick={() => onToggleCollapse(message.id)} style={{
-              padding: isMobile ? '10px 14px' : '4px 8px',
-              minHeight: isMobile ? '44px' : 'auto',
+              padding: isMobile ? '8px 12px' : '4px 8px',
+              minHeight: isMobile ? '38px' : 'auto',
               background: 'transparent', border: '1px solid #3a4a3a',
-              color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+              color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }}>{isCollapsed ? `▶ ${message.children.length}` : '▼'}</button>
           )}
           {canDelete && !isEditing && (
             <>
               <button onClick={() => onEdit(message)} style={{
-                padding: isMobile ? '10px 14px' : '4px 8px',
-                minHeight: isMobile ? '44px' : 'auto',
+                padding: isMobile ? '8px 12px' : '4px 8px',
+                minHeight: isMobile ? '38px' : 'auto',
                 background: 'transparent', border: '1px solid #ffd23f30',
-                color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-              }}>✏️ EDIT</button>
+                color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+              }}>✏️</button>
               <button onClick={() => onDelete(message)} style={{
-                padding: isMobile ? '10px 14px' : '4px 8px',
-                minHeight: isMobile ? '44px' : 'auto',
+                padding: isMobile ? '8px 12px' : '4px 8px',
+                minHeight: isMobile ? '38px' : 'auto',
                 background: 'transparent', border: '1px solid #ff6b3530',
-                color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-              }}>✕ DELETE</button>
+                color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+              }}>✕</button>
             </>
           )}
-        </div>
 
-        {/* Reactions Display - hidden for deleted messages */}
-        {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px', marginBottom: '8px' }}>
-            {Object.entries(message.reactions).map(([emoji, userIds]) => {
+          {/* Emoji picker button - hidden for deleted messages */}
+          {!isDeleted && (
+            <>
+              <button
+                onClick={() => setShowReactionPicker(!showReactionPicker)}
+                style={{
+                  padding: isMobile ? '8px 10px' : '4px 8px',
+                  minHeight: isMobile ? '38px' : 'auto',
+                  background: showReactionPicker ? '#3a4a3a' : 'transparent',
+                  border: '1px solid #3a4a3a',
+                  color: '#6a7a6a',
+                  cursor: 'pointer',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
+                }}
+              >
+                {showReactionPicker ? '✕' : '😀'}
+              </button>
+
+              {showReactionPicker && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: isMobile ? '0' : 'auto',
+                  right: isMobile ? 'auto' : '0',
+                  marginTop: '4px',
+                  background: '#0d150d',
+                  border: '1px solid #2a3a2a',
+                  padding: '8px',
+                  display: 'flex',
+                  gap: '4px',
+                  zIndex: 10,
+                  flexWrap: 'wrap',
+                  maxWidth: isMobile ? '200px' : '250px',
+                }}>
+                  {quickReactions.map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={() => {
+                        onReact(message.id, emoji);
+                        setShowReactionPicker(false);
+                      }}
+                      style={{
+                        padding: isMobile ? '8px' : '6px',
+                        minHeight: isMobile ? '38px' : 'auto',
+                        minWidth: isMobile ? '38px' : 'auto',
+                        background: 'transparent',
+                        border: '1px solid #2a3a2a',
+                        cursor: 'pointer',
+                        fontSize: isMobile ? '1.3rem' : '1.1rem',
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Separator before reactions */}
+          {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
+            <span style={{ color: '#2a3a2a', margin: '0 2px' }}>│</span>
+          )}
+
+          {/* Inline Reactions Display */}
+          {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
+            Object.entries(message.reactions).map(([emoji, userIds]) => {
               const hasReacted = userIds.includes(currentUserId);
               return (
                 <button
                   key={emoji}
                   onClick={() => onReact(message.id, emoji)}
                   style={{
-                    padding: isMobile ? '6px 10px' : '4px 8px',
+                    padding: isMobile ? '6px 8px' : '3px 6px',
                     minHeight: isMobile ? '38px' : 'auto',
                     background: hasReacted ? '#ffd23f20' : 'transparent',
                     border: `1px solid ${hasReacted ? '#ffd23f' : '#3a4a3a'}`,
                     color: hasReacted ? '#ffd23f' : '#6a7a6a',
                     cursor: 'pointer',
-                    fontSize: isMobile ? '1.1rem' : '1rem',
+                    fontSize: isMobile ? '0.95rem' : '0.85rem',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px',
+                    gap: '3px',
                   }}
                 >
                   <span>{emoji}</span>
-                  <span style={{ fontSize: isMobile ? '0.8rem' : '0.7rem', fontFamily: 'monospace' }}>
+                  <span style={{ fontSize: isMobile ? '0.7rem' : '0.65rem', fontFamily: 'monospace' }}>
                     {userIds.length}
                   </span>
                 </button>
               );
-            })}
-          </div>
-        )}
-
-        {/* Quick React Buttons - hidden for deleted messages */}
-        {!isDeleted && (
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px', position: 'relative' }}>
-          <button
-            onClick={() => setShowReactionPicker(!showReactionPicker)}
-            style={{
-              padding: isMobile ? '6px 10px' : '4px 8px',
-              minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent',
-              border: '1px solid #3a4a3a',
-              color: '#6a7a6a',
-              cursor: 'pointer',
-              fontSize: isMobile ? '1rem' : '0.9rem',
-            }}
-          >
-            {showReactionPicker ? '✕' : '😀+'}
-          </button>
-
-          {showReactionPicker && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              marginTop: '4px',
-              background: '#0d150d',
-              border: '1px solid #2a3a2a',
-              padding: '8px',
-              display: 'flex',
-              gap: '4px',
-              zIndex: 10,
-              flexWrap: 'wrap',
-              maxWidth: isMobile ? '200px' : '250px',
-            }}>
-              {quickReactions.map(emoji => (
-                <button
-                  key={emoji}
-                  onClick={() => {
-                    onReact(message.id, emoji);
-                    setShowReactionPicker(false);
-                  }}
-                  style={{
-                    padding: isMobile ? '8px' : '6px',
-                    minHeight: isMobile ? '38px' : 'auto',
-                    minWidth: isMobile ? '38px' : 'auto',
-                    background: 'transparent',
-                    border: '1px solid #2a3a2a',
-                    cursor: 'pointer',
-                    fontSize: isMobile ? '1.3rem' : '1.1rem',
-                  }}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            })
           )}
         </div>
-        )}
 
-        {/* Read Receipts - hidden for deleted messages */}
+        {/* Read Receipts - compact display */}
         {!isDeleted && message.readBy && message.readBy.length > 0 && (
-          <details style={{
-            marginTop: '8px',
-            paddingTop: '8px',
-            borderTop: '1px solid #2a3a2a',
-            cursor: 'pointer'
-          }}>
+          <details style={{ marginTop: '6px', cursor: 'pointer' }}>
             <summary style={{
-              color: '#6a7a6a',
-              fontSize: isMobile ? '0.7rem' : '0.65rem',
+              color: '#5a6a5a',
+              fontSize: isMobile ? '0.65rem' : '0.6rem',
               userSelect: 'none',
               fontFamily: 'monospace',
               listStyle: 'none',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '4px'
+              gap: '3px'
             }}>
               <span style={{ color: '#0ead69' }}>✓</span>
-              Seen by {message.readBy.length} {message.readBy.length === 1 ? 'person' : 'people'}
+              {message.readBy.length}
             </summary>
-            <div style={{
-              marginTop: '6px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '4px'
-            }}>
+            <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
               {message.readBy.map(userId => {
                 const participant = participants.find(p => p.id === userId);
-                const displayName = participant ? participant.name : userId;
                 return (
-                  <span
-                    key={userId}
-                    title={participant?.handle || ''}
-                    style={{
-                      padding: '2px 6px',
-                      background: '#0ead6920',
-                      border: '1px solid #0ead69',
-                      color: '#0ead69',
-                      fontSize: isMobile ? '0.65rem' : '0.6rem',
-                      fontFamily: 'monospace'
-                    }}
-                  >
-                    {displayName}
+                  <span key={userId} title={participant?.handle || ''} style={{
+                    padding: '1px 4px', background: '#0ead6915', border: '1px solid #0ead6940',
+                    color: '#0ead69', fontSize: isMobile ? '0.6rem' : '0.55rem', fontFamily: 'monospace'
+                  }}>
+                    {participant ? participant.name : userId}
                   </span>
                 );
               })}
@@ -1274,7 +1276,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
               currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
               onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
-              participants={participants} />
+              participants={participants} onShowProfile={onShowProfile} />
           ))}
         </div>
       )}
@@ -1381,6 +1383,141 @@ const DeleteConfirmModal = ({ isOpen, onClose, waveTitle, onConfirm, isMobile })
             fontWeight: 600,
           }}>DELETE WAVE</button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ USER PROFILE MODAL ============
+const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, showToast, contacts, blockedUsers, mutedUsers, onAddContact, onBlock, onMute, isMobile }) => {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && userId) {
+      setLoading(true);
+      fetchAPI(`/users/${userId}/profile`)
+        .then(data => setProfile(data))
+        .catch(err => {
+          console.error('Failed to load profile:', err);
+          showToast('Failed to load profile', 'error');
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [isOpen, userId, fetchAPI, showToast]);
+
+  if (!isOpen) return null;
+
+  const isCurrentUser = userId === currentUser?.id;
+  const isContact = contacts?.some(c => c.id === userId);
+  const isBlocked = blockedUsers?.some(u => u.blockedUserId === userId);
+  const isMuted = mutedUsers?.some(u => u.mutedUserId === userId);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'Unknown';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
+    }} onClick={onClose}>
+      <div style={{
+        width: '100%', maxWidth: '400px',
+        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+        border: '1px solid #2a3a2a', padding: isMobile ? '20px' : '24px',
+      }} onClick={(e) => e.stopPropagation()}>
+        {loading ? (
+          <div style={{ color: '#5a6a5a', textAlign: 'center', padding: '40px' }}>Loading...</div>
+        ) : profile ? (
+          <>
+            {/* Header with close button */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <GlowText color="#ffd23f" size={isMobile ? '1rem' : '1.1rem'}>User Profile</GlowText>
+              <button onClick={onClose} style={{
+                background: 'transparent', border: 'none', color: '#5a6a5a',
+                cursor: 'pointer', fontSize: '1.2rem', padding: '4px',
+              }}>✕</button>
+            </div>
+
+            {/* Avatar and basic info */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+              <Avatar letter={profile.avatar || profile.displayName?.[0] || '?'} color="#ffd23f" size={80} imageUrl={profile.avatarUrl} />
+              <div>
+                <div style={{ color: '#c5d5c5', fontSize: '1.2rem', fontWeight: 600 }}>{profile.displayName}</div>
+                <div style={{ color: '#5a6a5a', fontSize: '0.85rem' }}>@{profile.handle}</div>
+                <div style={{ color: '#4a5a4a', fontSize: '0.75rem', marginTop: '4px' }}>
+                  Joined {formatDate(profile.createdAt)}
+                </div>
+              </div>
+            </div>
+
+            {/* Bio section */}
+            {profile.bio && (
+              <div style={{
+                marginBottom: '20px', padding: '16px',
+                background: '#0a100a', border: '1px solid #1a2a1a',
+              }}>
+                <div style={{ color: '#6a7a6a', fontSize: '0.7rem', marginBottom: '8px' }}>ABOUT</div>
+                <div style={{ color: '#a5b5a5', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                  {profile.bio}
+                </div>
+              </div>
+            )}
+
+            {/* Action buttons (not shown for current user) */}
+            {!isCurrentUser && (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {!isContact && !isBlocked && onAddContact && (
+                  <button onClick={() => { onAddContact(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: '#0ead6920', border: '1px solid #0ead69',
+                    color: '#0ead69', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>+ ADD CONTACT</button>
+                )}
+                {isContact && (
+                  <div style={{ color: '#0ead69', fontSize: '0.8rem', padding: '8px 14px', background: '#0ead6910', border: '1px solid #0ead6940' }}>
+                    ✓ Contact
+                  </div>
+                )}
+                {!isBlocked && onBlock && (
+                  <button onClick={() => { onBlock(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'transparent', border: '1px solid #ff6b35',
+                    color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>BLOCK</button>
+                )}
+                {isBlocked && (
+                  <div style={{ color: '#ff6b35', fontSize: '0.8rem', padding: '8px 14px', background: '#ff6b3510', border: '1px solid #ff6b3540' }}>
+                    Blocked
+                  </div>
+                )}
+                {!isMuted && !isBlocked && onMute && (
+                  <button onClick={() => { onMute(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'transparent', border: '1px solid #ffd23f',
+                    color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>MUTE</button>
+                )}
+                {isMuted && (
+                  <div style={{ color: '#ffd23f', fontSize: '0.8rem', padding: '8px 14px', background: '#ffd23f10', border: '1px solid #ffd23f40' }}>
+                    Muted
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ color: '#ff6b35', textAlign: 'center', padding: '40px' }}>Profile not found</div>
+        )}
       </div>
     </div>
   );
@@ -1634,7 +1771,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -2212,7 +2349,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 }}
               >
                 {/* Participant Info */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0, cursor: onShowProfile ? 'pointer' : 'default' }}
+                  onClick={onShowProfile ? () => onShowProfile(p.id) : undefined}
+                  title={onShowProfile ? 'View profile' : undefined}
+                >
                   <Avatar letter={p.avatar || p.name?.[0] || '?'} color={isCurrentUser ? '#ffd23f' : '#3bceac'} size={isMobile ? 32 : 28} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{
@@ -2227,7 +2368,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                       {userBlocked && <span style={{ color: '#ff6b35', marginLeft: '4px', fontSize: '0.65rem' }}>⊘ BLOCKED</span>}
                       {userMuted && !userBlocked && <span style={{ color: '#6a7a6a', marginLeft: '4px', fontSize: '0.65rem' }}>🔇 MUTED</span>}
                     </div>
-                    <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{p.handle}</div>
                   </div>
                 </div>
 
@@ -2386,7 +2526,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={(id) => setCollapsed(p => ({ ...p, [id]: !p[id] }))} isMobile={isMobile}
-            onReact={handleReaction} onMessageClick={handleMessageClick} participants={waveData.participants || []} />
+            onReact={handleReaction} onMessageClick={handleMessageClick} participants={waveData.participants || []}
+            onShowProfile={onShowProfile} />
         ))}
       </div>
 
@@ -2470,18 +2611,21 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               border: `1px solid ${showEmojiPicker ? '#ffd23f' : '#2a3a2a'}`,
               color: '#ffd23f',
               cursor: 'pointer',
-              fontSize: isMobile ? '1.1rem' : '1.2rem',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.7rem' : '0.65rem',
+              fontWeight: 700,
             }}
+            title="Insert Emoji"
           >
-            😀
+            EMO
           </button>
           <button
             onClick={() => setShowGifSearch(true)}
             style={{
               padding: isMobile ? '8px 10px' : '10px 12px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: 'transparent',
-              border: '1px solid #2a3a2a',
+              background: showGifSearch ? '#3bceac20' : 'transparent',
+              border: `1px solid ${showGifSearch ? '#3bceac' : '#2a3a2a'}`,
               color: '#3bceac',
               cursor: 'pointer',
               fontFamily: 'monospace',
@@ -2514,7 +2658,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 setNewMessage(prev => prev + emoji);
                 setShowEmojiPicker(false);
               }}
-              onClose={() => setShowEmojiPicker(false)}
               isMobile={isMobile}
             />
           )}
@@ -2615,7 +2758,6 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
               <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {request.from_user?.displayName || 'Unknown'}
               </div>
-              <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{request.from_user?.handle}</div>
               {request.message && (
                 <div style={{ color: '#7a8a7a', fontSize: '0.8rem', marginTop: '4px', fontStyle: 'italic' }}>
                   "{request.message}"
@@ -2710,7 +2852,6 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
                   <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {request.to_user?.displayName || 'Unknown'}
                   </div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{request.to_user?.handle}</div>
                 </div>
               </div>
               <button
@@ -2784,7 +2925,6 @@ const SendContactRequestModal = ({ isOpen, onClose, toUser, fetchAPI, showToast,
           <Avatar letter={toUser.avatar || toUser.displayName?.[0] || '?'} color="#3bceac" size={44} />
           <div>
             <div style={{ color: '#c5d5c5' }}>{toUser.displayName}</div>
-            <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{toUser.handle}</div>
           </div>
         </div>
 
@@ -3044,7 +3184,6 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
                   <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {contact.name}
                   </div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>@{contact.handle}</div>
                 </div>
               </div>
             );
@@ -3197,7 +3336,6 @@ const ContactsView = ({
                   <Avatar letter={user.avatar || user.displayName[0]} color="#ffd23f" size={isMobile ? 40 : 36} status={user.status} />
                   <div>
                     <div style={{ color: '#c5d5c5' }}>{user.displayName}</div>
-                    <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{user.handle}</div>
                   </div>
                 </div>
                 {user.isContact ? (
@@ -3241,7 +3379,6 @@ const ContactsView = ({
                   <Avatar letter={contact.avatar || contact.name[0]} color="#ffd23f" size={44} status={contact.status} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</div>
-                    <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{contact.handle}</div>
                   </div>
                 </div>
                 <button onClick={() => handleRemoveContact(contact.id)} style={{
@@ -3526,7 +3663,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
                     <Avatar letter={member.avatar || member.name[0]} color={member.role === 'admin' ? '#ffd23f' : '#6a7a6a'} size={36} status={member.status} />
                     <div>
                       <div style={{ color: '#c5d5c5' }}>{member.name}</div>
-                      <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>@{member.handle} • {member.role}</div>
+                      <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>{member.role}</div>
                     </div>
                   </div>
                   {groupDetails.isAdmin && (
@@ -3727,6 +3864,8 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
 const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || null);
+  const [bio, setBio] = useState(user?.bio || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newHandle, setNewHandle] = useState('');
@@ -3734,6 +3873,8 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
   const [showBlockedMuted, setShowBlockedMuted] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [mutedUsers, setMutedUsers] = useState([]);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef(null);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
   // Load blocked/muted users when section is expanded
@@ -3773,11 +3914,76 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
 
   const handleSaveProfile = async () => {
     try {
-      const updated = await fetchAPI('/profile', { method: 'PUT', body: { displayName, avatar } });
+      const updated = await fetchAPI('/profile', { method: 'PUT', body: { displayName, avatar, bio } });
       showToast('Profile updated', 'success');
       onUserUpdate?.(updated);
     } catch (err) {
       showToast(err.message || 'Failed to update profile', 'error');
+    }
+  };
+
+  const handleAvatarUpload = async (file) => {
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      showToast('Invalid file type. Allowed: jpg, png, gif, webp', 'error');
+      return;
+    }
+
+    // Validate file size (2MB max)
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('File too large. Maximum size is 2MB', 'error');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      const response = await fetch(`${API_URL}/profile/avatar`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('cortex_token')}`,
+        },
+        body: formData,
+      });
+
+      // Try to parse as JSON, handle non-JSON responses gracefully
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(text || `Server error (${response.status})`);
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      setAvatarUrl(data.avatarUrl);
+      onUserUpdate?.({ ...user, avatarUrl: data.avatarUrl });
+      showToast('Profile image uploaded', 'success');
+    } catch (err) {
+      console.error('Avatar upload error:', err);
+      showToast(err.message || 'Failed to upload image', 'error');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    try {
+      await fetchAPI('/profile/avatar', { method: 'DELETE' });
+      setAvatarUrl(null);
+      onUserUpdate?.({ ...user, avatarUrl: null });
+      showToast('Profile image removed', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to remove image', 'error');
     }
   };
 
@@ -3828,12 +4034,62 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
       {/* Profile Info */}
       <div style={{ marginTop: '24px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
         <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '16px' }}>PROFILE</div>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <Avatar letter={avatar || displayName?.[0] || '?'} color="#ffd23f" size={60} />
+          <Avatar letter={avatar || displayName?.[0] || '?'} color="#ffd23f" size={60} imageUrl={avatarUrl} />
           <div>
             <div style={{ color: '#c5d5c5', fontSize: '1.1rem' }}>{displayName || user?.displayName}</div>
             <div style={{ color: '#5a6a5a', fontSize: '0.8rem' }}>@{user?.handle}</div>
+          </div>
+        </div>
+
+        {/* Profile Image Upload */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>PROFILE IMAGE</label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+              style={{ display: 'none' }}
+              onChange={(e) => handleAvatarUpload(e.target.files[0])}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingAvatar}
+              style={{
+                padding: isMobile ? '10px 16px' : '8px 14px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: '#0ead6920',
+                border: '1px solid #0ead69',
+                color: '#0ead69',
+                cursor: uploadingAvatar ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.8rem',
+              }}
+            >
+              {uploadingAvatar ? 'UPLOADING...' : 'UPLOAD IMAGE'}
+            </button>
+            {avatarUrl && (
+              <button
+                onClick={handleRemoveAvatar}
+                style={{
+                  padding: isMobile ? '10px 16px' : '8px 14px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: 'transparent',
+                  border: '1px solid #ff6b35',
+                  color: '#ff6b35',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.85rem' : '0.8rem',
+                }}
+              >
+                REMOVE IMAGE
+              </button>
+            )}
+          </div>
+          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '4px' }}>
+            Max 2MB. Formats: jpg, png, gif, webp. Image will be resized to 256×256.
           </div>
         </div>
 
@@ -3843,8 +4099,29 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>AVATAR (1-2 characters)</label>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>FALLBACK AVATAR (1-2 characters)</label>
           <input type="text" value={avatar} onChange={(e) => setAvatar(e.target.value.slice(0, 2))} maxLength={2} style={inputStyle} />
+          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '4px' }}>
+            Shown when no profile image is set or if it fails to load.
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
+            BIO <span style={{ color: '#5a6a5a' }}>({bio.length}/500)</span>
+          </label>
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value.slice(0, 500))}
+            maxLength={500}
+            rows={4}
+            placeholder="Tell others about yourself..."
+            style={{
+              ...inputStyle,
+              minHeight: '80px',
+              resize: 'vertical',
+            }}
+          />
         </div>
 
         <button onClick={handleSaveProfile} style={{
@@ -4010,7 +4287,6 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                         <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="#ff6b35" size={28} />
                         <div>
                           <div style={{ color: '#c5d5c5', fontSize: '0.8rem' }}>{u.displayName}</div>
-                          <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{u.handle}</div>
                         </div>
                       </div>
                       <button
@@ -4056,7 +4332,6 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                         <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="#6a7a6a" size={28} />
                         <div>
                           <div style={{ color: '#8a9a8a', fontSize: '0.8rem' }}>{u.displayName}</div>
-                          <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{u.handle}</div>
                         </div>
                       </div>
                       <button
@@ -4296,6 +4571,7 @@ function MainApp() {
   const [groupInvitations, setGroupInvitations] = useState([]); // Received group invitations
   const [blockedUsers, setBlockedUsers] = useState([]); // Users blocked by current user
   const [mutedUsers, setMutedUsers] = useState([]); // Users muted by current user
+  const [profileUserId, setProfileUserId] = useState(null); // User ID for profile modal
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -4682,7 +4958,6 @@ function MainApp() {
           {!isMobile && (
             <div style={{ textAlign: 'right' }}>
               <div style={{ color: '#ffd23f', fontSize: '0.8rem' }}>{user?.displayName}</div>
-              <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{user?.handle}</div>
             </div>
           )}
         </div>
@@ -4717,7 +4992,8 @@ function MainApp() {
                   onUnblockUser={handleUnblockUser}
                   onMuteUser={handleMuteUser}
                   onUnmuteUser={handleUnmuteUser}
-                  onBlockedMutedChange={loadBlockedMutedUsers} />
+                  onBlockedMutedChange={loadBlockedMutedUsers}
+                  onShowProfile={setProfileUserId} />
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
                   <div style={{ textAlign: 'center' }}>
@@ -4780,6 +5056,38 @@ function MainApp() {
           isMobile={isMobile}
         />
       )}
+
+      <UserProfileModal
+        isOpen={!!profileUserId}
+        onClose={() => setProfileUserId(null)}
+        userId={profileUserId}
+        currentUser={user}
+        fetchAPI={fetchAPI}
+        showToast={showToastMsg}
+        contacts={contacts}
+        blockedUsers={blockedUsers}
+        mutedUsers={mutedUsers}
+        onAddContact={async (userId, name) => {
+          try {
+            await fetchAPI('/contacts/request', { method: 'POST', body: { toUserId: userId } });
+            showToastMsg(`Contact request sent to ${name}`, 'success');
+            loadContactRequests();
+          } catch (e) {
+            showToastMsg(e.message || 'Failed to send contact request', 'error');
+          }
+        }}
+        onBlock={async (userId, name) => {
+          if (await handleBlockUser(userId)) {
+            showToastMsg(`Blocked ${name}`, 'success');
+          }
+        }}
+        onMute={async (userId, name) => {
+          if (await handleMuteUser(userId)) {
+            showToastMsg(`Muted ${name}`, 'success');
+          }
+        }}
+        isMobile={isMobile}
+      />
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
