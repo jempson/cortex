@@ -1,8 +1,31 @@
-# CORTEX - Secure Wave Communications v1.5.0
+# CORTEX - Secure Wave Communications v1.6.0
 
 A privacy-first, federated communication platform inspired by Google Wave with a Firefly aesthetic.
 
-## What's New in v1.5.0
+## What's New in v1.6.0
+
+### Progressive Web App (PWA) Support
+Cortex is now a fully installable Progressive Web App that works on Android and iOS devices.
+
+- **Installable App** - Add Cortex to your home screen on Android (Chrome) and iOS (Safari)
+- **Offline Support** - Service worker caches static assets for offline shell access
+- **Install Prompt** - Custom "Install Cortex" banner appears after 2nd visit
+- **Offline Indicator** - Orange banner shows when network connection is lost
+- **App Icons** - 13 custom icons for all device sizes including maskable icons for Android
+- **iOS Optimized** - Full iOS PWA support with apple-touch-icon and status bar styling
+
+#### PWA Technical Details
+- **Service Worker** - Stale-while-revalidate caching strategy for static assets
+- **Web App Manifest** - Complete manifest with shortcuts, theme colors, and display mode
+- **Auto-Updates** - Service worker checks for updates hourly
+- **Network Detection** - Real-time online/offline status monitoring
+
+#### How to Install
+- **Android**: Open in Chrome → Menu → "Add to Home Screen" or use the install prompt
+- **iOS**: Open in Safari → Share → "Add to Home Screen"
+- **Desktop**: Chrome/Edge address bar → Install icon
+
+## What Was New in v1.5.0
 
 ### ⌨️ Typing Indicators
 - **Real-Time Awareness**: See when others are typing in a wave
@@ -140,7 +163,7 @@ A privacy-first, federated communication platform inspired by Google Wave with a
 ## Project Structure
 
 ```
-cortex-v1.3/
+cortex/
 ├── server/
 │   ├── server.js           # Express + WebSocket server
 │   ├── package.json        # Server dependencies
@@ -153,9 +176,13 @@ cortex-v1.3/
 ├── client/
 │   ├── CortexApp.jsx       # Main React application
 │   ├── main.jsx            # Entry point
-│   ├── index.html          # HTML template
+│   ├── index.html          # HTML template with PWA meta tags
 │   ├── vite.config.js      # Vite configuration
-│   └── package.json        # Client dependencies
+│   ├── package.json        # Client dependencies
+│   └── public/
+│       ├── manifest.json   # PWA manifest
+│       ├── sw.js           # Service worker
+│       └── icons/          # PWA icons (13 files)
 └── README.md
 ```
 
@@ -364,31 +391,30 @@ server {
 
 ## Roadmap
 
-### v1.3.3 - Theme System Polish
-- [ ] Full CSS variable refactoring for complete theme support
-- [ ] Additional accessibility themes (deuteranopia, protanopia)
-- [ ] Theme preview in preferences
-- [ ] Custom theme creation
+### Completed in v1.6.0
+- [x] Progressive Web App (PWA) support
+- [x] Service worker with offline caching
+- [x] App icons and manifest
+- [x] Install prompt and offline indicator
 
-### v1.4 - Wave Management
-- [x] Wave deletion (completed in v1.3.2)
-- [ ] Wave sharing with privacy escalation
-- [ ] Collapsible sidebar sections
-- [ ] Starred/pinned waves
-- [ ] Message reactions (emoji reactions)
+### v1.7 - Moderation & API
+- [ ] User blocking and muting
+- [ ] Content reporting system
+- [ ] Admin reports dashboard
+- [ ] Public REST API documentation
+- [ ] GIF search integration (Giphy/Tenor)
 
-### v1.5 - Scale & Organization
-- [ ] Wave search and filtering
-- [ ] Smart groups (unread, active)
+### v1.8 - Scale & Organization
 - [ ] SQLite migration
-- [ ] Image upload (not just URL embedding)
+- [ ] Image/file upload (not just URL embedding)
 - [ ] Message pagination/virtual scrolling
+- [ ] Full-text search with database FTS
 
-### v2.0 - Federation & Alerts
+### v2.0 - Federation
+- [ ] Cross-server communication protocol
+- [ ] Server discovery and trust system
+- [ ] End-to-end encryption for federated messages
 - [ ] Federated alert system
-- [ ] Ticker bar for notifications
-- [ ] Alert promotion (admin feature)
-- [ ] Cross-server communication
 
 ## License
 

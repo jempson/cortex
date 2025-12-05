@@ -275,15 +275,22 @@ Advanced mobile features for better app-like experience.
 - Swipe gestures for navigation (swipe right to go back)
 - Pull-to-refresh on wave list
 - Bottom navigation bar for primary actions
-- Progressive Web App (PWA) support with offline mode
+- ~~Progressive Web App (PWA) support with offline mode~~ ✅ **COMPLETED v1.6.0**
 - Push notifications (requires service worker - see Feature #5 Phase 2)
-- Install prompt for "Add to Home Screen"
+- ~~Install prompt for "Add to Home Screen"~~ ✅ **COMPLETED v1.6.0**
 
 **Implementation:**
-- Add service worker for PWA
+- ~~Add service worker for PWA~~ ✅ **COMPLETED v1.6.0**
 - Implement touch gesture handlers
-- Create manifest.json for PWA
+- ~~Create manifest.json for PWA~~ ✅ **COMPLETED v1.6.0**
 - Set up Web Push API for notifications (see Feature #5)
+
+**Completed in v1.6.0:**
+- Service worker with offline caching
+- Web app manifest with icons
+- Custom install prompt component
+- Offline indicator component
+- iOS PWA support
 
 ---
 

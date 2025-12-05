@@ -183,6 +183,27 @@ Single-page React app with all components in one file:
 - **Component**: `HandleRequestsList` component
 - **Real-time Updates**: WebSocket notification on review
 
+### Progressive Web App (v1.6.0+)
+- **Installable**: Add to home screen on Android (Chrome) and iOS (Safari)
+- **Service Worker**: `client/public/sw.js` handles caching and offline support
+  - Stale-while-revalidate for static assets
+  - Network-only for API calls (real-time data)
+  - Auto-updates with hourly checks
+- **Manifest**: `client/public/manifest.json` defines app metadata
+  - Theme color: #0ead69 (Cortex green)
+  - Background: #050805 (dark green)
+  - Display: standalone (full-screen app)
+- **Icons**: 13 PNG icons in `client/public/icons/`
+  - Sizes: 16, 32, 72, 96, 128, 144, 152, 180, 192, 384, 512
+  - Maskable icons for Android adaptive icons
+  - Generator script: `generate-icons.cjs`
+- **InstallPrompt Component**: Custom install banner
+  - Appears after 2nd visit or 30 seconds
+  - 7-day cooldown after dismissal
+  - Detects standalone mode
+- **OfflineIndicator Component**: Orange banner when offline
+- **iOS Support**: apple-touch-icon, status bar styling
+
 ### Message Threading
 - Messages have `parentId` (null for root messages)
 - Client renders recursively with depth tracking
@@ -208,6 +229,20 @@ Single-page React app with all components in one file:
   - Converts `username` → `handle`
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
+
+- **v1.6.0 (December 2025)** - Progressive Web App (PWA)
+  - Full PWA support with service worker and manifest
+  - Installable on Android, iOS, and desktop
+  - Offline caching for static assets
+  - Custom install prompt and offline indicator
+  - 13 app icons including maskable icons
+
+- **v1.5.0 (December 2025)** - Real-Time Features
+  - Typing indicators with throttled WebSocket events
+  - Message reactions with emoji picker
+  - Full-text message search
+  - Desktop notifications (browser Notification API)
+  - WebSocket stability improvements
 
 - **v1.4.0 (December 2025)** - Per-Message Read Tracking & Scroll Preservation
   - Per-message read tracking with click-to-read UI

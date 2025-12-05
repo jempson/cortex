@@ -5,6 +5,108 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2025-12-05
+
+### Added
+
+#### Progressive Web App (PWA) Support
+Cortex is now a fully installable Progressive Web App that works on Android and iOS devices.
+
+- **Web App Manifest** (`client/public/manifest.json`)
+  - App name, description, and theme colors
+  - Display mode: standalone (full-screen app experience)
+  - Orientation: portrait-primary
+  - App shortcuts for quick actions
+  - Categories: communication, social
+
+- **Service Worker** (`client/public/sw.js`)
+  - Stale-while-revalidate caching strategy for static assets
+  - Network-first for API calls (real-time data)
+  - Automatic cache cleanup on version updates
+  - Push notification handlers (ready for future use)
+  - Notification click handling with deep linking
+
+- **App Icons** (`client/public/icons/`)
+  - 13 PNG icons for all device sizes (16px to 512px)
+  - Maskable icons for Android adaptive icons (192px, 512px)
+  - Favicon support (16px, 32px)
+  - Icon generator script (`generate-icons.cjs`) for regeneration
+
+- **InstallPrompt Component**
+  - Custom "Install Cortex" banner
+  - Appears after 2nd visit or 30 seconds
+  - 7-day dismissal cooldown
+  - Detects if already installed (standalone mode)
+  - Handles `beforeinstallprompt` event
+
+- **OfflineIndicator Component**
+  - Orange banner when network connection lost
+  - Real-time online/offline detection
+  - Auto-hides when connection restored
+
+- **iOS PWA Support**
+  - `apple-mobile-web-app-capable` meta tag
+  - `apple-mobile-web-app-status-bar-style` (black-translucent)
+  - `apple-touch-icon` links for home screen icons
+
+- **Service Worker Registration**
+  - Automatic registration on page load
+  - Hourly update checks
+  - Update notification handling
+
+### Changed
+
+- **index.html** - Added PWA meta tags, manifest link, iOS support tags, favicon links
+- **CortexApp.jsx** - Added service worker registration, InstallPrompt, OfflineIndicator components
+- **Version** - Updated to 1.6.0 across all files
+
+### Technical Details
+
+#### Bundle Size
+- **Gzipped**: 65.03 KB (slight increase from 63.57 KB due to PWA components)
+- **Uncompressed**: 226.20 KB
+- **Build Time**: ~646ms
+
+#### PWA Compliance
+- Passes Lighthouse PWA audit requirements
+- Installable on Android Chrome, iOS Safari, Desktop Chrome/Edge
+- Offline shell accessible when network unavailable
+- Service worker registered and controlling page
+
+#### Files Added
+```
+client/public/
+├── manifest.json           # PWA manifest
+├── sw.js                   # Service worker
+└── icons/
+    ├── favicon-16x16.png
+    ├── favicon-32x32.png
+    ├── icon-72x72.png
+    ├── icon-96x96.png
+    ├── icon-128x128.png
+    ├── icon-144x144.png
+    ├── icon-152x152.png
+    ├── icon-180x180.png
+    ├── icon-192x192.png
+    ├── icon-384x384.png
+    ├── icon-512x512.png
+    ├── icon-maskable-192x192.png
+    ├── icon-maskable-512x512.png
+    └── generate-icons.cjs
+```
+
+### Migration Notes
+- **No Migration Required** - Fully backward compatible
+- **Service Worker** - Will register automatically on first visit
+- **Icons** - Generated using canvas library, can be regenerated with `node generate-icons.cjs`
+
+### Known Limitations
+- **iOS Push Notifications** - Not supported (iOS PWA limitation)
+- **iOS Background Sync** - Not supported (iOS PWA limitation)
+- **HTTPS Required** - Service workers require HTTPS in production
+
+---
+
 ## [1.5.0] - 2025-12-04
 
 ### Added
