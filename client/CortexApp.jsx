@@ -234,10 +234,13 @@ function useWebSocket(token, onMessage) {
 }
 
 // ============ UI COMPONENTS ============
-const ScanLines = () => (
-  <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1000, 
-    background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px)' }} />
-);
+const ScanLines = ({ enabled = true }) => {
+  if (!enabled) return null;
+  return (
+    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1000,
+      background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px)' }} />
+  );
+};
 
 const GlowText = ({ children, color = '#ffd23f', size = '1rem', weight = 400 }) => (
   <span style={{ color, fontSize: size, fontWeight: weight, textShadow: `0 0 10px ${color}80, 0 0 20px ${color}40` }}>
@@ -2620,8 +2623,30 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate }) => {
           </div>
         </div>
 
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>CRT SCAN LINES</label>
+          <button
+            onClick={() => handleUpdatePreferences({ scanLines: !(user?.preferences?.scanLines !== false) })}
+            style={{
+              padding: isMobile ? '10px 16px' : '8px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: (user?.preferences?.scanLines !== false) ? '#ffd23f20' : 'transparent',
+              border: `1px solid ${(user?.preferences?.scanLines !== false) ? '#ffd23f' : '#2a3a2a'}`,
+              color: (user?.preferences?.scanLines !== false) ? '#ffd23f' : '#6a7a6a',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.9rem' : '0.85rem',
+            }}
+          >
+            {(user?.preferences?.scanLines !== false) ? '▣ ENABLED' : '▢ DISABLED'}
+          </button>
+          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+            Disable for improved readability
+          </div>
+        </div>
+
         <div style={{ color: '#5a6a5a', fontSize: '0.7rem', padding: '10px', background: '#0a100a', border: '1px solid #2a3a2a' }}>
-          ℹ️ Theme customization will change colors throughout the app (coming soon). Font size changes take effect immediately.
+          ℹ️ Theme customization will change colors throughout the app (coming soon). Other changes take effect immediately.
         </div>
       </div>
 
@@ -2979,13 +3004,15 @@ function MainApp() {
 
   const navItems = ['waves', 'groups', 'contacts', 'profile'];
 
+  const scanLinesEnabled = user?.preferences?.scanLines !== false; // Default to true
+
   return (
     <div style={{
       height: '100vh', background: 'linear-gradient(180deg, #0d150d, #050805)',
       fontFamily: "'Courier New', monospace", color: '#c5d5c5',
       display: 'flex', flexDirection: 'column',
     }}>
-      <ScanLines />
+      <ScanLines enabled={scanLinesEnabled} />
       <style>{`
         .message-media {
           max-width: 100%;

@@ -1449,9 +1449,12 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   if (req.body.fontSize && validFontSizes.includes(req.body.fontSize)) {
     updates.fontSize = req.body.fontSize;
   }
+  if (typeof req.body.scanLines === 'boolean') {
+    updates.scanLines = req.body.scanLines;
+  }
 
   if (!user.preferences) {
-    user.preferences = { theme: 'firefly', fontSize: 'medium' };
+    user.preferences = { theme: 'firefly', fontSize: 'medium', scanLines: true };
   }
 
   user.preferences = { ...user.preferences, ...updates };
