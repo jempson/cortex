@@ -30,6 +30,8 @@ const DATA_FILES = {
   messages: path.join(DATA_DIR, 'messages.json'),
   groups: path.join(DATA_DIR, 'groups.json'),
   handleRequests: path.join(DATA_DIR, 'handle-requests.json'),
+  reports: path.join(DATA_DIR, 'reports.json'),
+  moderation: path.join(DATA_DIR, 'moderation.json'),
 };
 
 // CORS configuration
@@ -190,6 +192,8 @@ class Database {
     this.messages = { messages: [], history: [] };
     this.groups = { groups: [], members: [] };
     this.handleRequests = { requests: [] };
+    this.reports = { reports: [] };
+    this.moderation = { blocks: [], mutes: [] };
     this.load();
   }
 
@@ -231,6 +235,8 @@ class Database {
       this.messages = this.loadFile(DATA_FILES.messages, { messages: [], history: [] });
       this.groups = this.loadFile(DATA_FILES.groups, { groups: [], members: [] });
       this.handleRequests = this.loadFile(DATA_FILES.handleRequests, { requests: [] });
+      this.reports = this.loadFile(DATA_FILES.reports, { reports: [] });
+      this.moderation = this.loadFile(DATA_FILES.moderation, { blocks: [], mutes: [] });
       console.log('📂 Loaded data from separated files');
     } else {
       if (process.env.SEED_DEMO_DATA === 'true') {
@@ -247,6 +253,8 @@ class Database {
     this.saveFile(DATA_FILES.messages, this.messages);
     this.saveFile(DATA_FILES.groups, this.groups);
     this.saveFile(DATA_FILES.handleRequests, this.handleRequests);
+    this.saveFile(DATA_FILES.reports, this.reports);
+    this.saveFile(DATA_FILES.moderation, this.moderation);
   }
 
   saveUsers() { this.saveFile(DATA_FILES.users, this.users); }
@@ -254,6 +262,8 @@ class Database {
   saveMessages() { this.saveFile(DATA_FILES.messages, this.messages); }
   saveGroups() { this.saveFile(DATA_FILES.groups, this.groups); }
   saveHandleRequests() { this.saveFile(DATA_FILES.handleRequests, this.handleRequests); }
+  saveReports() { this.saveFile(DATA_FILES.reports, this.reports); }
+  saveModeration() { this.saveFile(DATA_FILES.moderation, this.moderation); }
 
   initEmpty() {
     console.log('📝 Initializing empty database');
@@ -517,6 +527,197 @@ class Database {
     if (index === -1) return false;
     this.users.contacts.splice(index, 1);
     this.saveUsers();
+    return true;
+  }
+
+  // === Moderation Methods ===
+  blockUser(userId, blockedUserId) {
+    const user = this.findUserById(userId);
+    const blockedUser = this.findUserById(blockedUserId);
+    if (!user || !blockedUser) return false;
+
+    const existing = this.moderation.blocks.find(
+      b => b.userId === userId && b.blockedUserId === blockedUserId
+    );
+    if (existing) return false;
+
+    this.moderation.blocks.push({
+      id: uuidv4(),
+      userId,
+      blockedUserId,
+      blockedAt: new Date().toISOString()
+    });
+
+    this.saveModeration();
+    return true;
+  }
+
+  unblockUser(userId, blockedUserId) {
+    const index = this.moderation.blocks.findIndex(
+      b => b.userId === userId && b.blockedUserId === blockedUserId
+    );
+    if (index === -1) return false;
+
+    this.moderation.blocks.splice(index, 1);
+    this.saveModeration();
+    return true;
+  }
+
+  getBlockedUsers(userId) {
+    return this.moderation.blocks
+      .filter(b => b.userId === userId)
+      .map(b => {
+        const user = this.findUserById(b.blockedUserId);
+        return {
+          ...b,
+          handle: user?.handle,
+          displayName: user?.displayName
+        };
+      });
+  }
+
+  isBlocked(userId, otherUserId) {
+    return this.moderation.blocks.some(
+      b => (b.userId === userId && b.blockedUserId === otherUserId) ||
+           (b.userId === otherUserId && b.blockedUserId === userId)
+    );
+  }
+
+  muteUser(userId, mutedUserId) {
+    const user = this.findUserById(userId);
+    const mutedUser = this.findUserById(mutedUserId);
+    if (!user || !mutedUser) return false;
+
+    const existing = this.moderation.mutes.find(
+      m => m.userId === userId && m.mutedUserId === mutedUserId
+    );
+    if (existing) return false;
+
+    this.moderation.mutes.push({
+      id: uuidv4(),
+      userId,
+      mutedUserId,
+      mutedAt: new Date().toISOString()
+    });
+
+    this.saveModeration();
+    return true;
+  }
+
+  unmuteUser(userId, mutedUserId) {
+    const index = this.moderation.mutes.findIndex(
+      m => m.userId === userId && m.mutedUserId === mutedUserId
+    );
+    if (index === -1) return false;
+
+    this.moderation.mutes.splice(index, 1);
+    this.saveModeration();
+    return true;
+  }
+
+  getMutedUsers(userId) {
+    return this.moderation.mutes
+      .filter(m => m.userId === userId)
+      .map(m => {
+        const user = this.findUserById(m.mutedUserId);
+        return {
+          ...m,
+          handle: user?.handle,
+          displayName: user?.displayName
+        };
+      });
+  }
+
+  isMuted(userId, otherUserId) {
+    return this.moderation.mutes.some(
+      m => m.userId === userId && m.mutedUserId === otherUserId
+    );
+  }
+
+  createReport(data) {
+    const report = {
+      id: uuidv4(),
+      reporterId: data.reporterId,
+      type: data.type, // 'message' | 'wave' | 'user'
+      targetId: data.targetId,
+      reason: data.reason, // 'spam' | 'harassment' | 'inappropriate' | 'other'
+      details: data.details || '',
+      status: 'pending', // 'pending' | 'resolved' | 'dismissed'
+      createdAt: new Date().toISOString(),
+      resolvedAt: null,
+      resolvedBy: null,
+      resolution: null
+    };
+
+    this.reports.reports.push(report);
+    this.saveReports();
+    return report;
+  }
+
+  getReports(filters = {}) {
+    let reports = this.reports.reports;
+
+    if (filters.status) {
+      reports = reports.filter(r => r.status === filters.status);
+    }
+
+    if (filters.type) {
+      reports = reports.filter(r => r.type === filters.type);
+    }
+
+    // Enrich with context
+    return reports.map(r => {
+      const reporter = this.findUserById(r.reporterId);
+      let context = {};
+
+      if (r.type === 'message') {
+        const msg = this.messages.messages.find(m => m.id === r.targetId);
+        if (msg) {
+          const author = this.findUserById(msg.authorId);
+          context = {
+            content: msg.content,
+            authorHandle: author?.handle,
+            authorName: author?.displayName,
+            createdAt: msg.createdAt
+          };
+        }
+      } else if (r.type === 'wave') {
+        const wave = this.getWave(r.targetId);
+        if (wave) {
+          context = {
+            title: wave.title,
+            privacy: wave.privacy
+          };
+        }
+      } else if (r.type === 'user') {
+        const user = this.findUserById(r.targetId);
+        if (user) {
+          context = {
+            handle: user.handle,
+            displayName: user.displayName
+          };
+        }
+      }
+
+      return {
+        ...r,
+        reporterHandle: reporter?.handle,
+        reporterName: reporter?.displayName,
+        context
+      };
+    }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
+  resolveReport(reportId, resolution, userId) {
+    const report = this.reports.reports.find(r => r.id === reportId);
+    if (!report) return false;
+
+    report.status = resolution === 'dismiss' ? 'dismissed' : 'resolved';
+    report.resolvedAt = new Date().toISOString();
+    report.resolvedBy = userId;
+    report.resolution = resolution;
+
+    this.saveReports();
     return true;
   }
 
@@ -820,8 +1021,24 @@ class Database {
 
   // === Message Methods ===
   getMessagesForWave(waveId, userId = null) {
-    return this.messages.messages
-      .filter(m => m.waveId === waveId)
+    let messages = this.messages.messages.filter(m => m.waveId === waveId);
+
+    // Filter out messages from blocked or muted users
+    if (userId) {
+      const blockedIds = this.moderation.blocks
+        .filter(b => b.userId === userId)
+        .map(b => b.blockedUserId);
+
+      const mutedIds = this.moderation.mutes
+        .filter(m => m.userId === userId)
+        .map(m => m.mutedUserId);
+
+      messages = messages.filter(m =>
+        !blockedIds.includes(m.authorId) && !mutedIds.includes(m.authorId)
+      );
+    }
+
+    return messages
       .map(m => {
         const author = this.findUserById(m.authorId);
         const readBy = m.readBy || [m.authorId];
@@ -1283,6 +1500,133 @@ app.delete('/api/contacts/:id', authenticateToken, (req, res) => {
   if (!db.removeContact(req.user.userId, sanitizeInput(req.params.id))) {
     return res.status(404).json({ error: 'Contact not found' });
   }
+  res.json({ success: true });
+});
+
+// ============ Moderation Routes ============
+// Block user
+app.post('/api/users/:id/block', authenticateToken, (req, res) => {
+  const targetUserId = sanitizeInput(req.params.id);
+  const userId = req.user.userId;
+
+  if (userId === targetUserId) {
+    return res.status(400).json({ error: 'Cannot block yourself' });
+  }
+
+  if (!db.blockUser(userId, targetUserId)) {
+    return res.status(400).json({ error: 'User already blocked or not found' });
+  }
+
+  res.json({ success: true });
+});
+
+// Unblock user
+app.delete('/api/users/:id/block', authenticateToken, (req, res) => {
+  const targetUserId = sanitizeInput(req.params.id);
+  const userId = req.user.userId;
+
+  if (!db.unblockUser(userId, targetUserId)) {
+    return res.status(404).json({ error: 'Block not found' });
+  }
+
+  res.json({ success: true });
+});
+
+// Get blocked users
+app.get('/api/users/blocked', authenticateToken, (req, res) => {
+  const blockedUsers = db.getBlockedUsers(req.user.userId);
+  res.json({ blockedUsers });
+});
+
+// Mute user
+app.post('/api/users/:id/mute', authenticateToken, (req, res) => {
+  const targetUserId = sanitizeInput(req.params.id);
+  const userId = req.user.userId;
+
+  if (userId === targetUserId) {
+    return res.status(400).json({ error: 'Cannot mute yourself' });
+  }
+
+  if (!db.muteUser(userId, targetUserId)) {
+    return res.status(400).json({ error: 'User already muted or not found' });
+  }
+
+  res.json({ success: true });
+});
+
+// Unmute user
+app.delete('/api/users/:id/mute', authenticateToken, (req, res) => {
+  const targetUserId = sanitizeInput(req.params.id);
+  const userId = req.user.userId;
+
+  if (!db.unmuteUser(userId, targetUserId)) {
+    return res.status(404).json({ error: 'Mute not found' });
+  }
+
+  res.json({ success: true });
+});
+
+// Get muted users
+app.get('/api/users/muted', authenticateToken, (req, res) => {
+  const mutedUsers = db.getMutedUsers(req.user.userId);
+  res.json({ mutedUsers });
+});
+
+// Create report
+app.post('/api/reports', authenticateToken, (req, res) => {
+  const { type, targetId, reason, details } = req.body;
+
+  if (!type || !targetId || !reason) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  if (!['message', 'wave', 'user'].includes(type)) {
+    return res.status(400).json({ error: 'Invalid report type' });
+  }
+
+  if (!['spam', 'harassment', 'inappropriate', 'other'].includes(reason)) {
+    return res.status(400).json({ error: 'Invalid reason' });
+  }
+
+  const report = db.createReport({
+    reporterId: req.user.userId,
+    type: sanitizeInput(type),
+    targetId: sanitizeInput(targetId),
+    reason: sanitizeInput(reason),
+    details: sanitizeInput(details || '')
+  });
+
+  res.json({ success: true, reportId: report.id });
+});
+
+// Get reports (admin only)
+app.get('/api/admin/reports', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const status = req.query.status ? sanitizeInput(req.query.status) : null;
+  const type = req.query.type ? sanitizeInput(req.query.type) : null;
+
+  const reports = db.getReports({ status, type });
+  res.json({ reports, count: reports.length });
+});
+
+// Resolve report (admin only)
+app.post('/api/admin/reports/:id/resolve', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const reportId = sanitizeInput(req.params.id);
+  const { resolution } = req.body;
+
+  if (!db.resolveReport(reportId, resolution, req.user.userId)) {
+    return res.status(404).json({ error: 'Report not found' });
+  }
+
   res.json({ success: true });
 });
 
