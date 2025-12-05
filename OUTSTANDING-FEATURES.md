@@ -1,7 +1,7 @@
 # Cortex - Outstanding Features & Future Roadmap
 
-**Last Updated:** December 4, 2025
-**Current Version:** v1.4.0
+**Last Updated:** December 5, 2025
+**Current Version:** v1.6.1
 
 This document consolidates all planned but not-yet-implemented features from previous planning documents and community requests.
 
@@ -459,6 +459,149 @@ Document and formalize existing API for third-party clients.
 
 ---
 
+### 14. Contact & Invitation Approval System
+**Priority:** High
+**Complexity:** High
+**Estimated Time:** 20-28 hours
+
+**Description:**
+Comprehensive approval workflow for contacts, groups, and waves. Users should have control over who can connect with them and what groups/waves they join.
+
+**User Stories:**
+> As a user, I want to add someone as a contact from a wave's participant list, so I can easily connect with people I'm communicating with.
+
+> As a user, I want to approve contact requests before someone is added as my contact, so I have control over my connections.
+
+> As a user, I want to be notified when someone invites me to a group, and choose whether to accept or decline.
+
+> As a wave creator, I want to invite my contacts to join a private wave without requiring approval (they're already trusted contacts).
+
+**Requested By:** Jared Empson (December 2025)
+
+#### Feature Components:
+
+**1. Add Contact from Participants List**
+- "Add Contact" button appears next to participants who aren't already contacts
+- One-click to send contact request
+- Visual indicator for pending requests
+
+**2. Contact Request System**
+- When User A tries to add User B as contact:
+  - Creates a `contact_request` (pending state)
+  - User B receives notification (real-time via WebSocket)
+  - User B can Accept or Decline
+  - On Accept: Both users become contacts
+  - On Decline: Request removed, no contact created
+- Requests visible in dedicated "Requests" section (similar to handle requests)
+- Optional: Add message with request ("Hey, great chatting in the Dev wave!")
+
+**3. Group Invitation System**
+- When adding contacts to a group:
+  - Creates `group_invitation` for each contact
+  - Each invitee receives notification
+  - Invitee can Accept or Decline
+  - On Accept: User added to group
+  - On Decline: Invitation removed
+- Group creator sees pending invitations
+- Bulk invite with single notification per user
+
+**4. Wave Participant Rules**
+- **Private Waves**: Can only add existing contacts (no approval needed - already trusted)
+- **Group Waves**: Members of the group are auto-added
+- **Public Waves**: Anyone can join (no invitation needed)
+- **Cross-Server Waves**: Future federation consideration
+
+#### Backend Changes:
+
+**New Data Files:**
+- `contact-requests.json` - Pending contact requests
+- `group-invitations.json` - Pending group invitations
+
+**New Schemas:**
+```javascript
+// Contact Request
+{
+  id: uuid,
+  from_user_id: uuid,
+  to_user_id: uuid,
+  message: string | null,  // Optional message
+  status: 'pending' | 'accepted' | 'declined',
+  created_at: timestamp,
+  responded_at: timestamp | null
+}
+
+// Group Invitation
+{
+  id: uuid,
+  group_id: uuid,
+  invited_by: uuid,
+  invited_user_id: uuid,
+  message: string | null,
+  status: 'pending' | 'accepted' | 'declined',
+  created_at: timestamp,
+  responded_at: timestamp | null
+}
+```
+
+**New Endpoints:**
+```
+# Contact Requests
+POST   /api/contacts/request          - Send contact request
+GET    /api/contacts/requests         - Get pending requests (received)
+GET    /api/contacts/requests/sent    - Get sent requests
+POST   /api/contacts/requests/:id/accept  - Accept request
+POST   /api/contacts/requests/:id/decline - Decline request
+DELETE /api/contacts/requests/:id     - Cancel sent request
+
+# Group Invitations
+POST   /api/groups/:id/invite         - Invite user(s) to group
+GET    /api/groups/invitations        - Get pending invitations (received)
+POST   /api/groups/invitations/:id/accept  - Accept invitation
+POST   /api/groups/invitations/:id/decline - Decline invitation
+```
+
+**WebSocket Events:**
+- `contact_request_received` - New contact request
+- `contact_request_accepted` - Request was accepted
+- `contact_request_declined` - Request was declined
+- `group_invitation_received` - New group invitation
+- `group_invitation_accepted` - Invitation accepted
+- `group_invitation_declined` - Invitation declined
+
+#### Frontend Changes:
+
+**Participants Panel:**
+- "Add Contact" button for non-contacts
+- Shows "Request Pending" if already requested
+- Shows "Contact" badge if already a contact
+
+**New UI Components:**
+- `ContactRequestModal` - Send request with optional message
+- `RequestsPanel` - View/manage received requests
+- `SentRequestsPanel` - View/cancel sent requests
+- `GroupInvitationsPanel` - View/respond to group invites
+- `InviteToGroupModal` - Select contacts to invite
+
+**Notifications:**
+- Badge count for pending requests/invitations
+- Toast notifications for real-time events
+- Notification center (future) for history
+
+#### Privacy & Security Considerations:
+- Users can only request contacts from people they share a wave with
+- Rate limiting on contact requests (prevent spam)
+- Blocked users cannot send requests
+- Declined requests have cooldown before re-requesting
+- Group invitations only from existing group admins/members
+
+#### Implementation Order:
+1. Contact request system (backend + basic UI)
+2. Add contact from participants
+3. Group invitation system
+4. Polish notifications and UX
+
+---
+
 ## 🔮 Future Considerations (v2.0.0+)
 
 These features require significant architectural changes and are planned for future major versions:
@@ -500,16 +643,17 @@ These features require significant architectural changes and are planned for fut
 
 | Feature | Priority | Complexity | User Impact | Estimated Time |
 |---------|----------|------------|-------------|----------------|
-| Message Reactions | High | Low-Med | High | 4-6h |
-| Message Search | High | Medium | High | 8-12h |
-| Typing Indicators | Medium | Low | Medium | 3-4h |
-| Read Receipts Display | Medium | Low | Medium | 2-3h |
-| **Desktop Notifications (Phase 1)** | **Low-Med** | **Low** | **High** | **4-6h** |
+| ~~Message Reactions~~ | ~~High~~ | ~~Low-Med~~ | ~~High~~ | ✅ v1.5.0 |
+| ~~Message Search~~ | ~~High~~ | ~~Medium~~ | ~~High~~ | ✅ v1.5.0 |
+| ~~Typing Indicators~~ | ~~Medium~~ | ~~Low~~ | ~~Medium~~ | ✅ v1.5.0 |
+| ~~Read Receipts Display~~ | ~~Medium~~ | ~~Low~~ | ~~Medium~~ | ✅ v1.6.0 |
+| ~~Desktop Notifications~~ | ~~Low-Med~~ | ~~Low~~ | ~~High~~ | ✅ v1.5.0 |
+| ~~PWA Support~~ | ~~Medium~~ | ~~High~~ | ~~High~~ | ✅ v1.6.0 |
+| **Contact & Invitation System** | **High** | **High** | **Very High** | **20-28h** |
+| **Basic Moderation** | **Med-High** | **Medium** | **High** | **12-16h** |
 | GIF Search | Medium | Medium | Medium | 6-8h |
 | Threading Improvements | Medium | Medium | Medium | 6-8h |
-| **Basic Moderation** | **Med-High** | **Medium** | **High** | **12-16h** |
 | **Public API Docs** | **Medium** | **Low-Med** | **Medium** | **8-10h** |
-| Mobile PWA (incl. Push Phase 2) | Medium | High | High | 32-44h |
 | File Upload | Medium | High | Very High | 20-30h |
 | Export Wave | Low | Medium | Low | 8-12h |
 | Advanced Search | Low | Medium | Medium | 6-8h |
@@ -536,21 +680,26 @@ For the next minor release (v1.5.0), we recommend focusing on high-impact, lower
 
 ---
 
-## 🎯 Recommended v1.6.0 Scope (Moderation & API)
+## 🎯 Recommended v1.7.0 Scope (Contact & Invitation System)
 
-For v1.6.0, focus on essential moderation and API features without requiring major architectural changes:
+For v1.7.0, focus on the comprehensive contact and invitation approval system:
 
 ### Core Features
-1. **Basic Moderation System** (12-16h) - User blocking, muting, and reporting
-2. **Public REST API Documentation** (8-10h) - Formalize existing API
+1. **Contact Request System** (8-10h) - Request/approve/decline contact connections
+2. **Add Contact from Participants** (4-6h) - One-click contact requests from wave participants
+3. **Group Invitation System** (8-12h) - Invite/accept/decline group memberships
 
-### Optional Additions
-3. **Threading Improvements** (6-8h) - Better navigation and visualization
-4. **Advanced Search Filters** (6-8h) - Boolean operators and filters
+### Secondary Features
+4. **Basic Moderation** (12-16h) - User blocking, muting (integrates with contact system)
+5. **GIF Search Integration** (6-8h) - Quick win for user engagement
 
-**Total Estimated Time:** 32-42 hours (4-6 days of focused development)
+**Total Estimated Time:** 38-52 hours
 
-**Note:** Moderation and API features can be implemented independently and don't require database migration or major refactoring.
+### Why This Order?
+- Contact requests provide foundation for all social interactions
+- Blocking/muting integrates naturally with contact system
+- Group invitations build on contact request patterns
+- GIF search is independent and can be done in parallel
 
 ---
 
