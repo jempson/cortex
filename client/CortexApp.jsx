@@ -123,6 +123,226 @@ const EmojiPicker = ({ onSelect, onClose, isMobile }) => {
   );
 };
 
+// ============ GIF SEARCH MODAL ============
+const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [gifs, setGifs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [showTrending, setShowTrending] = useState(true);
+  const searchTimeoutRef = useRef(null);
+
+  // Load trending GIFs on mount
+  useEffect(() => {
+    if (isOpen && showTrending && gifs.length === 0) {
+      loadTrending();
+    }
+  }, [isOpen, showTrending]);
+
+  const loadTrending = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchAPI('/gifs/trending?limit=20');
+      setGifs(data.gifs || []);
+    } catch (err) {
+      setError(err.message || 'Failed to load trending GIFs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const searchGifs = async (query) => {
+    if (!query.trim()) {
+      setShowTrending(true);
+      loadTrending();
+      return;
+    }
+    setShowTrending(false);
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchAPI(`/gifs/search?q=${encodeURIComponent(query)}&limit=20`);
+      setGifs(data.gifs || []);
+    } catch (err) {
+      setError(err.message || 'Failed to search GIFs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+
+    // Debounce search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      searchGifs(query);
+    }, 500);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0, 0, 0, 0.8)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+      padding: isMobile ? '10px' : '20px',
+    }} onClick={onClose}>
+      <div style={{
+        width: '100%',
+        maxWidth: isMobile ? '100%' : '600px',
+        maxHeight: isMobile ? '90vh' : '80vh',
+        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+        border: '2px solid #3bceac40',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }} onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{
+          padding: isMobile ? '14px 16px' : '12px 16px',
+          borderBottom: '1px solid #2a3a2a',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+        }}>
+          <GlowText color="#3bceac" size={isMobile ? '1rem' : '0.9rem'}>GIF SEARCH</GlowText>
+          <button onClick={onClose} style={{
+            background: 'transparent',
+            border: '1px solid #3a4a3a',
+            color: '#6a7a6a',
+            cursor: 'pointer',
+            padding: isMobile ? '10px 14px' : '6px 12px',
+            minHeight: isMobile ? '44px' : 'auto',
+            fontFamily: 'monospace',
+            fontSize: '0.75rem',
+          }}>✕ CLOSE</button>
+        </div>
+
+        {/* Search Input */}
+        <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid #2a3a2a' }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder="Search for GIFs..."
+            autoFocus
+            style={{
+              width: '100%',
+              padding: isMobile ? '14px 16px' : '10px 14px',
+              background: '#0a100a',
+              border: '1px solid #3bceac50',
+              color: '#c5d5c5',
+              fontSize: isMobile ? '1rem' : '0.9rem',
+              fontFamily: 'inherit',
+              boxSizing: 'border-box',
+            }}
+          />
+          <div style={{
+            color: '#5a6a5a',
+            fontSize: '0.65rem',
+            marginTop: '6px',
+            textAlign: 'center',
+          }}>
+            {showTrending ? '🔥 TRENDING' : `Searching for "${searchQuery}"`}
+          </div>
+        </div>
+
+        {/* GIF Grid */}
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: isMobile ? '12px' : '12px 16px',
+        }}>
+          {loading && (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#6a7a6a' }}>
+              Loading GIFs...
+            </div>
+          )}
+
+          {error && (
+            <div style={{
+              textAlign: 'center',
+              padding: '20px',
+              color: '#ff6b35',
+              background: '#ff6b3510',
+              border: '1px solid #ff6b3530',
+              marginBottom: '12px',
+            }}>
+              {error}
+            </div>
+          )}
+
+          {!loading && !error && gifs.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#6a7a6a' }}>
+              {searchQuery ? 'No GIFs found' : 'Search for GIFs above'}
+            </div>
+          )}
+
+          {!loading && gifs.length > 0 && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
+              gap: '8px',
+            }}>
+              {gifs.map((gif) => (
+                <button
+                  key={gif.id}
+                  onClick={() => onSelect(gif.url)}
+                  style={{
+                    background: '#0a100a',
+                    border: '1px solid #2a3a2a',
+                    padding: 0,
+                    cursor: 'pointer',
+                    aspectRatio: '1',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title={gif.title}
+                >
+                  <img
+                    src={gif.preview}
+                    alt={gif.title}
+                    loading="lazy"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer - GIPHY Attribution */}
+        <div style={{
+          padding: '8px 16px',
+          borderTop: '1px solid #2a3a2a',
+          textAlign: 'center',
+          color: '#5a6a5a',
+          fontSize: '0.6rem',
+        }}>
+          Powered by GIPHY
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ============ PWA INSTALL PROMPT ============
 const InstallPrompt = ({ isMobile }) => {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -1414,7 +1634,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -1427,6 +1647,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showGifSearch, setShowGifSearch] = useState(false);
   const [showPlayback, setShowPlayback] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
@@ -1438,6 +1659,41 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const isContact = (userId) => contacts?.some(c => c.id === userId) || false;
   const hasSentRequestTo = (userId) => sentContactRequests?.some(r => r.to_user_id === userId) || false;
   const hasReceivedRequestFrom = (userId) => contactRequests?.some(r => r.from_user_id === userId) || false;
+
+  // Helper functions for blocked/muted status
+  const isBlocked = (userId) => blockedUsers?.some(u => u.blockedUserId === userId) || false;
+  const isMuted = (userId) => mutedUsers?.some(u => u.mutedUserId === userId) || false;
+
+  // State for showing moderation menu
+  const [showModMenu, setShowModMenu] = useState(null); // participant.id or null
+
+  const handleToggleBlock = async (participant) => {
+    const wasBlocked = isBlocked(participant.id);
+    const success = wasBlocked
+      ? await onUnblockUser(participant.id)
+      : await onBlockUser(participant.id);
+    if (success) {
+      showToast(wasBlocked ? `Unblocked ${participant.name}` : `Blocked ${participant.name}`, 'success');
+      onBlockedMutedChange?.();
+    } else {
+      showToast(`Failed to ${wasBlocked ? 'unblock' : 'block'} user`, 'error');
+    }
+    setShowModMenu(null);
+  };
+
+  const handleToggleMute = async (participant) => {
+    const wasMuted = isMuted(participant.id);
+    const success = wasMuted
+      ? await onUnmuteUser(participant.id)
+      : await onMuteUser(participant.id);
+    if (success) {
+      showToast(wasMuted ? `Unmuted ${participant.name}` : `Muted ${participant.name}`, 'success');
+      onBlockedMutedChange?.();
+    } else {
+      showToast(`Failed to ${wasMuted ? 'unmute' : 'mute'} user`, 'error');
+    }
+    setShowModMenu(null);
+  };
 
   const handleQuickSendRequest = async (participant) => {
     try {
@@ -1889,7 +2145,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           )}
 
           {/* Mark All Read Button - always visible if unread */}
-          {waveData.messages.some(m => m.is_unread && m.author_id !== currentUser.id) && (
+          {waveData.all_messages.some(m => m.is_unread && m.author_id !== currentUser.id) && (
             <button
               onClick={async () => {
                 try {
@@ -1939,6 +2195,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             const isAlreadyContact = isContact(p.id);
             const hasSentRequest = hasSentRequestTo(p.id);
             const hasReceivedRequest = hasReceivedRequestFrom(p.id);
+            const userBlocked = isBlocked(p.id);
+            const userMuted = isMuted(p.id);
 
             return (
               <div
@@ -1949,8 +2207,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                   justifyContent: 'space-between',
                   gap: '8px',
                   padding: '8px 12px',
-                  background: '#0a100a',
-                  border: '1px solid #2a3a2a',
+                  background: userBlocked ? '#ff6b3510' : '#0a100a',
+                  border: `1px solid ${userBlocked ? '#ff6b3540' : '#2a3a2a'}`,
                 }}
               >
                 {/* Participant Info */}
@@ -1958,13 +2216,16 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                   <Avatar letter={p.avatar || p.name?.[0] || '?'} color={isCurrentUser ? '#ffd23f' : '#3bceac'} size={isMobile ? 32 : 28} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{
-                      color: '#c5d5c5',
+                      color: userBlocked ? '#ff6b35' : userMuted ? '#6a7a6a' : '#c5d5c5',
                       fontSize: isMobile ? '0.85rem' : '0.8rem',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
                     }}>
-                      {p.name}{isCurrentUser && <span style={{ color: '#ffd23f', marginLeft: '4px' }}>(you)</span>}
+                      {p.name}
+                      {isCurrentUser && <span style={{ color: '#ffd23f', marginLeft: '4px' }}>(you)</span>}
+                      {userBlocked && <span style={{ color: '#ff6b35', marginLeft: '4px', fontSize: '0.65rem' }}>⊘ BLOCKED</span>}
+                      {userMuted && !userBlocked && <span style={{ color: '#6a7a6a', marginLeft: '4px', fontSize: '0.65rem' }}>🔇 MUTED</span>}
                     </div>
                     <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{p.handle}</div>
                   </div>
@@ -2033,6 +2294,75 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                       >+ ADD</button>
                     )}
                   </>
+                )}
+
+                {/* Moderation Menu Button */}
+                {!isCurrentUser && (
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setShowModMenu(showModMenu === p.id ? null : p.id)}
+                      style={{
+                        padding: isMobile ? '6px 8px' : '4px 6px',
+                        minHeight: isMobile ? '36px' : 'auto',
+                        minWidth: isMobile ? '36px' : 'auto',
+                        background: showModMenu === p.id ? '#2a3a2a' : 'transparent',
+                        border: '1px solid #3a4a3a',
+                        color: '#6a7a6a',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '0.8rem',
+                      }}
+                      title="Moderation options"
+                    >⋮</button>
+
+                    {/* Moderation Dropdown Menu */}
+                    {showModMenu === p.id && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: '4px',
+                        background: '#0d150d',
+                        border: '1px solid #3a4a3a',
+                        zIndex: 100,
+                        minWidth: '120px',
+                      }}>
+                        <button
+                          onClick={() => handleToggleMute(p)}
+                          style={{
+                            width: '100%',
+                            padding: isMobile ? '12px' : '8px 12px',
+                            background: 'transparent',
+                            border: 'none',
+                            borderBottom: '1px solid #2a3a2a',
+                            color: userMuted ? '#0ead69' : '#6a7a6a',
+                            cursor: 'pointer',
+                            fontFamily: 'monospace',
+                            fontSize: '0.7rem',
+                            textAlign: 'left',
+                          }}
+                        >
+                          {userMuted ? '🔊 UNMUTE' : '🔇 MUTE'}
+                        </button>
+                        <button
+                          onClick={() => handleToggleBlock(p)}
+                          style={{
+                            width: '100%',
+                            padding: isMobile ? '12px' : '8px 12px',
+                            background: 'transparent',
+                            border: 'none',
+                            color: userBlocked ? '#0ead69' : '#ff6b35',
+                            cursor: 'pointer',
+                            fontFamily: 'monospace',
+                            fontSize: '0.7rem',
+                            textAlign: 'left',
+                          }}
+                        >
+                          {userBlocked ? '✓ UNBLOCK' : '⊘ BLOCK'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             );
@@ -2146,6 +2476,23 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             😀
           </button>
           <button
+            onClick={() => setShowGifSearch(true)}
+            style={{
+              padding: isMobile ? '8px 10px' : '10px 12px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: 'transparent',
+              border: '1px solid #2a3a2a',
+              color: '#3bceac',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.7rem' : '0.65rem',
+              fontWeight: 700,
+            }}
+            title="Insert GIF"
+          >
+            GIF
+          </button>
+          <button
             onClick={handleSendMessage}
             disabled={!newMessage.trim()}
             style={{
@@ -2192,6 +2539,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           onClose={() => setMessageToDelete(null)}
           waveTitle={`message from ${messageToDelete.sender_name}`}
           onConfirm={confirmDeleteMessage}
+          isMobile={isMobile}
+        />
+      )}
+
+      {showGifSearch && (
+        <GifSearchModal
+          isOpen={showGifSearch}
+          onClose={() => setShowGifSearch(false)}
+          onSelect={(gifUrl) => {
+            setNewMessage(prev => prev + (prev.trim() ? ' ' : '') + gifUrl);
+            setShowGifSearch(false);
+          }}
+          fetchAPI={fetchAPI}
           isMobile={isMobile}
         />
       )}
@@ -2250,12 +2610,12 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
           alignItems: 'center', flexWrap: 'wrap', gap: '12px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-            <Avatar letter={request.from_user_avatar || request.from_user_name?.[0] || '?'} color="#3bceac" size={isMobile ? 40 : 36} />
+            <Avatar letter={request.from_user?.avatar || request.from_user?.displayName?.[0] || '?'} color="#3bceac" size={isMobile ? 40 : 36} />
             <div style={{ minWidth: 0 }}>
               <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {request.from_user_name}
+                {request.from_user?.displayName || 'Unknown'}
               </div>
-              <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{request.from_user_handle}</div>
+              <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{request.from_user?.handle}</div>
               {request.message && (
                 <div style={{ color: '#7a8a7a', fontSize: '0.8rem', marginTop: '4px', fontStyle: 'italic' }}>
                   "{request.message}"
@@ -2345,12 +2705,12 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
               alignItems: 'center', flexWrap: 'wrap', gap: '8px',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-                <Avatar letter={request.to_user_avatar || request.to_user_name?.[0] || '?'} color="#ffd23f" size={isMobile ? 40 : 36} />
+                <Avatar letter={request.to_user?.avatar || request.to_user?.displayName?.[0] || '?'} color="#ffd23f" size={isMobile ? 40 : 36} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {request.to_user_name}
+                    {request.to_user?.displayName || 'Unknown'}
                   </div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{request.to_user_handle}</div>
+                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{request.to_user?.handle}</div>
                 </div>
               </div>
               <button
@@ -2463,6 +2823,278 @@ const SendContactRequestModal = ({ isOpen, onClose, toUser, fetchAPI, showToast,
             color: '#3bceac', cursor: sending ? 'wait' : 'pointer',
             fontFamily: 'monospace', opacity: sending ? 0.6 : 1,
           }}>{sending ? 'SENDING...' : 'SEND REQUEST'}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ GROUP INVITATIONS PANEL ============
+const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitationsChange, onGroupsChange, isMobile }) => {
+  const [processing, setProcessing] = useState({});
+
+  const handleAccept = async (invitationId) => {
+    setProcessing(prev => ({ ...prev, [invitationId]: 'accept' }));
+    try {
+      await fetchAPI(`/groups/invitations/${invitationId}/accept`, { method: 'POST' });
+      showToast('You joined the group!', 'success');
+      onInvitationsChange();
+      onGroupsChange();
+    } catch (err) {
+      showToast(err.message || 'Failed to accept invitation', 'error');
+    }
+    setProcessing(prev => ({ ...prev, [invitationId]: null }));
+  };
+
+  const handleDecline = async (invitationId) => {
+    setProcessing(prev => ({ ...prev, [invitationId]: 'decline' }));
+    try {
+      await fetchAPI(`/groups/invitations/${invitationId}/decline`, { method: 'POST' });
+      showToast('Group invitation declined', 'info');
+      onInvitationsChange();
+    } catch (err) {
+      showToast(err.message || 'Failed to decline invitation', 'error');
+    }
+    setProcessing(prev => ({ ...prev, [invitationId]: null }));
+  };
+
+  if (invitations.length === 0) return null;
+
+  return (
+    <div style={{
+      marginBottom: '16px', padding: '16px',
+      background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+      border: '1px solid #ffd23f40',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+        <span style={{ color: '#ffd23f', fontSize: '0.9rem' }}>GROUP INVITATIONS</span>
+        <span style={{
+          background: '#ffd23f', color: '#000', fontSize: '0.65rem',
+          padding: '2px 6px', borderRadius: '10px', fontWeight: 700,
+        }}>{invitations.length}</span>
+      </div>
+      {invitations.map(invitation => (
+        <div key={invitation.id} style={{
+          padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
+          marginBottom: '8px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: '#ffd23f', fontSize: '0.95rem', marginBottom: '4px' }}>
+                {invitation.group?.name || 'Unknown Group'}
+              </div>
+              <div style={{ color: '#6a7a6a', fontSize: '0.75rem' }}>
+                Invited by {invitation.invited_by_user?.displayName || 'Someone'}
+              </div>
+              {invitation.message && (
+                <div style={{ color: '#7a8a7a', fontSize: '0.8rem', marginTop: '6px', fontStyle: 'italic' }}>
+                  "{invitation.message}"
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+              <button
+                onClick={() => handleAccept(invitation.id)}
+                disabled={!!processing[invitation.id]}
+                style={{
+                  padding: isMobile ? '10px 14px' : '6px 12px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: '#0ead6920', border: '1px solid #0ead69',
+                  color: '#0ead69', cursor: processing[invitation.id] ? 'wait' : 'pointer',
+                  fontFamily: 'monospace', fontSize: '0.75rem',
+                  opacity: processing[invitation.id] ? 0.6 : 1,
+                }}>
+                {processing[invitation.id] === 'accept' ? '...' : 'JOIN'}
+              </button>
+              <button
+                onClick={() => handleDecline(invitation.id)}
+                disabled={!!processing[invitation.id]}
+                style={{
+                  padding: isMobile ? '10px 14px' : '6px 12px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: 'transparent', border: '1px solid #ff6b3550',
+                  color: '#ff6b35', cursor: processing[invitation.id] ? 'wait' : 'pointer',
+                  fontFamily: 'monospace', fontSize: '0.75rem',
+                  opacity: processing[invitation.id] ? 0.6 : 1,
+                }}>
+                {processing[invitation.id] === 'decline' ? '...' : 'DECLINE'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ============ INVITE TO GROUP MODAL ============
+const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showToast, isMobile }) => {
+  const [selectedContacts, setSelectedContacts] = useState([]);
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  if (!isOpen || !group) return null;
+
+  // Filter contacts that aren't already group members
+  const availableContacts = contacts.filter(c => {
+    // Check if contact matches search
+    const matchesSearch = !searchQuery ||
+      c.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.handle?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSearch;
+  });
+
+  const toggleContact = (contactId) => {
+    setSelectedContacts(prev =>
+      prev.includes(contactId)
+        ? prev.filter(id => id !== contactId)
+        : [...prev, contactId]
+    );
+  };
+
+  const handleSendInvites = async () => {
+    if (selectedContacts.length === 0) return;
+    setSending(true);
+    try {
+      const result = await fetchAPI(`/groups/${group.id}/invite`, {
+        method: 'POST',
+        body: { userIds: selectedContacts, message: message.trim() || undefined }
+      });
+      const successCount = result.invitations?.length || 0;
+      const errorCount = result.errors?.length || 0;
+      if (successCount > 0) {
+        showToast(`Sent ${successCount} invitation${successCount > 1 ? 's' : ''}`, 'success');
+      }
+      if (errorCount > 0) {
+        showToast(`${errorCount} invitation${errorCount > 1 ? 's' : ''} failed`, 'error');
+      }
+      setSelectedContacts([]);
+      setMessage('');
+      setSearchQuery('');
+      onClose();
+    } catch (err) {
+      showToast(err.message || 'Failed to send invitations', 'error');
+    }
+    setSending(false);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.85)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      padding: isMobile ? '16px' : '0',
+    }} onClick={onClose}>
+      <div style={{
+        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+        border: '2px solid #ffd23f40', padding: isMobile ? '20px' : '24px',
+        width: '100%', maxWidth: '450px', maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <GlowText color="#ffd23f" size="1rem">INVITE TO {group.name?.toUpperCase()}</GlowText>
+          <button onClick={onClose} style={{
+            background: 'transparent', border: 'none', color: '#5a6a5a',
+            cursor: 'pointer', fontSize: '1.2rem', padding: '4px',
+          }}>×</button>
+        </div>
+
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search contacts..."
+          style={{
+            width: '100%', padding: '10px', boxSizing: 'border-box', marginBottom: '12px',
+            background: '#0a100a', border: '1px solid #2a3a2a', color: '#c5d5c5', fontFamily: 'inherit',
+          }}
+        />
+
+        <div style={{
+          flex: 1, overflowY: 'auto', marginBottom: '16px',
+          border: '1px solid #2a3a2a', background: '#0a100a',
+          maxHeight: '250px', minHeight: '150px',
+        }}>
+          {availableContacts.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#5a6a5a' }}>
+              {contacts.length === 0 ? 'No contacts to invite' : 'No matching contacts'}
+            </div>
+          ) : availableContacts.map(contact => {
+            const isSelected = selectedContacts.includes(contact.id);
+            return (
+              <div
+                key={contact.id}
+                onClick={() => toggleContact(contact.id)}
+                style={{
+                  padding: '10px 12px', cursor: 'pointer',
+                  background: isSelected ? '#ffd23f15' : 'transparent',
+                  borderBottom: '1px solid #1a2a1a',
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                }}>
+                <div style={{
+                  width: '20px', height: '20px', border: `2px solid ${isSelected ? '#ffd23f' : '#3a4a3a'}`,
+                  background: isSelected ? '#ffd23f' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#000', fontSize: '0.8rem', fontWeight: 'bold',
+                }}>
+                  {isSelected && '✓'}
+                </div>
+                <Avatar letter={contact.avatar || contact.name?.[0] || '?'} color={isSelected ? '#ffd23f' : '#6a7a6a'} size={32} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {contact.name}
+                  </div>
+                  <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>@{contact.handle}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ color: '#7a8a7a', fontSize: '0.75rem', display: 'block', marginBottom: '6px' }}>
+            Message (optional)
+          </label>
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Add a message to your invitation..."
+            maxLength={200}
+            style={{
+              width: '100%', padding: '10px', boxSizing: 'border-box',
+              background: '#0a100a', border: '1px solid #2a3a2a',
+              color: '#c5d5c5', fontFamily: 'inherit',
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: '#6a7a6a', fontSize: '0.75rem' }}>
+            {selectedContacts.length} selected
+          </span>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button onClick={onClose} style={{
+              padding: isMobile ? '12px 20px' : '10px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: 'transparent', border: '1px solid #3a4a3a',
+              color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace',
+            }}>CANCEL</button>
+            <button
+              onClick={handleSendInvites}
+              disabled={sending || selectedContacts.length === 0}
+              style={{
+                padding: isMobile ? '12px 20px' : '10px 16px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: selectedContacts.length > 0 ? '#ffd23f20' : 'transparent',
+                border: `1px solid ${selectedContacts.length > 0 ? '#ffd23f' : '#3a4a3a'}`,
+                color: selectedContacts.length > 0 ? '#ffd23f' : '#5a6a5a',
+                cursor: sending || selectedContacts.length === 0 ? 'not-allowed' : 'pointer',
+                fontFamily: 'monospace', opacity: sending ? 0.6 : 1,
+              }}>
+              {sending ? 'SENDING...' : 'SEND INVITES'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2644,7 +3276,7 @@ const ContactsView = ({
 };
 
 // ============ GROUPS VIEW ============
-const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
+const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitations, onInvitationsChange, contacts }) => {
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [groupDetails, setGroupDetails] = useState(null);
@@ -2653,6 +3285,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
   const [showAddMember, setShowAddMember] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
   useEffect(() => {
@@ -2704,14 +3337,33 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
 
   const handleAddMember = async (userId) => {
     try {
-      await fetchAPI(`/groups/${selectedGroup}/members`, { method: 'POST', body: { userId } });
-      showToast('Member added', 'success');
+      // Use invitation flow instead of direct add - users should consent to joining
+      const result = await fetchAPI(`/groups/${selectedGroup}/invite`, {
+        method: 'POST',
+        body: { userIds: [userId] }
+      });
+      if (result.invitations?.length > 0) {
+        showToast('Invitation sent', 'success');
+      } else if (result.errors?.length > 0) {
+        showToast(result.errors[0].error || 'Failed to send invitation', 'error');
+      }
       setMemberSearch('');
-      const updated = await fetchAPI(`/groups/${selectedGroup}`);
-      setGroupDetails(updated);
+      setSearchResults([]);
+    } catch (err) {
+      showToast(err.message || 'Failed to send invitation', 'error');
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!confirm('Leave this group?')) return;
+    try {
+      await fetchAPI(`/groups/${selectedGroup}/members/${groupDetails.currentUserId}`, { method: 'DELETE' });
+      showToast('Left group', 'success');
+      setSelectedGroup(null);
+      setGroupDetails(null);
       onGroupsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to add member', 'error');
+      showToast(err.message || 'Failed to leave group', 'error');
     }
   };
 
@@ -2742,12 +3394,12 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: '100%' }}>
       {/* Group list */}
-      <div style={{ 
-        width: isMobile ? '100%' : '300px', 
-        borderRight: isMobile ? 'none' : '1px solid #2a3a2a', 
+      <div style={{
+        width: isMobile ? '100%' : '300px',
+        borderRight: isMobile ? 'none' : '1px solid #2a3a2a',
         borderBottom: isMobile ? '1px solid #2a3a2a' : 'none',
         display: 'flex', flexDirection: 'column',
-        maxHeight: isMobile ? '250px' : 'none',
+        maxHeight: isMobile ? '300px' : 'none',
       }}>
         <div style={{ padding: '16px', borderBottom: '1px solid #2a3a2a' }}>
           <button onClick={() => setShowNewGroup(true)} style={{
@@ -2755,8 +3407,17 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
             color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace',
           }}>+ NEW GROUP</button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {groups.length === 0 ? (
+        <div style={{ flex: 1, overflowY: 'auto', padding: groupInvitations?.length > 0 ? '12px' : '0' }}>
+          {/* Group Invitations */}
+          <GroupInvitationsPanel
+            invitations={groupInvitations || []}
+            fetchAPI={fetchAPI}
+            showToast={showToast}
+            onInvitationsChange={onInvitationsChange}
+            onGroupsChange={onGroupsChange}
+            isMobile={isMobile}
+          />
+          {groups.length === 0 && (!groupInvitations || groupInvitations.length === 0) ? (
             <div style={{ padding: '20px', textAlign: 'center', color: '#5a6a5a' }}>No groups yet</div>
           ) : groups.map(g => (
             <div key={g.id} onClick={() => setSelectedGroup(g.id)} style={{ padding: '14px 16px', cursor: 'pointer',
@@ -2798,12 +3459,22 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
                     {groupDetails.members?.length} members
                   </div>
                 </div>
-                {groupDetails.isAdmin && (
-                  <button onClick={handleDeleteGroup} style={{
-                    padding: '6px 12px', background: '#ff6b3520', border: '1px solid #ff6b35',
-                    color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
-                  }}>DELETE GROUP</button>
-                )}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button onClick={() => setShowInviteModal(true)} style={{
+                    padding: '6px 12px', background: '#3bceac15', border: '1px solid #3bceac',
+                    color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+                  }}>+ INVITE</button>
+                  <button onClick={handleLeaveGroup} style={{
+                    padding: '6px 12px', background: '#ffd23f15', border: '1px solid #ffd23f50',
+                    color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+                  }}>LEAVE GROUP</button>
+                  {groupDetails.isAdmin && (
+                    <button onClick={handleDeleteGroup} style={{
+                      padding: '6px 12px', background: '#ff6b3520', border: '1px solid #ff6b35',
+                      color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+                    }}>DELETE GROUP</button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -2815,7 +3486,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
                     padding: '6px 12px', background: showAddMember ? '#3bceac20' : 'transparent',
                     border: `1px solid ${showAddMember ? '#3bceac' : '#3a4a3a'}`,
                     color: showAddMember ? '#3bceac' : '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
-                  }}>{showAddMember ? '✕ CLOSE' : '+ ADD MEMBER'}</button>
+                  }}>{showAddMember ? '✕ CLOSE' : '+ INVITE MEMBER'}</button>
                 )}
               </div>
 
@@ -2836,7 +3507,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
                       <button onClick={() => handleAddMember(user.id)} style={{
                         padding: '4px 8px', background: '#3bceac20', border: '1px solid #3bceac',
                         color: '#3bceac', cursor: 'pointer', fontSize: '0.7rem',
-                      }}>ADD</button>
+                      }}>INVITE</button>
                     </div>
                   ))}
                 </div>
@@ -2925,6 +3596,17 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange }) => {
           </div>
         </div>
       )}
+
+      {/* Invite to Group Modal */}
+      <InviteToGroupModal
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        group={groupDetails}
+        contacts={contacts || []}
+        fetchAPI={fetchAPI}
+        showToast={showToast}
+        isMobile={isMobile}
+      />
     </div>
   );
 };
@@ -3049,7 +3731,45 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
   const [newPassword, setNewPassword] = useState('');
   const [newHandle, setNewHandle] = useState('');
   const [showHandleRequests, setShowHandleRequests] = useState(false);
+  const [showBlockedMuted, setShowBlockedMuted] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState([]);
+  const [mutedUsers, setMutedUsers] = useState([]);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
+
+  // Load blocked/muted users when section is expanded
+  useEffect(() => {
+    if (showBlockedMuted) {
+      Promise.all([
+        fetchAPI('/users/blocked'),
+        fetchAPI('/users/muted')
+      ]).then(([blockedData, mutedData]) => {
+        setBlockedUsers(blockedData.blockedUsers || []);
+        setMutedUsers(mutedData.mutedUsers || []);
+      }).catch(err => {
+        console.error('Failed to load blocked/muted users:', err);
+      });
+    }
+  }, [showBlockedMuted, fetchAPI]);
+
+  const handleUnblock = async (userId, name) => {
+    try {
+      await fetchAPI(`/users/${userId}/block`, { method: 'DELETE' });
+      setBlockedUsers(prev => prev.filter(u => u.blockedUserId !== userId));
+      showToast(`Unblocked ${name}`, 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to unblock user', 'error');
+    }
+  };
+
+  const handleUnmute = async (userId, name) => {
+    try {
+      await fetchAPI(`/users/${userId}/mute`, { method: 'DELETE' });
+      setMutedUsers(prev => prev.filter(u => u.mutedUserId !== userId));
+      showToast(`Unmuted ${name}`, 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to unmute user', 'error');
+    }
+  };
 
   const handleSaveProfile = async () => {
     try {
@@ -3242,6 +3962,123 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
         <div style={{ color: '#5a6a5a', fontSize: '0.7rem', padding: '10px', background: '#0a100a', border: '1px solid #2a3a2a' }}>
           ℹ️ Theme customization will change colors throughout the app (coming soon). Other changes take effect immediately.
         </div>
+      </div>
+
+      {/* Blocked & Muted Users */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div style={{ color: '#6a7a6a', fontSize: '0.8rem' }}>BLOCKED & MUTED USERS</div>
+          <button
+            onClick={() => setShowBlockedMuted(!showBlockedMuted)}
+            style={{
+              padding: isMobile ? '8px 12px' : '6px 10px',
+              background: showBlockedMuted ? '#ff6b3520' : 'transparent',
+              border: `1px solid ${showBlockedMuted ? '#ff6b35' : '#3a4a3a'}`,
+              color: showBlockedMuted ? '#ff6b35' : '#6a7a6a',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '0.7rem',
+            }}
+          >
+            {showBlockedMuted ? '▼ HIDE' : '▶ SHOW'}
+          </button>
+        </div>
+
+        {showBlockedMuted && (
+          <div>
+            {/* Blocked Users */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ color: '#ff6b35', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>⊘</span> BLOCKED ({blockedUsers.length})
+              </div>
+              {blockedUsers.length === 0 ? (
+                <div style={{ color: '#5a6a5a', fontSize: '0.75rem', padding: '12px', background: '#0a100a', border: '1px solid #1a2a1a' }}>
+                  No blocked users. Blocked users cannot send you contact requests, invite you to groups, or have their messages shown to you.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {blockedUsers.map(u => (
+                    <div key={u.id} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 12px',
+                      background: '#ff6b3510',
+                      border: '1px solid #ff6b3530',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="#ff6b35" size={28} />
+                        <div>
+                          <div style={{ color: '#c5d5c5', fontSize: '0.8rem' }}>{u.displayName}</div>
+                          <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{u.handle}</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleUnblock(u.blockedUserId, u.displayName)}
+                        style={{
+                          padding: isMobile ? '8px 12px' : '6px 10px',
+                          minHeight: isMobile ? '40px' : 'auto',
+                          background: '#0ead6920',
+                          border: '1px solid #0ead69',
+                          color: '#0ead69',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                          fontSize: '0.65rem',
+                        }}
+                      >UNBLOCK</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Muted Users */}
+            <div>
+              <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🔇</span> MUTED ({mutedUsers.length})
+              </div>
+              {mutedUsers.length === 0 ? (
+                <div style={{ color: '#5a6a5a', fontSize: '0.75rem', padding: '12px', background: '#0a100a', border: '1px solid #1a2a1a' }}>
+                  No muted users. Muted users can still interact with you, but their messages will be hidden from view.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {mutedUsers.map(u => (
+                    <div key={u.id} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 12px',
+                      background: '#0a100a',
+                      border: '1px solid #2a3a2a',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="#6a7a6a" size={28} />
+                        <div>
+                          <div style={{ color: '#8a9a8a', fontSize: '0.8rem' }}>{u.displayName}</div>
+                          <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{u.handle}</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleUnmute(u.mutedUserId, u.displayName)}
+                        style={{
+                          padding: isMobile ? '8px 12px' : '6px 10px',
+                          minHeight: isMobile ? '40px' : 'auto',
+                          background: '#0ead6920',
+                          border: '1px solid #0ead69',
+                          color: '#0ead69',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                          fontSize: '0.65rem',
+                        }}
+                      >UNMUTE</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Admin Panel */}
@@ -3456,6 +4293,9 @@ function MainApp() {
   const [typingUsers, setTypingUsers] = useState({}); // { waveId: { userId: { name, timestamp } } }
   const [contactRequests, setContactRequests] = useState([]); // Received contact requests
   const [sentContactRequests, setSentContactRequests] = useState([]); // Sent contact requests
+  const [groupInvitations, setGroupInvitations] = useState([]); // Received group invitations
+  const [blockedUsers, setBlockedUsers] = useState([]); // Users blocked by current user
+  const [mutedUsers, setMutedUsers] = useState([]); // Users muted by current user
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -3565,7 +4405,7 @@ function MainApp() {
     } else if (data.type === 'contact_request_received') {
       // Someone sent us a contact request
       setContactRequests(prev => [data.request, ...prev]);
-      showToastMsg(`${data.request.from_user_name || 'Someone'} sent you a contact request`, 'info');
+      showToastMsg(`${data.request.from_user?.displayName || 'Someone'} sent you a contact request`, 'info');
     } else if (data.type === 'contact_request_accepted') {
       // Our request was accepted
       setSentContactRequests(prev => prev.filter(r => r.id !== data.requestId));
@@ -3579,6 +4419,22 @@ function MainApp() {
     } else if (data.type === 'contact_request_cancelled') {
       // Request to us was cancelled
       setContactRequests(prev => prev.filter(r => r.id !== data.requestId));
+    } else if (data.type === 'group_invitation_received') {
+      // Someone invited us to a group
+      setGroupInvitations(prev => [data.invitation, ...prev]);
+      const groupName = data.invitation.group?.name || 'a group';
+      const inviterName = data.invitation.invited_by_user?.displayName || 'Someone';
+      showToastMsg(`${inviterName} invited you to join ${groupName}`, 'info');
+    } else if (data.type === 'group_invitation_accepted') {
+      // Our invitation was accepted - reload groups since someone joined
+      showToastMsg('Your group invitation was accepted!', 'success');
+      fetchAPI('/groups').then(setGroups).catch(console.error);
+    } else if (data.type === 'group_invitation_declined') {
+      // Our invitation was declined
+      showToastMsg('Your group invitation was declined', 'info');
+    } else if (data.type === 'group_invitation_cancelled') {
+      // Invitation to us was cancelled
+      setGroupInvitations(prev => prev.filter(i => i.id !== data.invitationId));
     }
   }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView, fetchAPI]);
 
@@ -3603,12 +4459,76 @@ function MainApp() {
     } catch (e) { console.error('Failed to load contact requests:', e); }
   }, [fetchAPI]);
 
+  const loadGroupInvitations = useCallback(async () => {
+    try {
+      const invitations = await fetchAPI('/groups/invitations');
+      setGroupInvitations(invitations);
+    } catch (e) { console.error('Failed to load group invitations:', e); }
+  }, [fetchAPI]);
+
+  const loadBlockedMutedUsers = useCallback(async () => {
+    try {
+      const [blockedData, mutedData] = await Promise.all([
+        fetchAPI('/users/blocked'),
+        fetchAPI('/users/muted')
+      ]);
+      setBlockedUsers(blockedData.blockedUsers || []);
+      setMutedUsers(mutedData.mutedUsers || []);
+    } catch (e) { console.error('Failed to load blocked/muted users:', e); }
+  }, [fetchAPI]);
+
+  const handleBlockUser = useCallback(async (userId) => {
+    try {
+      await fetchAPI(`/users/${userId}/block`, { method: 'POST' });
+      loadBlockedMutedUsers();
+      return true;
+    } catch (e) {
+      console.error('Failed to block user:', e);
+      return false;
+    }
+  }, [fetchAPI, loadBlockedMutedUsers]);
+
+  const handleUnblockUser = useCallback(async (userId) => {
+    try {
+      await fetchAPI(`/users/${userId}/block`, { method: 'DELETE' });
+      loadBlockedMutedUsers();
+      return true;
+    } catch (e) {
+      console.error('Failed to unblock user:', e);
+      return false;
+    }
+  }, [fetchAPI, loadBlockedMutedUsers]);
+
+  const handleMuteUser = useCallback(async (userId) => {
+    try {
+      await fetchAPI(`/users/${userId}/mute`, { method: 'POST' });
+      loadBlockedMutedUsers();
+      return true;
+    } catch (e) {
+      console.error('Failed to mute user:', e);
+      return false;
+    }
+  }, [fetchAPI, loadBlockedMutedUsers]);
+
+  const handleUnmuteUser = useCallback(async (userId) => {
+    try {
+      await fetchAPI(`/users/${userId}/mute`, { method: 'DELETE' });
+      loadBlockedMutedUsers();
+      return true;
+    } catch (e) {
+      console.error('Failed to unmute user:', e);
+      return false;
+    }
+  }, [fetchAPI, loadBlockedMutedUsers]);
+
   useEffect(() => {
     loadWaves();
     loadContacts();
     loadGroups();
     loadContactRequests();
-  }, [loadWaves, loadContacts, loadGroups, loadContactRequests]);
+    loadGroupInvitations();
+    loadBlockedMutedUsers();
+  }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers]);
 
   // Request notification permission on first load
   useEffect(() => {
@@ -3707,7 +4627,8 @@ function MainApp() {
           {navItems.map(view => {
             const totalUnread = view === 'waves' ? waves.reduce((sum, w) => sum + (w.unread_count || 0), 0) : 0;
             const pendingRequests = view === 'contacts' ? contactRequests.length : 0;
-            const badgeCount = totalUnread || pendingRequests;
+            const pendingInvitations = view === 'groups' ? groupInvitations.length : 0;
+            const badgeCount = totalUnread || pendingRequests || pendingInvitations;
             return (
               <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); }} style={{
                 padding: isMobile ? '10px 12px' : '8px 16px',
@@ -3724,15 +4645,15 @@ function MainApp() {
                     position: 'absolute',
                     top: '-6px',
                     right: '-6px',
-                    background: pendingRequests > 0 ? '#3bceac' : '#ff6b35',
-                    color: '#fff',
+                    background: pendingRequests > 0 ? '#3bceac' : pendingInvitations > 0 ? '#ffd23f' : '#ff6b35',
+                    color: pendingInvitations > 0 && !pendingRequests ? '#000' : '#fff',
                     fontSize: '0.55rem',
                     fontWeight: 700,
                     padding: '2px 4px',
                     borderRadius: '10px',
                     minWidth: '16px',
                     textAlign: 'center',
-                    boxShadow: pendingRequests > 0 ? '0 0 8px rgba(59, 206, 172, 0.8)' : '0 0 8px rgba(255, 107, 53, 0.8)',
+                    boxShadow: pendingRequests > 0 ? '0 0 8px rgba(59, 206, 172, 0.8)' : pendingInvitations > 0 ? '0 0 8px rgba(255, 210, 63, 0.8)' : '0 0 8px rgba(255, 107, 53, 0.8)',
                   }}>{badgeCount}</span>
                 )}
               </button>
@@ -3789,7 +4710,14 @@ function MainApp() {
                   contactRequests={contactRequests}
                   sentContactRequests={sentContactRequests}
                   onRequestsChange={loadContactRequests}
-                  onContactsChange={loadContacts} />
+                  onContactsChange={loadContacts}
+                  blockedUsers={blockedUsers}
+                  mutedUsers={mutedUsers}
+                  onBlockUser={handleBlockUser}
+                  onUnblockUser={handleUnblockUser}
+                  onMuteUser={handleMuteUser}
+                  onUnmuteUser={handleUnmuteUser}
+                  onBlockedMutedChange={loadBlockedMutedUsers} />
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
                   <div style={{ textAlign: 'center' }}>
@@ -3803,7 +4731,15 @@ function MainApp() {
         )}
 
         {activeView === 'groups' && (
-          <GroupsView groups={groups} fetchAPI={fetchAPI} showToast={showToastMsg} onGroupsChange={loadGroups} />
+          <GroupsView
+            groups={groups}
+            fetchAPI={fetchAPI}
+            showToast={showToastMsg}
+            onGroupsChange={loadGroups}
+            groupInvitations={groupInvitations}
+            onInvitationsChange={loadGroupInvitations}
+            contacts={contacts}
+          />
         )}
 
         {activeView === 'contacts' && (

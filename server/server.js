@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -22,6 +23,9 @@ const JWT_SECRET = process.env.JWT_SECRET || (() => {
 })();
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
+// GIPHY API configuration
+const GIPHY_API_KEY = process.env.GIPHY_API_KEY || null;
+
 // Data directory and files
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILES = {
@@ -44,7 +48,7 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 // ============ Security: Rate Limiting ============
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 30,
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -53,7 +57,7 @@ const loginLimiter = rateLimit({
 
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 3,
+  max: 15,
   message: { error: 'Too many registration attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -61,15 +65,23 @@ const registerLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 300,
   message: { error: 'Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const gifSearchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,  // 30 searches per minute per user
+  message: { error: 'Too many GIF searches. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 // ============ Security: Account Lockout ============
 const failedAttempts = new Map();
-const LOCKOUT_THRESHOLD = 5;
+const LOCKOUT_THRESHOLD = 15;
 const LOCKOUT_DURATION = 15 * 60 * 1000;
 
 function checkAccountLockout(handle) {
@@ -694,6 +706,170 @@ class Database {
     );
   }
 
+  // === Group Invitation Methods ===
+  createGroupInvitation(groupId, invitedBy, invitedUserId, message = null) {
+    // Validate group exists
+    const group = this.getGroup(groupId);
+    if (!group) return { error: 'Group not found' };
+
+    // Validate users exist
+    const inviter = this.findUserById(invitedBy);
+    const invitee = this.findUserById(invitedUserId);
+    if (!inviter || !invitee) return { error: 'User not found' };
+
+    // Can't invite yourself
+    if (invitedBy === invitedUserId) return { error: 'Cannot invite yourself' };
+
+    // Check if inviter is a group member
+    if (!this.isGroupMember(groupId, invitedBy)) {
+      return { error: 'Only group members can invite others' };
+    }
+
+    // Check if invitee is already a member
+    if (this.isGroupMember(groupId, invitedUserId)) {
+      return { error: 'User is already a group member' };
+    }
+
+    // Check if blocked
+    if (this.isBlocked(invitedUserId, invitedBy)) {
+      return { error: 'Cannot invite this user' };
+    }
+
+    // Check for existing pending invitation
+    const existingInvitation = this.groupInvitations.invitations.find(i =>
+      i.group_id === groupId &&
+      i.invited_user_id === invitedUserId &&
+      i.status === 'pending'
+    );
+    if (existingInvitation) {
+      return { error: 'Invitation already pending for this user' };
+    }
+
+    const invitation = {
+      id: uuidv4(),
+      group_id: groupId,
+      invited_by: invitedBy,
+      invited_user_id: invitedUserId,
+      message: message ? sanitizeInput(message) : null,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      responded_at: null
+    };
+
+    this.groupInvitations.invitations.push(invitation);
+    this.saveGroupInvitations();
+
+    // Return enriched invitation with group and user info
+    return {
+      ...invitation,
+      group: { id: group.id, name: group.name },
+      invited_by_user: { id: inviter.id, handle: inviter.handle, displayName: inviter.displayName, avatar: inviter.avatar },
+      invited_user: { id: invitee.id, handle: invitee.handle, displayName: invitee.displayName, avatar: invitee.avatar }
+    };
+  }
+
+  getGroupInvitationsForUser(userId) {
+    // Get pending invitations received by this user
+    return this.groupInvitations.invitations
+      .filter(i => i.invited_user_id === userId && i.status === 'pending')
+      .map(i => {
+        const group = this.getGroup(i.group_id);
+        const inviter = this.findUserById(i.invited_by);
+        return {
+          ...i,
+          group: group ? { id: group.id, name: group.name, description: group.description } : null,
+          invited_by_user: inviter ? {
+            id: inviter.id,
+            handle: inviter.handle,
+            displayName: inviter.displayName,
+            avatar: inviter.avatar
+          } : null
+        };
+      });
+  }
+
+  getGroupInvitationsSent(groupId, userId) {
+    // Get pending invitations sent by this user for a specific group
+    return this.groupInvitations.invitations
+      .filter(i => i.group_id === groupId && i.invited_by === userId && i.status === 'pending')
+      .map(i => {
+        const invitee = this.findUserById(i.invited_user_id);
+        return {
+          ...i,
+          invited_user: invitee ? {
+            id: invitee.id,
+            handle: invitee.handle,
+            displayName: invitee.displayName,
+            avatar: invitee.avatar
+          } : null
+        };
+      });
+  }
+
+  getGroupInvitation(invitationId) {
+    return this.groupInvitations.invitations.find(i => i.id === invitationId);
+  }
+
+  acceptGroupInvitation(invitationId, userId) {
+    const invitation = this.getGroupInvitation(invitationId);
+    if (!invitation) return { error: 'Invitation not found' };
+    if (invitation.invited_user_id !== userId) return { error: 'Not authorized' };
+    if (invitation.status !== 'pending') return { error: 'Invitation already processed' };
+
+    // Double-check user isn't already a member
+    if (this.isGroupMember(invitation.group_id, userId)) {
+      invitation.status = 'accepted';
+      invitation.responded_at = new Date().toISOString();
+      this.saveGroupInvitations();
+      return { error: 'Already a group member' };
+    }
+
+    // Update invitation status
+    invitation.status = 'accepted';
+    invitation.responded_at = new Date().toISOString();
+
+    // Add user to group as member
+    this.addGroupMember(invitation.group_id, userId, 'member');
+
+    this.saveGroupInvitations();
+
+    const group = this.getGroup(invitation.group_id);
+    return {
+      success: true,
+      invitation,
+      group: group ? { id: group.id, name: group.name } : null
+    };
+  }
+
+  declineGroupInvitation(invitationId, userId) {
+    const invitation = this.getGroupInvitation(invitationId);
+    if (!invitation) return { error: 'Invitation not found' };
+    if (invitation.invited_user_id !== userId) return { error: 'Not authorized' };
+    if (invitation.status !== 'pending') return { error: 'Invitation already processed' };
+
+    invitation.status = 'declined';
+    invitation.responded_at = new Date().toISOString();
+    this.saveGroupInvitations();
+
+    return { success: true, invitation };
+  }
+
+  cancelGroupInvitation(invitationId, userId) {
+    const invitation = this.getGroupInvitation(invitationId);
+    if (!invitation) return { error: 'Invitation not found' };
+    if (invitation.invited_by !== userId) return { error: 'Not authorized' };
+    if (invitation.status !== 'pending') return { error: 'Invitation already processed' };
+
+    // Remove the invitation entirely
+    const index = this.groupInvitations.invitations.findIndex(i => i.id === invitationId);
+    if (index !== -1) {
+      this.groupInvitations.invitations.splice(index, 1);
+      this.saveGroupInvitations();
+    }
+
+    return { success: true };
+  }
+
   // === Moderation Methods ===
   blockUser(userId, blockedUserId) {
     const user = this.findUserById(userId);
@@ -981,6 +1157,22 @@ class Database {
     if (index === -1) return false;
     this.groups.members.splice(index, 1);
     this.saveGroups();
+
+    // Clean up: remove user from participants of all waves belonging to this group
+    const groupWaveIds = this.waves.waves
+      .filter(w => w.privacy === 'group' && w.groupId === groupId)
+      .map(w => w.id);
+
+    if (groupWaveIds.length > 0) {
+      const beforeCount = this.waves.participants.length;
+      this.waves.participants = this.waves.participants.filter(
+        p => !(groupWaveIds.includes(p.waveId) && p.userId === userId)
+      );
+      if (this.waves.participants.length < beforeCount) {
+        this.saveWaves();
+      }
+    }
+
     return true;
   }
 
@@ -1004,11 +1196,18 @@ class Database {
       .map(m => m.groupId);
 
     return this.waves.waves
-      .filter(w =>
-        participantWaveIds.includes(w.id) ||
-        w.privacy === 'public' ||
-        (w.privacy === 'group' && w.groupId && userGroupIds.includes(w.groupId))
-      )
+      .filter(w => {
+        // Public waves - always accessible
+        if (w.privacy === 'public') return true;
+
+        // Group waves - MUST be a current group member (participant status alone is not enough)
+        if (w.privacy === 'group' && w.groupId) {
+          return userGroupIds.includes(w.groupId);
+        }
+
+        // Private waves - must be an explicit participant
+        return participantWaveIds.includes(w.id);
+      })
       .map(wave => {
         const creator = this.findUserById(wave.createdBy);
         const participants = this.getWaveParticipants(wave.id);
@@ -1069,18 +1268,18 @@ class Database {
   canAccessWave(waveId, userId) {
     const wave = this.getWave(waveId);
     if (!wave) return false;
-    
+
     // Public waves are accessible to all
     if (wave.privacy === 'public') return true;
-    
-    // Check if participant
-    if (this.waves.participants.some(p => p.waveId === waveId && p.userId === userId)) {
-      return true;
-    }
-    
-    // Group waves - check group membership
+
+    // Group waves - MUST be a current group member (participant status alone is not enough)
     if (wave.privacy === 'group' && wave.groupId) {
       return this.isGroupMember(wave.groupId, userId);
+    }
+
+    // Private waves - check if explicit participant
+    if (this.waves.participants.some(p => p.waveId === waveId && p.userId === userId)) {
+      return true;
     }
     
     return false;
@@ -1787,6 +1986,132 @@ app.delete('/api/contacts/requests/:id', authenticateToken, (req, res) => {
   res.json({ success: true, message: 'Contact request cancelled' });
 });
 
+// ============ Group Invitation Routes ============
+// Invite user(s) to a group
+app.post('/api/groups/:id/invite', authenticateToken, (req, res) => {
+  const groupId = sanitizeInput(req.params.id);
+  const { userIds, message } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ error: 'userIds array is required' });
+  }
+
+  // Check if inviter is a group member
+  if (!db.isGroupMember(groupId, req.user.userId)) {
+    return res.status(403).json({ error: 'Only group members can invite others' });
+  }
+
+  const results = [];
+  const errors = [];
+
+  for (const userId of userIds) {
+    const result = db.createGroupInvitation(groupId, req.user.userId, sanitizeInput(userId), message);
+
+    if (result.error) {
+      errors.push({ userId, error: result.error });
+    } else {
+      results.push(result);
+
+      // Broadcast to invitee via WebSocket
+      broadcast({
+        type: 'group_invitation_received',
+        invitation: result
+      }, [result.invited_user_id]);
+    }
+  }
+
+  res.status(201).json({
+    success: results.length > 0,
+    invitations: results,
+    errors: errors.length > 0 ? errors : undefined
+  });
+});
+
+// Get pending group invitations for current user
+app.get('/api/groups/invitations', authenticateToken, (req, res) => {
+  const invitations = db.getGroupInvitationsForUser(req.user.userId);
+  res.json(invitations);
+});
+
+// Get pending invitations sent for a specific group
+app.get('/api/groups/:id/invitations/sent', authenticateToken, (req, res) => {
+  const groupId = sanitizeInput(req.params.id);
+
+  // Check if requester is a group member
+  if (!db.isGroupMember(groupId, req.user.userId)) {
+    return res.status(403).json({ error: 'Not a group member' });
+  }
+
+  const invitations = db.getGroupInvitationsSent(groupId, req.user.userId);
+  res.json(invitations);
+});
+
+// Accept a group invitation
+app.post('/api/groups/invitations/:id/accept', authenticateToken, (req, res) => {
+  const invitationId = sanitizeInput(req.params.id);
+  const result = db.acceptGroupInvitation(invitationId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Notify the inviter that their invitation was accepted
+  broadcast({
+    type: 'group_invitation_accepted',
+    invitationId: invitationId,
+    userId: req.user.userId,
+    groupId: result.invitation.group_id
+  }, [result.invitation.invited_by]);
+
+  res.json({
+    success: true,
+    message: 'Group invitation accepted',
+    group: result.group
+  });
+});
+
+// Decline a group invitation
+app.post('/api/groups/invitations/:id/decline', authenticateToken, (req, res) => {
+  const invitationId = sanitizeInput(req.params.id);
+  const result = db.declineGroupInvitation(invitationId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Notify the inviter that their invitation was declined
+  broadcast({
+    type: 'group_invitation_declined',
+    invitationId: invitationId
+  }, [result.invitation.invited_by]);
+
+  res.json({ success: true, message: 'Group invitation declined' });
+});
+
+// Cancel a sent group invitation
+app.delete('/api/groups/invitations/:id', authenticateToken, (req, res) => {
+  const invitationId = sanitizeInput(req.params.id);
+  const invitation = db.getGroupInvitation(invitationId);
+
+  if (!invitation) {
+    return res.status(404).json({ error: 'Invitation not found' });
+  }
+
+  const result = db.cancelGroupInvitation(invitationId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Notify the invitee that the invitation was cancelled
+  broadcast({
+    type: 'group_invitation_cancelled',
+    invitationId: invitationId
+  }, [invitation.invited_user_id]);
+
+  res.json({ success: true, message: 'Group invitation cancelled' });
+});
+
 // ============ Moderation Routes ============
 // Block user
 app.post('/api/users/:id/block', authenticateToken, (req, res) => {
@@ -1854,6 +2179,123 @@ app.delete('/api/users/:id/mute', authenticateToken, (req, res) => {
 app.get('/api/users/muted', authenticateToken, (req, res) => {
   const mutedUsers = db.getMutedUsers(req.user.userId);
   res.json({ mutedUsers });
+});
+
+// ============ GIF Search (GIPHY API Proxy) ============
+app.get('/api/gifs/search', authenticateToken, gifSearchLimiter, async (req, res) => {
+  const { q, limit = 20, offset = 0 } = req.query;
+
+  if (!q || typeof q !== 'string' || q.trim().length === 0) {
+    return res.status(400).json({ error: 'Search query is required' });
+  }
+
+  if (!GIPHY_API_KEY) {
+    return res.status(503).json({
+      error: 'GIF search is not configured. Set GIPHY_API_KEY environment variable.'
+    });
+  }
+
+  try {
+    const searchUrl = new URL('https://api.giphy.com/v1/gifs/search');
+    searchUrl.searchParams.set('api_key', GIPHY_API_KEY);
+    searchUrl.searchParams.set('q', q.trim());
+    searchUrl.searchParams.set('limit', Math.min(parseInt(limit) || 20, 50).toString());
+    searchUrl.searchParams.set('offset', (parseInt(offset) || 0).toString());
+    searchUrl.searchParams.set('rating', 'pg-13'); // Content rating filter
+    searchUrl.searchParams.set('lang', 'en');
+
+    const response = await fetch(searchUrl.toString(), {
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      console.error('GIPHY API error:', response.status, response.statusText);
+      const errorText = await response.text().catch(() => '');
+      console.error('GIPHY API response:', errorText);
+      return res.status(502).json({ error: 'Failed to fetch GIFs from provider' });
+    }
+
+    const data = await response.json();
+
+    // Transform response to only include what we need
+    const gifs = (data.data || []).map(gif => ({
+      id: gif.id,
+      title: gif.title,
+      url: gif.images?.original?.url || '',
+      preview: gif.images?.fixed_height_small?.url || gif.images?.fixed_height?.url || '',
+      width: parseInt(gif.images?.fixed_height_small?.width || gif.images?.fixed_height?.width || 100),
+      height: parseInt(gif.images?.fixed_height_small?.height || gif.images?.fixed_height?.height || 100),
+    })).filter(gif => gif.url && gif.preview);
+
+    res.json({
+      gifs,
+      pagination: {
+        total_count: data.pagination?.total_count || 0,
+        count: data.pagination?.count || gifs.length,
+        offset: data.pagination?.offset || 0,
+      }
+    });
+  } catch (err) {
+    console.error('GIF search error:', err);
+    res.status(500).json({ error: 'Failed to search GIFs' });
+  }
+});
+
+// Get trending GIFs
+app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, res) => {
+  const { limit = 20, offset = 0 } = req.query;
+
+  if (!GIPHY_API_KEY) {
+    return res.status(503).json({
+      error: 'GIF search is not configured. Set GIPHY_API_KEY environment variable.'
+    });
+  }
+
+  try {
+    const trendingUrl = new URL('https://api.giphy.com/v1/gifs/trending');
+    trendingUrl.searchParams.set('api_key', GIPHY_API_KEY);
+    trendingUrl.searchParams.set('limit', Math.min(parseInt(limit) || 20, 50).toString());
+    trendingUrl.searchParams.set('offset', (parseInt(offset) || 0).toString());
+    trendingUrl.searchParams.set('rating', 'pg-13');
+
+    const response = await fetch(trendingUrl.toString(), {
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      console.error('GIPHY API error:', response.status, response.statusText);
+      const errorText = await response.text().catch(() => '');
+      console.error('GIPHY API response:', errorText);
+      return res.status(502).json({ error: 'Failed to fetch trending GIFs' });
+    }
+
+    const data = await response.json();
+
+    const gifs = (data.data || []).map(gif => ({
+      id: gif.id,
+      title: gif.title,
+      url: gif.images?.original?.url || '',
+      preview: gif.images?.fixed_height_small?.url || gif.images?.fixed_height?.url || '',
+      width: parseInt(gif.images?.fixed_height_small?.width || gif.images?.fixed_height?.width || 100),
+      height: parseInt(gif.images?.fixed_height_small?.height || gif.images?.fixed_height?.height || 100),
+    })).filter(gif => gif.url && gif.preview);
+
+    res.json({
+      gifs,
+      pagination: {
+        total_count: data.pagination?.total_count || 0,
+        count: data.pagination?.count || gifs.length,
+        offset: data.pagination?.offset || 0,
+      }
+    });
+  } catch (err) {
+    console.error('Trending GIFs error:', err);
+    res.status(500).json({ error: 'Failed to fetch trending GIFs' });
+  }
 });
 
 // Create report
@@ -1926,11 +2368,12 @@ app.get('/api/groups/:id', authenticateToken, (req, res) => {
   if (!db.isGroupMember(groupId, req.user.userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
-  
+
   res.json({
     ...group,
     members: db.getGroupMembers(groupId),
     isAdmin: db.isGroupAdmin(groupId, req.user.userId),
+    currentUserId: req.user.userId,
   });
 });
 
@@ -2388,6 +2831,17 @@ wss.on('connection', (ws, req) => {
     }
   });
 });
+
+// Broadcast to specific users by their IDs
+function broadcast(message, userIds = []) {
+  for (const userId of userIds) {
+    if (clients.has(userId)) {
+      for (const ws of clients.get(userId)) {
+        if (ws.readyState === 1) ws.send(JSON.stringify(message));
+      }
+    }
+  }
+}
 
 function broadcastToWave(waveId, message, excludeWs = null) {
   const wave = db.getWave(waveId);

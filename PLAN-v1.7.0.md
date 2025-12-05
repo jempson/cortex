@@ -1,10 +1,11 @@
 # Cortex v1.7.0 - Implementation Plan
 
-## 🎯 RELEASE STATUS: IN DEVELOPMENT
+## 🎯 RELEASE STATUS: ✅ RELEASED
 
 **Started:** December 5, 2025
+**Released:** December 5, 2025
 **Target Scope:** Contact & Invitation Approval System
-**Estimated Time:** 38-52 hours
+**Actual Time:** Completed in single development session
 
 ---
 
@@ -24,13 +25,13 @@ Version 1.7.0 focuses on building a comprehensive approval workflow for contacts
 |---|---------|----------|-----------|--------|
 | 1 | Contact Request System | High | 8-10h | ✅ Complete |
 | 2 | Add Contact from Participants | High | 4-6h | ✅ Complete |
-| 3 | Group Invitation System | High | 8-12h | 🔲 Not Started |
+| 3 | Group Invitation System | High | 8-12h | ✅ Complete |
 
 ### Secondary Features
 | # | Feature | Priority | Est. Time | Status |
 |---|---------|----------|-----------|--------|
-| 4 | Basic Moderation (block/mute) | Med-High | 12-16h | 🔲 Not Started |
-| 5 | GIF Search Integration | Medium | 6-8h | 🔲 Not Started |
+| 4 | Basic Moderation (block/mute) | Med-High | 12-16h | ✅ Complete |
+| 5 | GIF Search Integration | Medium | 6-8h | ✅ Complete |
 
 ---
 
@@ -122,83 +123,123 @@ Version 1.7.0 focuses on building a comprehensive approval workflow for contacts
 ---
 
 ### Phase 4: Group Invitation System (Backend)
-**Status:** 🔲 Not Started
+**Status:** ✅ Complete
 
 #### 4.1 Data Storage
-- [ ] Create `group-invitations.json` data file
-- [ ] Add GroupInvitation schema to Database class
-- [ ] Implement CRUD methods:
+- [x] Create `group-invitations.json` data file
+- [x] Add GroupInvitation schema to Database class
+- [x] Implement CRUD methods:
   - `createGroupInvitation(groupId, invitedBy, invitedUserId, message)`
   - `getGroupInvitationsForUser(userId)`
   - `getGroupInvitationsSent(groupId, userId)`
-  - `updateGroupInvitationStatus(invitationId, status)`
+  - `getGroupInvitation(invitationId)`
+  - `acceptGroupInvitation(invitationId, userId)`
+  - `declineGroupInvitation(invitationId, userId)`
+  - `cancelGroupInvitation(invitationId, userId)`
 
 #### 4.2 API Endpoints
-- [ ] `POST /api/groups/:id/invite` - Invite user(s) to group
+- [x] `POST /api/groups/:id/invite` - Invite user(s) to group
   - Body: `{ userIds: [], message? }`
-  - Validates: inviter is group member/admin, users not already members
-- [ ] `GET /api/groups/invitations` - Get pending invitations
-- [ ] `POST /api/groups/invitations/:id/accept` - Accept invitation
-  - Adds user to group
-- [ ] `POST /api/groups/invitations/:id/decline` - Decline invitation
+  - Validates: inviter is group member, users not already members, not blocked
+- [x] `GET /api/groups/invitations` - Get pending invitations
+- [x] `GET /api/groups/:id/invitations/sent` - Get sent invitations for a group
+- [x] `POST /api/groups/invitations/:id/accept` - Accept invitation
+  - Adds user to group as member
+- [x] `POST /api/groups/invitations/:id/decline` - Decline invitation
+- [x] `DELETE /api/groups/invitations/:id` - Cancel sent invitation
 
 #### 4.3 WebSocket Events
-- [ ] `group_invitation_received` - Notify invitee
-- [ ] `group_invitation_accepted` - Notify inviter
-- [ ] `group_invitation_declined` - Notify inviter
+- [x] `group_invitation_received` - Notify invitee
+- [x] `group_invitation_accepted` - Notify inviter
+- [x] `group_invitation_declined` - Notify inviter
+- [x] `group_invitation_cancelled` - Notify invitee
 
 ---
 
 ### Phase 5: Group Invitation System (Frontend)
-**Status:** 🔲 Not Started
+**Status:** ✅ Complete
 
 #### 5.1 UI Components
-- [ ] `GroupInvitationsPanel` - List pending invitations
-- [ ] `InviteToGroupModal` - Select contacts to invite
-- [ ] `GroupInvitationBadge` - Shows pending invitation count
+- [x] `GroupInvitationsPanel` - List pending invitations with JOIN/DECLINE buttons
+- [x] `InviteToGroupModal` - Select contacts to invite with search and multi-select
+- [x] Badge count on Groups nav button (amber color #ffd23f)
 
 #### 5.2 Integration Points
-- [ ] Add invitations section to Groups view
-- [ ] Add "Invite" button to group details
-- [ ] Badge count on Groups nav button
+- [x] Add invitations section to Groups view (above group list)
+- [x] Add "Invite" button to group details header
+- [x] WebSocket handlers for all 4 invitation events with toast notifications
+- [x] State management: `groupInvitations` state and `loadGroupInvitations()` function
 
 ---
 
 ### Phase 6: Basic Moderation (Block/Mute)
-**Status:** 🔲 Not Started
+**Status:** ✅ Complete
 
 #### 6.1 Backend
-- [ ] Add `blocked: []` and `muted: []` arrays to user schema
-- [ ] `POST /api/users/:id/block` - Block user
-- [ ] `POST /api/users/:id/unblock` - Unblock user
-- [ ] `POST /api/users/:id/mute` - Mute user
-- [ ] `POST /api/users/:id/unmute` - Unmute user
-- [ ] `GET /api/users/blocked` - Get blocked users list
-- [ ] `GET /api/users/muted` - Get muted users list
-- [ ] Filter blocked users from:
+- [x] Add `blocked: []` and `muted: []` arrays to user schema (moderation.json)
+- [x] `POST /api/users/:id/block` - Block user
+- [x] `DELETE /api/users/:id/block` - Unblock user
+- [x] `POST /api/users/:id/mute` - Mute user
+- [x] `DELETE /api/users/:id/mute` - Unmute user
+- [x] `GET /api/users/blocked` - Get blocked users list
+- [x] `GET /api/users/muted` - Get muted users list
+- [x] Filter blocked users from:
   - Contact requests (can't request)
-  - Wave participants (hide messages)
+  - Wave messages (hidden from view)
   - Group invitations (can't invite)
 
 #### 6.2 Frontend
-- [ ] Block/Mute buttons in user context menu
-- [ ] Blocked/Muted users management in Settings
-- [ ] Visual indicator for muted users
+- [x] Block/Mute buttons in participant panel (⋮ dropdown menu)
+- [x] Visual indicators: blocked users show red border/name, muted users show gray name
+- [x] Blocked/Muted users management in Profile Settings
+- [x] State management in MainApp for blocked/muted users
+- [x] Real-time toast notifications for block/mute actions
 
 ---
 
 ### Phase 7: GIF Search Integration
-**Status:** 🔲 Not Started
+**Status:** ✅ Complete
 
 #### 7.1 Backend
-- [ ] Add `GIPHY_API_KEY` environment variable
-- [ ] `GET /api/gifs/search?q=query` - Proxy to Giphy API
-- [ ] Rate limiting for GIF searches
+- [x] Add `GIPHY_API_KEY` environment variable
+- [x] `GET /api/gifs/search?q=query` - Proxy to Giphy API
+- [x] `GET /api/gifs/trending` - Get trending GIFs
+- [x] Rate limiting for GIF searches (30/min)
 
 #### 7.2 Frontend
-- [ ] GIF button in message composer
-- [ ] GIF search modal with grid layout
-- [ ] Click to insert GIF URL
+- [x] GIF button in message composer
+- [x] GIF search modal with grid layout
+- [x] Trending GIFs on open
+- [x] Debounced search with 500ms delay
+- [x] Click to insert GIF URL
+- [x] GIPHY attribution footer
+
+#### 7.3 GIPHY API Key Setup
+To enable GIF search, you need to configure a GIPHY API key:
+
+1. **Get an API Key**:
+   - Go to https://developers.giphy.com/
+   - Create an account or log in
+   - Click "Create an App" → Select "API" (not SDK)
+   - Name your app (e.g., "Cortex") and accept terms
+   - Copy your API key from the dashboard
+
+2. **Configure in Cortex**:
+   Create or edit `server/.env`:
+   ```bash
+   GIPHY_API_KEY=your-api-key-here
+   ```
+
+3. **Restart the server**:
+   ```bash
+   cd server && npm run dev
+   ```
+
+**Rate Limits**:
+- Beta key (free): 42 requests/hour, 1000/day
+- Production key: Apply at GIPHY for higher limits
+
+**Note**: GIF search shows a graceful error if API key is missing or invalid.
 
 ---
 
@@ -287,30 +328,36 @@ Version 1.7.0 focuses on building a comprehensive approval workflow for contacts
 
 ## Testing Checklist
 
-### Contact Requests
-- [ ] Send request to non-contact
-- [ ] Cannot send duplicate request
-- [ ] Cannot request blocked user
-- [ ] Accept creates mutual contact
-- [ ] Decline removes request
-- [ ] Cancel removes sent request
-- [ ] WebSocket notifications work
-- [ ] Badge counts update correctly
+### Contact Requests ✅
+- [x] Send request to non-contact
+- [x] Cannot send duplicate request
+- [x] Cannot request blocked user
+- [x] Accept creates mutual contact
+- [x] Decline removes request
+- [x] Cancel removes sent request
+- [x] WebSocket notifications work
+- [x] Badge counts update correctly
 
-### Group Invitations
-- [ ] Invite contact to group
-- [ ] Cannot invite existing member
-- [ ] Accept adds to group
-- [ ] Decline removes invitation
-- [ ] Only members can invite
-- [ ] WebSocket notifications work
+### Group Invitations ✅
+- [x] Invite contact to group
+- [x] Cannot invite existing member
+- [x] Accept adds to group
+- [x] Decline removes invitation
+- [x] Only members can invite
+- [x] WebSocket notifications work
 
-### Moderation
-- [ ] Block prevents contact requests
-- [ ] Block hides messages in waves
-- [ ] Mute hides messages but no notification
-- [ ] Unblock/unmute restores functionality
-- [ ] Blocked list management works
+### Moderation ✅
+- [x] Block prevents contact requests
+- [x] Block hides messages in waves
+- [x] Mute hides messages but no notification
+- [x] Unblock/unmute restores functionality
+- [x] Blocked list management works
+
+### GIF Search ✅
+- [x] Trending GIFs load on modal open
+- [x] Search returns results
+- [x] Click inserts GIF URL
+- [x] GIF displays correctly in messages
 
 ---
 
@@ -347,7 +394,121 @@ Version 1.7.0 focuses on building a comprehensive approval workflow for contacts
     - Not a contact: "+ ADD" button (one-click send request)
   - Maintained read status indicator (✓ READ / ○ UNREAD)
   - Mobile-responsive with proper touch targets
+- ✅ **Phase 4 Complete**: Group Invitation System (Backend)
+  - Data storage already configured (`group-invitations.json`)
+  - Implemented 7 Database methods:
+    - `createGroupInvitation()` - with validation (group exists, member, not blocked, not already invited)
+    - `getGroupInvitationsForUser()` - get pending received invitations with enriched data
+    - `getGroupInvitationsSent()` - get pending sent invitations for a group
+    - `getGroupInvitation()` - get single invitation
+    - `acceptGroupInvitation()` - accept and add to group as member
+    - `declineGroupInvitation()` - decline invitation
+    - `cancelGroupInvitation()` - cancel sent invitation (inviter only)
+  - Added 6 API endpoints:
+    - `POST /api/groups/:id/invite` - invite multiple users at once
+    - `GET /api/groups/invitations` - get pending received invitations
+    - `GET /api/groups/:id/invitations/sent` - get sent invitations for a group
+    - `POST /api/groups/invitations/:id/accept` - accept invitation
+    - `POST /api/groups/invitations/:id/decline` - decline invitation
+    - `DELETE /api/groups/invitations/:id` - cancel sent invitation
+  - Added 4 WebSocket events for real-time notifications:
+    - `group_invitation_received` - notify invitee
+    - `group_invitation_accepted` - notify inviter with user and group info
+    - `group_invitation_declined` - notify inviter
+    - `group_invitation_cancelled` - notify invitee
+- ✅ **Phase 5 Complete**: Group Invitation System (Frontend)
+  - Added `groupInvitations` state and `loadGroupInvitations()` function to MainApp
+  - Added WebSocket handlers for all 4 group invitation events with toast notifications
+  - Created `GroupInvitationsPanel` component:
+    - Displays pending group invitations with JOIN/DECLINE buttons
+    - Shows group name, inviter, and optional message
+    - Mobile-responsive with proper touch targets
+  - Created `InviteToGroupModal` component:
+    - Multi-select contact picker with search filtering
+    - Optional message input
+    - Shows selected count and validates before sending
+  - Updated `GroupsView`:
+    - Added props: groupInvitations, onInvitationsChange, contacts
+    - Integrated GroupInvitationsPanel above group list
+    - Added "+ INVITE" button to group details header
+    - Added InviteToGroupModal with group context
+  - Badge on Groups nav button (amber #ffd23f) shows pending invitations count
+- ✅ **Bug Fixes**: Group System Improvements
+  - Fixed "ADD MEMBER" to use invitation flow instead of direct add
+    - Users now receive invitations they can accept/decline
+    - Renamed button labels: "ADD MEMBER" → "INVITE MEMBER", "ADD" → "INVITE"
+  - Added "LEAVE GROUP" button for all group members
+    - Any member can now leave a group voluntarily
+    - Server returns `currentUserId` in group details for leave functionality
+  - Fixed group wave access control security issue
+    - `canAccessWave()`: Group waves now require current group membership (participant status alone insufficient)
+    - `getWavesForUser()`: Group waves only shown if user is current group member
+    - `removeGroupMember()`: Now cleans up wave participants when user leaves group
+    - Leaving a group immediately revokes access to all group waves
+
+- ✅ **Phase 6 Complete**: Basic Moderation (Block/Mute)
+  - Backend already implemented in earlier work:
+    - Database methods: `blockUser`, `unblockUser`, `muteUser`, `unmuteUser`, `isBlocked`, `isMuted`
+    - API endpoints: POST/DELETE `/api/users/:id/block`, POST/DELETE `/api/users/:id/mute`
+    - GET endpoints: `/api/users/blocked`, `/api/users/muted`
+    - Filtering: blocked users filtered from contact requests, group invitations, and wave messages
+  - Frontend implementation completed:
+    - Added `blockedUsers` and `mutedUsers` state to MainApp
+    - Added `loadBlockedMutedUsers()` function with API calls
+    - Added block/unblock/mute/unmute handler functions
+    - Updated WaveView to accept and use blocked/muted props
+    - Added participant panel moderation menu (⋮ dropdown with MUTE/BLOCK options)
+    - Added visual indicators for blocked (red border/name) and muted (gray name) users
+    - Added "Blocked & Muted Users" management section in Profile Settings
+    - Collapsible section showing blocked and muted users with UNBLOCK/UNMUTE buttons
+- ✅ **Phase 7 Complete**: GIF Search Integration
+  - Backend implementation:
+    - Added `GIPHY_API_KEY` environment variable support
+    - Created `GET /api/gifs/search?q=query` endpoint - GIPHY API proxy
+    - Created `GET /api/gifs/trending` endpoint - trending GIFs
+    - Added rate limiting: 30 searches per minute per user
+    - Content filtered to PG-13 rating
+    - Returns transformed response with id, title, url (original), preview (small)
+  - Frontend implementation:
+    - Created `GifSearchModal` component with search and grid display
+    - Added GIF button in message composer (teal color)
+    - Shows trending GIFs on modal open
+    - Debounced search with 500ms delay
+    - Click to insert full GIF URL into message
+    - GIPHY attribution footer as required
+    - Mobile-responsive grid (2 columns mobile, 3 columns desktop)
+
+- ✅ **Bug Fixes**: Moderation ID Handling
+  - Fixed unblock/unmute from Profile Settings (was passing wrong ID field)
+  - Fixed isBlocked/isMuted helper functions in WaveView (checking wrong field)
+  - Fixed "Mark All Read" button visibility (now checks all_messages, not just threaded root)
+- ✅ **Environment Configuration**: Added dotenv support
+  - Installed `dotenv` package
+  - Server now auto-loads `.env` file on startup
+  - JWT_SECRET and GIPHY_API_KEY properly read from environment
 
 ---
 
-*Last Updated: December 5, 2025*
+## Known Issues (Deferred to Future Release)
+
+1. **GIF Playback in Messages**: GIFs may appear frozen until double-clicked. This is a minor UX issue and does not affect functionality.
+
+---
+
+## Release Summary
+
+v1.7.0 delivers a comprehensive approval workflow system for Cortex:
+
+- **Contact Request System**: Users must send and accept contact requests before becoming contacts
+- **Group Invitation System**: Users must be invited to groups and can accept or decline
+- **Participant Quick Actions**: Add contacts directly from wave participants with one-click actions
+- **User Moderation**: Block and mute users with full message filtering
+- **GIF Search**: GIPHY-powered GIF search and embedding in messages
+- **Leave Group**: All members can leave groups voluntarily
+- **Group Wave Security**: Leaving a group immediately revokes access to group waves
+
+All features tested and verified working with no show-stopper bugs identified.
+
+---
+
+*Released: December 5, 2025*

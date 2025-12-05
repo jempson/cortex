@@ -1,6 +1,6 @@
 {
   "name": "cortex-server",
-  "version": "1.7.0-alpha",
+  "version": "1.7.0",
   "description": "Cortex - Privacy-First Federated Communication Platform",
   "type": "module",
   "scripts": {
@@ -10,6 +10,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "express": "^4.21.0",
     "express-rate-limit": "^7.4.0",
     "helmet": "^8.0.0",
@@ -18,7 +19,12 @@
     "uuid": "^10.0.0",
     "ws": "^8.18.0"
   },
-  "keywords": ["communication", "federation", "privacy", "waves"],
+  "keywords": [
+    "communication",
+    "federation",
+    "privacy",
+    "waves"
+  ],
   "author": "Cortex Project",
   "license": "MIT"
 }

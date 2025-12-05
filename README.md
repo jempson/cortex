@@ -1,8 +1,46 @@
-# CORTEX - Secure Wave Communications v1.6.1
+# CORTEX - Secure Wave Communications v1.7.0
 
 A privacy-first, federated communication platform inspired by Google Wave with a Firefly aesthetic.
 
-## What's New in v1.6.1
+## What's New in v1.7.0
+
+### 📬 Contact Request System
+Users must send and accept contact requests before becoming contacts.
+
+- **Request Workflow**: Send contact requests with optional messages
+- **Accept/Decline**: Recipients can accept or decline requests
+- **Participant Quick Actions**: Add contacts directly from wave participants
+- **Real-Time Updates**: WebSocket notifications for all request events
+- **Badge Count**: Teal badge on Contacts nav shows pending requests
+
+### 👥 Group Invitation System
+Users must be invited to groups and can accept or decline.
+
+- **Invite Contacts**: Send invitations to multiple contacts at once
+- **Accept/Decline**: View and respond to pending invitations
+- **Leave Group**: Any member can leave a group voluntarily
+- **Access Control**: Leaving a group immediately revokes wave access
+- **Badge Count**: Amber badge on Groups nav shows pending invitations
+
+### 🚫 User Moderation (Block/Mute)
+Privacy controls for managing interactions with other users.
+
+- **Block Users**: Prevents contact requests, group invitations, and hides messages
+- **Mute Users**: Hides messages without blocking other interactions
+- **Participant Menu**: Quick block/mute from ⋮ dropdown in wave participants
+- **Management UI**: View and manage blocked/muted users in Profile Settings
+
+### 🎬 GIF Search Integration
+GIPHY-powered GIF search and embedding.
+
+- **Search GIFs**: Search GIPHY database directly from message composer
+- **Trending GIFs**: Browse trending GIFs when opening the modal
+- **One-Click Insert**: Click a GIF to insert it into your message
+- **Requires API Key**: Set `GIPHY_API_KEY` in server `.env` file
+
+---
+
+## What Was New in v1.6.1
 
 ### Mobile Header Improvements
 - **App Icon Logo** - PWA icon replaces "CORTEX" text on mobile for compact header
@@ -17,7 +55,7 @@ A privacy-first, federated communication platform inspired by Google Wave with a
 
 ---
 
-## What's in v1.6.0
+## What Was New in v1.6.0
 
 ### Progressive Web App (PWA) Support
 Cortex is now a fully installable Progressive Web App that works on Android and iOS devices.
@@ -191,12 +229,16 @@ cortex/
 ├── server/
 │   ├── server.js           # Express + WebSocket server
 │   ├── package.json        # Server dependencies
+│   ├── .env                # Environment variables (create this)
 │   └── data/               # JSON data files (auto-created)
 │       ├── users.json
 │       ├── waves.json
 │       ├── messages.json
 │       ├── groups.json
-│       └── handle-requests.json
+│       ├── handle-requests.json
+│       ├── contact-requests.json  # v1.7.0+
+│       ├── group-invitations.json # v1.7.0+
+│       └── moderation.json        # v1.7.0+
 ├── client/
 │   ├── CortexApp.jsx       # Main React application
 │   ├── main.jsx            # Entry point
@@ -299,6 +341,41 @@ Demo accounts (password: `demo123`):
 | POST | `/api/groups/:id/members` | Add member |
 | DELETE | `/api/groups/:id/members/:userId` | Remove member |
 
+### Contact Requests (v1.7.0+)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/contacts/request` | Send contact request |
+| GET | `/api/contacts/requests` | Get received requests |
+| GET | `/api/contacts/requests/sent` | Get sent requests |
+| POST | `/api/contacts/requests/:id/accept` | Accept request |
+| POST | `/api/contacts/requests/:id/decline` | Decline request |
+| DELETE | `/api/contacts/requests/:id` | Cancel sent request |
+
+### Group Invitations (v1.7.0+)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/groups/:id/invite` | Invite users to group |
+| GET | `/api/groups/invitations` | Get pending invitations |
+| POST | `/api/groups/invitations/:id/accept` | Accept invitation |
+| POST | `/api/groups/invitations/:id/decline` | Decline invitation |
+| DELETE | `/api/groups/invitations/:id` | Cancel sent invitation |
+
+### User Moderation (v1.7.0+)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/users/:id/block` | Block user |
+| DELETE | `/api/users/:id/block` | Unblock user |
+| POST | `/api/users/:id/mute` | Mute user |
+| DELETE | `/api/users/:id/mute` | Unmute user |
+| GET | `/api/users/blocked` | Get blocked users |
+| GET | `/api/users/muted` | Get muted users |
+
+### GIF Search (v1.7.0+)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/gifs/search?q=query` | Search GIFs (requires GIPHY_API_KEY) |
+| GET | `/api/gifs/trending` | Get trending GIFs |
+
 ## User Identity Model
 
 ```javascript
@@ -350,12 +427,23 @@ Demo accounts (password: `demo123`):
 
 ## Environment Variables
 
+Create a `.env` file in the `server/` directory:
+
 ```bash
-# Server
+# Server Configuration
 PORT=3001                          # Server port
 JWT_SECRET=your-secret-key         # JWT signing key (required in production)
 JWT_EXPIRES_IN=7d                  # Token expiration
 ALLOWED_ORIGINS=https://your-domain.com  # CORS whitelist
+SEED_DEMO_DATA=true                # Seed demo accounts on first run
+
+# GIF Search (v1.7.0+)
+GIPHY_API_KEY=your-giphy-api-key   # Get from developers.giphy.com
+```
+
+Generate a secure JWT_SECRET:
+```bash
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
 
 ## WebSocket Events
@@ -415,24 +503,28 @@ server {
 
 ## Roadmap
 
+### Completed in v1.7.0
+- [x] Contact Request System (send/accept/decline)
+- [x] Group Invitation System (invite/accept/decline)
+- [x] Add contacts from wave participants
+- [x] Leave group functionality
+- [x] User blocking and muting
+- [x] GIF search integration (GIPHY)
+- [x] Environment variable loading (dotenv)
+
 ### Completed in v1.6.0
 - [x] Progressive Web App (PWA) support
 - [x] Service worker with offline caching
 - [x] App icons and manifest
 - [x] Install prompt and offline indicator
 
-### v1.7 - Moderation & API
-- [ ] User blocking and muting
-- [ ] Content reporting system
-- [ ] Admin reports dashboard
-- [ ] Public REST API documentation
-- [ ] GIF search integration (Giphy/Tenor)
-
 ### v1.8 - Scale & Organization
 - [ ] SQLite migration
 - [ ] Image/file upload (not just URL embedding)
 - [ ] Message pagination/virtual scrolling
 - [ ] Full-text search with database FTS
+- [ ] Content reporting system
+- [ ] Admin reports dashboard
 
 ### v2.0 - Federation
 - [ ] Cross-server communication protocol
