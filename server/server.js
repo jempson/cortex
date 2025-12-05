@@ -853,9 +853,20 @@ class Database {
         const userParticipant = this.waves.participants.find(p => p.waveId === wave.id && p.userId === userId);
 
         // Calculate unread count based on messages not read by user
+        // Must match visibility logic from getMessagesForWave to prevent phantom unreads
+        const blockedIds = this.moderation.blocks
+          .filter(b => b.userId === userId)
+          .map(b => b.blockedUserId);
+        const mutedIds = this.moderation.mutes
+          .filter(m => m.userId === userId)
+          .map(m => m.mutedUserId);
+
         const unreadCount = this.messages.messages.filter(m => {
           if (m.waveId !== wave.id) return false;
+          if (m.deleted) return false; // Deleted messages have no content to read
           if (m.authorId === userId) return false; // Don't count own messages
+          // Exclude blocked/muted users (they won't see these messages)
+          if (blockedIds.includes(m.authorId) || mutedIds.includes(m.authorId)) return false;
           // Check if user has read this message
           const readBy = m.readBy || [m.authorId];
           return !readBy.includes(userId);
@@ -1042,7 +1053,8 @@ class Database {
       .map(m => {
         const author = this.findUserById(m.authorId);
         const readBy = m.readBy || [m.authorId];
-        const isUnread = userId ? !readBy.includes(userId) && m.authorId !== userId : false;
+        // Deleted messages are never unread (nothing to read)
+        const isUnread = m.deleted ? false : (userId ? !readBy.includes(userId) && m.authorId !== userId : false);
 
         return {
           ...m,
@@ -1054,6 +1066,7 @@ class Database {
           wave_id: m.waveId,
           created_at: m.createdAt,
           edited_at: m.editedAt,
+          deleted_at: m.deletedAt || null,
           is_unread: isUnread,
         };
       })
@@ -1099,6 +1112,7 @@ class Database {
   updateMessage(messageId, content) {
     const message = this.messages.messages.find(m => m.id === messageId);
     if (!message) return null;
+    if (message.deleted) return null; // Cannot edit deleted messages
 
     this.messages.history.push({
       id: `hist-${uuidv4()}`,
@@ -1134,24 +1148,30 @@ class Database {
   deleteMessage(messageId, userId) {
     const message = this.messages.messages.find(m => m.id === messageId);
     if (!message) return { success: false, error: 'Message not found' };
+    if (message.deleted) return { success: false, error: 'Message already deleted' };
     if (message.authorId !== userId) return { success: false, error: 'Only message author can delete' };
 
     const waveId = message.waveId;
 
-    // Remove the message
-    this.messages.messages = this.messages.messages.filter(m => m.id !== messageId);
+    // Soft-delete: replace content with placeholder, preserve thread structure
+    message.content = '[Message deleted]';
+    message.deleted = true;
+    message.deletedAt = new Date().toISOString();
+    message.reactions = {};  // Clear reactions
+    message.readBy = [];     // Clear read status (nothing to read)
 
-    // Remove history for this message
+    // Remove edit history for this message (no longer relevant)
     this.messages.history = this.messages.history.filter(h => h.messageId !== messageId);
 
     this.saveMessages();
 
-    return { success: true, messageId, waveId };
+    return { success: true, messageId, waveId, deleted: true };
   }
 
   toggleMessageReaction(messageId, userId, emoji) {
     const message = this.messages.messages.find(m => m.id === messageId);
     if (!message) return { success: false, error: 'Message not found' };
+    if (message.deleted) return { success: false, error: 'Cannot react to deleted message' };
 
     // Initialize reactions if not present
     if (!message.reactions) message.reactions = {};
@@ -1183,6 +1203,7 @@ class Database {
   markMessageAsRead(messageId, userId) {
     const message = this.messages.messages.find(m => m.id === messageId);
     if (!message) return false;
+    if (message.deleted) return true; // Deleted messages are always "read" (nothing to read)
 
     // Initialize readBy array if it doesn't exist (for old messages)
     if (!message.readBy) {

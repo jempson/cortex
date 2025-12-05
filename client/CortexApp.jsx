@@ -509,10 +509,11 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   const hasChildren = message.children?.length > 0;
   const isCollapsed = collapsed[message.id];
   const indentSize = isMobile ? 12 : 24;
-  const canDelete = message.author_id === currentUserId;
-  const isEditing = editingMessageId === message.id;
+  const isDeleted = message.deleted;
+  const canDelete = !isDeleted && message.author_id === currentUserId;
+  const isEditing = !isDeleted && editingMessageId === message.id;
   const [showReactionPicker, setShowReactionPicker] = useState(false);
-  const isUnread = message.is_unread && message.author_id !== currentUserId;
+  const isUnread = !isDeleted && message.is_unread && message.author_id !== currentUserId;
 
   const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏'];
 
@@ -530,11 +531,12 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
         onClick={handleMessageClick}
         style={{
           padding: isMobile ? '10px 12px' : '12px 16px', marginBottom: '8px',
-          background: isHighlighted ? `${config.color}20` : isUnread ? '#ffd23f10' : 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-          border: `1px solid ${isHighlighted ? config.color : isUnread ? '#ffd23f' : '#2a3a2a'}`,
-          borderLeft: `3px solid ${isUnread ? '#ffd23f' : config.color}`,
+          background: isDeleted ? '#0a0f0a' : isHighlighted ? `${config.color}20` : isUnread ? '#ffd23f10' : 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+          border: `1px solid ${isDeleted ? '#1a1f1a' : isHighlighted ? config.color : isUnread ? '#ffd23f' : '#2a3a2a'}`,
+          borderLeft: `3px solid ${isDeleted ? '#3a3a3a' : isUnread ? '#ffd23f' : config.color}`,
           cursor: isUnread ? 'pointer' : 'default',
           transition: 'all 0.2s ease',
+          opacity: isDeleted ? 0.6 : 1,
         }}
         onMouseEnter={(e) => {
           if (isUnread) {
@@ -610,6 +612,18 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               }}>✕ CANCEL (Esc)</button>
             </div>
           </div>
+        ) : isDeleted ? (
+          <div
+            style={{
+              color: '#5a5a5a',
+              fontSize: isMobile ? '0.95rem' : '0.85rem',
+              lineHeight: 1.6,
+              marginBottom: '10px',
+              fontStyle: 'italic',
+            }}
+          >
+            [Message deleted]
+          </div>
         ) : (
           <div
             style={{
@@ -656,8 +670,8 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
           )}
         </div>
 
-        {/* Reactions Display */}
-        {message.reactions && Object.keys(message.reactions).length > 0 && (
+        {/* Reactions Display - hidden for deleted messages */}
+        {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px', marginBottom: '8px' }}>
             {Object.entries(message.reactions).map(([emoji, userIds]) => {
               const hasReacted = userIds.includes(currentUserId);
@@ -688,7 +702,8 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
           </div>
         )}
 
-        {/* Quick React Buttons */}
+        {/* Quick React Buttons - hidden for deleted messages */}
+        {!isDeleted && (
         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px', position: 'relative' }}>
           <button
             onClick={() => setShowReactionPicker(!showReactionPicker)}
@@ -743,9 +758,10 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
             </div>
           )}
         </div>
+        )}
 
-        {/* Read Receipts */}
-        {message.readBy && message.readBy.length > 0 && (
+        {/* Read Receipts - hidden for deleted messages */}
+        {!isDeleted && message.readBy && message.readBy.length > 0 && (
           <details style={{
             marginTop: '8px',
             paddingTop: '8px',
