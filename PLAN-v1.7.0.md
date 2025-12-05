@@ -22,8 +22,8 @@ Version 1.7.0 focuses on building a comprehensive approval workflow for contacts
 ### Core Features
 | # | Feature | Priority | Est. Time | Status |
 |---|---------|----------|-----------|--------|
-| 1 | Contact Request System | High | 8-10h | 🔶 Backend Done |
-| 2 | Add Contact from Participants | High | 4-6h | 🔲 Not Started |
+| 1 | Contact Request System | High | 8-10h | ✅ Complete |
+| 2 | Add Contact from Participants | High | 4-6h | ✅ Complete |
 | 3 | Group Invitation System | High | 8-12h | 🔲 Not Started |
 
 ### Secondary Features
@@ -75,42 +75,49 @@ Version 1.7.0 focuses on building a comprehensive approval workflow for contacts
 ---
 
 ### Phase 2: Contact Request System (Frontend)
-**Status:** 🔲 Not Started
+**Status:** ✅ Complete
 
 #### 2.1 State Management
-- [ ] Add `contactRequests` state to MainApp
-- [ ] Add `sentContactRequests` state
-- [ ] Load requests on app init
-- [ ] Handle WebSocket events for real-time updates
+- [x] Add `contactRequests` state to MainApp
+- [x] Add `sentContactRequests` state
+- [x] Load requests on app init
+- [x] Handle WebSocket events for real-time updates
 
 #### 2.2 UI Components
-- [ ] `ContactRequestBadge` - Shows count of pending requests
-- [ ] `ContactRequestsPanel` - List received requests with Accept/Decline
-- [ ] `SentRequestsPanel` - List sent requests with Cancel option
-- [ ] `SendContactRequestModal` - Form to send request with message
+- [x] `ContactRequestBadge` - Shows count of pending requests (integrated into nav)
+- [x] `ContactRequestsPanel` - List received requests with Accept/Decline
+- [x] `SentRequestsPanel` - List sent requests with Cancel option
+- [x] `SendContactRequestModal` - Form to send request with message
 
 #### 2.3 Integration Points
-- [ ] Add requests section to Contacts view
-- [ ] Add badge count to Contacts nav button
-- [ ] Show toast notifications for request events
+- [x] Add requests section to Contacts view
+- [x] Add badge count to Contacts nav button (teal color for contact requests)
+- [x] Show toast notifications for request events
 
 ---
 
 ### Phase 3: Add Contact from Participants
-**Status:** 🔲 Not Started
+**Status:** ✅ Complete
 
 #### 3.1 Participant Panel Updates
-- [ ] Check if each participant is already a contact
-- [ ] Check if there's a pending request (sent or received)
-- [ ] Show appropriate button/status:
-  - "Add Contact" - if not a contact and no pending request
-  - "Request Pending" - if you sent a request
-  - "Respond" - if they sent you a request
-  - "Contact ✓" - if already a contact
+- [x] Check if each participant is already a contact
+- [x] Check if there's a pending request (sent or received)
+- [x] Show appropriate button/status:
+  - "+ ADD" button - if not a contact and no pending request
+  - "PENDING" badge - if you sent a request
+  - "ACCEPT" button - if they sent you a request
+  - "✓ CONTACT" badge - if already a contact
+  - "(you)" label - for current user (no button shown)
 
 #### 3.2 Quick Actions
-- [ ] One-click "Add Contact" sends request immediately
-- [ ] Or opens modal for adding message (user preference?)
+- [x] One-click "+ ADD" sends request immediately (no modal)
+- [x] One-click "ACCEPT" accepts incoming request immediately
+
+#### 3.3 UI Improvements
+- [x] Expanded participant panel with full user info (avatar, name, handle)
+- [x] Read status badge (✓ READ / ○ UNREAD)
+- [x] Teal color theme for contact actions
+- [x] Mobile-responsive touch targets
 
 ---
 
@@ -318,6 +325,28 @@ Version 1.7.0 focuses on building a comprehensive approval workflow for contacts
   - Added 6 API endpoints for contact request management
   - Added 4 WebSocket events for real-time notifications
   - Added `isContact()` helper method
+- ✅ **Phase 2 Complete**: Contact Request System (Frontend)
+  - Added `contactRequests` and `sentContactRequests` state to MainApp
+  - Added `loadContactRequests()` function for fetching both received and sent requests
+  - WebSocket handlers for all 4 contact request events with toast notifications
+  - Created `ContactRequestsPanel` - displays incoming requests with Accept/Decline buttons
+  - Created `SentRequestsPanel` - collapsible panel showing pending sent requests with Cancel
+  - Created `SendContactRequestModal` - form to send request with optional message
+  - Updated `ContactsView` to integrate all panels and show request status in search results
+  - Badge on Contacts nav button (teal color) shows pending incoming requests count
+  - Changed "ADD CONTACT" to "FIND PEOPLE" to reflect new request-based workflow
+- ✅ **Phase 3 Complete**: Add Contact from Participants
+  - Added contact-related props to WaveView component
+  - Enhanced participant panel with expanded card layout showing avatar, name, handle
+  - Added contact status checking (isContact, hasSentRequestTo, hasReceivedRequestFrom)
+  - Show appropriate status/buttons for each participant:
+    - Current user: "(you)" label, no action button
+    - Already contact: "✓ CONTACT" badge
+    - Pending sent request: "PENDING" badge
+    - Received request: "ACCEPT" button (one-click accept)
+    - Not a contact: "+ ADD" button (one-click send request)
+  - Maintained read status indicator (✓ READ / ○ UNREAD)
+  - Mobile-responsive with proper touch targets
 
 ---
 

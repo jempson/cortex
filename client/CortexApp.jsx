@@ -1414,7 +1414,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -1431,7 +1431,39 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [showParticipants, setShowParticipants] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editContent, setEditContent] = useState('');
+  const [requestModalParticipant, setRequestModalParticipant] = useState(null);
   const playbackRef = useRef(null);
+
+  // Helper functions for participant contact status
+  const isContact = (userId) => contacts?.some(c => c.id === userId) || false;
+  const hasSentRequestTo = (userId) => sentContactRequests?.some(r => r.to_user_id === userId) || false;
+  const hasReceivedRequestFrom = (userId) => contactRequests?.some(r => r.from_user_id === userId) || false;
+
+  const handleQuickSendRequest = async (participant) => {
+    try {
+      await fetchAPI('/contacts/request', {
+        method: 'POST',
+        body: { toUserId: participant.id }
+      });
+      showToast(`Contact request sent to ${participant.name}`, 'success');
+      onRequestsChange?.();
+    } catch (err) {
+      showToast(err.message || 'Failed to send request', 'error');
+    }
+  };
+
+  const handleAcceptRequest = async (participant) => {
+    const request = contactRequests?.find(r => r.from_user_id === participant.id);
+    if (!request) return;
+    try {
+      await fetchAPI(`/contacts/requests/${request.id}/accept`, { method: 'POST' });
+      showToast(`${participant.name} is now a contact!`, 'success');
+      onRequestsChange?.();
+      onContactsChange?.();
+    } catch (err) {
+      showToast(err.message || 'Failed to accept request', 'error');
+    }
+  };
   const composeRef = useRef(null);
   const messagesRef = useRef(null);
   const textareaRef = useRef(null);
@@ -1892,36 +1924,116 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       {/* Expanded Participants Panel */}
       {showParticipants && waveData.participants?.length > 0 && (
         <div style={{
-          padding: isMobile ? '8px 12px' : '8px 20px',
+          padding: isMobile ? '12px' : '12px 20px',
           borderBottom: '1px solid #2a3a2a',
           background: '#0d150d',
           display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          flexWrap: 'wrap',
+          flexDirection: 'column',
+          gap: '8px',
           flexShrink: 0
         }}>
           {waveData.participants.map(p => {
             const latestMessage = waveData.all_messages.length > 0 ? waveData.all_messages[waveData.all_messages.length - 1] : null;
             const hasReadLatest = latestMessage ? (latestMessage.readBy || [latestMessage.author_id]).includes(p.id) : true;
+            const isCurrentUser = p.id === currentUser?.id;
+            const isAlreadyContact = isContact(p.id);
+            const hasSentRequest = hasSentRequestTo(p.id);
+            const hasReceivedRequest = hasReceivedRequestFrom(p.id);
+
             return (
               <div
                 key={p.id}
-                title={`${p.name} - ${hasReadLatest ? 'Read' : 'Unread'}`}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
-                  padding: '4px 8px',
-                  background: hasReadLatest ? '#0ead6920' : '#2a3a2a',
-                  border: `1px solid ${hasReadLatest ? '#0ead69' : '#3a4a3a'}`,
-                  fontSize: isMobile ? '0.7rem' : '0.65rem',
-                  color: '#c5d5c5',
-                  fontFamily: 'monospace',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  background: '#0a100a',
+                  border: '1px solid #2a3a2a',
                 }}
               >
-                <span style={{ color: hasReadLatest ? '#0ead69' : '#6a7a6a' }}>{hasReadLatest ? '✓' : '○'}</span>
-                {p.name}
+                {/* Participant Info */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                  <Avatar letter={p.avatar || p.name?.[0] || '?'} color={isCurrentUser ? '#ffd23f' : '#3bceac'} size={isMobile ? 32 : 28} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{
+                      color: '#c5d5c5',
+                      fontSize: isMobile ? '0.85rem' : '0.8rem',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {p.name}{isCurrentUser && <span style={{ color: '#ffd23f', marginLeft: '4px' }}>(you)</span>}
+                    </div>
+                    <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{p.handle}</div>
+                  </div>
+                </div>
+
+                {/* Read Status */}
+                <div style={{
+                  padding: '2px 6px',
+                  background: hasReadLatest ? '#0ead6920' : '#2a3a2a',
+                  border: `1px solid ${hasReadLatest ? '#0ead6950' : '#3a4a3a'}`,
+                  fontSize: '0.6rem',
+                  color: hasReadLatest ? '#0ead69' : '#6a7a6a',
+                  fontFamily: 'monospace',
+                }}>
+                  {hasReadLatest ? '✓ READ' : '○ UNREAD'}
+                </div>
+
+                {/* Contact Action Button */}
+                {!isCurrentUser && (
+                  <>
+                    {isAlreadyContact ? (
+                      <span style={{
+                        padding: '2px 8px',
+                        background: '#0ead6920',
+                        border: '1px solid #0ead6950',
+                        fontSize: '0.6rem',
+                        color: '#0ead69',
+                        fontFamily: 'monospace',
+                      }}>✓ CONTACT</span>
+                    ) : hasSentRequest ? (
+                      <span style={{
+                        padding: '2px 8px',
+                        background: '#ffd23f20',
+                        border: '1px solid #ffd23f50',
+                        fontSize: '0.6rem',
+                        color: '#ffd23f',
+                        fontFamily: 'monospace',
+                      }}>PENDING</span>
+                    ) : hasReceivedRequest ? (
+                      <button
+                        onClick={() => handleAcceptRequest(p)}
+                        style={{
+                          padding: isMobile ? '6px 10px' : '4px 8px',
+                          minHeight: isMobile ? '36px' : 'auto',
+                          background: '#3bceac20',
+                          border: '1px solid #3bceac',
+                          color: '#3bceac',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                          fontSize: '0.6rem',
+                        }}
+                      >ACCEPT</button>
+                    ) : (
+                      <button
+                        onClick={() => handleQuickSendRequest(p)}
+                        style={{
+                          padding: isMobile ? '6px 10px' : '4px 8px',
+                          minHeight: isMobile ? '36px' : 'auto',
+                          background: 'transparent',
+                          border: '1px solid #3bceac50',
+                          color: '#3bceac',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                          fontSize: '0.6rem',
+                        }}
+                      >+ ADD</button>
+                    )}
+                  </>
+                )}
               </div>
             );
           })}
@@ -2087,12 +2199,286 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   );
 };
 
+// ============ CONTACT REQUEST COMPONENTS ============
+const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, onContactsChange, isMobile }) => {
+  const [processing, setProcessing] = useState({});
+
+  const handleAccept = async (requestId) => {
+    setProcessing(prev => ({ ...prev, [requestId]: 'accept' }));
+    try {
+      await fetchAPI(`/contacts/requests/${requestId}/accept`, { method: 'POST' });
+      showToast('Contact request accepted!', 'success');
+      onRequestsChange();
+      onContactsChange();
+    } catch (err) {
+      showToast(err.message || 'Failed to accept request', 'error');
+    }
+    setProcessing(prev => ({ ...prev, [requestId]: null }));
+  };
+
+  const handleDecline = async (requestId) => {
+    setProcessing(prev => ({ ...prev, [requestId]: 'decline' }));
+    try {
+      await fetchAPI(`/contacts/requests/${requestId}/decline`, { method: 'POST' });
+      showToast('Contact request declined', 'info');
+      onRequestsChange();
+    } catch (err) {
+      showToast(err.message || 'Failed to decline request', 'error');
+    }
+    setProcessing(prev => ({ ...prev, [requestId]: null }));
+  };
+
+  if (requests.length === 0) return null;
+
+  return (
+    <div style={{
+      marginBottom: '24px', padding: '16px',
+      background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+      border: '1px solid #3bceac40',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+        <span style={{ color: '#3bceac', fontSize: '1rem' }}>INCOMING REQUESTS</span>
+        <span style={{
+          background: '#3bceac', color: '#000', fontSize: '0.65rem',
+          padding: '2px 6px', borderRadius: '10px', fontWeight: 700,
+        }}>{requests.length}</span>
+      </div>
+      {requests.map(request => (
+        <div key={request.id} style={{
+          padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
+          marginBottom: '8px', display: 'flex', justifyContent: 'space-between',
+          alignItems: 'center', flexWrap: 'wrap', gap: '12px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+            <Avatar letter={request.from_user_avatar || request.from_user_name?.[0] || '?'} color="#3bceac" size={isMobile ? 40 : 36} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {request.from_user_name}
+              </div>
+              <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{request.from_user_handle}</div>
+              {request.message && (
+                <div style={{ color: '#7a8a7a', fontSize: '0.8rem', marginTop: '4px', fontStyle: 'italic' }}>
+                  "{request.message}"
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+            <button
+              onClick={() => handleAccept(request.id)}
+              disabled={!!processing[request.id]}
+              style={{
+                padding: isMobile ? '10px 14px' : '6px 12px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: '#0ead6920', border: '1px solid #0ead69',
+                color: '#0ead69', cursor: processing[request.id] ? 'wait' : 'pointer',
+                fontFamily: 'monospace', fontSize: '0.75rem',
+                opacity: processing[request.id] ? 0.6 : 1,
+              }}>
+              {processing[request.id] === 'accept' ? '...' : 'ACCEPT'}
+            </button>
+            <button
+              onClick={() => handleDecline(request.id)}
+              disabled={!!processing[request.id]}
+              style={{
+                padding: isMobile ? '10px 14px' : '6px 12px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'transparent', border: '1px solid #ff6b3550',
+                color: '#ff6b35', cursor: processing[request.id] ? 'wait' : 'pointer',
+                fontFamily: 'monospace', fontSize: '0.75rem',
+                opacity: processing[request.id] ? 0.6 : 1,
+              }}>
+              {processing[request.id] === 'decline' ? '...' : 'DECLINE'}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, isMobile }) => {
+  const [cancelling, setCancelling] = useState({});
+  const [expanded, setExpanded] = useState(false);
+
+  const handleCancel = async (requestId) => {
+    setCancelling(prev => ({ ...prev, [requestId]: true }));
+    try {
+      await fetchAPI(`/contacts/requests/${requestId}`, { method: 'DELETE' });
+      showToast('Contact request cancelled', 'info');
+      onRequestsChange();
+    } catch (err) {
+      showToast(err.message || 'Failed to cancel request', 'error');
+    }
+    setCancelling(prev => ({ ...prev, [requestId]: false }));
+  };
+
+  if (requests.length === 0) return null;
+
+  return (
+    <div style={{
+      marginBottom: '24px', padding: '16px',
+      background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+      border: '1px solid #ffd23f30',
+    }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          padding: 0, fontFamily: 'monospace',
+        }}>
+        <span style={{ color: '#ffd23f', fontSize: '0.85rem' }}>
+          {expanded ? '▼' : '▶'} PENDING SENT REQUESTS
+        </span>
+        <span style={{
+          background: '#ffd23f', color: '#000', fontSize: '0.65rem',
+          padding: '2px 6px', borderRadius: '10px', fontWeight: 700,
+        }}>{requests.length}</span>
+      </button>
+      {expanded && (
+        <div style={{ marginTop: '12px' }}>
+          {requests.map(request => (
+            <div key={request.id} style={{
+              padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
+              marginBottom: '8px', display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', flexWrap: 'wrap', gap: '8px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                <Avatar letter={request.to_user_avatar || request.to_user_name?.[0] || '?'} color="#ffd23f" size={isMobile ? 40 : 36} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {request.to_user_name}
+                  </div>
+                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{request.to_user_handle}</div>
+                </div>
+              </div>
+              <button
+                onClick={() => handleCancel(request.id)}
+                disabled={cancelling[request.id]}
+                style={{
+                  padding: isMobile ? '10px 14px' : '6px 10px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: 'transparent', border: '1px solid #ff6b3550',
+                  color: '#ff6b35', cursor: cancelling[request.id] ? 'wait' : 'pointer',
+                  fontFamily: 'monospace', fontSize: '0.7rem',
+                  opacity: cancelling[request.id] ? 0.6 : 1,
+                }}>
+                {cancelling[request.id] ? '...' : 'CANCEL'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SendContactRequestModal = ({ isOpen, onClose, toUser, fetchAPI, showToast, onRequestSent, isMobile }) => {
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+
+  if (!isOpen || !toUser) return null;
+
+  const handleSend = async () => {
+    setSending(true);
+    try {
+      await fetchAPI('/contacts/request', {
+        method: 'POST',
+        body: { toUserId: toUser.id, message: message.trim() || undefined }
+      });
+      showToast(`Contact request sent to ${toUser.displayName || toUser.handle}`, 'success');
+      onRequestSent();
+      setMessage('');
+      onClose();
+    } catch (err) {
+      showToast(err.message || 'Failed to send request', 'error');
+    }
+    setSending(false);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.8)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      padding: isMobile ? '16px' : '0',
+    }} onClick={onClose}>
+      <div style={{
+        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+        border: '1px solid #3bceac', padding: isMobile ? '20px' : '24px',
+        width: '100%', maxWidth: '400px',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <GlowText color="#3bceac" size="1rem">SEND CONTACT REQUEST</GlowText>
+          <button onClick={onClose} style={{
+            background: 'transparent', border: 'none', color: '#5a6a5a',
+            cursor: 'pointer', fontSize: '1.2rem', padding: '4px',
+          }}>×</button>
+        </div>
+
+        <div style={{
+          padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
+          marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px',
+        }}>
+          <Avatar letter={toUser.avatar || toUser.displayName?.[0] || '?'} color="#3bceac" size={44} />
+          <div>
+            <div style={{ color: '#c5d5c5' }}>{toUser.displayName}</div>
+            <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{toUser.handle}</div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ color: '#7a8a7a', fontSize: '0.75rem', display: 'block', marginBottom: '6px' }}>
+            Message (optional)
+          </label>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Add a message to your request..."
+            maxLength={200}
+            style={{
+              width: '100%', padding: '12px', boxSizing: 'border-box',
+              background: '#0a100a', border: '1px solid #2a3a2a',
+              color: '#c5d5c5', fontFamily: 'inherit', resize: 'vertical',
+              minHeight: '80px',
+            }}
+          />
+          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', textAlign: 'right', marginTop: '4px' }}>
+            {message.length}/200
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{
+            padding: isMobile ? '12px 20px' : '10px 16px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent', border: '1px solid #3a4a3a',
+            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace',
+          }}>CANCEL</button>
+          <button onClick={handleSend} disabled={sending} style={{
+            padding: isMobile ? '12px 20px' : '10px 16px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: '#3bceac20', border: '1px solid #3bceac',
+            color: '#3bceac', cursor: sending ? 'wait' : 'pointer',
+            fontFamily: 'monospace', opacity: sending ? 0.6 : 1,
+          }}>{sending ? 'SENDING...' : 'SEND REQUEST'}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ============ CONTACTS VIEW ============
-const ContactsView = ({ contacts, fetchAPI, showToast, onContactsChange }) => {
+const ContactsView = ({
+  contacts, fetchAPI, showToast, onContactsChange,
+  contactRequests, sentContactRequests, onRequestsChange
+}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [requestModalUser, setRequestModalUser] = useState(null);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
   useEffect(() => {
@@ -2108,17 +2494,6 @@ const ContactsView = ({ contacts, fetchAPI, showToast, onContactsChange }) => {
     return () => clearTimeout(timeout);
   }, [searchQuery, fetchAPI]);
 
-  const handleAddContact = async (handle) => {
-    try {
-      await fetchAPI('/contacts', { method: 'POST', body: { handle } });
-      showToast('Contact added', 'success');
-      onContactsChange();
-      setSearchResults(prev => prev.map(r => r.handle === handle ? { ...r, isContact: true } : r));
-    } catch (err) {
-      showToast(err.message || 'Failed to add contact', 'error');
-    }
-  };
-
   const handleRemoveContact = async (id) => {
     try {
       await fetchAPI(`/contacts/${id}`, { method: 'DELETE' });
@@ -2129,16 +2504,42 @@ const ContactsView = ({ contacts, fetchAPI, showToast, onContactsChange }) => {
     }
   };
 
+  // Helper to check if we already sent a request to this user
+  const hasSentRequestTo = (userId) => sentContactRequests.some(r => r.to_user_id === userId);
+  // Helper to check if we received a request from this user
+  const hasReceivedRequestFrom = (userId) => contactRequests.some(r => r.from_user_id === userId);
+
   return (
     <div style={{ flex: 1, padding: isMobile ? '16px' : '20px', overflowY: 'auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <GlowText color="#ffd23f" size="1.1rem">CONTACTS</GlowText>
         <button onClick={() => setShowSearch(!showSearch)} style={{
-          padding: '8px 16px', background: showSearch ? '#3bceac20' : '#ffd23f20',
+          padding: isMobile ? '10px 16px' : '8px 16px',
+          minHeight: isMobile ? '44px' : 'auto',
+          background: showSearch ? '#3bceac20' : '#ffd23f20',
           border: `1px solid ${showSearch ? '#3bceac' : '#ffd23f50'}`,
           color: showSearch ? '#3bceac' : '#ffd23f', cursor: 'pointer', fontFamily: 'monospace',
-        }}>{showSearch ? '✕ CLOSE' : '+ ADD CONTACT'}</button>
+        }}>{showSearch ? '✕ CLOSE' : '+ FIND PEOPLE'}</button>
       </div>
+
+      {/* Incoming Contact Requests */}
+      <ContactRequestsPanel
+        requests={contactRequests}
+        fetchAPI={fetchAPI}
+        showToast={showToast}
+        onRequestsChange={onRequestsChange}
+        onContactsChange={onContactsChange}
+        isMobile={isMobile}
+      />
+
+      {/* Sent Requests (collapsed by default) */}
+      <SentRequestsPanel
+        requests={sentContactRequests}
+        fetchAPI={fetchAPI}
+        showToast={showToast}
+        onRequestsChange={onRequestsChange}
+        isMobile={isMobile}
+      />
 
       {showSearch && (
         <div style={{ marginBottom: '24px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #3bceac40' }}>
@@ -2152,58 +2553,92 @@ const ContactsView = ({ contacts, fetchAPI, showToast, onContactsChange }) => {
           {!searching && searchQuery.length >= 2 && searchResults.length === 0 && (
             <div style={{ color: '#5a6a5a' }}>No users found</div>
           )}
-          {searchResults.map(user => (
-            <div key={user.id} style={{
-              padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
-              marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
-            }}>
-              <div style={{ displa: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Avatar letter={user.avatar || user.displayName[0]} color="#ffd23f" size={36} status={user.status} />
-                <div>
-                  <div style={{ color: '#c5d5c5' }}>{user.displayName}</div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{user.handle}</div>
+          {searchResults.map(user => {
+            const sentRequest = hasSentRequestTo(user.id);
+            const receivedRequest = hasReceivedRequestFrom(user.id);
+            return (
+              <div key={user.id} style={{
+                padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
+                marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <Avatar letter={user.avatar || user.displayName[0]} color="#ffd23f" size={isMobile ? 40 : 36} status={user.status} />
+                  <div>
+                    <div style={{ color: '#c5d5c5' }}>{user.displayName}</div>
+                    <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{user.handle}</div>
+                  </div>
                 </div>
+                {user.isContact ? (
+                  <span style={{ color: '#0ead69', fontSize: '0.75rem' }}>✓ CONTACT</span>
+                ) : sentRequest ? (
+                  <span style={{ color: '#ffd23f', fontSize: '0.75rem' }}>REQUEST SENT</span>
+                ) : receivedRequest ? (
+                  <span style={{ color: '#3bceac', fontSize: '0.75rem' }}>RESPOND ABOVE</span>
+                ) : (
+                  <button onClick={() => setRequestModalUser(user)} style={{
+                    padding: isMobile ? '10px 14px' : '6px 12px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: '#3bceac20', border: '1px solid #3bceac',
+                    color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace',
+                  }}>SEND REQUEST</button>
+                )}
               </div>
-              {user.isContact ? (
-                <span style={{ color: '#0ead69', fontSize: '0.75rem' }}>✓ CONTACT</span>
-              ) : (
-                <button onClick={() => handleAddContact(user.handle)} style={{
-                  padding: '6px 12px', background: '#3bceac20', border: '1px solid #3bceac',
-                  color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace',
-                }}>+ ADD</button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {contacts.length === 0 ? (
+      {contacts.length === 0 && contactRequests.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px', color: '#5a6a5a' }}>
           <div style={{ fontSize: '3rem', marginBottom: '16px' }}>◎</div>
           <div>No contacts yet</div>
+          <div style={{ fontSize: '0.8rem', marginTop: '8px' }}>Use "Find People" to send contact requests</div>
         </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? '100%' : '280px'}, 1fr))`, gap: '12px' }}>
-          {contacts.map(contact => (
-            <div key={contact.id} style={{
-              padding: '16px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-              border: '1px solid #2a3a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                <Avatar letter={contact.avatar || contact.name[0]} color="#ffd23f" size={44} status={contact.status} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{contact.handle}</div>
+      ) : contacts.length > 0 && (
+        <>
+          <div style={{ color: '#7a8a7a', fontSize: '0.8rem', marginBottom: '12px', marginTop: '8px' }}>
+            YOUR CONTACTS ({contacts.length})
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? '100%' : '280px'}, 1fr))`, gap: '12px' }}>
+            {contacts.map(contact => (
+              <div key={contact.id} style={{
+                padding: '16px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+                border: '1px solid #2a3a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                  <Avatar letter={contact.avatar || contact.name[0]} color="#ffd23f" size={44} status={contact.status} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</div>
+                    <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{contact.handle}</div>
+                  </div>
                 </div>
+                <button onClick={() => handleRemoveContact(contact.id)} style={{
+                  padding: isMobile ? '10px' : '6px 10px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: 'transparent', border: '1px solid #ff6b3550',
+                  color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem', flexShrink: 0,
+                }}>✕</button>
               </div>
-              <button onClick={() => handleRemoveContact(contact.id)} style={{
-                padding: '6px 10px', background: 'transparent', border: '1px solid #ff6b3550',
-                color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem', flexShrink: 0,
-              }}>✕</button>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
+
+      {/* Send Contact Request Modal */}
+      <SendContactRequestModal
+        isOpen={!!requestModalUser}
+        onClose={() => setRequestModalUser(null)}
+        toUser={requestModalUser}
+        fetchAPI={fetchAPI}
+        showToast={showToast}
+        onRequestSent={() => {
+          onRequestsChange();
+          setSearchResults(prev => prev.map(u =>
+            u.id === requestModalUser?.id ? { ...u, requestSent: true } : u
+          ));
+        }}
+        isMobile={isMobile}
+      />
     </div>
   );
 };
@@ -3019,6 +3454,8 @@ function MainApp() {
   const [showSearch, setShowSearch] = useState(false);
   const [waveReloadTrigger, setWaveReloadTrigger] = useState(0); // Increment to trigger WaveView reload
   const [typingUsers, setTypingUsers] = useState({}); // { waveId: { userId: { name, timestamp } } }
+  const [contactRequests, setContactRequests] = useState([]); // Received contact requests
+  const [sentContactRequests, setSentContactRequests] = useState([]); // Sent contact requests
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -3125,8 +3562,25 @@ function MainApp() {
         });
         delete typingTimeoutsRef.current[timeoutKey];
       }, 5000);
+    } else if (data.type === 'contact_request_received') {
+      // Someone sent us a contact request
+      setContactRequests(prev => [data.request, ...prev]);
+      showToastMsg(`${data.request.from_user_name || 'Someone'} sent you a contact request`, 'info');
+    } else if (data.type === 'contact_request_accepted') {
+      // Our request was accepted
+      setSentContactRequests(prev => prev.filter(r => r.id !== data.requestId));
+      showToastMsg('Your contact request was accepted!', 'success');
+      // Reload contacts since we have a new one
+      fetchAPI('/contacts').then(setContacts).catch(console.error);
+    } else if (data.type === 'contact_request_declined') {
+      // Our request was declined
+      setSentContactRequests(prev => prev.filter(r => r.id !== data.requestId));
+      showToastMsg('Your contact request was declined', 'info');
+    } else if (data.type === 'contact_request_cancelled') {
+      // Request to us was cancelled
+      setContactRequests(prev => prev.filter(r => r.id !== data.requestId));
     }
-  }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView]);
+  }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView, fetchAPI]);
 
   const { connected: wsConnected, sendMessage: sendWSMessage } = useWebSocket(token, handleWSMessage);
 
@@ -3138,11 +3592,23 @@ function MainApp() {
     try { setGroups(await fetchAPI('/groups')); } catch (e) { console.error(e); }
   }, [fetchAPI]);
 
+  const loadContactRequests = useCallback(async () => {
+    try {
+      const [received, sent] = await Promise.all([
+        fetchAPI('/contacts/requests'),
+        fetchAPI('/contacts/requests/sent')
+      ]);
+      setContactRequests(received);
+      setSentContactRequests(sent);
+    } catch (e) { console.error('Failed to load contact requests:', e); }
+  }, [fetchAPI]);
+
   useEffect(() => {
     loadWaves();
     loadContacts();
     loadGroups();
-  }, [loadWaves, loadContacts, loadGroups]);
+    loadContactRequests();
+  }, [loadWaves, loadContacts, loadGroups, loadContactRequests]);
 
   // Request notification permission on first load
   useEffect(() => {
@@ -3228,7 +3694,7 @@ function MainApp() {
           ) : (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
               <GlowText color="#ffd23f" size="1.5rem" weight={700}>CORTEX</GlowText>
-              <span style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>v1.6.1</span>
+              <span style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>v1.7.0</span>
             </div>
           )}
         </div>
@@ -3240,6 +3706,8 @@ function MainApp() {
         <div style={{ display: 'flex', gap: '4px', flex: 1, justifyContent: 'center' }}>
           {navItems.map(view => {
             const totalUnread = view === 'waves' ? waves.reduce((sum, w) => sum + (w.unread_count || 0), 0) : 0;
+            const pendingRequests = view === 'contacts' ? contactRequests.length : 0;
+            const badgeCount = totalUnread || pendingRequests;
             return (
               <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); }} style={{
                 padding: isMobile ? '10px 12px' : '8px 16px',
@@ -3251,12 +3719,12 @@ function MainApp() {
                 position: 'relative',
               }}>
                 {view === 'profile' ? '⚙' : view.slice(0, isMobile ? 3 : 10)}
-                {totalUnread > 0 && (
+                {badgeCount > 0 && (
                   <span style={{
                     position: 'absolute',
                     top: '-6px',
                     right: '-6px',
-                    background: '#ff6b35',
+                    background: pendingRequests > 0 ? '#3bceac' : '#ff6b35',
                     color: '#fff',
                     fontSize: '0.55rem',
                     fontWeight: 700,
@@ -3264,8 +3732,8 @@ function MainApp() {
                     borderRadius: '10px',
                     minWidth: '16px',
                     textAlign: 'center',
-                    boxShadow: '0 0 8px rgba(255, 107, 53, 0.8)',
-                  }}>{totalUnread}</span>
+                    boxShadow: pendingRequests > 0 ? '0 0 8px rgba(59, 206, 172, 0.8)' : '0 0 8px rgba(255, 107, 53, 0.8)',
+                  }}>{badgeCount}</span>
                 )}
               </button>
             );
@@ -3316,7 +3784,12 @@ function MainApp() {
                   groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile}
                   sendWSMessage={sendWSMessage}
                   typingUsers={typingUsers[selectedWave?.id] || {}}
-                  reloadTrigger={waveReloadTrigger} />
+                  reloadTrigger={waveReloadTrigger}
+                  contacts={contacts}
+                  contactRequests={contactRequests}
+                  sentContactRequests={sentContactRequests}
+                  onRequestsChange={loadContactRequests}
+                  onContactsChange={loadContacts} />
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
                   <div style={{ textAlign: 'center' }}>
@@ -3334,7 +3807,15 @@ function MainApp() {
         )}
 
         {activeView === 'contacts' && (
-          <ContactsView contacts={contacts} fetchAPI={fetchAPI} showToast={showToastMsg} onContactsChange={loadContacts} />
+          <ContactsView
+            contacts={contacts}
+            fetchAPI={fetchAPI}
+            showToast={showToastMsg}
+            onContactsChange={loadContacts}
+            contactRequests={contactRequests}
+            sentContactRequests={sentContactRequests}
+            onRequestsChange={loadContactRequests}
+          />
         )}
 
         {activeView === 'profile' && (
