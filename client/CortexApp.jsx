@@ -15,6 +15,37 @@ const WS_URL = isProduction
   ? `${wsProtocol}//${hostname}/ws`
   : 'ws://localhost:3001';
 
+// ============ SERVICE WORKER REGISTRATION ============
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('[PWA] Service worker registered:', registration.scope);
+
+        // Check for updates periodically (every hour)
+        setInterval(() => {
+          registration.update();
+        }, 60 * 60 * 1000);
+
+        // Handle updates
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // New version available
+                console.log('[PWA] New version available');
+              }
+            });
+          }
+        });
+      })
+      .catch((error) => {
+        console.error('[PWA] Service worker registration failed:', error);
+      });
+  });
+}
+
 // ============ CONTEXTS ============
 const AuthContext = createContext();
 const useAuth = () => useContext(AuthContext);
@@ -88,6 +119,207 @@ const EmojiPicker = ({ onSelect, onClose, isMobile }) => {
         border: '1px solid #3a4a3a', color: '#6a7a6a', cursor: 'pointer',
         fontSize: isMobile ? '0.85rem' : '0.7rem', fontFamily: 'monospace',
       }}>CLOSE</button>
+    </div>
+  );
+};
+
+// ============ PWA INSTALL PROMPT ============
+const InstallPrompt = ({ isMobile }) => {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    // Check if already installed (standalone mode)
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+      return;
+    }
+
+    // Check if dismissed recently (within 7 days)
+    const dismissedAt = localStorage.getItem('cortex_install_dismissed');
+    if (dismissedAt) {
+      const daysSinceDismissed = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24);
+      if (daysSinceDismissed < 7) {
+        return; // Don't show prompt
+      }
+    }
+
+    // Listen for install prompt event
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+
+      // Show prompt after second visit or 30 seconds
+      const visitCount = parseInt(localStorage.getItem('cortex_visits') || '0') + 1;
+      localStorage.setItem('cortex_visits', visitCount.toString());
+
+      if (visitCount >= 2) {
+        setShowPrompt(true);
+      } else {
+        setTimeout(() => setShowPrompt(true), 30000);
+      }
+    };
+
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setShowPrompt(false);
+      setDeferredPrompt(null);
+      console.log('[PWA] App installed successfully');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+
+    if (outcome === 'accepted') {
+      console.log('[PWA] User accepted install prompt');
+    } else {
+      console.log('[PWA] User dismissed install prompt');
+    }
+
+    setDeferredPrompt(null);
+    setShowPrompt(false);
+  };
+
+  const handleDismiss = () => {
+    setShowPrompt(false);
+    localStorage.setItem('cortex_install_dismissed', Date.now().toString());
+  };
+
+  if (isInstalled || !showPrompt || !deferredPrompt) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: isMobile ? '70px' : '20px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+      border: '2px solid #0ead69',
+      padding: isMobile ? '16px' : '20px',
+      zIndex: 1000,
+      maxWidth: '400px',
+      width: 'calc(100% - 40px)',
+      boxShadow: '0 4px 20px rgba(14, 173, 105, 0.3)'
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: '12px'
+      }}>
+        <div style={{ color: '#0ead69', fontWeight: 'bold', fontSize: '1rem', fontFamily: 'monospace' }}>
+          Install Cortex
+        </div>
+        <button
+          onClick={handleDismiss}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#6a7a6a',
+            cursor: 'pointer',
+            fontSize: '1.2rem',
+            padding: 0,
+            lineHeight: 1
+          }}
+        >
+          x
+        </button>
+      </div>
+
+      <p style={{
+        color: '#c5d5c5',
+        fontSize: '0.85rem',
+        marginBottom: '16px',
+        lineHeight: 1.4,
+        fontFamily: 'monospace'
+      }}>
+        Install Cortex on your device for quick access and offline support.
+      </p>
+
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button
+          onClick={handleInstall}
+          style={{
+            flex: 1,
+            padding: '12px 20px',
+            background: '#0ead69',
+            border: 'none',
+            color: '#050805',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontWeight: 'bold',
+            fontSize: '0.9rem'
+          }}
+        >
+          INSTALL APP
+        </button>
+        <button
+          onClick={handleDismiss}
+          style={{
+            padding: '12px 20px',
+            background: 'transparent',
+            border: '1px solid #3a4a3a',
+            color: '#6a7a6a',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.9rem'
+          }}
+        >
+          LATER
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ============ OFFLINE INDICATOR ============
+const OfflineIndicator = () => {
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  if (isOnline) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      background: '#ff6b35',
+      color: '#050805',
+      padding: '8px',
+      textAlign: 'center',
+      fontFamily: 'monospace',
+      fontSize: '0.85rem',
+      fontWeight: 'bold',
+      zIndex: 9999
+    }}>
+      OFFLINE - Some features unavailable
     </div>
   );
 };
@@ -2957,7 +3189,7 @@ function MainApp() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div>
             <GlowText color="#ffd23f" size={isMobile ? '1.3rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            {!isMobile && <span style={{ color: '#5a6a5a', fontSize: '0.65rem', marginLeft: '8px' }}>v1.5.0</span>}
+            {!isMobile && <span style={{ color: '#5a6a5a', fontSize: '0.65rem', marginLeft: '8px' }}>v1.6.0</span>}
           </div>
           {!isMobile && <ConnectionStatus wsConnected={wsConnected} apiConnected={apiConnected} />}
         </div>
@@ -3093,6 +3325,10 @@ function MainApp() {
       )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* PWA Components */}
+      <OfflineIndicator />
+      <InstallPrompt isMobile={isMobile} />
     </div>
   );
 }
