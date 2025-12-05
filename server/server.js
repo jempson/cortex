@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -22,6 +23,9 @@ const JWT_SECRET = process.env.JWT_SECRET || (() => {
 })();
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
+// GIPHY API configuration
+const GIPHY_API_KEY = process.env.GIPHY_API_KEY || null;
+
 // Data directory and files
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILES = {
@@ -32,6 +36,8 @@ const DATA_FILES = {
   handleRequests: path.join(DATA_DIR, 'handle-requests.json'),
   reports: path.join(DATA_DIR, 'reports.json'),
   moderation: path.join(DATA_DIR, 'moderation.json'),
+  contactRequests: path.join(DATA_DIR, 'contact-requests.json'),
+  groupInvitations: path.join(DATA_DIR, 'group-invitations.json'),
 };
 
 // CORS configuration
@@ -42,7 +48,7 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 // ============ Security: Rate Limiting ============
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 30,
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -51,7 +57,7 @@ const loginLimiter = rateLimit({
 
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 3,
+  max: 15,
   message: { error: 'Too many registration attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -59,15 +65,23 @@ const registerLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 300,
   message: { error: 'Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const gifSearchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,  // 30 searches per minute per user
+  message: { error: 'Too many GIF searches. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 // ============ Security: Account Lockout ============
 const failedAttempts = new Map();
-const LOCKOUT_THRESHOLD = 5;
+const LOCKOUT_THRESHOLD = 15;
 const LOCKOUT_DURATION = 15 * 60 * 1000;
 
 function checkAccountLockout(handle) {
@@ -194,6 +208,8 @@ class Database {
     this.handleRequests = { requests: [] };
     this.reports = { reports: [] };
     this.moderation = { blocks: [], mutes: [] };
+    this.contactRequests = { requests: [] };
+    this.groupInvitations = { invitations: [] };
     this.load();
   }
 
@@ -237,6 +253,8 @@ class Database {
       this.handleRequests = this.loadFile(DATA_FILES.handleRequests, { requests: [] });
       this.reports = this.loadFile(DATA_FILES.reports, { reports: [] });
       this.moderation = this.loadFile(DATA_FILES.moderation, { blocks: [], mutes: [] });
+      this.contactRequests = this.loadFile(DATA_FILES.contactRequests, { requests: [] });
+      this.groupInvitations = this.loadFile(DATA_FILES.groupInvitations, { invitations: [] });
       console.log('📂 Loaded data from separated files');
     } else {
       if (process.env.SEED_DEMO_DATA === 'true') {
@@ -255,6 +273,8 @@ class Database {
     this.saveFile(DATA_FILES.handleRequests, this.handleRequests);
     this.saveFile(DATA_FILES.reports, this.reports);
     this.saveFile(DATA_FILES.moderation, this.moderation);
+    this.saveFile(DATA_FILES.contactRequests, this.contactRequests);
+    this.saveFile(DATA_FILES.groupInvitations, this.groupInvitations);
   }
 
   saveUsers() { this.saveFile(DATA_FILES.users, this.users); }
@@ -263,6 +283,8 @@ class Database {
   saveGroups() { this.saveFile(DATA_FILES.groups, this.groups); }
   saveHandleRequests() { this.saveFile(DATA_FILES.handleRequests, this.handleRequests); }
   saveReports() { this.saveFile(DATA_FILES.reports, this.reports); }
+  saveContactRequests() { this.saveFile(DATA_FILES.contactRequests, this.contactRequests); }
+  saveGroupInvitations() { this.saveFile(DATA_FILES.groupInvitations, this.groupInvitations); }
   saveModeration() { this.saveFile(DATA_FILES.moderation, this.moderation); }
 
   initEmpty() {
@@ -528,6 +550,324 @@ class Database {
     this.users.contacts.splice(index, 1);
     this.saveUsers();
     return true;
+  }
+
+  isContact(userId, contactId) {
+    return this.users.contacts.some(c => c.userId === userId && c.contactId === contactId);
+  }
+
+  // === Contact Request Methods ===
+  createContactRequest(fromUserId, toUserId, message = null) {
+    // Validate users exist
+    const fromUser = this.findUserById(fromUserId);
+    const toUser = this.findUserById(toUserId);
+    if (!fromUser || !toUser) return { error: 'User not found' };
+
+    // Can't request yourself
+    if (fromUserId === toUserId) return { error: 'Cannot add yourself as a contact' };
+
+    // Check if already contacts
+    if (this.isContact(fromUserId, toUserId)) return { error: 'Already a contact' };
+
+    // Check if blocked
+    if (this.isBlocked(toUserId, fromUserId)) return { error: 'Cannot send request to this user' };
+
+    // Check for existing pending request (either direction)
+    const existingRequest = this.contactRequests.requests.find(r =>
+      r.status === 'pending' && (
+        (r.from_user_id === fromUserId && r.to_user_id === toUserId) ||
+        (r.from_user_id === toUserId && r.to_user_id === fromUserId)
+      )
+    );
+    if (existingRequest) {
+      if (existingRequest.from_user_id === fromUserId) {
+        return { error: 'Request already pending' };
+      } else {
+        return { error: 'This user has already sent you a request' };
+      }
+    }
+
+    const request = {
+      id: uuidv4(),
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      message: message ? sanitizeInput(message) : null,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      responded_at: null
+    };
+
+    this.contactRequests.requests.push(request);
+    this.saveContactRequests();
+
+    // Return enriched request with user info
+    return {
+      ...request,
+      from_user: { id: fromUser.id, handle: fromUser.handle, displayName: fromUser.displayName, avatar: fromUser.avatar },
+      to_user: { id: toUser.id, handle: toUser.handle, displayName: toUser.displayName, avatar: toUser.avatar }
+    };
+  }
+
+  getContactRequestsForUser(userId) {
+    // Get pending requests received by this user
+    return this.contactRequests.requests
+      .filter(r => r.to_user_id === userId && r.status === 'pending')
+      .map(r => {
+        const fromUser = this.findUserById(r.from_user_id);
+        return {
+          ...r,
+          from_user: fromUser ? {
+            id: fromUser.id,
+            handle: fromUser.handle,
+            displayName: fromUser.displayName,
+            avatar: fromUser.avatar
+          } : null
+        };
+      });
+  }
+
+  getSentContactRequests(userId) {
+    // Get pending requests sent by this user
+    return this.contactRequests.requests
+      .filter(r => r.from_user_id === userId && r.status === 'pending')
+      .map(r => {
+        const toUser = this.findUserById(r.to_user_id);
+        return {
+          ...r,
+          to_user: toUser ? {
+            id: toUser.id,
+            handle: toUser.handle,
+            displayName: toUser.displayName,
+            avatar: toUser.avatar
+          } : null
+        };
+      });
+  }
+
+  getContactRequest(requestId) {
+    return this.contactRequests.requests.find(r => r.id === requestId);
+  }
+
+  acceptContactRequest(requestId, userId) {
+    const request = this.getContactRequest(requestId);
+    if (!request) return { error: 'Request not found' };
+    if (request.to_user_id !== userId) return { error: 'Not authorized' };
+    if (request.status !== 'pending') return { error: 'Request already processed' };
+
+    // Update request status
+    request.status = 'accepted';
+    request.responded_at = new Date().toISOString();
+
+    // Create mutual contact relationship
+    this.addContact(request.from_user_id, request.to_user_id);
+    this.addContact(request.to_user_id, request.from_user_id);
+
+    this.saveContactRequests();
+
+    return { success: true, request };
+  }
+
+  declineContactRequest(requestId, userId) {
+    const request = this.getContactRequest(requestId);
+    if (!request) return { error: 'Request not found' };
+    if (request.to_user_id !== userId) return { error: 'Not authorized' };
+    if (request.status !== 'pending') return { error: 'Request already processed' };
+
+    request.status = 'declined';
+    request.responded_at = new Date().toISOString();
+    this.saveContactRequests();
+
+    return { success: true, request };
+  }
+
+  cancelContactRequest(requestId, userId) {
+    const request = this.getContactRequest(requestId);
+    if (!request) return { error: 'Request not found' };
+    if (request.from_user_id !== userId) return { error: 'Not authorized' };
+    if (request.status !== 'pending') return { error: 'Request already processed' };
+
+    // Remove the request entirely
+    const index = this.contactRequests.requests.findIndex(r => r.id === requestId);
+    if (index !== -1) {
+      this.contactRequests.requests.splice(index, 1);
+      this.saveContactRequests();
+    }
+
+    return { success: true };
+  }
+
+  // Check if there's a pending request between two users
+  getPendingRequestBetween(userId1, userId2) {
+    return this.contactRequests.requests.find(r =>
+      r.status === 'pending' && (
+        (r.from_user_id === userId1 && r.to_user_id === userId2) ||
+        (r.from_user_id === userId2 && r.to_user_id === userId1)
+      )
+    );
+  }
+
+  // === Group Invitation Methods ===
+  createGroupInvitation(groupId, invitedBy, invitedUserId, message = null) {
+    // Validate group exists
+    const group = this.getGroup(groupId);
+    if (!group) return { error: 'Group not found' };
+
+    // Validate users exist
+    const inviter = this.findUserById(invitedBy);
+    const invitee = this.findUserById(invitedUserId);
+    if (!inviter || !invitee) return { error: 'User not found' };
+
+    // Can't invite yourself
+    if (invitedBy === invitedUserId) return { error: 'Cannot invite yourself' };
+
+    // Check if inviter is a group member
+    if (!this.isGroupMember(groupId, invitedBy)) {
+      return { error: 'Only group members can invite others' };
+    }
+
+    // Check if invitee is already a member
+    if (this.isGroupMember(groupId, invitedUserId)) {
+      return { error: 'User is already a group member' };
+    }
+
+    // Check if blocked
+    if (this.isBlocked(invitedUserId, invitedBy)) {
+      return { error: 'Cannot invite this user' };
+    }
+
+    // Check for existing pending invitation
+    const existingInvitation = this.groupInvitations.invitations.find(i =>
+      i.group_id === groupId &&
+      i.invited_user_id === invitedUserId &&
+      i.status === 'pending'
+    );
+    if (existingInvitation) {
+      return { error: 'Invitation already pending for this user' };
+    }
+
+    const invitation = {
+      id: uuidv4(),
+      group_id: groupId,
+      invited_by: invitedBy,
+      invited_user_id: invitedUserId,
+      message: message ? sanitizeInput(message) : null,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      responded_at: null
+    };
+
+    this.groupInvitations.invitations.push(invitation);
+    this.saveGroupInvitations();
+
+    // Return enriched invitation with group and user info
+    return {
+      ...invitation,
+      group: { id: group.id, name: group.name },
+      invited_by_user: { id: inviter.id, handle: inviter.handle, displayName: inviter.displayName, avatar: inviter.avatar },
+      invited_user: { id: invitee.id, handle: invitee.handle, displayName: invitee.displayName, avatar: invitee.avatar }
+    };
+  }
+
+  getGroupInvitationsForUser(userId) {
+    // Get pending invitations received by this user
+    return this.groupInvitations.invitations
+      .filter(i => i.invited_user_id === userId && i.status === 'pending')
+      .map(i => {
+        const group = this.getGroup(i.group_id);
+        const inviter = this.findUserById(i.invited_by);
+        return {
+          ...i,
+          group: group ? { id: group.id, name: group.name, description: group.description } : null,
+          invited_by_user: inviter ? {
+            id: inviter.id,
+            handle: inviter.handle,
+            displayName: inviter.displayName,
+            avatar: inviter.avatar
+          } : null
+        };
+      });
+  }
+
+  getGroupInvitationsSent(groupId, userId) {
+    // Get pending invitations sent by this user for a specific group
+    return this.groupInvitations.invitations
+      .filter(i => i.group_id === groupId && i.invited_by === userId && i.status === 'pending')
+      .map(i => {
+        const invitee = this.findUserById(i.invited_user_id);
+        return {
+          ...i,
+          invited_user: invitee ? {
+            id: invitee.id,
+            handle: invitee.handle,
+            displayName: invitee.displayName,
+            avatar: invitee.avatar
+          } : null
+        };
+      });
+  }
+
+  getGroupInvitation(invitationId) {
+    return this.groupInvitations.invitations.find(i => i.id === invitationId);
+  }
+
+  acceptGroupInvitation(invitationId, userId) {
+    const invitation = this.getGroupInvitation(invitationId);
+    if (!invitation) return { error: 'Invitation not found' };
+    if (invitation.invited_user_id !== userId) return { error: 'Not authorized' };
+    if (invitation.status !== 'pending') return { error: 'Invitation already processed' };
+
+    // Double-check user isn't already a member
+    if (this.isGroupMember(invitation.group_id, userId)) {
+      invitation.status = 'accepted';
+      invitation.responded_at = new Date().toISOString();
+      this.saveGroupInvitations();
+      return { error: 'Already a group member' };
+    }
+
+    // Update invitation status
+    invitation.status = 'accepted';
+    invitation.responded_at = new Date().toISOString();
+
+    // Add user to group as member
+    this.addGroupMember(invitation.group_id, userId, 'member');
+
+    this.saveGroupInvitations();
+
+    const group = this.getGroup(invitation.group_id);
+    return {
+      success: true,
+      invitation,
+      group: group ? { id: group.id, name: group.name } : null
+    };
+  }
+
+  declineGroupInvitation(invitationId, userId) {
+    const invitation = this.getGroupInvitation(invitationId);
+    if (!invitation) return { error: 'Invitation not found' };
+    if (invitation.invited_user_id !== userId) return { error: 'Not authorized' };
+    if (invitation.status !== 'pending') return { error: 'Invitation already processed' };
+
+    invitation.status = 'declined';
+    invitation.responded_at = new Date().toISOString();
+    this.saveGroupInvitations();
+
+    return { success: true, invitation };
+  }
+
+  cancelGroupInvitation(invitationId, userId) {
+    const invitation = this.getGroupInvitation(invitationId);
+    if (!invitation) return { error: 'Invitation not found' };
+    if (invitation.invited_by !== userId) return { error: 'Not authorized' };
+    if (invitation.status !== 'pending') return { error: 'Invitation already processed' };
+
+    // Remove the invitation entirely
+    const index = this.groupInvitations.invitations.findIndex(i => i.id === invitationId);
+    if (index !== -1) {
+      this.groupInvitations.invitations.splice(index, 1);
+      this.saveGroupInvitations();
+    }
+
+    return { success: true };
   }
 
   // === Moderation Methods ===
@@ -817,6 +1157,22 @@ class Database {
     if (index === -1) return false;
     this.groups.members.splice(index, 1);
     this.saveGroups();
+
+    // Clean up: remove user from participants of all waves belonging to this group
+    const groupWaveIds = this.waves.waves
+      .filter(w => w.privacy === 'group' && w.groupId === groupId)
+      .map(w => w.id);
+
+    if (groupWaveIds.length > 0) {
+      const beforeCount = this.waves.participants.length;
+      this.waves.participants = this.waves.participants.filter(
+        p => !(groupWaveIds.includes(p.waveId) && p.userId === userId)
+      );
+      if (this.waves.participants.length < beforeCount) {
+        this.saveWaves();
+      }
+    }
+
     return true;
   }
 
@@ -840,11 +1196,18 @@ class Database {
       .map(m => m.groupId);
 
     return this.waves.waves
-      .filter(w =>
-        participantWaveIds.includes(w.id) ||
-        w.privacy === 'public' ||
-        (w.privacy === 'group' && w.groupId && userGroupIds.includes(w.groupId))
-      )
+      .filter(w => {
+        // Public waves - always accessible
+        if (w.privacy === 'public') return true;
+
+        // Group waves - MUST be a current group member (participant status alone is not enough)
+        if (w.privacy === 'group' && w.groupId) {
+          return userGroupIds.includes(w.groupId);
+        }
+
+        // Private waves - must be an explicit participant
+        return participantWaveIds.includes(w.id);
+      })
       .map(wave => {
         const creator = this.findUserById(wave.createdBy);
         const participants = this.getWaveParticipants(wave.id);
@@ -905,18 +1268,18 @@ class Database {
   canAccessWave(waveId, userId) {
     const wave = this.getWave(waveId);
     if (!wave) return false;
-    
+
     // Public waves are accessible to all
     if (wave.privacy === 'public') return true;
-    
-    // Check if participant
-    if (this.waves.participants.some(p => p.waveId === waveId && p.userId === userId)) {
-      return true;
-    }
-    
-    // Group waves - check group membership
+
+    // Group waves - MUST be a current group member (participant status alone is not enough)
     if (wave.privacy === 'group' && wave.groupId) {
       return this.isGroupMember(wave.groupId, userId);
+    }
+
+    // Private waves - check if explicit participant
+    if (this.waves.participants.some(p => p.waveId === waveId && p.userId === userId)) {
+      return true;
     }
     
     return false;
@@ -1527,6 +1890,228 @@ app.delete('/api/contacts/:id', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
+// ============ Contact Request Routes ============
+// Send a contact request
+app.post('/api/contacts/request', authenticateToken, (req, res) => {
+  const { toUserId, message } = req.body;
+  if (!toUserId) {
+    return res.status(400).json({ error: 'toUserId is required' });
+  }
+
+  const result = db.createContactRequest(req.user.userId, sanitizeInput(toUserId), message);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Broadcast to recipient via WebSocket
+  broadcast({
+    type: 'contact_request_received',
+    request: result
+  }, [result.to_user_id]);
+
+  res.status(201).json(result);
+});
+
+// Get received pending contact requests
+app.get('/api/contacts/requests', authenticateToken, (req, res) => {
+  const requests = db.getContactRequestsForUser(req.user.userId);
+  res.json(requests);
+});
+
+// Get sent pending contact requests
+app.get('/api/contacts/requests/sent', authenticateToken, (req, res) => {
+  const requests = db.getSentContactRequests(req.user.userId);
+  res.json(requests);
+});
+
+// Accept a contact request
+app.post('/api/contacts/requests/:id/accept', authenticateToken, (req, res) => {
+  const requestId = sanitizeInput(req.params.id);
+  const result = db.acceptContactRequest(requestId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Notify the sender that their request was accepted
+  broadcast({
+    type: 'contact_request_accepted',
+    requestId: requestId,
+    acceptedBy: req.user.userId
+  }, [result.request.from_user_id]);
+
+  res.json({ success: true, message: 'Contact request accepted' });
+});
+
+// Decline a contact request
+app.post('/api/contacts/requests/:id/decline', authenticateToken, (req, res) => {
+  const requestId = sanitizeInput(req.params.id);
+  const result = db.declineContactRequest(requestId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Optionally notify the sender (some apps don't do this for privacy)
+  broadcast({
+    type: 'contact_request_declined',
+    requestId: requestId
+  }, [result.request.from_user_id]);
+
+  res.json({ success: true, message: 'Contact request declined' });
+});
+
+// Cancel a sent contact request
+app.delete('/api/contacts/requests/:id', authenticateToken, (req, res) => {
+  const requestId = sanitizeInput(req.params.id);
+  const request = db.getContactRequest(requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: 'Request not found' });
+  }
+
+  const result = db.cancelContactRequest(requestId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Notify the recipient that the request was cancelled
+  broadcast({
+    type: 'contact_request_cancelled',
+    requestId: requestId
+  }, [request.to_user_id]);
+
+  res.json({ success: true, message: 'Contact request cancelled' });
+});
+
+// ============ Group Invitation Routes ============
+// Invite user(s) to a group
+app.post('/api/groups/:id/invite', authenticateToken, (req, res) => {
+  const groupId = sanitizeInput(req.params.id);
+  const { userIds, message } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ error: 'userIds array is required' });
+  }
+
+  // Check if inviter is a group member
+  if (!db.isGroupMember(groupId, req.user.userId)) {
+    return res.status(403).json({ error: 'Only group members can invite others' });
+  }
+
+  const results = [];
+  const errors = [];
+
+  for (const userId of userIds) {
+    const result = db.createGroupInvitation(groupId, req.user.userId, sanitizeInput(userId), message);
+
+    if (result.error) {
+      errors.push({ userId, error: result.error });
+    } else {
+      results.push(result);
+
+      // Broadcast to invitee via WebSocket
+      broadcast({
+        type: 'group_invitation_received',
+        invitation: result
+      }, [result.invited_user_id]);
+    }
+  }
+
+  res.status(201).json({
+    success: results.length > 0,
+    invitations: results,
+    errors: errors.length > 0 ? errors : undefined
+  });
+});
+
+// Get pending group invitations for current user
+app.get('/api/groups/invitations', authenticateToken, (req, res) => {
+  const invitations = db.getGroupInvitationsForUser(req.user.userId);
+  res.json(invitations);
+});
+
+// Get pending invitations sent for a specific group
+app.get('/api/groups/:id/invitations/sent', authenticateToken, (req, res) => {
+  const groupId = sanitizeInput(req.params.id);
+
+  // Check if requester is a group member
+  if (!db.isGroupMember(groupId, req.user.userId)) {
+    return res.status(403).json({ error: 'Not a group member' });
+  }
+
+  const invitations = db.getGroupInvitationsSent(groupId, req.user.userId);
+  res.json(invitations);
+});
+
+// Accept a group invitation
+app.post('/api/groups/invitations/:id/accept', authenticateToken, (req, res) => {
+  const invitationId = sanitizeInput(req.params.id);
+  const result = db.acceptGroupInvitation(invitationId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Notify the inviter that their invitation was accepted
+  broadcast({
+    type: 'group_invitation_accepted',
+    invitationId: invitationId,
+    userId: req.user.userId,
+    groupId: result.invitation.group_id
+  }, [result.invitation.invited_by]);
+
+  res.json({
+    success: true,
+    message: 'Group invitation accepted',
+    group: result.group
+  });
+});
+
+// Decline a group invitation
+app.post('/api/groups/invitations/:id/decline', authenticateToken, (req, res) => {
+  const invitationId = sanitizeInput(req.params.id);
+  const result = db.declineGroupInvitation(invitationId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Notify the inviter that their invitation was declined
+  broadcast({
+    type: 'group_invitation_declined',
+    invitationId: invitationId
+  }, [result.invitation.invited_by]);
+
+  res.json({ success: true, message: 'Group invitation declined' });
+});
+
+// Cancel a sent group invitation
+app.delete('/api/groups/invitations/:id', authenticateToken, (req, res) => {
+  const invitationId = sanitizeInput(req.params.id);
+  const invitation = db.getGroupInvitation(invitationId);
+
+  if (!invitation) {
+    return res.status(404).json({ error: 'Invitation not found' });
+  }
+
+  const result = db.cancelGroupInvitation(invitationId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Notify the invitee that the invitation was cancelled
+  broadcast({
+    type: 'group_invitation_cancelled',
+    invitationId: invitationId
+  }, [invitation.invited_user_id]);
+
+  res.json({ success: true, message: 'Group invitation cancelled' });
+});
+
 // ============ Moderation Routes ============
 // Block user
 app.post('/api/users/:id/block', authenticateToken, (req, res) => {
@@ -1594,6 +2179,123 @@ app.delete('/api/users/:id/mute', authenticateToken, (req, res) => {
 app.get('/api/users/muted', authenticateToken, (req, res) => {
   const mutedUsers = db.getMutedUsers(req.user.userId);
   res.json({ mutedUsers });
+});
+
+// ============ GIF Search (GIPHY API Proxy) ============
+app.get('/api/gifs/search', authenticateToken, gifSearchLimiter, async (req, res) => {
+  const { q, limit = 20, offset = 0 } = req.query;
+
+  if (!q || typeof q !== 'string' || q.trim().length === 0) {
+    return res.status(400).json({ error: 'Search query is required' });
+  }
+
+  if (!GIPHY_API_KEY) {
+    return res.status(503).json({
+      error: 'GIF search is not configured. Set GIPHY_API_KEY environment variable.'
+    });
+  }
+
+  try {
+    const searchUrl = new URL('https://api.giphy.com/v1/gifs/search');
+    searchUrl.searchParams.set('api_key', GIPHY_API_KEY);
+    searchUrl.searchParams.set('q', q.trim());
+    searchUrl.searchParams.set('limit', Math.min(parseInt(limit) || 20, 50).toString());
+    searchUrl.searchParams.set('offset', (parseInt(offset) || 0).toString());
+    searchUrl.searchParams.set('rating', 'pg-13'); // Content rating filter
+    searchUrl.searchParams.set('lang', 'en');
+
+    const response = await fetch(searchUrl.toString(), {
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      console.error('GIPHY API error:', response.status, response.statusText);
+      const errorText = await response.text().catch(() => '');
+      console.error('GIPHY API response:', errorText);
+      return res.status(502).json({ error: 'Failed to fetch GIFs from provider' });
+    }
+
+    const data = await response.json();
+
+    // Transform response to only include what we need
+    const gifs = (data.data || []).map(gif => ({
+      id: gif.id,
+      title: gif.title,
+      url: gif.images?.original?.url || '',
+      preview: gif.images?.fixed_height_small?.url || gif.images?.fixed_height?.url || '',
+      width: parseInt(gif.images?.fixed_height_small?.width || gif.images?.fixed_height?.width || 100),
+      height: parseInt(gif.images?.fixed_height_small?.height || gif.images?.fixed_height?.height || 100),
+    })).filter(gif => gif.url && gif.preview);
+
+    res.json({
+      gifs,
+      pagination: {
+        total_count: data.pagination?.total_count || 0,
+        count: data.pagination?.count || gifs.length,
+        offset: data.pagination?.offset || 0,
+      }
+    });
+  } catch (err) {
+    console.error('GIF search error:', err);
+    res.status(500).json({ error: 'Failed to search GIFs' });
+  }
+});
+
+// Get trending GIFs
+app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, res) => {
+  const { limit = 20, offset = 0 } = req.query;
+
+  if (!GIPHY_API_KEY) {
+    return res.status(503).json({
+      error: 'GIF search is not configured. Set GIPHY_API_KEY environment variable.'
+    });
+  }
+
+  try {
+    const trendingUrl = new URL('https://api.giphy.com/v1/gifs/trending');
+    trendingUrl.searchParams.set('api_key', GIPHY_API_KEY);
+    trendingUrl.searchParams.set('limit', Math.min(parseInt(limit) || 20, 50).toString());
+    trendingUrl.searchParams.set('offset', (parseInt(offset) || 0).toString());
+    trendingUrl.searchParams.set('rating', 'pg-13');
+
+    const response = await fetch(trendingUrl.toString(), {
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      console.error('GIPHY API error:', response.status, response.statusText);
+      const errorText = await response.text().catch(() => '');
+      console.error('GIPHY API response:', errorText);
+      return res.status(502).json({ error: 'Failed to fetch trending GIFs' });
+    }
+
+    const data = await response.json();
+
+    const gifs = (data.data || []).map(gif => ({
+      id: gif.id,
+      title: gif.title,
+      url: gif.images?.original?.url || '',
+      preview: gif.images?.fixed_height_small?.url || gif.images?.fixed_height?.url || '',
+      width: parseInt(gif.images?.fixed_height_small?.width || gif.images?.fixed_height?.width || 100),
+      height: parseInt(gif.images?.fixed_height_small?.height || gif.images?.fixed_height?.height || 100),
+    })).filter(gif => gif.url && gif.preview);
+
+    res.json({
+      gifs,
+      pagination: {
+        total_count: data.pagination?.total_count || 0,
+        count: data.pagination?.count || gifs.length,
+        offset: data.pagination?.offset || 0,
+      }
+    });
+  } catch (err) {
+    console.error('Trending GIFs error:', err);
+    res.status(500).json({ error: 'Failed to fetch trending GIFs' });
+  }
 });
 
 // Create report
@@ -1666,11 +2368,12 @@ app.get('/api/groups/:id', authenticateToken, (req, res) => {
   if (!db.isGroupMember(groupId, req.user.userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
-  
+
   res.json({
     ...group,
     members: db.getGroupMembers(groupId),
     isAdmin: db.isGroupAdmin(groupId, req.user.userId),
+    currentUserId: req.user.userId,
   });
 });
 
@@ -2128,6 +2831,17 @@ wss.on('connection', (ws, req) => {
     }
   });
 });
+
+// Broadcast to specific users by their IDs
+function broadcast(message, userIds = []) {
+  for (const userId of userIds) {
+    if (clients.has(userId)) {
+      for (const ws of clients.get(userId)) {
+        if (ws.readyState === 1) ws.send(JSON.stringify(message));
+      }
+    }
+  }
+}
 
 function broadcastToWave(waveId, message, excludeWs = null) {
   const wave = db.getWave(waveId);

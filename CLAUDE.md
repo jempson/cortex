@@ -46,8 +46,8 @@ The server is organized into clear sections (marked with `// ============`):
    - Input sanitization: All user input sanitized with `sanitize-html`
    - Password validation: 8+ chars, uppercase, lowercase, number
 3. **Database Class** (lines 130-782): In-memory data with JSON file persistence
-   - Separated files: `users.json`, `waves.json`, `messages.json`, `groups.json`, `handle-requests.json`
-   - Methods grouped by entity: User, Contact, Group, Wave, Message
+   - Separated files: `users.json`, `waves.json`, `messages.json`, `groups.json`, `handle-requests.json`, `contact-requests.json`, `group-invitations.json`
+   - Methods grouped by entity: User, Contact, Group, Wave, Message, ContactRequest, GroupInvitation
 4. **Express Routes:** RESTful API endpoints with JWT authentication
 5. **WebSocket Server** (lines 1274-1356): Real-time event broadcasting
 
@@ -220,6 +220,94 @@ Visual UI for the per-message read tracking system (builds on v1.4.0 backend).
   - Calls `POST /api/messages/:id/read` for each unread message
   - Shows toast with count of messages marked
 
+### Contact Request System (v1.7.0+)
+Users must send contact requests that recipients can accept or decline.
+
+- **Data Storage**: `contact-requests.json` with status: pending/accepted/declined
+- **API Endpoints**:
+  - `POST /api/contacts/request` - Send contact request (body: `{ toUserId, message? }`)
+  - `GET /api/contacts/requests` - Get received pending requests
+  - `GET /api/contacts/requests/sent` - Get sent pending requests
+  - `POST /api/contacts/requests/:id/accept` - Accept (creates mutual contact)
+  - `POST /api/contacts/requests/:id/decline` - Decline request
+  - `DELETE /api/contacts/requests/:id` - Cancel sent request
+- **WebSocket Events**: `contact_request_received`, `contact_request_accepted`, `contact_request_declined`, `contact_request_cancelled`
+- **UI Components**: `ContactRequestsPanel`, `SentRequestsPanel`, `SendContactRequestModal`
+- **Participant Integration**: Wave participants show contact status with quick-action buttons
+- **Badge**: Teal badge on Contacts nav shows pending request count
+
+### Group Invitation System (v1.7.0+)
+Users must be invited to groups and can accept or decline.
+
+- **Data Storage**: `group-invitations.json` with status: pending/accepted/declined
+- **API Endpoints**:
+  - `POST /api/groups/:id/invite` - Invite users (body: `{ userIds: [], message? }`)
+  - `GET /api/groups/invitations` - Get pending invitations
+  - `GET /api/groups/:id/invitations/sent` - Get sent invitations for a group
+  - `POST /api/groups/invitations/:id/accept` - Accept (adds to group)
+  - `POST /api/groups/invitations/:id/decline` - Decline invitation
+  - `DELETE /api/groups/invitations/:id` - Cancel sent invitation
+- **WebSocket Events**: `group_invitation_received`, `group_invitation_accepted`, `group_invitation_declined`, `group_invitation_cancelled`
+- **UI Components**: `GroupInvitationsPanel`, `InviteToGroupModal`
+- **Leave Group**: All members can leave via "LEAVE GROUP" button
+- **Badge**: Amber badge on Groups nav shows pending invitation count
+
+### Group Wave Access Control (v1.7.0+)
+Group membership is strictly enforced for group wave access.
+
+- **Access Rules**: Group waves require current group membership (participant status alone is insufficient)
+- **Leave Behavior**: Leaving a group immediately revokes access to all group waves
+- **Cleanup**: `removeGroupMember()` removes user from wave participants for that group's waves
+- **Security Functions**:
+  - `canAccessWave()`: Checks group membership before participant status for group waves
+  - `getWavesForUser()`: Only returns group waves where user is current member
+
+### User Moderation (Block/Mute) (v1.7.0+)
+Users can block or mute other users for privacy control.
+
+- **Data Storage**: `moderation.json` with `blocks[]` and `mutes[]` arrays
+- **Block Effects**:
+  - Blocked users cannot send contact requests to the blocker
+  - Blocked users cannot invite the blocker to groups
+  - Messages from blocked users are hidden in waves
+  - Block is bidirectional: if A blocks B, B is also effectively blocked from A
+- **Mute Effects**:
+  - Muted users can still interact, but their messages are hidden from view
+  - Mute is one-directional: only the muter's view is affected
+- **API Endpoints**:
+  - `POST /api/users/:id/block` - Block user
+  - `DELETE /api/users/:id/block` - Unblock user
+  - `POST /api/users/:id/mute` - Mute user
+  - `DELETE /api/users/:id/mute` - Unmute user
+  - `GET /api/users/blocked` - Get blocked users list
+  - `GET /api/users/muted` - Get muted users list
+- **Database Methods**: `blockUser()`, `unblockUser()`, `muteUser()`, `unmuteUser()`, `isBlocked()`, `isMuted()`, `getBlockedUsers()`, `getMutedUsers()`
+- **UI Components**:
+  - Participant panel ⋮ dropdown menu with MUTE/BLOCK options
+  - Visual indicators for blocked (red border, ⊘ BLOCKED label) and muted (gray, 🔇 MUTED label) users
+  - Profile Settings → Blocked & Muted Users management section
+
+### GIF Search Integration (v1.7.0+)
+GIPHY API integration for searching and inserting GIFs into messages.
+
+- **Configuration**: Set `GIPHY_API_KEY` environment variable (required for GIF search to work)
+- **API Endpoints**:
+  - `GET /api/gifs/search?q=query&limit=20&offset=0` - Search GIFs by keyword
+  - `GET /api/gifs/trending?limit=20&offset=0` - Get trending GIFs
+- **Rate Limiting**: 30 searches per minute per user
+- **Content Filtering**: PG-13 rating filter applied
+- **Response Format**:
+  ```javascript
+  { gifs: [{ id, title, url, preview, width, height }], pagination: { total_count, count, offset } }
+  ```
+- **UI Components**:
+  - GIF button in message composer (teal color, between emoji and send)
+  - `GifSearchModal` component with search input and grid display
+  - Trending GIFs shown on modal open
+  - Debounced search (500ms delay)
+  - Click GIF to insert URL into message (auto-embedded on send)
+- **GIPHY Attribution**: Footer in modal as required by GIPHY terms
+
 ### Message Threading
 - Messages have `parentId` (null for root messages)
 - Client renders recursively with depth tracking
@@ -245,6 +333,25 @@ Visual UI for the per-message read tracking system (builds on v1.4.0 backend).
   - Converts `username` → `handle`
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
+
+- **v1.7.0 (December 2025)** - Contact & Invitation Approval System + Moderation + GIF Search
+  - Contact Request System: Send/accept/decline contact requests
+  - Group Invitation System: Invite users to groups with accept/decline flow
+  - Add contact from wave participants with quick-action buttons
+  - Leave Group functionality for all members
+  - Group wave access control: leaving group revokes wave access
+  - WebSocket events for all request/invitation state changes
+  - Badge notifications on Contacts (teal) and Groups (amber) nav buttons
+  - **User Moderation**: Block and mute users for privacy control
+    - Block prevents contact requests, group invitations, hides messages
+    - Mute hides messages but allows other interactions
+    - Participant panel ⋮ menu for quick block/mute actions
+    - Profile Settings section for managing blocked/muted users
+  - **GIF Search**: GIPHY API integration for inserting GIFs
+    - Search and trending GIF endpoints with rate limiting
+    - GIF button in composer opens search modal
+    - Debounced search with grid display
+    - Requires GIPHY_API_KEY environment variable
 
 - **v1.6.0 (December 2025)** - Progressive Web App (PWA)
   - Full PWA support with service worker and manifest
@@ -286,12 +393,16 @@ Visual UI for the per-message read tracking system (builds on v1.4.0 backend).
 ## Environment Variables
 
 **Server (`server/.env`):**
+
+The server uses `dotenv` to automatically load environment variables from `.env` file on startup.
+
 ```bash
 PORT=3001                                           # Server port
-JWT_SECRET=your-secret-key                          # REQUIRED in production
+JWT_SECRET=your-secret-key                          # REQUIRED in production (generate with: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
 JWT_EXPIRES_IN=7d                                   # Token expiration
 ALLOWED_ORIGINS=https://your-domain.com             # CORS whitelist (comma-separated)
 SEED_DEMO_DATA=true                                 # Seed demo accounts on first run
+GIPHY_API_KEY=your-giphy-api-key                    # Required for GIF search (get from developers.giphy.com)
 ```
 
 **Client:** Hardcoded to `localhost:3001` for development. Change `API_URL` and `WS_URL` in `CortexApp.jsx` for production.
