@@ -1428,6 +1428,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [messageToDelete, setMessageToDelete] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showPlayback, setShowPlayback] = useState(false);
+  const [showParticipants, setShowParticipants] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editContent, setEditContent] = useState('');
   const playbackRef = useRef(null);
@@ -1800,30 +1801,109 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         </div>
       </div>
 
-      {/* Participants with Read Status */}
-      {waveData.participants && waveData.participants.length > 0 && (
+      {/* Wave Toolbar - Participants & Playback */}
+      {(waveData.participants?.length > 0 || total > 0) && (
         <div style={{
-          padding: isMobile ? '8px 12px' : '8px 20px',
+          padding: isMobile ? '6px 12px' : '6px 20px',
           borderBottom: '1px solid #2a3a2a',
           background: '#0a100a',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
+          gap: isMobile ? '8px' : '12px',
+          flexShrink: 0
+        }}>
+          {/* Participants Toggle */}
+          {waveData.participants?.length > 0 && (
+            <button
+              onClick={() => setShowParticipants(!showParticipants)}
+              style={{
+                padding: isMobile ? '8px 12px' : '6px 10px',
+                background: showParticipants ? '#0ead6920' : 'transparent',
+                border: `1px solid ${showParticipants ? '#0ead69' : '#3a4a3a'}`,
+                color: showParticipants ? '#0ead69' : '#6a7a6a',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span>{showParticipants ? '▼' : '▶'}</span>
+              PARTICIPANTS ({waveData.participants.length})
+            </button>
+          )}
+
+          {/* Playback Toggle */}
+          {total > 0 && (
+            <button
+              onClick={() => setShowPlayback(!showPlayback)}
+              style={{
+                padding: isMobile ? '8px 12px' : '6px 10px',
+                background: showPlayback ? `${config.color}20` : 'transparent',
+                border: `1px solid ${showPlayback ? config.color : '#3a4a3a'}`,
+                color: showPlayback ? config.color : '#6a7a6a',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span>{showPlayback ? '▼' : '▶'}</span>
+              PLAYBACK
+            </button>
+          )}
+
+          {/* Mark All Read Button - always visible if unread */}
+          {waveData.messages.some(m => m.is_unread && m.author_id !== currentUser.id) && (
+            <button
+              onClick={async () => {
+                try {
+                  const unreadMessages = waveData.all_messages
+                    .filter(m => (m.readBy || [m.author_id]).includes(currentUser.id) === false && m.author_id !== currentUser.id);
+                  if (unreadMessages.length === 0) return;
+                  await Promise.all(unreadMessages.map(m => fetchAPI(`/messages/${m.id}/read`, { method: 'POST' })));
+                  await loadWave();
+                  onWaveUpdate?.();
+                  showToast(`Marked ${unreadMessages.length} message${unreadMessages.length !== 1 ? 's' : ''} as read`, 'success');
+                } catch (err) {
+                  showToast('Failed to mark messages as read', 'error');
+                }
+              }}
+              style={{
+                padding: isMobile ? '8px 12px' : '6px 10px',
+                marginLeft: 'auto',
+                background: 'transparent',
+                border: '1px solid #ffd23f',
+                color: '#ffd23f',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+              }}
+            >
+              MARK ALL READ
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Expanded Participants Panel */}
+      {showParticipants && waveData.participants?.length > 0 && (
+        <div style={{
+          padding: isMobile ? '8px 12px' : '8px 20px',
+          borderBottom: '1px solid #2a3a2a',
+          background: '#0d150d',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
           flexWrap: 'wrap',
           flexShrink: 0
         }}>
-          <span style={{ color: '#6a7a6a', fontSize: '0.7rem', fontFamily: 'monospace' }}>
-            PARTICIPANTS:
-          </span>
           {waveData.participants.map(p => {
-            // Check if participant has read the latest message
-            const latestMessage = waveData.all_messages.length > 0
-              ? waveData.all_messages[waveData.all_messages.length - 1]
-              : null;
-            const hasReadLatest = latestMessage
-              ? (latestMessage.readBy || [latestMessage.author_id]).includes(p.id)
-              : true;
-
+            const latestMessage = waveData.all_messages.length > 0 ? waveData.all_messages[waveData.all_messages.length - 1] : null;
+            const hasReadLatest = latestMessage ? (latestMessage.readBy || [latestMessage.author_id]).includes(p.id) : true;
             return (
               <div
                 key={p.id}
@@ -1838,94 +1918,22 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                   fontSize: isMobile ? '0.7rem' : '0.65rem',
                   color: '#c5d5c5',
                   fontFamily: 'monospace',
-                  transition: 'all 0.2s ease'
                 }}
               >
-                <span style={{ color: hasReadLatest ? '#0ead69' : '#6a7a6a' }}>
-                  {hasReadLatest ? '✓' : '○'}
-                </span>
+                <span style={{ color: hasReadLatest ? '#0ead69' : '#6a7a6a' }}>{hasReadLatest ? '✓' : '○'}</span>
                 {p.name}
               </div>
             );
           })}
-          {/* Mark All Read Button */}
-          {waveData.messages.some(m => m.is_unread && m.author_id !== currentUser.id) && (
-            <button
-              onClick={async () => {
-                try {
-                  const unreadMessages = waveData.all_messages
-                    .filter(m => (m.readBy || [m.author_id]).includes(currentUser.id) === false && m.author_id !== currentUser.id);
-
-                  if (unreadMessages.length === 0) return;
-
-                  // Mark all as read in parallel
-                  await Promise.all(
-                    unreadMessages.map(m =>
-                      fetchAPI(`/messages/${m.id}/read`, { method: 'POST' })
-                    )
-                  );
-
-                  await loadWave();
-                  onWaveUpdate?.();
-                  showToast(`Marked ${unreadMessages.length} message${unreadMessages.length !== 1 ? 's' : ''} as read`, 'success');
-                } catch (err) {
-                  showToast('Failed to mark messages as read', 'error');
-                }
-              }}
-              style={{
-                padding: isMobile ? '6px 10px' : '4px 8px',
-                background: 'transparent',
-                border: '1px solid #ffd23f',
-                color: '#ffd23f',
-                cursor: 'pointer',
-                fontFamily: 'monospace',
-                fontSize: isMobile ? '0.7rem' : '0.65rem',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = '#ffd23f20'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              MARK ALL READ
-            </button>
-          )}
         </div>
       )}
 
-      {/* Playback */}
-      {total > 0 && (
-        <div style={{ flexShrink: 0 }}>
-          <div style={{
-            padding: '4px 12px',
-            background: '#0a100a',
-            borderBottom: '1px solid #2a3a2a',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <span style={{ color: '#5a6a5a', fontSize: '0.7rem', fontFamily: 'monospace' }}>
-              PLAYBACK MODE
-            </span>
-            <button
-              onClick={() => setShowPlayback(!showPlayback)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: config.color,
-                cursor: 'pointer',
-                fontSize: '0.9rem',
-                padding: '4px 8px'
-              }}
-            >
-              {showPlayback ? '▼ HIDE' : '▶ SHOW'}
-            </button>
-          </div>
-          {showPlayback && (
-            <PlaybackControls isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)}
-              currentIndex={playbackIndex} totalMessages={total} onSeek={setPlaybackIndex}
-              onReset={() => { setPlaybackIndex(null); setIsPlaying(false); }}
-              playbackSpeed={playbackSpeed} onSpeedChange={setPlaybackSpeed} isMobile={isMobile} />
-          )}
-        </div>
+      {/* Expanded Playback Panel */}
+      {showPlayback && total > 0 && (
+        <PlaybackControls isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)}
+          currentIndex={playbackIndex} totalMessages={total} onSeek={setPlaybackIndex}
+          onReset={() => { setPlaybackIndex(null); setIsPlaying(false); }}
+          playbackSpeed={playbackSpeed} onSpeedChange={setPlaybackSpeed} isMobile={isMobile} />
       )}
 
       {/* Messages */}
@@ -2599,7 +2607,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ PROFILE SETTINGS ============
-const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate }) => {
+const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -2825,6 +2833,29 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate }) => {
           {showHandleRequests && <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />}
         </div>
       )}
+
+      {/* Logout Section */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+        <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '16px' }}>SESSION</div>
+        <button
+          onClick={onLogout}
+          style={{
+            padding: isMobile ? '14px 24px' : '12px 24px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent',
+            border: '1px solid #ff6b35',
+            color: '#ff6b35',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.9rem' : '0.85rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <span>⏻</span> LOGOUT
+        </button>
+      </div>
     </div>
   );
 };
@@ -3180,31 +3211,43 @@ function MainApp() {
 
       {/* Header */}
       <header style={{
-        padding: isMobile ? '10px 12px' : '12px 24px',
-        paddingTop: isMobile ? 'calc(10px + env(safe-area-inset-top, 0px))' : '12px',
+        padding: isMobile ? '8px 10px' : '12px 24px',
+        paddingTop: isMobile ? 'calc(8px + env(safe-area-inset-top, 0px))' : '12px',
         borderBottom: '2px solid #ffd23f40',
         background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: isMobile ? '10px' : '8px',
+        display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div>
-            <GlowText color="#ffd23f" size={isMobile ? '1.3rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            {!isMobile && <span style={{ color: '#5a6a5a', fontSize: '0.65rem', marginLeft: '8px' }}>v1.6.0</span>}
-          </div>
-          {!isMobile && <ConnectionStatus wsConnected={wsConnected} apiConnected={apiConnected} />}
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+          {isMobile ? (
+            <img
+              src="/icons/icon-72x72.png"
+              alt="Cortex"
+              style={{ width: '32px', height: '32px', borderRadius: '4px' }}
+            />
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <GlowText color="#ffd23f" size="1.5rem" weight={700}>CORTEX</GlowText>
+              <span style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>v1.6.1</span>
+            </div>
+          )}
         </div>
 
-        <div style={{ display: 'flex', gap: isMobile ? '6px' : '4px', flexWrap: 'wrap' }}>
+        {/* Connection Status - desktop only */}
+        {!isMobile && <ConnectionStatus wsConnected={wsConnected} apiConnected={apiConnected} />}
+
+        {/* Nav Items - grows to fill space */}
+        <div style={{ display: 'flex', gap: '4px', flex: 1, justifyContent: 'center' }}>
           {navItems.map(view => {
             const totalUnread = view === 'waves' ? waves.reduce((sum, w) => sum + (w.unread_count || 0), 0) : 0;
             return (
               <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); }} style={{
-                padding: isMobile ? '12px 14px' : '8px 16px',
+                padding: isMobile ? '10px 12px' : '8px 16px',
                 minHeight: isMobile ? '44px' : 'auto',
                 background: activeView === view ? '#ffd23f15' : 'transparent',
                 border: `1px solid ${activeView === view ? '#ffd23f50' : '#3a4a3a'}`,
                 color: activeView === view ? '#ffd23f' : '#6a7a6a',
-                cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.8rem', textTransform: 'uppercase',
+                cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.75rem' : '0.8rem', textTransform: 'uppercase',
                 position: 'relative',
               }}>
                 {view === 'profile' ? '⚙' : view.slice(0, isMobile ? 3 : 10)}
@@ -3215,11 +3258,11 @@ function MainApp() {
                     right: '-6px',
                     background: '#ff6b35',
                     color: '#fff',
-                    fontSize: '0.6rem',
+                    fontSize: '0.55rem',
                     fontWeight: 700,
-                    padding: '2px 5px',
+                    padding: '2px 4px',
                     borderRadius: '10px',
-                    minWidth: '18px',
+                    minWidth: '16px',
                     textAlign: 'center',
                     boxShadow: '0 0 8px rgba(255, 107, 53, 0.8)',
                   }}>{totalUnread}</span>
@@ -3229,18 +3272,19 @@ function MainApp() {
           })}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Search */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           <button
             onClick={() => setShowSearch(true)}
             style={{
-              padding: isMobile ? '12px' : '8px 12px',
+              padding: isMobile ? '10px' : '8px 12px',
               minHeight: isMobile ? '44px' : 'auto',
               background: 'transparent',
               border: '1px solid #3bceac',
               color: '#3bceac',
               cursor: 'pointer',
               fontFamily: 'monospace',
-              fontSize: isMobile ? '1rem' : '0.8rem',
+              fontSize: isMobile ? '0.9rem' : '0.8rem',
             }}
             title="Search messages"
           >
@@ -3252,10 +3296,6 @@ function MainApp() {
               <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{user?.handle}</div>
             </div>
           )}
-          <button onClick={logout} style={{
-            padding: '6px 10px', background: 'transparent', border: '1px solid #3a4a3a',
-            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
-          }}>⏻</button>
         </div>
       </header>
 
@@ -3298,7 +3338,7 @@ function MainApp() {
         )}
 
         {activeView === 'profile' && (
-          <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} />
+          <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} onLogout={logout} />
         )}
       </main>
 

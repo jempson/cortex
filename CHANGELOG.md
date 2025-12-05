@@ -5,6 +5,40 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2025-12-05
+
+### Changed
+
+#### Mobile Header Improvements
+- **App Icon Logo** - Replaced "CORTEX" text with PWA app icon (32x32px) on mobile screens
+- **Compact Layout** - Removed header wrapping, flex-centered navigation buttons
+- **Reduced Padding** - Tighter spacing on mobile (8px vs 10px)
+- **Smaller Nav Buttons** - Reduced font size and padding for better fit
+
+#### Logout Button Relocated
+- **Moved to Settings** - Logout button removed from header, added to Profile Settings
+- **New SESSION Section** - Orange-bordered LOGOUT button at bottom of settings panel
+- **Better UX** - Reduces accidental logouts, more discoverable location
+
+#### Collapsible Wave Toolbar
+- **Combined Toolbar** - Participants and Playback merged into single compact bar
+- **Toggle Buttons** - "PARTICIPANTS (n)" and "PLAYBACK" buttons expand/collapse panels
+- **Collapsed by Default** - Both panels start collapsed to save vertical space
+- **Mark All Read** - Button remains visible in toolbar when unread messages exist
+
+### Technical Details
+
+#### Bundle Size
+- **Gzipped**: 65.23 KB (slight increase from 65.03 KB)
+- **Uncompressed**: 227.05 KB
+- **Build Time**: ~617ms
+
+### Migration Notes
+- **No Migration Required** - Fully backward compatible
+- **Service Worker** - Cache version updated to v1.6.1
+
+---
+
 ## [1.6.0] - 2025-12-05
 
 ### Added

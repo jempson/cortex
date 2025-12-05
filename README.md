@@ -1,8 +1,23 @@
-# CORTEX - Secure Wave Communications v1.6.0
+# CORTEX - Secure Wave Communications v1.6.1
 
 A privacy-first, federated communication platform inspired by Google Wave with a Firefly aesthetic.
 
-## What's New in v1.6.0
+## What's New in v1.6.1
+
+### Mobile Header Improvements
+- **App Icon Logo** - PWA icon replaces "CORTEX" text on mobile for compact header
+- **Compact Layout** - No more header wrapping on small screens
+- **Logout Relocated** - Moved to Profile Settings under new "SESSION" section
+
+### Collapsible Wave Toolbar
+- **Combined Toolbar** - Participants and Playback merged into single compact bar
+- **Toggle Buttons** - Click "PARTICIPANTS (n)" or "PLAYBACK" to expand/collapse
+- **Collapsed by Default** - Saves vertical space, especially on mobile
+- **Mark All Read** - Stays visible in toolbar when unread messages exist
+
+---
+
+## What's in v1.6.0
 
 ### Progressive Web App (PWA) Support
 Cortex is now a fully installable Progressive Web App that works on Android and iOS devices.
