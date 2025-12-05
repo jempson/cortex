@@ -1195,8 +1195,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showMediaInput, setShowMediaInput] = useState(false);
-  const [mediaUrl, setMediaUrl] = useState('');
   const [showPlayback, setShowPlayback] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editContent, setEditContent] = useState('');
@@ -1784,33 +1782,16 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           <button
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
             style={{
-              padding: isMobile ? '14px' : '10px 12px',
+              padding: isMobile ? '8px 10px' : '10px 12px',
               minHeight: isMobile ? '44px' : 'auto',
-              minWidth: isMobile ? '44px' : 'auto',
               background: showEmojiPicker ? '#ffd23f20' : 'transparent',
               border: `1px solid ${showEmojiPicker ? '#ffd23f' : '#2a3a2a'}`,
               color: '#ffd23f',
               cursor: 'pointer',
-              fontSize: isMobile ? '1.5rem' : '1.2rem',
+              fontSize: isMobile ? '1.1rem' : '1.2rem',
             }}
           >
             😀
-          </button>
-          <button
-            onClick={() => setShowMediaInput(!showMediaInput)}
-            style={{
-              padding: isMobile ? '14px' : '10px 12px',
-              minHeight: isMobile ? '44px' : 'auto',
-              minWidth: isMobile ? '44px' : 'auto',
-              background: showMediaInput ? '#3bceac20' : 'transparent',
-              border: `1px solid ${showMediaInput ? '#3bceac' : '#2a3a2a'}`,
-              color: '#3bceac',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: isMobile ? '1rem' : '0.8rem',
-            }}
-          >
-            🖼️
           </button>
           <button
             onClick={handleSendMessage}
@@ -1839,68 +1820,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             />
           )}
         </div>
-        {showMediaInput && (
-          <div style={{ padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a', marginTop: '8px' }}>
-            <input
-              type="url"
-              value={mediaUrl}
-              onChange={(e) => setMediaUrl(e.target.value)}
-              placeholder="Image or GIF URL (e.g., https://...)"
-              style={{
-                width: '100%',
-                padding: isMobile ? '12px' : '10px',
-                background: '#050805',
-                border: '1px solid #2a3a2a',
-                color: '#c5d5c5',
-                fontFamily: 'inherit',
-                marginBottom: '8px',
-                fontSize: isMobile ? '1rem' : '0.9rem',
-              }}
-            />
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => {
-                  if (mediaUrl) {
-                    setNewMessage(prev => prev + '\n' + mediaUrl);
-                    setMediaUrl('');
-                    setShowMediaInput(false);
-                  }
-                }}
-                disabled={!mediaUrl}
-                style={{
-                  padding: isMobile ? '10px 16px' : '6px 12px',
-                  minHeight: isMobile ? '44px' : 'auto',
-                  background: mediaUrl ? '#3bceac20' : 'transparent',
-                  border: `1px solid ${mediaUrl ? '#3bceac' : '#3a4a3a'}`,
-                  color: mediaUrl ? '#3bceac' : '#5a6a5a',
-                  cursor: mediaUrl ? 'pointer' : 'not-allowed',
-                  fontFamily: 'monospace',
-                  fontSize: isMobile ? '0.85rem' : '0.75rem',
-                }}
-              >
-                INSERT
-              </button>
-              <button
-                onClick={() => {
-                  setShowMediaInput(false);
-                  setMediaUrl('');
-                }}
-                style={{
-                  padding: isMobile ? '10px 16px' : '6px 12px',
-                  minHeight: isMobile ? '44px' : 'auto',
-                  background: 'transparent',
-                  border: '1px solid #3a4a3a',
-                  color: '#6a7a6a',
-                  cursor: 'pointer',
-                  fontFamily: 'monospace',
-                  fontSize: isMobile ? '0.85rem' : '0.75rem',
-                }}
-              >
-                CANCEL
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       <WaveSettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)}
