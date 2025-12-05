@@ -32,6 +32,8 @@ const DATA_FILES = {
   handleRequests: path.join(DATA_DIR, 'handle-requests.json'),
   reports: path.join(DATA_DIR, 'reports.json'),
   moderation: path.join(DATA_DIR, 'moderation.json'),
+  contactRequests: path.join(DATA_DIR, 'contact-requests.json'),
+  groupInvitations: path.join(DATA_DIR, 'group-invitations.json'),
 };
 
 // CORS configuration
@@ -194,6 +196,8 @@ class Database {
     this.handleRequests = { requests: [] };
     this.reports = { reports: [] };
     this.moderation = { blocks: [], mutes: [] };
+    this.contactRequests = { requests: [] };
+    this.groupInvitations = { invitations: [] };
     this.load();
   }
 
@@ -237,6 +241,8 @@ class Database {
       this.handleRequests = this.loadFile(DATA_FILES.handleRequests, { requests: [] });
       this.reports = this.loadFile(DATA_FILES.reports, { reports: [] });
       this.moderation = this.loadFile(DATA_FILES.moderation, { blocks: [], mutes: [] });
+      this.contactRequests = this.loadFile(DATA_FILES.contactRequests, { requests: [] });
+      this.groupInvitations = this.loadFile(DATA_FILES.groupInvitations, { invitations: [] });
       console.log('📂 Loaded data from separated files');
     } else {
       if (process.env.SEED_DEMO_DATA === 'true') {
@@ -255,6 +261,8 @@ class Database {
     this.saveFile(DATA_FILES.handleRequests, this.handleRequests);
     this.saveFile(DATA_FILES.reports, this.reports);
     this.saveFile(DATA_FILES.moderation, this.moderation);
+    this.saveFile(DATA_FILES.contactRequests, this.contactRequests);
+    this.saveFile(DATA_FILES.groupInvitations, this.groupInvitations);
   }
 
   saveUsers() { this.saveFile(DATA_FILES.users, this.users); }
@@ -263,6 +271,8 @@ class Database {
   saveGroups() { this.saveFile(DATA_FILES.groups, this.groups); }
   saveHandleRequests() { this.saveFile(DATA_FILES.handleRequests, this.handleRequests); }
   saveReports() { this.saveFile(DATA_FILES.reports, this.reports); }
+  saveContactRequests() { this.saveFile(DATA_FILES.contactRequests, this.contactRequests); }
+  saveGroupInvitations() { this.saveFile(DATA_FILES.groupInvitations, this.groupInvitations); }
   saveModeration() { this.saveFile(DATA_FILES.moderation, this.moderation); }
 
   initEmpty() {
@@ -528,6 +538,160 @@ class Database {
     this.users.contacts.splice(index, 1);
     this.saveUsers();
     return true;
+  }
+
+  isContact(userId, contactId) {
+    return this.users.contacts.some(c => c.userId === userId && c.contactId === contactId);
+  }
+
+  // === Contact Request Methods ===
+  createContactRequest(fromUserId, toUserId, message = null) {
+    // Validate users exist
+    const fromUser = this.findUserById(fromUserId);
+    const toUser = this.findUserById(toUserId);
+    if (!fromUser || !toUser) return { error: 'User not found' };
+
+    // Can't request yourself
+    if (fromUserId === toUserId) return { error: 'Cannot add yourself as a contact' };
+
+    // Check if already contacts
+    if (this.isContact(fromUserId, toUserId)) return { error: 'Already a contact' };
+
+    // Check if blocked
+    if (this.isBlocked(toUserId, fromUserId)) return { error: 'Cannot send request to this user' };
+
+    // Check for existing pending request (either direction)
+    const existingRequest = this.contactRequests.requests.find(r =>
+      r.status === 'pending' && (
+        (r.from_user_id === fromUserId && r.to_user_id === toUserId) ||
+        (r.from_user_id === toUserId && r.to_user_id === fromUserId)
+      )
+    );
+    if (existingRequest) {
+      if (existingRequest.from_user_id === fromUserId) {
+        return { error: 'Request already pending' };
+      } else {
+        return { error: 'This user has already sent you a request' };
+      }
+    }
+
+    const request = {
+      id: uuidv4(),
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      message: message ? sanitizeInput(message) : null,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      responded_at: null
+    };
+
+    this.contactRequests.requests.push(request);
+    this.saveContactRequests();
+
+    // Return enriched request with user info
+    return {
+      ...request,
+      from_user: { id: fromUser.id, handle: fromUser.handle, displayName: fromUser.displayName, avatar: fromUser.avatar },
+      to_user: { id: toUser.id, handle: toUser.handle, displayName: toUser.displayName, avatar: toUser.avatar }
+    };
+  }
+
+  getContactRequestsForUser(userId) {
+    // Get pending requests received by this user
+    return this.contactRequests.requests
+      .filter(r => r.to_user_id === userId && r.status === 'pending')
+      .map(r => {
+        const fromUser = this.findUserById(r.from_user_id);
+        return {
+          ...r,
+          from_user: fromUser ? {
+            id: fromUser.id,
+            handle: fromUser.handle,
+            displayName: fromUser.displayName,
+            avatar: fromUser.avatar
+          } : null
+        };
+      });
+  }
+
+  getSentContactRequests(userId) {
+    // Get pending requests sent by this user
+    return this.contactRequests.requests
+      .filter(r => r.from_user_id === userId && r.status === 'pending')
+      .map(r => {
+        const toUser = this.findUserById(r.to_user_id);
+        return {
+          ...r,
+          to_user: toUser ? {
+            id: toUser.id,
+            handle: toUser.handle,
+            displayName: toUser.displayName,
+            avatar: toUser.avatar
+          } : null
+        };
+      });
+  }
+
+  getContactRequest(requestId) {
+    return this.contactRequests.requests.find(r => r.id === requestId);
+  }
+
+  acceptContactRequest(requestId, userId) {
+    const request = this.getContactRequest(requestId);
+    if (!request) return { error: 'Request not found' };
+    if (request.to_user_id !== userId) return { error: 'Not authorized' };
+    if (request.status !== 'pending') return { error: 'Request already processed' };
+
+    // Update request status
+    request.status = 'accepted';
+    request.responded_at = new Date().toISOString();
+
+    // Create mutual contact relationship
+    this.addContact(request.from_user_id, request.to_user_id);
+    this.addContact(request.to_user_id, request.from_user_id);
+
+    this.saveContactRequests();
+
+    return { success: true, request };
+  }
+
+  declineContactRequest(requestId, userId) {
+    const request = this.getContactRequest(requestId);
+    if (!request) return { error: 'Request not found' };
+    if (request.to_user_id !== userId) return { error: 'Not authorized' };
+    if (request.status !== 'pending') return { error: 'Request already processed' };
+
+    request.status = 'declined';
+    request.responded_at = new Date().toISOString();
+    this.saveContactRequests();
+
+    return { success: true, request };
+  }
+
+  cancelContactRequest(requestId, userId) {
+    const request = this.getContactRequest(requestId);
+    if (!request) return { error: 'Request not found' };
+    if (request.from_user_id !== userId) return { error: 'Not authorized' };
+    if (request.status !== 'pending') return { error: 'Request already processed' };
+
+    // Remove the request entirely
+    const index = this.contactRequests.requests.findIndex(r => r.id === requestId);
+    if (index !== -1) {
+      this.contactRequests.requests.splice(index, 1);
+      this.saveContactRequests();
+    }
+
+    return { success: true };
+  }
+
+  // Check if there's a pending request between two users
+  getPendingRequestBetween(userId1, userId2) {
+    return this.contactRequests.requests.find(r =>
+      r.status === 'pending' && (
+        (r.from_user_id === userId1 && r.to_user_id === userId2) ||
+        (r.from_user_id === userId2 && r.to_user_id === userId1)
+      )
+    );
   }
 
   // === Moderation Methods ===
@@ -1525,6 +1689,102 @@ app.delete('/api/contacts/:id', authenticateToken, (req, res) => {
     return res.status(404).json({ error: 'Contact not found' });
   }
   res.json({ success: true });
+});
+
+// ============ Contact Request Routes ============
+// Send a contact request
+app.post('/api/contacts/request', authenticateToken, (req, res) => {
+  const { toUserId, message } = req.body;
+  if (!toUserId) {
+    return res.status(400).json({ error: 'toUserId is required' });
+  }
+
+  const result = db.createContactRequest(req.user.userId, sanitizeInput(toUserId), message);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Broadcast to recipient via WebSocket
+  broadcast({
+    type: 'contact_request_received',
+    request: result
+  }, [result.to_user_id]);
+
+  res.status(201).json(result);
+});
+
+// Get received pending contact requests
+app.get('/api/contacts/requests', authenticateToken, (req, res) => {
+  const requests = db.getContactRequestsForUser(req.user.userId);
+  res.json(requests);
+});
+
+// Get sent pending contact requests
+app.get('/api/contacts/requests/sent', authenticateToken, (req, res) => {
+  const requests = db.getSentContactRequests(req.user.userId);
+  res.json(requests);
+});
+
+// Accept a contact request
+app.post('/api/contacts/requests/:id/accept', authenticateToken, (req, res) => {
+  const requestId = sanitizeInput(req.params.id);
+  const result = db.acceptContactRequest(requestId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Notify the sender that their request was accepted
+  broadcast({
+    type: 'contact_request_accepted',
+    requestId: requestId,
+    acceptedBy: req.user.userId
+  }, [result.request.from_user_id]);
+
+  res.json({ success: true, message: 'Contact request accepted' });
+});
+
+// Decline a contact request
+app.post('/api/contacts/requests/:id/decline', authenticateToken, (req, res) => {
+  const requestId = sanitizeInput(req.params.id);
+  const result = db.declineContactRequest(requestId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Optionally notify the sender (some apps don't do this for privacy)
+  broadcast({
+    type: 'contact_request_declined',
+    requestId: requestId
+  }, [result.request.from_user_id]);
+
+  res.json({ success: true, message: 'Contact request declined' });
+});
+
+// Cancel a sent contact request
+app.delete('/api/contacts/requests/:id', authenticateToken, (req, res) => {
+  const requestId = sanitizeInput(req.params.id);
+  const request = db.getContactRequest(requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: 'Request not found' });
+  }
+
+  const result = db.cancelContactRequest(requestId, req.user.userId);
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Notify the recipient that the request was cancelled
+  broadcast({
+    type: 'contact_request_cancelled',
+    requestId: requestId
+  }, [request.to_user_id]);
+
+  res.json({ success: true, message: 'Contact request cancelled' });
 });
 
 // ============ Moderation Routes ============
