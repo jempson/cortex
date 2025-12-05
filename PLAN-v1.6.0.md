@@ -27,10 +27,14 @@ Version 1.6.0 adds full Progressive Web App support, making Cortex installable o
 5. ✅ **Offline Indicator** - Orange banner when network connection lost
 6. ✅ **iOS Support** - apple-touch-icon, status bar styling
 
+### ✅ Read Receipts Display
+1. ✅ **Participant Read Status Bar** - Wave header shows all participants with ✓/○ indicators
+2. ✅ **Per-Message Receipts** - Expandable "Seen by X people" on each message
+3. ✅ **Mark All Read Button** - One-click to mark all unread messages as read
+
 ### Deferred to v1.7.0
 - ❌ Basic Moderation System (blocking, muting, reporting)
 - ❌ GIF Search Integration (Giphy/Tenor)
-- ❌ Read Receipts Display
 - ❌ Public REST API Documentation
 
 ---

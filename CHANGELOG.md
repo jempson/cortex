@@ -54,6 +54,27 @@ Cortex is now a fully installable Progressive Web App that works on Android and 
   - Hourly update checks
   - Update notification handling
 
+#### Read Receipts Display
+Visual UI for the per-message read tracking system (backend from v1.4.0).
+
+- **Participant Read Status Bar**
+  - Shows all wave participants in header
+  - Green ✓ indicator for users who've read latest message
+  - Gray ○ indicator for users with unread messages
+  - Hover tooltip shows read/unread status
+
+- **Per-Message Read Receipts**
+  - Expandable "Seen by X people" section on each message
+  - Lists all users who have read that specific message
+  - Green badges with user names
+  - Collapses by default to save space
+
+- **Mark All Read Button**
+  - One-click button to mark all unread messages as read
+  - Appears only when unread messages exist
+  - Shows success toast with count of messages marked
+  - Real-time update of read status
+
 ### Changed
 
 - **index.html** - Added PWA meta tags, manifest link, iOS support tags, favicon links

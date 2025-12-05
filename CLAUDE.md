@@ -204,6 +204,22 @@ Single-page React app with all components in one file:
 - **OfflineIndicator Component**: Orange banner when offline
 - **iOS Support**: apple-touch-icon, status bar styling
 
+### Read Receipts Display (v1.6.0+)
+Visual UI for the per-message read tracking system (builds on v1.4.0 backend).
+
+- **Participant Read Status Bar**: Wave header shows all participants
+  - Green ✓ for users who've read latest message
+  - Gray ○ for users with unread messages
+  - Located below wave title
+- **Per-Message Receipts**: Expandable "Seen by X people" on each message
+  - `<details>` element for expand/collapse
+  - Lists all users who read that message with green badges
+  - Located at bottom of message after reactions
+- **Mark All Read Button**: One-click to mark all unread as read
+  - Only appears when unread messages exist
+  - Calls `POST /api/messages/:id/read` for each unread message
+  - Shows toast with count of messages marked
+
 ### Message Threading
 - Messages have `parentId` (null for root messages)
 - Client renders recursively with depth tracking

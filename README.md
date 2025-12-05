@@ -25,6 +25,15 @@ Cortex is now a fully installable Progressive Web App that works on Android and 
 - **iOS**: Open in Safari → Share → "Add to Home Screen"
 - **Desktop**: Chrome/Edge address bar → Install icon
 
+### Read Receipts Display
+Visual display of who has read messages in a wave.
+
+- **Participant Read Status** - Wave header shows all participants with ✓ (read) or ○ (unread) indicators
+- **Per-Message Receipts** - Expandable "Seen by X people" section on each message
+- **Mark All Read** - One-click button to mark all unread messages as read
+- **Real-Time Updates** - Read status updates live as participants read messages
+- **Visual Feedback** - Green highlighting for users who've read the latest message
+
 ## What Was New in v1.5.0
 
 ### ⌨️ Typing Indicators
