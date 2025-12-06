@@ -698,6 +698,12 @@ const GlowText = ({ children, color = '#ffd23f', size = '1rem', weight = 400 }) 
 
 const Avatar = ({ letter, color = '#ffd23f', size = 40, status, imageUrl }) => {
   const [imgError, setImgError] = useState(false);
+
+  // Reset error state when imageUrl changes
+  useEffect(() => {
+    setImgError(false);
+  }, [imageUrl]);
+
   const showImage = imageUrl && !imgError;
 
   return (
