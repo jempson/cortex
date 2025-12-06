@@ -567,6 +567,40 @@ server {
 }
 ```
 
+### Nginx Proxy Manager
+
+If using Nginx Proxy Manager (NPM), add these locations in the **Advanced** tab:
+
+```nginx
+location /api {
+    proxy_pass http://your-backend:3001;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /ws {
+    proxy_pass http://your-backend:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 86400;
+}
+
+location /uploads {
+    proxy_pass http://your-backend:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+}
+```
+
+**Important NPM Settings:**
+- **Cache Assets**: Must be **disabled** for the proxy host. NPM's asset caching intercepts image requests (`.webp`, `.jpg`, etc.) and can return cached HTML instead of the actual images, breaking profile picture display.
+- **WebSockets Support**: Enable for real-time features.
+- **Block Common Exploits**: Can remain enabled.
+
 ## Roadmap
 
 ### Completed in v1.7.0

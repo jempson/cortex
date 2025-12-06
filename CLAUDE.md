@@ -328,6 +328,9 @@ Uploadable profile pictures with automatic processing.
   - ThreadedMessage passes `imageUrl` to Avatar component
 - **Auth Responses**: Login, register, and `/api/auth/me` all return `avatarUrl`
 - **Dependencies**: `multer` (file upload), `sharp` (image processing)
+- **Nginx/Proxy Requirements**:
+  - Must add `/uploads` location proxying to port 3001 (see README.md)
+  - **Nginx Proxy Manager**: Must disable "Cache Assets" option, otherwise NPM intercepts image requests and returns cached HTML instead of images
 
 ### About Me / Bio (v1.8.0+)
 User bio/about section visible on profiles.
