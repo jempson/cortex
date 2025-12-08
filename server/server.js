@@ -249,6 +249,16 @@ function detectAndEmbedMedia(content) {
     return `<a href="${match}" target="_blank" rel="noopener noreferrer">${match}</a>`;
   });
 
+  // Also detect and embed relative upload paths (e.g., /uploads/messages/...)
+  const uploadPathRegex = /(?<!["'>])(\/uploads\/(?:messages|avatars)\/[^\s<]+)(?![^<]*>|[^<>]*<\/)/gi;
+  content = content.replace(uploadPathRegex, (match) => {
+    // These are always images from our upload system
+    if (imageExtensions.test(match)) {
+      return `<img src="${match}" alt="Uploaded image" />`;
+    }
+    return match;
+  });
+
   return content;
 }
 
