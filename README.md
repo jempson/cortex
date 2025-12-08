@@ -60,6 +60,16 @@ Migrate from JSON files to SQLite for better performance.
 - **Auto-Backup**: JSON files backed up to `data/json-backup/` before migration
 - **14 Tables**: Users, waves, messages, groups, contacts, and all related data
 
+### 🔔 PWA Push Notifications
+Receive notifications even when the app is closed or backgrounded.
+
+- **Background Notifications**: Server-sent push via Web Push API
+- **Toggle Control**: Enable/disable in Profile Settings → Display Preferences
+- **Smart Delivery**: Only sent to offline users (WebSocket users get real-time)
+- **Click to Open**: Tap notification to open the specific wave
+- **Auto-Cleanup**: Expired subscriptions automatically removed
+- **VAPID Authentication**: Secure push delivery with public/private keys
+
 ---
 
 ## What Was New in v1.7.0
@@ -518,6 +528,11 @@ USE_SQLITE=true                    # Use SQLite instead of JSON files (recommend
 
 # GIF Search (v1.7.0+)
 GIPHY_API_KEY=your-giphy-api-key   # Get from developers.giphy.com
+
+# Push Notifications (v1.8.0+)
+VAPID_PUBLIC_KEY=your-public-key   # Generate with: npx web-push generate-vapid-keys
+VAPID_PRIVATE_KEY=your-private-key # Keep secret!
+VAPID_EMAIL=mailto:admin@your-domain.com
 ```
 
 Generate a secure JWT_SECRET:
@@ -647,9 +662,9 @@ location /uploads {
 - [x] Message layout cleanup (compact 2-row footer)
 - [x] Emoji picker improvements (centering, no close button)
 - [x] SQLite database migration (optional, `USE_SQLITE=true`)
+- [x] PWA Push Notifications (background notifications when app closed)
 
 ### v1.8 - Remaining (Scale & Organization)
-- [ ] PWA Push Notifications (background notifications when app closed)
 - [ ] Image/file upload for messages (not just URL embedding)
 - [ ] Message pagination/virtual scrolling
 - [ ] Full-text search with database FTS

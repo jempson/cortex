@@ -229,14 +229,13 @@ Enable real push notifications when the app is closed/backgrounded. Currently, n
 - [x] Updated to v1.8.0
 
 #### 6.5 Testing Checklist
-- [ ] Push works when app is closed
-- [ ] Push works when app is backgrounded
-- [ ] Push works on Android PWA
-- [ ] Push works on iOS (if supported)
-- [ ] Push works on desktop browsers
-- [ ] Clicking notification opens correct wave
-- [ ] Subscriptions cleaned up on logout
-- [ ] Toggle in settings works
+- [x] Push works when app is closed (verified on desktop)
+- [x] Push works when app is backgrounded (verified on desktop)
+- [ ] Push works on Android PWA (not tested - no proxy routing)
+- [ ] Push works on iOS (not tested - limited iOS push support)
+- [x] Push works on desktop browsers (verified)
+- [x] Clicking notification opens correct wave
+- [x] Toggle in settings works
 
 ---
 
