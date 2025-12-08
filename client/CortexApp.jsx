@@ -1277,7 +1277,8 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               lineHeight: 1.6,
               marginBottom: '10px',
               wordBreak: 'break-word',
-              whiteSpace: 'pre-wrap'
+              whiteSpace: 'pre-wrap',
+              overflow: 'hidden',
             }}
             dangerouslySetInnerHTML={{ __html: message.content }}
           />

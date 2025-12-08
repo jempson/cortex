@@ -241,7 +241,8 @@ function detectAndEmbedMedia(content) {
   const imageHosts = /(media\.giphy\.com|i\.giphy\.com|media\.tenor\.com|c\.tenor\.com)/i;
 
   // Shared image style for consistent sizing and click-to-zoom
-  const imgStyle = 'max-width:100%;max-height:300px;border-radius:4px;cursor:pointer;object-fit:contain;';
+  // Uses min() to ensure image fits both container width and viewport
+  const imgStyle = 'max-width:min(100%, calc(100vw - 80px));max-height:300px;border-radius:4px;cursor:pointer;object-fit:contain;display:block;';
 
   content = content.replace(urlRegex, (match) => {
     // Check if this URL should be embedded as an image
