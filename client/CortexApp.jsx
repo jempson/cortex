@@ -193,6 +193,65 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+// ============ IMAGE LIGHTBOX COMPONENT ============
+const ImageLightbox = ({ src, onClose }) => {
+  if (!src) return null;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.9)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        cursor: 'zoom-out',
+        padding: '20px',
+      }}
+    >
+      <img
+        src={src}
+        alt="Full size"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '95vw',
+          maxHeight: '95vh',
+          objectFit: 'contain',
+          borderRadius: '4px',
+          boxShadow: '0 0 30px rgba(0, 0, 0, 0.5)',
+        }}
+      />
+      <button
+        onClick={onClose}
+        style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          background: 'rgba(0, 0, 0, 0.5)',
+          border: '1px solid #4a5a4a',
+          color: '#fff',
+          fontSize: '1.5rem',
+          width: '44px',
+          height: '44px',
+          borderRadius: '50%',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+};
+
 // ============ EMOJI PICKER COMPONENT ============
 const EmojiPicker = ({ onSelect, isMobile }) => {
   const emojis = ['😀', '😂', '😍', '🤔', '👍', '👎', '🎉', '🔥', '💯', '❤️', '😎', '🚀', '✨', '💪', '👏', '🙌'];
@@ -1087,6 +1146,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   const canDelete = !isDeleted && message.author_id === currentUserId;
   const isEditing = !isDeleted && editingMessageId === message.id;
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState(null);
   const isUnread = !isDeleted && message.is_unread && message.author_id !== currentUserId;
 
   const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏'];
@@ -1204,6 +1264,13 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
           </div>
         ) : (
           <div
+            onClick={(e) => {
+              // Handle image clicks for lightbox
+              if (e.target.tagName === 'IMG') {
+                e.stopPropagation();
+                setLightboxImage(e.target.src);
+              }
+            }}
             style={{
               color: '#9bab9b',
               fontSize: isMobile ? '0.95rem' : '0.85rem',
@@ -1386,6 +1453,9 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               participants={participants} onShowProfile={onShowProfile} />
           ))}
         </div>
+      )}
+      {lightboxImage && (
+        <ImageLightbox src={lightboxImage} onClose={() => setLightboxImage(null)} />
       )}
     </div>
   );

@@ -240,10 +240,13 @@ function detectAndEmbedMedia(content) {
   const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg)(\?[^\s]*)?$/i;
   const imageHosts = /(media\.giphy\.com|i\.giphy\.com|media\.tenor\.com|c\.tenor\.com)/i;
 
+  // Shared image style for consistent sizing and click-to-zoom
+  const imgStyle = 'max-width:100%;max-height:300px;border-radius:4px;cursor:pointer;object-fit:contain;';
+
   content = content.replace(urlRegex, (match) => {
     // Check if this URL should be embedded as an image
     if (imageExtensions.test(match) || imageHosts.test(match)) {
-      return `<img src="${match}" alt="Embedded media" />`;
+      return `<img src="${match}" alt="Embedded media" style="${imgStyle}" class="zoomable-image" />`;
     }
     // Otherwise, make it a clickable link
     return `<a href="${match}" target="_blank" rel="noopener noreferrer">${match}</a>`;
@@ -254,7 +257,7 @@ function detectAndEmbedMedia(content) {
   content = content.replace(uploadPathRegex, (match) => {
     // These are always images from our upload system
     if (imageExtensions.test(match)) {
-      return `<img src="${match}" alt="Uploaded image" />`;
+      return `<img src="${match}" alt="Uploaded image" style="${imgStyle}" class="zoomable-image" />`;
     }
     return match;
   });
