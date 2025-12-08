@@ -1765,6 +1765,30 @@ class Database {
       return true;
     });
 
+    // Helper to create highlighted snippet
+    const createSnippet = (content, term) => {
+      // Strip HTML tags for snippet
+      const plainText = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const lowerText = plainText.toLowerCase();
+      const termIndex = lowerText.indexOf(term);
+      if (termIndex === -1) return plainText.substring(0, 128) + (plainText.length > 128 ? '...' : '');
+
+      // Extract context around match (64 chars before and after)
+      const start = Math.max(0, termIndex - 64);
+      const end = Math.min(plainText.length, termIndex + term.length + 64);
+      let snippet = plainText.substring(start, end);
+
+      // Add ellipsis if truncated
+      if (start > 0) snippet = '...' + snippet;
+      if (end < plainText.length) snippet = snippet + '...';
+
+      // Highlight match with <mark> tags (case-insensitive)
+      const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      snippet = snippet.replace(regex, '<mark>$1</mark>');
+
+      return snippet;
+    };
+
     // Enrich results with author and wave info
     return results.map(message => {
       const author = this.findUserById(message.authorId);
@@ -1773,6 +1797,7 @@ class Database {
       return {
         id: message.id,
         content: message.content,
+        snippet: createSnippet(message.content, searchTerm),
         waveId: message.waveId,
         waveName: wave?.name || 'Unknown Wave',
         authorId: message.authorId,

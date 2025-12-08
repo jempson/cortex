@@ -1,6 +1,6 @@
 # Cortex v1.8.0 - Implementation Plan
 
-## 🎯 RELEASE STATUS: IN PROGRESS (8/10 Phases Complete)
+## 🎯 RELEASE STATUS: IN PROGRESS (9/10 Phases Complete)
 
 **Target Scope:** User Profiles, Scale & Organization
 **Branch:** `v1.8.0`
@@ -33,7 +33,7 @@ Version 1.8.0 focuses on enhanced user profiles and platform scalability. Users 
 | 6 | PWA Push Notifications | High | 8-10h | ✅ Complete |
 | 7 | Image/File Upload System | High | 8-10h | ✅ Complete |
 | 8 | Message Pagination | Medium | 6-8h | ✅ Complete |
-| 9 | Full-Text Search (FTS) | Medium | 4-6h | Pending |
+| 9 | Full-Text Search (FTS) | Medium | 4-6h | ✅ Complete |
 | 10 | Rich Media Embeds (YouTube, TikTok, etc.) | Medium | 10-14h | Pending |
 
 ### Moderation Features (Deferred)
@@ -283,18 +283,28 @@ Virtual scrolling for waves with many messages.
 ---
 
 ### Phase 9: Full-Text Search (FTS)
-**Priority:** Medium | **Estimate:** 4-6h
+**Priority:** Medium | **Estimate:** 4-6h | **Status:** ✅ Complete
 
 Database-level full-text search using SQLite FTS5.
 
 #### 9.1 Backend
-- [ ] Create FTS5 virtual table for messages
-- [ ] `GET /api/search?q=query` - Use FTS for searching
-- [ ] Highlight matching terms in results
+- [x] Create FTS5 virtual table for messages (`messages_fts`)
+- [x] Add triggers to keep FTS index in sync (insert, update, delete)
+- [x] `GET /api/search?q=query` - Use FTS for searching with BM25 ranking
+- [x] `snippet()` function for highlighted snippets with `<mark>` tags
+- [x] Fallback to LIKE search if FTS query fails
 
 #### 9.2 Frontend
-- [ ] Update search to use new endpoint
-- [ ] Show highlighted matches
+- [x] Display server-provided snippets with HTML highlighting
+- [x] CSS styling for `<mark>` tags (amber background, amber text)
+- [x] Show author display name instead of @handle in results
+
+#### 9.3 Implementation Details
+- FTS5 virtual table with external content (synced via triggers)
+- Prefix matching: `"term"*` for partial word matches
+- BM25 scoring for relevance-ranked results
+- Auto-migration: FTS table created on existing databases at startup
+- Existing messages indexed on first FTS initialization
 
 ---
 
@@ -504,8 +514,8 @@ npm install multer sharp better-sqlite3
 - ~~Phase 6: PWA Push Notifications~~ ✅
 - ~~Phase 7: Image/File Upload System~~ ✅
 - ~~Phase 8: Message Pagination~~ ✅
-- **Phase 9: Full-Text Search (FTS)** ⏳ (NEXT)
-- Phase 10: Rich Media Embeds (YouTube, TikTok, Twitter, Spotify, etc.)
+- ~~Phase 9: Full-Text Search (FTS)~~ ✅
+- **Phase 10: Rich Media Embeds** ⏳ (NEXT)
 
 - ✅ **Phase 8**: Message Pagination
   - Backend: New `GET /api/waves/:id/messages?limit=50&before=messageId` endpoint
@@ -526,6 +536,16 @@ npm install multer sharp better-sqlite3
     - Paste image from clipboard (Ctrl+V)
     - Progress indicator (button shows "...")
     - Uploaded URL inserted into message (auto-embeds on send)
+
+- ✅ **Phase 9**: Full-Text Search (FTS)
+  - Backend: FTS5 virtual table `messages_fts` for fast full-text search
+  - Triggers: Auto-sync FTS index on message insert/update/delete
+  - Search: BM25 ranking for relevance-ordered results
+  - Snippets: `snippet()` function with `<mark>` tag highlighting
+  - Fallback: LIKE search if FTS query fails (special characters)
+  - Migration: Auto-creates FTS table and indexes existing messages
+  - Frontend: Server-provided snippets rendered with HTML highlighting
+  - Styling: CSS `mark` tag styled to match Firefly theme
 
 ### December 8, 2025
 - ✅ **Phase 5**: SQLite Database Migration

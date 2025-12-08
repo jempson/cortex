@@ -461,6 +461,32 @@ Waves with many messages load in batches for better performance.
   - Scroll position preserved when loading older (calculates offset)
   - Messages merged with existing and tree rebuilt
 
+### Full-Text Search (FTS) (v1.8.0+)
+Fast, relevance-ranked message search using SQLite FTS5.
+
+- **FTS5 Virtual Table**: `messages_fts` with external content table
+  - Columns: `id` (unindexed), `content` (searchable)
+  - Synced via INSERT/UPDATE/DELETE triggers on `messages` table
+  - Auto-created on server startup for existing databases
+  - Existing messages indexed during FTS table creation
+- **Search Endpoint**: `GET /api/search?q=query`
+  - Uses FTS5 MATCH with BM25 ranking for relevance
+  - Prefix matching: `"term"*` for partial word matches
+  - Returns highlighted snippets using `snippet()` function
+  - Fallback to LIKE search if FTS query fails (special characters)
+- **Response Fields**:
+  ```javascript
+  {
+    id, content, snippet,  // snippet has <mark> tags around matches
+    waveId, waveName, authorId, authorName, authorHandle,
+    createdAt, parentId
+  }
+  ```
+- **Frontend**:
+  - Server-provided `snippet` rendered with `dangerouslySetInnerHTML`
+  - `<mark>` tag styled with amber background/text to match theme
+  - Falls back to client-side highlighting if no snippet provided
+
 ### Responsive Design (Updated v1.3.2)
 - **Multiple breakpoints:**
   - `isMobile`: width < 600px (phone screens)
@@ -526,6 +552,15 @@ Waves with many messages load in batches for better performance.
     - IMG button in composer (orange), drag-and-drop, clipboard paste
     - Uploaded URL auto-embeds via `detectAndEmbedMedia()`
     - Thumbnail display (200×150 max) with click-to-zoom lightbox
+  - **Message Pagination**:
+    - Initial load limited to 50 most recent messages
+    - `GET /api/waves/:id/messages?limit=50&before=messageId` for older
+    - "Load older messages" button with scroll position preservation
+  - **Full-Text Search (FTS)**:
+    - SQLite FTS5 virtual table with BM25 ranking
+    - Highlighted snippets with `<mark>` tags
+    - Auto-migration creates FTS table and indexes existing messages
+    - Fallback to LIKE search for special character queries
 
 - **v1.7.0 (December 2025)** - Contact & Invitation Approval System + Moderation + GIF Search
   - Contact Request System: Send/accept/decline contact requests

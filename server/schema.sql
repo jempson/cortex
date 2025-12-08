@@ -271,3 +271,32 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 -- Push subscription lookups
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON push_subscriptions(endpoint);
+
+-- ============ Full-Text Search ============
+
+-- FTS5 virtual table for message content search
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+    id UNINDEXED,
+    content,
+    content='messages',
+    content_rowid='rowid'
+);
+
+-- Triggers to keep FTS table in sync with messages table
+-- Note: These triggers use external content table, so we need to handle inserts/updates/deletes
+
+-- After INSERT trigger
+CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+    INSERT INTO messages_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+END;
+
+-- After DELETE trigger
+CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+    INSERT INTO messages_fts(messages_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+END;
+
+-- After UPDATE trigger
+CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
+    INSERT INTO messages_fts(messages_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+    INSERT INTO messages_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+END;

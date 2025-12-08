@@ -1933,11 +1933,18 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
                 </span>
               </div>
               <div style={{ color: '#8a9a8a', fontSize: '0.8rem', marginBottom: '4px' }}>
-                @{result.authorHandle}
+                {result.authorName}
               </div>
-              <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}>
-                {highlightMatch(result.content, searchQuery)}
-              </div>
+              {result.snippet ? (
+                <div
+                  style={{ color: '#c5d5c5', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}
+                  dangerouslySetInnerHTML={{ __html: result.snippet }}
+                />
+              ) : (
+                <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}>
+                  {highlightMatch(result.content, searchQuery)}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -5312,6 +5319,14 @@ function MainApp() {
           border-radius: 2px;
           margin: 8px 0;
           display: block;
+        }
+        /* Search result highlighting */
+        mark {
+          background: #ffd23f40;
+          color: #ffd23f;
+          font-weight: bold;
+          padding: 0 2px;
+          border-radius: 2px;
         }
         /* Font scaling: base font size is set on root div and scales all content */
         /* Elements with explicit fontSize will maintain their relative proportions */

@@ -57,10 +57,61 @@ export class DatabaseSQLite {
       }
     } else {
       console.log('📂 Connected to SQLite database');
+      // Apply any schema updates for existing databases
+      this.applySchemaUpdates();
     }
 
     // Prepare commonly used statements
     this.prepareStatements();
+  }
+
+  applySchemaUpdates() {
+    // Check if FTS table exists
+    const ftsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='messages_fts'
+    `).get();
+
+    if (!ftsExists) {
+      console.log('📝 Creating FTS5 search index...');
+
+      // Create FTS5 virtual table
+      this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+          id UNINDEXED,
+          content,
+          content='messages',
+          content_rowid='rowid'
+        );
+      `);
+
+      // Create triggers to keep FTS in sync
+      this.db.exec(`
+        CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+          INSERT INTO messages_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+          INSERT INTO messages_fts(messages_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
+          INSERT INTO messages_fts(messages_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+          INSERT INTO messages_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+        END;
+      `);
+
+      // Populate FTS with existing messages
+      const messageCount = this.db.prepare('SELECT COUNT(*) as count FROM messages').get().count;
+      if (messageCount > 0) {
+        console.log(`📚 Indexing ${messageCount} existing messages...`);
+        this.db.exec(`
+          INSERT INTO messages_fts(rowid, id, content)
+          SELECT rowid, id, content FROM messages;
+        `);
+      }
+
+      console.log('✅ FTS5 search index created');
+    }
   }
 
   prepareStatements() {
@@ -1437,6 +1488,88 @@ export class DatabaseSQLite {
 
   searchMessages(query, filters = {}) {
     const { waveId, authorId, fromDate, toDate } = filters;
+    const searchTerm = query.trim();
+    if (!searchTerm) return [];
+
+    // Escape FTS5 special characters and prepare search terms
+    // FTS5 uses AND by default for multiple terms
+    const ftsQuery = searchTerm
+      .replace(/["\-*()]/g, ' ')  // Remove FTS special chars
+      .split(/\s+/)
+      .filter(term => term.length > 0)
+      .map(term => `"${term}"*`)  // Prefix match for each term
+      .join(' ');
+
+    if (!ftsQuery) return [];
+
+    // Use FTS5 for full-text search with snippet highlighting
+    // snippet() returns text with highlighted matches using <mark> tags
+    let sql = `
+      SELECT
+        m.id,
+        m.content,
+        snippet(messages_fts, 1, '<mark>', '</mark>', '...', 64) as snippet,
+        m.wave_id,
+        m.author_id,
+        m.created_at,
+        m.parent_id,
+        w.title as wave_name,
+        u.display_name as author_name,
+        u.handle as author_handle,
+        bm25(messages_fts) as rank
+      FROM messages_fts
+      JOIN messages m ON messages_fts.id = m.id
+      JOIN waves w ON m.wave_id = w.id
+      JOIN users u ON m.author_id = u.id
+      WHERE messages_fts MATCH ? AND m.deleted = 0
+    `;
+    const params = [ftsQuery];
+
+    if (waveId) {
+      sql += ' AND m.wave_id = ?';
+      params.push(waveId);
+    }
+    if (authorId) {
+      sql += ' AND m.author_id = ?';
+      params.push(authorId);
+    }
+    if (fromDate) {
+      sql += ' AND m.created_at >= ?';
+      params.push(fromDate);
+    }
+    if (toDate) {
+      sql += ' AND m.created_at <= ?';
+      params.push(toDate);
+    }
+
+    // Order by relevance (bm25), then by date
+    sql += ' ORDER BY rank, m.created_at DESC LIMIT 100';
+
+    try {
+      const rows = this.db.prepare(sql).all(...params);
+
+      return rows.map(r => ({
+        id: r.id,
+        content: r.content,
+        snippet: r.snippet,  // Highlighted snippet with <mark> tags
+        waveId: r.wave_id,
+        waveName: r.wave_name,
+        authorId: r.author_id,
+        authorName: r.author_name,
+        authorHandle: r.author_handle,
+        createdAt: r.created_at,
+        parentId: r.parent_id,
+      }));
+    } catch (err) {
+      // Fallback to LIKE search if FTS fails (e.g., invalid query)
+      console.warn('FTS search failed, falling back to LIKE:', err.message);
+      return this.searchMessagesLike(query, filters);
+    }
+  }
+
+  // Fallback LIKE-based search for when FTS fails
+  searchMessagesLike(query, filters = {}) {
+    const { waveId, authorId, fromDate, toDate } = filters;
     const searchTerm = query.toLowerCase().trim();
     if (!searchTerm) return [];
 
@@ -1474,6 +1607,7 @@ export class DatabaseSQLite {
     return rows.map(r => ({
       id: r.id,
       content: r.content,
+      snippet: null,  // No highlighting for LIKE search
       waveId: r.wave_id,
       waveName: r.wave_name,
       authorId: r.author_id,
