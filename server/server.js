@@ -14,6 +14,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import sharp from 'sharp';
+import { DatabaseSQLite } from './database-sqlite.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,6 +28,9 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 // GIPHY API configuration
 const GIPHY_API_KEY = process.env.GIPHY_API_KEY || null;
+
+// Database configuration - set USE_SQLITE=true to use SQLite instead of JSON files
+const USE_SQLITE = process.env.USE_SQLITE === 'true';
 
 // Data directory and files
 const DATA_DIR = path.join(__dirname, 'data');
@@ -527,19 +531,23 @@ class Database {
   rejectHandleChange(requestId, adminId, reason) {
     const admin = this.findUserById(adminId);
     if (!admin?.isAdmin) return { success: false, error: 'Not authorized' };
-    
+
     const request = this.handleRequests.requests.find(r => r.id === requestId);
     if (!request || request.status !== 'pending') {
       return { success: false, error: 'Request not found or already processed' };
     }
-    
+
     request.status = 'rejected';
     request.reason = reason;
     request.processedAt = new Date().toISOString();
     request.processedBy = adminId;
-    
+
     this.saveHandleRequests();
     return { success: true };
+  }
+
+  getPendingHandleRequests() {
+    return this.handleRequests.requests.filter(r => r.status === 'pending');
   }
 
   searchUsers(query, excludeUserId) {
@@ -1672,7 +1680,13 @@ class Database {
   }
 }
 
-const db = new Database();
+// Initialize database - use SQLite or JSON based on USE_SQLITE environment variable
+const db = USE_SQLITE ? new DatabaseSQLite() : new Database();
+if (USE_SQLITE) {
+  console.log('🗄️  Using SQLite database');
+} else {
+  console.log('📁 Using JSON file storage');
+}
 
 // ============ Express App ============
 const app = express();
@@ -1968,13 +1982,11 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
 app.get('/api/admin/handle-requests', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
   if (!user?.isAdmin) return res.status(403).json({ error: 'Not authorized' });
-  
-  const requests = db.handleRequests.requests
-    .filter(r => r.status === 'pending')
-    .map(r => {
-      const requestUser = db.findUserById(r.userId);
-      return { ...r, displayName: requestUser?.displayName };
-    });
+
+  const requests = db.getPendingHandleRequests().map(r => {
+    const requestUser = db.findUserById(r.userId);
+    return { ...r, displayName: requestUser?.displayName };
+  });
   res.json(requests);
 });
 
@@ -2931,6 +2943,9 @@ wss.on('connection', (ws, req) => {
         } catch (err) {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'Invalid token' }));
         }
+      } else if (message.type === 'ping') {
+        // Respond to client heartbeat ping with pong
+        ws.send(JSON.stringify({ type: 'pong' }));
       } else if (message.type === 'user_typing') {
         // Broadcast typing indicator to other users in the wave
         if (!userId) return; // Must be authenticated
@@ -2968,6 +2983,27 @@ wss.on('connection', (ws, req) => {
       }
     }
   });
+
+  // Mark connection as alive on pong response
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+});
+
+// Server-side heartbeat: Send native ping every 30 seconds, terminate dead connections
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      // Connection didn't respond to last ping - terminate it
+      console.log('💀 Terminating dead WebSocket connection');
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping(); // Send native WebSocket ping frame
+  });
+}, 30000);
+
+wss.on('close', () => {
+  clearInterval(heartbeatInterval);
 });
 
 // Broadcast to specific users by their IDs

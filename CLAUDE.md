@@ -126,9 +126,24 @@ Single-page React app with all components in one file:
   - All links open in new tab with `rel="noopener noreferrer"`
 
 ### Data Persistence
+Two storage backends are available (v1.8.0+):
+
+**JSON Files (default):**
 - Database class methods call `saveUsers()`, `saveWaves()`, etc. after mutations
 - Atomic writes to individual JSON files
-- Demo data seeded if `SEED_DEMO_DATA=true` (password: "Demo123!")
+- Simple but slower for large datasets
+
+**SQLite (recommended for production):**
+- Enable with `USE_SQLITE=true` environment variable
+- Database file: `data/cortex.db`
+- Schema: `schema.sql` (14 tables with indexes)
+- Better performance and query capabilities
+- Migration script: `node migrate-json-to-sqlite.js`
+  - Use `--dry-run` to preview without changes
+  - Backs up JSON files to `data/json-backup/`
+- SQLite class: `database-sqlite.js`
+
+Demo data seeded if `SEED_DEMO_DATA=true` (password: "Demo123!")
 
 ## Important Implementation Details
 
@@ -481,6 +496,7 @@ JWT_EXPIRES_IN=7d                                   # Token expiration
 ALLOWED_ORIGINS=https://your-domain.com             # CORS whitelist (comma-separated)
 SEED_DEMO_DATA=true                                 # Seed demo accounts on first run
 GIPHY_API_KEY=your-giphy-api-key                    # Required for GIF search (get from developers.giphy.com)
+USE_SQLITE=true                                     # Use SQLite instead of JSON files (v1.8.0+)
 ```
 
 **Client:** Hardcoded to `localhost:3001` for development. Change `API_URL` and `WS_URL` in `CortexApp.jsx` for production.

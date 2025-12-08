@@ -50,6 +50,16 @@ Fixed and improved the message composer emoji picker.
 - **Cleaner UI**: Removed redundant CLOSE button (click EMO to dismiss)
 - **Compact Grid**: 8-column layout on desktop (16 emojis in 2 rows)
 
+### 🗄️ SQLite Database (Optional)
+Migrate from JSON files to SQLite for better performance.
+
+- **Better Performance**: SQLite handles large datasets more efficiently than JSON files
+- **Optional Upgrade**: Set `USE_SQLITE=true` to enable (JSON remains default)
+- **Migration Script**: `node migrate-json-to-sqlite.js` converts existing data
+- **Dry Run**: Use `--dry-run` flag to preview migration without changes
+- **Auto-Backup**: JSON files backed up to `data/json-backup/` before migration
+- **14 Tables**: Users, waves, messages, groups, contacts, and all related data
+
 ---
 
 ## What Was New in v1.7.0
@@ -278,10 +288,17 @@ Visual display of who has read messages in a wave.
 cortex/
 ├── server/
 │   ├── server.js           # Express + WebSocket server
+│   ├── database-sqlite.js  # SQLite database class (v1.8.0+)
+│   ├── schema.sql          # SQLite schema (v1.8.0+)
+│   ├── migrate-json-to-sqlite.js  # Migration script (v1.8.0+)
 │   ├── package.json        # Server dependencies
 │   ├── .env                # Environment variables (create this)
-│   └── data/               # JSON data files (auto-created)
-│       ├── users.json
+│   ├── uploads/            # Uploaded files (v1.8.0+)
+│   │   └── avatars/        # Profile images
+│   └── data/               # Data storage (auto-created)
+│       ├── cortex.db       # SQLite database (if USE_SQLITE=true)
+│       ├── json-backup/    # JSON backup after migration
+│       ├── users.json      # (JSON mode only)
 │       ├── waves.json
 │       ├── messages.json
 │       ├── groups.json
@@ -496,6 +513,9 @@ JWT_EXPIRES_IN=7d                  # Token expiration
 ALLOWED_ORIGINS=https://your-domain.com  # CORS whitelist
 SEED_DEMO_DATA=true                # Seed demo accounts on first run
 
+# Database (v1.8.0+)
+USE_SQLITE=true                    # Use SQLite instead of JSON files (recommended)
+
 # GIF Search (v1.7.0+)
 GIPHY_API_KEY=your-giphy-api-key   # Get from developers.giphy.com
 ```
@@ -626,9 +646,10 @@ location /uploads {
 - [x] Profile images in wave messages
 - [x] Message layout cleanup (compact 2-row footer)
 - [x] Emoji picker improvements (centering, no close button)
+- [x] SQLite database migration (optional, `USE_SQLITE=true`)
 
 ### v1.8 - Remaining (Scale & Organization)
-- [ ] SQLite migration
+- [ ] PWA Push Notifications (background notifications when app closed)
 - [ ] Image/file upload for messages (not just URL embedding)
 - [ ] Message pagination/virtual scrolling
 - [ ] Full-text search with database FTS

@@ -6,6 +6,9 @@ server/data/
 server/cortex-data.json
 server/cortex-data.json.backup
 
+# User uploads (avatars, attachments)
+server/uploads/
+
 # Version ZIP Files (do not commit)
 versions/
 
