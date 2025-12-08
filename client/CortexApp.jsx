@@ -5757,7 +5757,11 @@ function MainApp() {
         padding: '8px 12px', background: '#050805', borderTop: '1px solid #2a3a2a',
         display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
       }}>
-        <div style={{ color: '#5a6a5a' }}><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</div>
+        <div style={{ color: '#5a6a5a', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</span>
+          <span><span style={{ color: apiConnected ? '#0ead69' : '#ff6b35' }}>●</span> API</span>
+          <span><span style={{ color: wsConnected ? '#0ead69' : '#ff6b35' }}>●</span> LIVE</span>
+        </div>
         <div style={{ color: '#5a6a5a' }}>WAVES: {waves.length} • GROUPS: {groups.length} • CONTACTS: {contacts.length}</div>
       </footer>
 
