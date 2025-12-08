@@ -487,6 +487,36 @@ Fast, relevance-ranked message search using SQLite FTS5.
   - `<mark>` tag styled with amber background/text to match theme
   - Falls back to client-side highlighting if no snippet provided
 
+### Rich Media Embeds (v1.8.0+)
+Automatic embedding of videos and media from popular platforms.
+
+- **Supported Platforms**:
+  - YouTube (`youtube.com/watch?v=`, `youtu.be/`, YouTube Shorts)
+  - Vimeo (`vimeo.com/`)
+  - Spotify (`open.spotify.com/track/`, `/album/`, `/playlist/`)
+  - TikTok (`tiktok.com/@user/video/`)
+  - Twitter/X (`twitter.com/`, `x.com/` status URLs)
+  - SoundCloud (`soundcloud.com/`)
+- **API Endpoints**:
+  - `POST /api/embeds/detect` - Detect embed URLs in content
+  - `GET /api/embeds/oembed?url=` - oEmbed proxy with 15-min cache
+  - `GET /api/embeds/info?url=` - Lightweight embed info (no fetch)
+- **Frontend Components**:
+  - `RichEmbed` - Click-to-load embed with platform icon/thumbnail
+  - `MessageWithEmbeds` - Wrapper that detects and renders embeds in messages
+  - `EMBED_PLATFORMS` - Platform icons and brand colors
+  - `EMBED_URL_PATTERNS` - Client-side URL detection patterns
+- **Security**:
+  - CSP `frame-src` directive whitelists embed domains
+  - iframe `sandbox` attribute: `allow-scripts allow-same-origin allow-presentation allow-popups`
+  - Click-to-load default (privacy: embeds don't auto-load)
+  - Rate limiting: 30 oEmbed requests/min per user
+- **Implementation**:
+  - Client-side detection mirrors server patterns
+  - YouTube thumbnails from `img.youtube.com/vi/{id}/hqdefault.jpg`
+  - Embeds detected at render time (not stored in DB)
+  - URLs stripped from displayed content when embed shown
+
 ### Responsive Design (Updated v1.3.2)
 - **Multiple breakpoints:**
   - `isMobile`: width < 600px (phone screens)
@@ -561,6 +591,12 @@ Fast, relevance-ranked message search using SQLite FTS5.
     - Highlighted snippets with `<mark>` tags
     - Auto-migration creates FTS table and indexes existing messages
     - Fallback to LIKE search for special character queries
+  - **Rich Media Embeds**:
+    - YouTube, Vimeo, Spotify, TikTok, Twitter/X, SoundCloud
+    - Click-to-load privacy (embeds don't load until clicked)
+    - oEmbed proxy endpoint with 15-minute cache
+    - CSP frame-src directive for secure iframe embedding
+    - Platform-specific thumbnails and play buttons
 
 - **v1.7.0 (December 2025)** - Contact & Invitation Approval System + Moderation + GIF Search
   - Contact Request System: Send/accept/decline contact requests

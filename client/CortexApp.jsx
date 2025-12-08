@@ -252,6 +252,252 @@ const ImageLightbox = ({ src, onClose }) => {
   );
 };
 
+// ============ RICH EMBED COMPONENT ============
+// Platform icons and colors
+const EMBED_PLATFORMS = {
+  youtube: { icon: '▶', color: '#ff0000', name: 'YouTube' },
+  vimeo: { icon: '▶', color: '#1ab7ea', name: 'Vimeo' },
+  spotify: { icon: '🎵', color: '#1db954', name: 'Spotify' },
+  tiktok: { icon: '♪', color: '#ff0050', name: 'TikTok' },
+  twitter: { icon: '𝕏', color: '#1da1f2', name: 'X/Twitter' },
+  soundcloud: { icon: '☁', color: '#ff5500', name: 'SoundCloud' },
+};
+
+// URL patterns for detecting embeddable content (mirrors server)
+const EMBED_URL_PATTERNS = {
+  youtube: [
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/i,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/i,
+    /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/i,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i,
+  ],
+  vimeo: [
+    /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/i,
+  ],
+  spotify: [
+    /(?:https?:\/\/)?open\.spotify\.com\/(track|album|playlist|episode|show)\/([a-zA-Z0-9]+)/i,
+  ],
+  tiktok: [
+    /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[\w.-]+\/video\/(\d+)/i,
+    /(?:https?:\/\/)?(?:vm\.)?tiktok\.com\/([a-zA-Z0-9]+)/i,
+  ],
+  twitter: [
+    /(?:https?:\/\/)?(?:www\.)?(twitter|x)\.com\/\w+\/status\/(\d+)/i,
+  ],
+  soundcloud: [
+    /(?:https?:\/\/)?(?:www\.)?soundcloud\.com\/[\w-]+\/[\w-]+/i,
+  ],
+};
+
+// Detect embed URLs in text
+function detectEmbedUrls(text) {
+  const embeds = [];
+  const urlRegex = /https?:\/\/[^\s<>"]+/gi;
+  const urls = text.match(urlRegex) || [];
+
+  for (const url of urls) {
+    for (const [platform, patterns] of Object.entries(EMBED_URL_PATTERNS)) {
+      for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) {
+          const embed = { platform, url, contentId: match[1] };
+
+          // Handle Spotify's type/id format
+          if (platform === 'spotify' && match[2]) {
+            embed.contentType = match[1];
+            embed.contentId = match[2];
+          }
+
+          // Generate embed URLs
+          if (platform === 'youtube') {
+            embed.embedUrl = `https://www.youtube.com/embed/${embed.contentId}?rel=0`;
+            embed.thumbnail = `https://img.youtube.com/vi/${embed.contentId}/hqdefault.jpg`;
+          } else if (platform === 'vimeo') {
+            embed.embedUrl = `https://player.vimeo.com/video/${embed.contentId}`;
+          } else if (platform === 'spotify') {
+            embed.embedUrl = `https://open.spotify.com/embed/${embed.contentType}/${embed.contentId}`;
+          }
+
+          embeds.push(embed);
+          break;
+        }
+      }
+    }
+  }
+
+  return embeds;
+}
+
+// Single embed component with click-to-load
+const RichEmbed = ({ embed, autoLoad = false }) => {
+  const [loaded, setLoaded] = useState(autoLoad);
+  const [error, setError] = useState(false);
+  const platform = EMBED_PLATFORMS[embed.platform] || { icon: '🔗', color: '#666', name: 'Link' };
+
+  // Determine iframe dimensions based on platform
+  const getDimensions = () => {
+    switch (embed.platform) {
+      case 'spotify':
+        return { width: '100%', height: embed.contentType === 'track' ? '152px' : '352px' };
+      case 'soundcloud':
+        return { width: '100%', height: '166px' };
+      case 'twitter':
+        return { width: '100%', height: '400px' };
+      default: // YouTube, Vimeo, TikTok
+        return { width: '100%', height: '315px' };
+    }
+  };
+
+  const dimensions = getDimensions();
+
+  if (error) {
+    return (
+      <a
+        href={embed.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'block',
+          padding: '12px',
+          background: '#0a100a',
+          border: '1px solid #2a3a2a',
+          borderRadius: '4px',
+          color: '#8a9a8a',
+          textDecoration: 'none',
+          marginTop: '8px',
+        }}
+      >
+        <span style={{ color: platform.color, marginRight: '8px' }}>{platform.icon}</span>
+        {embed.url}
+      </a>
+    );
+  }
+
+  if (!loaded) {
+    return (
+      <div
+        onClick={() => setLoaded(true)}
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: '560px',
+          aspectRatio: embed.platform === 'spotify' ? 'auto' : '16/9',
+          height: embed.platform === 'spotify' ? dimensions.height : 'auto',
+          background: '#0a100a',
+          border: '1px solid #2a3a2a',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          marginTop: '8px',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {/* Thumbnail background for YouTube */}
+        {embed.thumbnail && (
+          <img
+            src={embed.thumbnail}
+            alt=""
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              opacity: 0.4,
+            }}
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+        )}
+
+        {/* Play button overlay */}
+        <div style={{
+          position: 'relative',
+          zIndex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <div style={{
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: platform.color,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '24px',
+            color: '#fff',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          }}>
+            {platform.icon}
+          </div>
+          <span style={{ color: '#c5d5c5', fontSize: '0.85rem', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+            Click to load {platform.name}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Loaded state - render iframe
+  return (
+    <div style={{
+      width: '100%',
+      maxWidth: embed.platform === 'spotify' || embed.platform === 'soundcloud' ? '100%' : '560px',
+      marginTop: '8px',
+    }}>
+      <iframe
+        src={embed.embedUrl}
+        width={dimensions.width}
+        height={dimensions.height}
+        style={{
+          border: '1px solid #2a3a2a',
+          borderRadius: '4px',
+          display: 'block',
+        }}
+        frameBorder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        loading="lazy"
+        sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+        onError={() => setError(true)}
+      />
+    </div>
+  );
+};
+
+// Component to render message content with embeds
+const MessageWithEmbeds = ({ content, autoLoadEmbeds = false }) => {
+  const embeds = useMemo(() => detectEmbedUrls(content), [content]);
+
+  // Get the plain text URLs that have embeds (to potentially hide them)
+  const embedUrls = useMemo(() => new Set(embeds.map(e => e.url)), [embeds]);
+
+  // Strip embed URLs from displayed content if we're showing the embed
+  const displayContent = useMemo(() => {
+    if (embeds.length === 0) return content;
+    let result = content;
+    for (const url of embedUrls) {
+      // Only hide the URL if it's on its own line or at the end
+      result = result.replace(new RegExp(`\\s*${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'g'), ' ');
+    }
+    return result.trim();
+  }, [content, embedUrls, embeds.length]);
+
+  return (
+    <>
+      <div dangerouslySetInnerHTML={{ __html: displayContent }} />
+      {embeds.map((embed, index) => (
+        <RichEmbed key={`${embed.platform}-${embed.contentId}-${index}`} embed={embed} autoLoad={autoLoadEmbeds} />
+      ))}
+    </>
+  );
+};
+
 // ============ EMOJI PICKER COMPONENT ============
 const EmojiPicker = ({ onSelect, isMobile }) => {
   const emojis = ['😀', '😂', '😍', '🤔', '👍', '👎', '🎉', '🔥', '💯', '❤️', '😎', '🚀', '✨', '💪', '👏', '🙌'];
@@ -1270,7 +1516,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
           <div
             onClick={(e) => {
               // Handle image clicks for lightbox
-              if (e.target.tagName === 'IMG') {
+              if (e.target.tagName === 'IMG' && e.target.classList.contains('zoomable-image')) {
                 e.stopPropagation();
                 setLightboxImage(e.target.src);
               }
@@ -1284,8 +1530,9 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               whiteSpace: 'pre-wrap',
               overflow: 'hidden',
             }}
-            dangerouslySetInnerHTML={{ __html: message.content }}
-          />
+          >
+            <MessageWithEmbeds content={message.content} />
+          </div>
         )}
         {/* Actions Row: Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>

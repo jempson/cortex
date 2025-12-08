@@ -146,6 +146,15 @@ const gifSearchLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const RATE_LIMIT_OEMBED_MAX = parseInt(process.env.RATE_LIMIT_OEMBED_MAX) || 30;
+const oembedLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: RATE_LIMIT_OEMBED_MAX,
+  message: { error: 'Too many embed requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ============ Security: Account Lockout ============
 // Configurable via .env
 const failedAttempts = new Map();
@@ -263,6 +272,178 @@ function detectAndEmbedMedia(content) {
   });
 
   return content;
+}
+
+// ============ Rich Media Embed Detection ============
+// Patterns for detecting embeddable URLs from supported platforms
+const EMBED_PATTERNS = {
+  youtube: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/i,
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/i,
+      /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/i,
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i,
+    ],
+    embedUrl: (id) => `https://www.youtube.com/embed/${id}`,
+    thumbnail: (id) => `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+  },
+  vimeo: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/i,
+      /(?:https?:\/\/)?player\.vimeo\.com\/video\/(\d+)/i,
+    ],
+    embedUrl: (id) => `https://player.vimeo.com/video/${id}`,
+    oembedUrl: (url) => `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`,
+  },
+  spotify: {
+    patterns: [
+      /(?:https?:\/\/)?open\.spotify\.com\/(track|album|playlist|episode|show)\/([a-zA-Z0-9]+)/i,
+    ],
+    embedUrl: (type, id) => `https://open.spotify.com/embed/${type}/${id}`,
+  },
+  tiktok: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[\w.-]+\/video\/(\d+)/i,
+      /(?:https?:\/\/)?(?:vm\.)?tiktok\.com\/([a-zA-Z0-9]+)/i,
+    ],
+    oembedUrl: (url) => `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`,
+  },
+  twitter: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?(twitter|x)\.com\/\w+\/status\/(\d+)/i,
+    ],
+    oembedUrl: (url) => `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`,
+  },
+  soundcloud: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?soundcloud\.com\/[\w-]+\/[\w-]+/i,
+    ],
+    oembedUrl: (url) => `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(url)}`,
+  },
+};
+
+// Simple in-memory cache for oEmbed responses (15 min TTL)
+const oembedCache = new Map();
+const OEMBED_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+function getCachedOembed(url) {
+  const cached = oembedCache.get(url);
+  if (cached && Date.now() - cached.timestamp < OEMBED_CACHE_TTL) {
+    return cached.data;
+  }
+  oembedCache.delete(url);
+  return null;
+}
+
+function setCachedOembed(url, data) {
+  // Limit cache size to prevent memory issues
+  if (oembedCache.size > 1000) {
+    const oldest = oembedCache.keys().next().value;
+    oembedCache.delete(oldest);
+  }
+  oembedCache.set(url, { data, timestamp: Date.now() });
+}
+
+// Detect embed URLs in content and return metadata
+function detectEmbedUrls(content) {
+  const embeds = [];
+  const urlRegex = /https?:\/\/[^\s<>"]+/gi;
+  const urls = content.match(urlRegex) || [];
+
+  for (const url of urls) {
+    for (const [platform, config] of Object.entries(EMBED_PATTERNS)) {
+      for (const pattern of config.patterns) {
+        const match = url.match(pattern);
+        if (match) {
+          const embed = {
+            platform,
+            url,
+            contentId: match[1],
+          };
+
+          // Handle Spotify's type/id format
+          if (platform === 'spotify' && match[2]) {
+            embed.contentType = match[1]; // track, album, playlist, etc.
+            embed.contentId = match[2];
+            embed.embedUrl = config.embedUrl(match[1], match[2]);
+          } else if (config.embedUrl && typeof config.embedUrl === 'function') {
+            embed.embedUrl = config.embedUrl(match[1]);
+          }
+
+          // Add thumbnail for YouTube
+          if (platform === 'youtube' && config.thumbnail) {
+            embed.thumbnail = config.thumbnail(match[1]);
+          }
+
+          // Flag if oEmbed is available
+          if (config.oembedUrl) {
+            embed.oembedUrl = config.oembedUrl(url);
+          }
+
+          embeds.push(embed);
+          break;
+        }
+      }
+    }
+  }
+
+  return embeds;
+}
+
+// Generate embed HTML for a platform (used for server-side rendering if needed)
+function generateEmbedHtml(embed) {
+  const { platform, embedUrl, contentId } = embed;
+
+  // Common iframe attributes for security
+  const sandbox = 'allow-scripts allow-same-origin allow-presentation allow-popups';
+  const allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+
+  switch (platform) {
+    case 'youtube':
+      return `<iframe
+        src="${embedUrl}?rel=0"
+        width="560" height="315"
+        frameborder="0"
+        sandbox="${sandbox}"
+        allow="${allow}"
+        allowfullscreen
+        loading="lazy"
+        class="rich-embed youtube-embed"
+        data-platform="youtube"
+        data-content-id="${contentId}"
+      ></iframe>`;
+
+    case 'vimeo':
+      return `<iframe
+        src="${embedUrl}"
+        width="560" height="315"
+        frameborder="0"
+        sandbox="${sandbox}"
+        allow="${allow}"
+        allowfullscreen
+        loading="lazy"
+        class="rich-embed vimeo-embed"
+        data-platform="vimeo"
+        data-content-id="${contentId}"
+      ></iframe>`;
+
+    case 'spotify':
+      const height = embed.contentType === 'track' ? '152' : '352';
+      return `<iframe
+        src="${embedUrl}"
+        width="100%" height="${height}"
+        frameborder="0"
+        sandbox="${sandbox}"
+        allow="encrypted-media"
+        loading="lazy"
+        class="rich-embed spotify-embed"
+        data-platform="spotify"
+        data-content-id="${contentId}"
+      ></iframe>`;
+
+    default:
+      return null;
+  }
 }
 
 // ============ Security: Password Validation ============
@@ -1821,7 +2002,33 @@ if (USE_SQLITE) {
 // ============ Express App ============
 const app = express();
 
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+      fontSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'", 'wss:', 'ws:', 'https:'],
+      mediaSrc: ["'self'", 'https:', 'blob:'],
+      frameSrc: [
+        "'self'",
+        'https://www.youtube.com',
+        'https://www.youtube-nocookie.com',
+        'https://player.vimeo.com',
+        'https://open.spotify.com',
+        'https://www.tiktok.com',
+        'https://platform.twitter.com',
+        'https://w.soundcloud.com',
+      ],
+      frameAncestors: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(cors({
   origin: ALLOWED_ORIGINS ? (origin, callback) => {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) callback(null, true);
@@ -2713,6 +2920,125 @@ app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, r
     console.error('Trending GIFs error:', err);
     res.status(500).json({ error: 'Failed to fetch trending GIFs' });
   }
+});
+
+// ============ Rich Media Embed Endpoints ============
+
+// Detect embeddable URLs in content
+app.post('/api/embeds/detect', authenticateToken, (req, res) => {
+  const { content } = req.body;
+
+  if (!content || typeof content !== 'string') {
+    return res.status(400).json({ error: 'Content is required' });
+  }
+
+  const embeds = detectEmbedUrls(content);
+  res.json({ embeds });
+});
+
+// oEmbed proxy endpoint with caching
+app.get('/api/embeds/oembed', authenticateToken, oembedLimiter, async (req, res) => {
+  const { url } = req.query;
+
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  // Validate URL is from a supported platform
+  const embeds = detectEmbedUrls(url);
+  if (embeds.length === 0) {
+    return res.status(400).json({ error: 'URL is not from a supported platform' });
+  }
+
+  const embed = embeds[0];
+  if (!embed.oembedUrl) {
+    // Return what we have if no oEmbed available
+    return res.json({
+      platform: embed.platform,
+      embedUrl: embed.embedUrl,
+      contentId: embed.contentId,
+      thumbnail: embed.thumbnail,
+    });
+  }
+
+  // Check cache first
+  const cached = getCachedOembed(url);
+  if (cached) {
+    return res.json({ ...cached, cached: true });
+  }
+
+  try {
+    const response = await fetch(embed.oembedUrl, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(5000), // 5 second timeout
+    });
+
+    if (!response.ok) {
+      console.error(`oEmbed fetch failed for ${embed.platform}:`, response.status);
+      // Return basic embed info without oEmbed data
+      return res.json({
+        platform: embed.platform,
+        embedUrl: embed.embedUrl,
+        contentId: embed.contentId,
+        thumbnail: embed.thumbnail,
+        error: 'oEmbed data unavailable',
+      });
+    }
+
+    const data = await response.json();
+
+    const result = {
+      platform: embed.platform,
+      embedUrl: embed.embedUrl,
+      contentId: embed.contentId,
+      thumbnail: embed.thumbnail || data.thumbnail_url,
+      title: data.title,
+      author: data.author_name,
+      html: data.html, // Some platforms provide embed HTML
+      width: data.width,
+      height: data.height,
+    };
+
+    // Cache the result
+    setCachedOembed(url, result);
+
+    res.json(result);
+  } catch (err) {
+    console.error('oEmbed proxy error:', err);
+    // Return basic embed info on error
+    res.json({
+      platform: embed.platform,
+      embedUrl: embed.embedUrl,
+      contentId: embed.contentId,
+      thumbnail: embed.thumbnail,
+      error: 'Failed to fetch oEmbed data',
+    });
+  }
+});
+
+// Get embed info for a URL (lightweight, no oEmbed fetch)
+app.get('/api/embeds/info', authenticateToken, (req, res) => {
+  const { url } = req.query;
+
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  const embeds = detectEmbedUrls(url);
+  if (embeds.length === 0) {
+    return res.json({ embeddable: false });
+  }
+
+  const embed = embeds[0];
+  res.json({
+    embeddable: true,
+    platform: embed.platform,
+    embedUrl: embed.embedUrl,
+    contentId: embed.contentId,
+    contentType: embed.contentType,
+    thumbnail: embed.thumbnail,
+    hasOembed: !!embed.oembedUrl,
+  });
 });
 
 // Create report
