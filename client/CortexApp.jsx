@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, createContext, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
 
 // ============ CONFIGURATION ============
 // Auto-detect production vs development
@@ -1190,6 +1190,47 @@ const LoadingSpinner = () => (
     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
   </div>
 );
+
+// ============ ERROR BOUNDARY ============
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary caught:', error, errorInfo);
+    this.setState({ errorInfo });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '20px', color: '#ff6b35', background: '#1a0a0a', border: '1px solid #ff6b35', margin: '10px' }}>
+          <h3 style={{ margin: '0 0 10px 0' }}>⚠️ Something went wrong</h3>
+          <pre style={{ fontSize: '0.8rem', whiteSpace: 'pre-wrap', color: '#ffd23f' }}>
+            {this.state.error?.toString()}
+          </pre>
+          <details style={{ marginTop: '10px', fontSize: '0.75rem', color: '#6a7a6a' }}>
+            <summary>Stack trace</summary>
+            <pre style={{ whiteSpace: 'pre-wrap' }}>{this.state.errorInfo?.componentStack}</pre>
+          </details>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
+            style={{ marginTop: '10px', padding: '8px 16px', background: '#0ead69', border: 'none', color: '#050805', cursor: 'pointer' }}
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ============ LOGIN SCREEN ============
 const LoginScreen = () => {
@@ -2383,7 +2424,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   }, [waveData, wave.id, fetchAPI, onWaveUpdate]);
 
   useEffect(() => {
-    if (isPlaying && waveData) {
+    if (isPlaying && waveData && waveData.all_messages) {
       const total = waveData.all_messages.length;
       playbackRef.current = setInterval(() => {
         setPlaybackIndex(prev => {
@@ -2432,6 +2473,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     setLoading(true);
     try {
       const data = await fetchAPI(`/waves/${wave.id}`);
+      console.log('Wave API response:', data);
+
+      // Ensure required fields exist with defaults
+      if (!data.messages) data.messages = [];
+      if (!data.all_messages) data.all_messages = [];
+      if (!data.participants) data.participants = [];
+
       let idx = 0;
       const addIndices = (msgs) => msgs.forEach(m => { m._index = idx++; if (m.children) addIndices(m.children); });
       addIndices(data.messages);
@@ -2442,11 +2490,14 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         createdBy: data.createdBy,
         currentUserId: currentUser?.id,
         totalMessages: data.total_messages,
-        hasMoreMessages: data.hasMoreMessages
+        hasMoreMessages: data.hasMoreMessages,
+        messageCount: data.messages?.length,
+        allMessagesCount: data.all_messages?.length
       });
       setWaveData(data);
       setHasMoreMessages(data.hasMoreMessages || false);
     } catch (err) {
+      console.error('Failed to load wave:', err);
       showToast('Failed to load wave', 'error');
     }
     setLoading(false);
@@ -2727,7 +2778,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   if (loading) return <LoadingSpinner />;
   if (!waveData) return <div style={{ padding: '20px', color: '#6a7a6a' }}>Wave not found</div>;
 
-  const total = waveData.all_messages.length;
+  // Safe access with fallbacks for pagination fields
+  const allMessages = waveData.all_messages || [];
+  const participants = waveData.participants || [];
+  const messages = waveData.messages || [];
+  const total = allMessages.length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -2747,7 +2802,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             {waveData.group_name && <span style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>({waveData.group_name})</span>}
           </div>
           <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>
-            {waveData.participants.length} participants • {total} messages
+            {participants.length} participants • {total} messages
           </div>
         </div>
         <PrivacyBadge level={wave.privacy} compact={isMobile} />
@@ -2781,7 +2836,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       </div>
 
       {/* Wave Toolbar - Participants & Playback */}
-      {(waveData.participants?.length > 0 || total > 0) && (
+      {(participants.length > 0 || total > 0) && (
         <div style={{
           padding: isMobile ? '6px 12px' : '6px 20px',
           borderBottom: '1px solid #2a3a2a',
@@ -2792,7 +2847,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           flexShrink: 0
         }}>
           {/* Participants Toggle */}
-          {waveData.participants?.length > 0 && (
+          {participants.length > 0 && (
             <button
               onClick={() => setShowParticipants(!showParticipants)}
               style={{
@@ -2809,7 +2864,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               }}
             >
               <span>{showParticipants ? '▼' : '▶'}</span>
-              PARTICIPANTS ({waveData.participants.length})
+              PARTICIPANTS ({participants.length})
             </button>
           )}
 
@@ -2836,11 +2891,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           )}
 
           {/* Mark All Read Button - always visible if unread */}
-          {waveData.all_messages.some(m => m.is_unread && m.author_id !== currentUser.id) && (
+          {allMessages.some(m => m.is_unread && m.author_id !== currentUser.id) && (
             <button
               onClick={async () => {
                 try {
-                  const unreadMessages = waveData.all_messages
+                  const unreadMessages = allMessages
                     .filter(m => (m.readBy || [m.author_id]).includes(currentUser.id) === false && m.author_id !== currentUser.id);
                   if (unreadMessages.length === 0) return;
                   await Promise.all(unreadMessages.map(m => fetchAPI(`/messages/${m.id}/read`, { method: 'POST' })));
@@ -2869,7 +2924,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       )}
 
       {/* Expanded Participants Panel */}
-      {showParticipants && waveData.participants?.length > 0 && (
+      {showParticipants && participants.length > 0 && (
         <div style={{
           padding: isMobile ? '12px' : '12px 20px',
           borderBottom: '1px solid #2a3a2a',
@@ -2879,8 +2934,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           gap: '8px',
           flexShrink: 0
         }}>
-          {waveData.participants.map(p => {
-            const latestMessage = waveData.all_messages.length > 0 ? waveData.all_messages[waveData.all_messages.length - 1] : null;
+          {participants.map(p => {
+            const latestMessage = allMessages.length > 0 ? allMessages[allMessages.length - 1] : null;
             const hasReadLatest = latestMessage ? (latestMessage.readBy || [latestMessage.author_id]).includes(p.id) : true;
             const isCurrentUser = p.id === currentUser?.id;
             const isAlreadyContact = isContact(p.id);
@@ -3090,17 +3145,17 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 fontSize: isMobile ? '0.85rem' : '0.75rem',
               }}
             >
-              {loadingMore ? 'Loading...' : `↑ Load older messages (${waveData.total_messages - waveData.all_messages.length} more)`}
+              {loadingMore ? 'Loading...' : `↑ Load older messages (${(waveData.total_messages || 0) - allMessages.length} more)`}
             </button>
           </div>
         )}
-        {waveData.messages.map(msg => (
+        {messages.map(msg => (
           <ThreadedMessage key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
             onEdit={handleStartEdit} onSaveEdit={handleSaveEdit} onCancelEdit={handleCancelEdit}
             editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={(id) => setCollapsed(p => ({ ...p, [id]: !p[id] }))} isMobile={isMobile}
-            onReact={handleReaction} onMessageClick={handleMessageClick} participants={waveData.participants || []}
+            onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
             onShowProfile={onShowProfile} />
         ))}
       </div>
@@ -5619,9 +5674,6 @@ function MainApp() {
           )}
         </div>
 
-        {/* Connection Status - desktop only */}
-        {!isMobile && <ConnectionStatus wsConnected={wsConnected} apiConnected={apiConnected} />}
-
         {/* Nav Items - grows to fill space */}
         <div style={{ display: 'flex', gap: '4px', flex: 1, justifyContent: 'center' }}>
           {navItems.map(view => {
@@ -5699,25 +5751,27 @@ function MainApp() {
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
               {selectedWave ? (
-                <WaveView wave={selectedWave} onBack={() => setSelectedWave(null)}
-                  fetchAPI={fetchAPI} showToast={showToastMsg} currentUser={user}
-                  groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile}
-                  sendWSMessage={sendWSMessage}
-                  typingUsers={typingUsers[selectedWave?.id] || {}}
-                  reloadTrigger={waveReloadTrigger}
-                  contacts={contacts}
-                  contactRequests={contactRequests}
-                  sentContactRequests={sentContactRequests}
-                  onRequestsChange={loadContactRequests}
-                  onContactsChange={loadContacts}
-                  blockedUsers={blockedUsers}
-                  mutedUsers={mutedUsers}
-                  onBlockUser={handleBlockUser}
-                  onUnblockUser={handleUnblockUser}
-                  onMuteUser={handleMuteUser}
-                  onUnmuteUser={handleUnmuteUser}
-                  onBlockedMutedChange={loadBlockedMutedUsers}
-                  onShowProfile={setProfileUserId} />
+                <ErrorBoundary key={selectedWave.id}>
+                  <WaveView wave={selectedWave} onBack={() => setSelectedWave(null)}
+                    fetchAPI={fetchAPI} showToast={showToastMsg} currentUser={user}
+                    groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile}
+                    sendWSMessage={sendWSMessage}
+                    typingUsers={typingUsers[selectedWave?.id] || {}}
+                    reloadTrigger={waveReloadTrigger}
+                    contacts={contacts}
+                    contactRequests={contactRequests}
+                    sentContactRequests={sentContactRequests}
+                    onRequestsChange={loadContactRequests}
+                    onContactsChange={loadContacts}
+                    blockedUsers={blockedUsers}
+                    mutedUsers={mutedUsers}
+                    onBlockUser={handleBlockUser}
+                    onUnblockUser={handleUnblockUser}
+                    onMuteUser={handleMuteUser}
+                    onUnmuteUser={handleUnmuteUser}
+                    onBlockedMutedChange={loadBlockedMutedUsers}
+                    onShowProfile={setProfileUserId} />
+                </ErrorBoundary>
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
                   <div style={{ textAlign: 'center' }}>
