@@ -3233,9 +3233,17 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
     ? allMessages.slice(-limit) // Take last 'limit' messages (most recent)
     : allMessages;
 
+  // Build message tree - treat messages whose parent isn't in the set as root messages
   function buildMessageTree(messages, parentId = null) {
+    const messageIds = new Set(messages.map(m => m.id));
     return messages
-      .filter(m => m.parent_id === parentId)
+      .filter(m => {
+        if (parentId === null) {
+          // Root level: include messages with no parent OR whose parent isn't in current set
+          return m.parent_id === null || !messageIds.has(m.parent_id);
+        }
+        return m.parent_id === parentId;
+      })
       .map(m => ({ ...m, children: buildMessageTree(messages, m.id) }));
   }
 

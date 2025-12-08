@@ -2470,10 +2470,17 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         // Merge older messages with existing ones
         const mergedMessages = [...data.messages, ...waveData.all_messages];
 
-        // Rebuild the message tree
+        // Rebuild the message tree - treat orphaned replies (parent not in set) as roots
+        const messageIds = new Set(mergedMessages.map(m => m.id));
         function buildMessageTree(messages, parentId = null) {
           return messages
-            .filter(m => m.parent_id === parentId)
+            .filter(m => {
+              if (parentId === null) {
+                // Root level: include messages with no parent OR whose parent isn't loaded
+                return m.parent_id === null || !messageIds.has(m.parent_id);
+              }
+              return m.parent_id === parentId;
+            })
             .map(m => ({ ...m, children: buildMessageTree(messages, m.id) }));
         }
 
