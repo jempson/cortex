@@ -446,6 +446,21 @@ Cleaner UI showing display names instead of @handles.
   - Messages deleted with no children disappear completely
   - Preserves thread context for replies while avoiding clutter
 
+### Message Pagination (v1.8.0+)
+Waves with many messages load in batches for better performance.
+
+- **Initial Load**: `/api/waves/:id` returns 50 most recent messages by default
+  - Response includes `hasMoreMessages: true/false` and `total_messages` count
+  - `limit` query param to adjust (max 100)
+- **Load More Endpoint**: `GET /api/waves/:id/messages?limit=50&before=messageId`
+  - `before`: Message ID to fetch messages older than
+  - Returns `{ messages, hasMore, total }`
+- **Frontend**:
+  - "Load older messages" button appears at top when `hasMoreMessages` is true
+  - Shows count of remaining messages
+  - Scroll position preserved when loading older (calculates offset)
+  - Messages merged with existing and tree rebuilt
+
 ### Responsive Design (Updated v1.3.2)
 - **Multiple breakpoints:**
   - `isMobile`: width < 600px (phone screens)

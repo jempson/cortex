@@ -1974,6 +1974,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [requestModalParticipant, setRequestModalParticipant] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -2184,13 +2186,69 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         privacy: data.privacy,
         can_edit: data.can_edit,
         createdBy: data.createdBy,
-        currentUserId: currentUser?.id
+        currentUserId: currentUser?.id,
+        totalMessages: data.total_messages,
+        hasMoreMessages: data.hasMoreMessages
       });
       setWaveData(data);
+      setHasMoreMessages(data.hasMoreMessages || false);
     } catch (err) {
       showToast('Failed to load wave', 'error');
     }
     setLoading(false);
+  };
+
+  // Load older messages (pagination)
+  const loadMoreMessages = async () => {
+    if (loadingMore || !waveData?.all_messages?.length) return;
+
+    setLoadingMore(true);
+    try {
+      // Get the oldest message ID from current set
+      const oldestMessage = waveData.all_messages[0]; // First message is oldest (sorted by created_at)
+      const data = await fetchAPI(`/waves/${wave.id}/messages?limit=50&before=${oldestMessage.id}`);
+
+      if (data.messages.length > 0) {
+        // Save scroll position before adding messages
+        const container = messagesRef.current;
+        const scrollHeightBefore = container?.scrollHeight || 0;
+
+        // Merge older messages with existing ones
+        const mergedMessages = [...data.messages, ...waveData.all_messages];
+
+        // Rebuild the message tree
+        function buildMessageTree(messages, parentId = null) {
+          return messages
+            .filter(m => m.parent_id === parentId)
+            .map(m => ({ ...m, children: buildMessageTree(messages, m.id) }));
+        }
+
+        let idx = 0;
+        const tree = buildMessageTree(mergedMessages);
+        const addIndices = (msgs) => msgs.forEach(m => { m._index = idx++; if (m.children) addIndices(m.children); });
+        addIndices(tree);
+
+        setWaveData(prev => ({
+          ...prev,
+          messages: tree,
+          all_messages: mergedMessages,
+        }));
+        setHasMoreMessages(data.hasMore);
+
+        // Restore scroll position after DOM updates
+        setTimeout(() => {
+          if (container) {
+            const scrollHeightAfter = container.scrollHeight;
+            container.scrollTop = scrollHeightAfter - scrollHeightBefore;
+          }
+        }, 50);
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch (err) {
+      showToast('Failed to load older messages', 'error');
+    }
+    setLoadingMore(false);
   };
 
   const handleSendMessage = async () => {
@@ -2755,6 +2813,26 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       {/* Messages */}
       <div ref={messagesRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '12px' : '20px' }}>
+        {/* Load Older Messages Button */}
+        {hasMoreMessages && (
+          <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+            <button
+              onClick={loadMoreMessages}
+              disabled={loadingMore}
+              style={{
+                padding: isMobile ? '10px 20px' : '8px 16px',
+                background: 'transparent',
+                border: '1px solid #3a4a3a',
+                color: loadingMore ? '#5a6a5a' : '#0ead69',
+                cursor: loadingMore ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.75rem',
+              }}
+            >
+              {loadingMore ? 'Loading...' : `↑ Load older messages (${waveData.total_messages - waveData.all_messages.length} more)`}
+            </button>
+          </div>
+        )}
         {waveData.messages.map(msg => (
           <ThreadedMessage key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
             onEdit={handleStartEdit} onSaveEdit={handleSaveEdit} onCancelEdit={handleCancelEdit}

@@ -1,6 +1,6 @@
 # Cortex v1.8.0 - Implementation Plan
 
-## 🎯 RELEASE STATUS: IN PROGRESS (7/10 Phases Complete)
+## 🎯 RELEASE STATUS: IN PROGRESS (8/10 Phases Complete)
 
 **Target Scope:** User Profiles, Scale & Organization
 **Branch:** `v1.8.0`
@@ -32,7 +32,7 @@ Version 1.8.0 focuses on enhanced user profiles and platform scalability. Users 
 | 5 | SQLite Database Migration | High | 12-16h | ✅ Complete |
 | 6 | PWA Push Notifications | High | 8-10h | ✅ Complete |
 | 7 | Image/File Upload System | High | 8-10h | ✅ Complete |
-| 8 | Message Pagination | Medium | 6-8h | Pending |
+| 8 | Message Pagination | Medium | 6-8h | ✅ Complete |
 | 9 | Full-Text Search (FTS) | Medium | 4-6h | Pending |
 | 10 | Rich Media Embeds (YouTube, TikTok, etc.) | Medium | 10-14h | Pending |
 
@@ -264,20 +264,21 @@ Allow users to upload images directly instead of just pasting URLs.
 ---
 
 ### Phase 8: Message Pagination
-**Priority:** Medium | **Estimate:** 6-8h
+**Priority:** Medium | **Estimate:** 6-8h | **Status:** ✅ Complete
 
 Virtual scrolling for waves with many messages.
 
 #### 8.1 Backend
-- [ ] `GET /api/waves/:id/messages?limit=50&before=messageId`
-- [ ] Return messages in batches
-- [ ] Include `hasMore` flag
+- [x] `GET /api/waves/:id/messages?limit=50&before=messageId` - New paginated endpoint
+- [x] Return messages in batches (default 50, max 100)
+- [x] Include `hasMore` flag
+- [x] Modified `/api/waves/:id` to limit initial messages and return `hasMoreMessages`, `total_messages`
 
 #### 8.2 Frontend
-- [ ] Load initial batch of messages
-- [ ] "Load older messages" button at top
-- [ ] Preserve scroll position when loading older
-- [ ] Optional: Infinite scroll with intersection observer
+- [x] Initial load limited to 50 most recent messages
+- [x] "Load older messages" button at top (shows count remaining)
+- [x] Preserve scroll position when loading older (calculates scroll offset)
+- [x] Merges older messages with existing and rebuilds message tree
 
 ---
 
@@ -502,9 +503,17 @@ npm install multer sharp better-sqlite3
 - ~~Phase 5: SQLite Database Migration~~ ✅
 - ~~Phase 6: PWA Push Notifications~~ ✅
 - ~~Phase 7: Image/File Upload System~~ ✅
-- **Phase 8: Message Pagination** ⏳ (NEXT)
-- Phase 9: Full-Text Search (FTS)
+- ~~Phase 8: Message Pagination~~ ✅
+- **Phase 9: Full-Text Search (FTS)** ⏳ (NEXT)
 - Phase 10: Rich Media Embeds (YouTube, TikTok, Twitter, Spotify, etc.)
+
+- ✅ **Phase 8**: Message Pagination
+  - Backend: New `GET /api/waves/:id/messages?limit=50&before=messageId` endpoint
+  - Modified existing wave endpoint to limit initial load to 50 messages
+  - Added `hasMoreMessages` and `total_messages` to wave response
+  - Frontend: "Load older messages" button at top of wave
+  - Scroll position preserved when loading older messages
+  - Messages merged and tree rebuilt on load more
 
 - ✅ **Phase 7**: Image/File Upload System
   - Backend: `POST /api/uploads` endpoint with multer + sharp

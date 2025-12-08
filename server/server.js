@@ -2872,6 +2872,16 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
   const allMessages = db.getMessagesForWave(wave.id, req.user.userId);
   const group = wave.groupId ? db.getGroup(wave.groupId) : null;
 
+  // Pagination: limit initial messages, return most recent ones
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const totalMessages = allMessages.length;
+  const hasMoreMessages = totalMessages > limit;
+
+  // Get the most recent messages (sorted by created_at, take last N)
+  const limitedMessages = hasMoreMessages
+    ? allMessages.slice(-limit) // Take last 'limit' messages (most recent)
+    : allMessages;
+
   function buildMessageTree(messages, parentId = null) {
     return messages
       .filter(m => m.parent_id === parentId)
@@ -2883,10 +2893,52 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
     creator_name: creator?.displayName || 'Unknown',
     creator_handle: creator?.handle || 'unknown',
     participants,
-    messages: buildMessageTree(allMessages),
-    all_messages: allMessages,
+    messages: buildMessageTree(limitedMessages),
+    all_messages: limitedMessages,
+    total_messages: totalMessages,
+    hasMoreMessages,
     group_name: group?.name,
     can_edit: wave.createdBy === req.user.userId,
+  });
+});
+
+// Paginated messages endpoint for loading messages in batches
+app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const wave = db.getWave(waveId);
+  if (!wave) return res.status(404).json({ error: 'Wave not found' });
+  if (!db.canAccessWave(waveId, req.user.userId)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 per request
+  const before = req.query.before; // Message ID to load messages before
+
+  // Get all messages for this wave (filtered for blocked/muted)
+  let allMessages = db.getMessagesForWave(wave.id, req.user.userId);
+
+  // Sort by created_at descending (newest first) for pagination
+  allMessages.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  // If 'before' is specified, filter to only messages before that one
+  if (before) {
+    const beforeIndex = allMessages.findIndex(m => m.id === before);
+    if (beforeIndex !== -1) {
+      allMessages = allMessages.slice(beforeIndex + 1);
+    }
+  }
+
+  // Take the requested limit
+  const messages = allMessages.slice(0, limit);
+  const hasMore = allMessages.length > limit;
+
+  // Reverse to return oldest-first within the batch (natural reading order)
+  messages.reverse();
+
+  res.json({
+    messages,
+    hasMore,
+    total: db.getMessagesForWave(wave.id, req.user.userId).length,
   });
 });
 
