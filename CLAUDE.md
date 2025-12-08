@@ -403,8 +403,13 @@ Upload images directly in messages instead of pasting URLs.
   - **Clipboard Paste**: Paste images with Ctrl+V
   - **Progress Indicator**: Button shows "..." during upload
   - **Auto-Embed**: Uploaded URL inserted into message, auto-embeds via `detectAndEmbedMedia()`
+- **Display**: Images shown as thumbnails (200×150 max) with click-to-zoom
+  - **Thumbnail**: `object-fit: cover` for nice cropping, subtle border
+  - **Lightbox**: Click thumbnail to view full-size image in overlay
+  - **ImageLightbox Component**: Full-screen overlay with close button
 - **Client State**: `uploading` state disables SEND button during upload
 - **Dependencies**: Uses same `multer` + `sharp` as avatar uploads
+- **Vite Proxy**: `/uploads` proxied to backend in development mode
 
 ### About Me / Bio (v1.8.0+)
 User bio/about section visible on profiles.
@@ -437,6 +442,9 @@ Cleaner UI showing display names instead of @handles.
 - Messages have `parentId` (null for root messages)
 - Client renders recursively with depth tracking
 - Playback mode: Shows messages in chronological order with timeline slider
+- **Deleted Messages**: Only show "[Message deleted]" placeholder if message has replies
+  - Messages deleted with no children disappear completely
+  - Preserves thread context for replies while avoiding clutter
 
 ### Responsive Design (Updated v1.3.2)
 - **Multiple breakpoints:**
@@ -502,6 +510,7 @@ Cleaner UI showing display names instead of @handles.
     - Max 10MB, resize to 1200×1200, convert to webp (except GIFs)
     - IMG button in composer (orange), drag-and-drop, clipboard paste
     - Uploaded URL auto-embeds via `detectAndEmbedMedia()`
+    - Thumbnail display (200×150 max) with click-to-zoom lightbox
 
 - **v1.7.0 (December 2025)** - Contact & Invitation Approval System + Moderation + GIF Search
   - Contact Request System: Send/accept/decline contact requests

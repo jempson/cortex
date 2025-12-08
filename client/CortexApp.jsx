@@ -1153,6 +1153,10 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
 
   if (!isVisible) return null;
 
+  // Don't render deleted messages unless they have children (replies)
+  // Deleted messages with children show placeholder to preserve thread context
+  if (isDeleted && !hasChildren) return null;
+
   const handleMessageClick = () => {
     if (isUnread && onMessageClick) {
       onMessageClick(message.id);
