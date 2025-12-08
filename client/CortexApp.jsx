@@ -5607,7 +5607,7 @@ function MainApp() {
           ) : (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
               <GlowText color="#ffd23f" size="1.5rem" weight={700}>CORTEX</GlowText>
-              <span style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>v1.7.0</span>
+              <span style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>v1.8.0</span>
             </div>
           )}
         </div>
