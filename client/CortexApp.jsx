@@ -90,7 +90,108 @@ const storage = {
   getUser: () => { try { return JSON.parse(localStorage.getItem('cortex_user')); } catch { return null; } },
   setUser: (user) => localStorage.setItem('cortex_user', JSON.stringify(user)),
   removeUser: () => localStorage.removeItem('cortex_user'),
+  getPushEnabled: () => localStorage.getItem('cortex_push_enabled') !== 'false', // Default true
+  setPushEnabled: (enabled) => localStorage.setItem('cortex_push_enabled', enabled ? 'true' : 'false'),
 };
+
+// ============ PUSH NOTIFICATION HELPERS ============
+// Subscribe to push notifications
+async function subscribeToPush(token) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    console.log('[Push] Push notifications not supported');
+    return false;
+  }
+
+  try {
+    // Get VAPID public key from server
+    const response = await fetch(`${API_URL}/push/vapid-key`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!response.ok) {
+      console.log('[Push] Push notifications not configured on server');
+      return false;
+    }
+
+    const { publicKey } = await response.json();
+
+    // Get service worker registration
+    const registration = await navigator.serviceWorker.ready;
+
+    // Check existing subscription
+    let subscription = await registration.pushManager.getSubscription();
+
+    // If no subscription or VAPID key changed, create new subscription
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+      console.log('[Push] New push subscription created');
+    }
+
+    // Send subscription to server
+    await fetch(`${API_URL}/push/subscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ subscription })
+    });
+
+    console.log('[Push] Push subscription registered with server');
+    return true;
+  } catch (error) {
+    console.error('[Push] Failed to subscribe:', error);
+    return false;
+  }
+}
+
+// Unsubscribe from push notifications
+async function unsubscribeFromPush(token) {
+  if (!('serviceWorker' in navigator)) return false;
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+
+    if (subscription) {
+      // Unsubscribe locally
+      await subscription.unsubscribe();
+
+      // Tell server to remove subscription
+      await fetch(`${API_URL}/push/subscribe`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ endpoint: subscription.endpoint })
+      });
+
+      console.log('[Push] Push subscription removed');
+    }
+    return true;
+  } catch (error) {
+    console.error('[Push] Failed to unsubscribe:', error);
+    return false;
+  }
+}
+
+// Convert base64 VAPID key to Uint8Array
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 // ============ EMOJI PICKER COMPONENT ============
 const EmojiPicker = ({ onSelect, isMobile }) => {
@@ -4242,6 +4343,49 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
           </div>
         </div>
 
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>PUSH NOTIFICATIONS</label>
+          <button
+            onClick={async () => {
+              const token = storage.getToken();
+              const currentlyEnabled = storage.getPushEnabled();
+              if (currentlyEnabled) {
+                // Disable push
+                storage.setPushEnabled(false);
+                await unsubscribeFromPush(token);
+                showToast('Push notifications disabled', 'success');
+              } else {
+                // Enable push
+                storage.setPushEnabled(true);
+                const success = await subscribeToPush(token);
+                if (success) {
+                  showToast('Push notifications enabled', 'success');
+                } else {
+                  showToast('Failed to enable push notifications', 'error');
+                  storage.setPushEnabled(false);
+                }
+              }
+              // Force re-render by updating a local state (use the component's state)
+              setDisplayName(prev => prev); // Trigger re-render
+            }}
+            style={{
+              padding: isMobile ? '10px 16px' : '8px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: storage.getPushEnabled() ? '#0ead6920' : 'transparent',
+              border: `1px solid ${storage.getPushEnabled() ? '#0ead69' : '#2a3a2a'}`,
+              color: storage.getPushEnabled() ? '#0ead69' : '#6a7a6a',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.9rem' : '0.85rem',
+            }}
+          >
+            {storage.getPushEnabled() ? '🔔 ENABLED' : '🔕 DISABLED'}
+          </button>
+          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+            Receive notifications when the app is closed
+          </div>
+        </div>
+
         <div style={{ color: '#5a6a5a', fontSize: '0.7rem', padding: '10px', background: '#0a100a', border: '1px solid #2a3a2a' }}>
           ℹ️ Theme customization will change colors throughout the app (coming soon). Other changes take effect immediately.
         </div>
@@ -4812,22 +4956,38 @@ function MainApp() {
     loadBlockedMutedUsers();
   }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers]);
 
-  // Request notification permission on first load
+  // Request notification permission and set up push on first load
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      // Request permission after a brief delay to avoid interrupting initial page load
-      const timer = setTimeout(() => {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            console.log('✅ Desktop notifications enabled');
-          } else {
-            console.log('❌ Desktop notifications denied');
-          }
-        });
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, []);
+    const token = storage.getToken();
+    if (!token) return;
+
+    const setupPushNotifications = async () => {
+      // Check if user has push enabled
+      if (!storage.getPushEnabled()) {
+        console.log('[Push] Push notifications disabled by user');
+        return;
+      }
+
+      // Request notification permission if not yet granted
+      if ('Notification' in window && Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          console.log('❌ Desktop notifications denied');
+          return;
+        }
+        console.log('✅ Desktop notifications enabled');
+      }
+
+      // If permission granted, subscribe to push
+      if ('Notification' in window && Notification.permission === 'granted') {
+        await subscribeToPush(token);
+      }
+    };
+
+    // Delay to avoid interrupting initial page load
+    const timer = setTimeout(setupPushNotifications, 2000);
+    return () => clearTimeout(timer);
+  }, [user]);
 
   const handleCreateWave = async (data) => {
     try {

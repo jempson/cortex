@@ -1484,6 +1484,58 @@ export class DatabaseSQLite {
     }));
   }
 
+  // ============ Push Subscription Methods ============
+
+  getPushSubscriptions(userId) {
+    const rows = this.db.prepare(`
+      SELECT * FROM push_subscriptions WHERE user_id = ?
+    `).all(userId);
+
+    return rows.map(r => ({
+      id: r.id,
+      userId: r.user_id,
+      endpoint: r.endpoint,
+      keys: JSON.parse(r.keys),
+      createdAt: r.created_at
+    }));
+  }
+
+  addPushSubscription(userId, subscription) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    // Use INSERT OR REPLACE to handle duplicate endpoints
+    this.db.prepare(`
+      INSERT OR REPLACE INTO push_subscriptions (id, user_id, endpoint, keys, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, userId, subscription.endpoint, JSON.stringify(subscription.keys), now);
+
+    return true;
+  }
+
+  removePushSubscription(userId, endpoint) {
+    const result = this.db.prepare(`
+      DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?
+    `).run(userId, endpoint);
+
+    return result.changes > 0;
+  }
+
+  removeAllPushSubscriptions(userId) {
+    const result = this.db.prepare(`
+      DELETE FROM push_subscriptions WHERE user_id = ?
+    `).run(userId);
+
+    return result.changes > 0;
+  }
+
+  removeExpiredPushSubscription(endpoint) {
+    // Called when a push notification fails (subscription expired/invalid)
+    this.db.prepare(`
+      DELETE FROM push_subscriptions WHERE endpoint = ?
+    `).run(endpoint);
+  }
+
   // Placeholder for JSON compatibility - not needed with SQLite
   saveUsers() {}
   saveWaves() {}
@@ -1494,6 +1546,7 @@ export class DatabaseSQLite {
   saveContactRequests() {}
   saveGroupInvitations() {}
   saveModeration() {}
+  savePushSubscriptions() {}
   saveAll() {}
 
   // Close database connection

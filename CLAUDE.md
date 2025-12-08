@@ -221,6 +221,47 @@ Demo data seeded if `SEED_DEMO_DATA=true` (password: "Demo123!")
 - **OfflineIndicator Component**: Orange banner when offline
 - **iOS Support**: apple-touch-icon, status bar styling
 
+### PWA Push Notifications (v1.8.0+)
+Server-sent push notifications for offline/background users via Web Push API.
+
+- **Server Setup**:
+  - `web-push` dependency for sending push notifications
+  - VAPID keys (public/private) stored in environment variables
+  - `push_subscriptions` table (SQLite) or JSON file for storing subscriptions
+- **API Endpoints**:
+  - `GET /api/push/vapid-key` - Get public VAPID key for client subscription
+  - `POST /api/push/subscribe` - Save user's push subscription (body: `{ subscription }`)
+  - `DELETE /api/push/subscribe` - Remove subscription (body: `{ endpoint? }`)
+  - `POST /api/push/test` - Send test notification (development)
+- **Server Functions**:
+  - `sendPushNotification(userId, payload)` - Send push to specific user
+  - `broadcastToWaveWithPush()` - Broadcast to wave with push for offline users
+  - Automatic cleanup of expired subscriptions (410/404 errors)
+- **Client Integration**:
+  - `subscribeToPush(token)` - Subscribe to push on login
+  - `unsubscribeFromPush(token)` - Unsubscribe when user disables
+  - Push toggle in Profile Settings → Display Preferences
+  - `cortex_push_enabled` localStorage key for user preference
+- **Service Worker** (`sw.js`):
+  - Push event handler parses JSON payload
+  - Shows notification with title, body, icon, badge, vibration
+  - Click-to-open: focuses existing window or opens new
+  - `navigate-to-wave` message to open specific wave
+- **Payload Format**:
+  ```javascript
+  {
+    title: 'New message in Wave Name',
+    body: 'Sender: Message preview...',
+    tag: 'wave-{waveId}',
+    url: '/?wave={waveId}',
+    waveId: 'uuid'
+  }
+  ```
+- **Environment Variables**:
+  - `VAPID_PUBLIC_KEY` - Public key for client subscription
+  - `VAPID_PRIVATE_KEY` - Private key for signing push messages
+  - `VAPID_EMAIL` - Contact email (format: `mailto:admin@domain.com`)
+
 ### Read Receipts Display (v1.6.0+, updated v1.8.0)
 Visual UI for the per-message read tracking system (builds on v1.4.0 backend).
 
@@ -426,6 +467,18 @@ Cleaner UI showing display names instead of @handles.
     - Removed redundant CLOSE button (click EMO to dismiss)
     - 8-column grid on desktop (16 emojis in 2 rows)
   - **Auth Response Updates**: Login/register/me endpoints now return `avatarUrl` and `bio`
+  - **SQLite Database** (optional):
+    - Enable with `USE_SQLITE=true` environment variable
+    - `database-sqlite.js` drop-in replacement for JSON database
+    - `schema.sql` with 14+ tables and indexes
+    - Migration script: `node migrate-json-to-sqlite.js`
+    - Better performance for large datasets
+  - **PWA Push Notifications**:
+    - Server-sent push when app is closed/backgrounded
+    - `web-push` library with VAPID authentication
+    - Push subscription management in Profile Settings
+    - Service worker handles push display and navigation
+    - Auto-cleanup of expired subscriptions
 
 - **v1.7.0 (December 2025)** - Contact & Invitation Approval System + Moderation + GIF Search
   - Contact Request System: Send/accept/decline contact requests

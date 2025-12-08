@@ -254,3 +254,20 @@ CREATE INDEX IF NOT EXISTS idx_mutes_muted ON mutes(muted_user_id);
 CREATE INDEX IF NOT EXISTS idx_reports_reporter ON reports(reporter_id);
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(type);
+
+-- ============ Push Subscriptions ============
+
+-- Web Push API subscriptions
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL,
+    -- Keys stored as JSON: {"p256dh": "...", "auth": "..."}
+    keys TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (user_id, endpoint)
+);
+
+-- Push subscription lookups
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON push_subscriptions(endpoint);

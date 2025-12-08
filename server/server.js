@@ -14,6 +14,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import sharp from 'sharp';
+import webpush from 'web-push';
 import { DatabaseSQLite } from './database-sqlite.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,6 +29,19 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 // GIPHY API configuration
 const GIPHY_API_KEY = process.env.GIPHY_API_KEY || null;
+
+// Web Push (VAPID) configuration
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || null;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || null;
+const VAPID_EMAIL = process.env.VAPID_EMAIL || 'mailto:admin@cortex.local';
+
+// Configure web-push if VAPID keys are available
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  console.log('🔔 Web Push notifications enabled');
+} else {
+  console.log('⚠️  Web Push disabled: Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in .env');
+}
 
 // Database configuration - set USE_SQLITE=true to use SQLite instead of JSON files
 const USE_SQLITE = process.env.USE_SQLITE === 'true';
@@ -44,6 +58,7 @@ const DATA_FILES = {
   moderation: path.join(DATA_DIR, 'moderation.json'),
   contactRequests: path.join(DATA_DIR, 'contact-requests.json'),
   groupInvitations: path.join(DATA_DIR, 'group-invitations.json'),
+  pushSubscriptions: path.join(DATA_DIR, 'push-subscriptions.json'),
 };
 
 // Uploads directory for avatars
@@ -246,6 +261,7 @@ class Database {
     this.moderation = { blocks: [], mutes: [] };
     this.contactRequests = { requests: [] };
     this.groupInvitations = { invitations: [] };
+    this.pushSubscriptions = { subscriptions: [] };
     this.load();
   }
 
@@ -291,6 +307,7 @@ class Database {
       this.moderation = this.loadFile(DATA_FILES.moderation, { blocks: [], mutes: [] });
       this.contactRequests = this.loadFile(DATA_FILES.contactRequests, { requests: [] });
       this.groupInvitations = this.loadFile(DATA_FILES.groupInvitations, { invitations: [] });
+      this.pushSubscriptions = this.loadFile(DATA_FILES.pushSubscriptions, { subscriptions: [] });
       console.log('📂 Loaded data from separated files');
     } else {
       if (process.env.SEED_DEMO_DATA === 'true') {
@@ -322,6 +339,7 @@ class Database {
   saveContactRequests() { this.saveFile(DATA_FILES.contactRequests, this.contactRequests); }
   saveGroupInvitations() { this.saveFile(DATA_FILES.groupInvitations, this.groupInvitations); }
   saveModeration() { this.saveFile(DATA_FILES.moderation, this.moderation); }
+  savePushSubscriptions() { this.saveFile(DATA_FILES.pushSubscriptions, this.pushSubscriptions); }
 
   initEmpty() {
     console.log('📝 Initializing empty database');
@@ -910,6 +928,63 @@ class Database {
     }
 
     return { success: true };
+  }
+
+  // === Push Subscription Methods ===
+  getPushSubscriptions(userId) {
+    return this.pushSubscriptions.subscriptions.filter(s => s.userId === userId);
+  }
+
+  addPushSubscription(userId, subscription) {
+    // Remove any existing subscription with the same endpoint for this user
+    this.pushSubscriptions.subscriptions = this.pushSubscriptions.subscriptions.filter(
+      s => !(s.userId === userId && s.endpoint === subscription.endpoint)
+    );
+
+    this.pushSubscriptions.subscriptions.push({
+      id: uuidv4(),
+      userId,
+      endpoint: subscription.endpoint,
+      keys: subscription.keys,
+      createdAt: new Date().toISOString()
+    });
+
+    this.savePushSubscriptions();
+    return true;
+  }
+
+  removePushSubscription(userId, endpoint) {
+    const initialLength = this.pushSubscriptions.subscriptions.length;
+    this.pushSubscriptions.subscriptions = this.pushSubscriptions.subscriptions.filter(
+      s => !(s.userId === userId && s.endpoint === endpoint)
+    );
+
+    if (this.pushSubscriptions.subscriptions.length < initialLength) {
+      this.savePushSubscriptions();
+      return true;
+    }
+    return false;
+  }
+
+  removeAllPushSubscriptions(userId) {
+    const initialLength = this.pushSubscriptions.subscriptions.length;
+    this.pushSubscriptions.subscriptions = this.pushSubscriptions.subscriptions.filter(
+      s => s.userId !== userId
+    );
+
+    if (this.pushSubscriptions.subscriptions.length < initialLength) {
+      this.savePushSubscriptions();
+      return true;
+    }
+    return false;
+  }
+
+  removeExpiredPushSubscription(endpoint) {
+    // Called when a push notification fails (subscription expired/invalid)
+    this.pushSubscriptions.subscriptions = this.pushSubscriptions.subscriptions.filter(
+      s => s.endpoint !== endpoint
+    );
+    this.savePushSubscriptions();
   }
 
   // === Moderation Methods ===
@@ -1978,6 +2053,85 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   res.json({ success: true, preferences: user.preferences });
 });
 
+// ============ Push Notification Routes ============
+
+// Get VAPID public key for client subscription
+app.get('/api/push/vapid-key', authenticateToken, (req, res) => {
+  if (!VAPID_PUBLIC_KEY) {
+    return res.status(501).json({ error: 'Push notifications not configured' });
+  }
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+// Subscribe to push notifications
+app.post('/api/push/subscribe', authenticateToken, (req, res) => {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    return res.status(501).json({ error: 'Push notifications not configured' });
+  }
+
+  const { subscription } = req.body;
+  if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+    return res.status(400).json({ error: 'Invalid subscription object' });
+  }
+
+  db.addPushSubscription(req.user.userId, subscription);
+  console.log(`🔔 Push subscription added for user ${req.user.userId}`);
+  res.json({ success: true });
+});
+
+// Unsubscribe from push notifications
+app.delete('/api/push/subscribe', authenticateToken, (req, res) => {
+  const { endpoint } = req.body;
+  if (!endpoint) {
+    // Remove all subscriptions for this user
+    db.removeAllPushSubscriptions(req.user.userId);
+    console.log(`🔕 All push subscriptions removed for user ${req.user.userId}`);
+  } else {
+    // Remove specific subscription
+    db.removePushSubscription(req.user.userId, endpoint);
+    console.log(`🔕 Push subscription removed for user ${req.user.userId}`);
+  }
+  res.json({ success: true });
+});
+
+// Test push notification (development only)
+app.post('/api/push/test', authenticateToken, async (req, res) => {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    return res.status(501).json({ error: 'Push notifications not configured' });
+  }
+
+  const subscriptions = db.getPushSubscriptions(req.user.userId);
+  if (subscriptions.length === 0) {
+    return res.status(400).json({ error: 'No push subscriptions found' });
+  }
+
+  const payload = JSON.stringify({
+    title: 'Cortex Test',
+    body: 'Push notifications are working!',
+    tag: 'test',
+    url: '/'
+  });
+
+  let sent = 0;
+  for (const sub of subscriptions) {
+    try {
+      await webpush.sendNotification({
+        endpoint: sub.endpoint,
+        keys: sub.keys
+      }, payload);
+      sent++;
+    } catch (error) {
+      console.error('Push notification failed:', error.statusCode);
+      if (error.statusCode === 410 || error.statusCode === 404) {
+        // Subscription expired or invalid
+        db.removeExpiredPushSubscription(sub.endpoint);
+      }
+    }
+  }
+
+  res.json({ success: true, sent, total: subscriptions.length });
+});
+
 // Admin handle request management
 app.get('/api/admin/handle-requests', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
@@ -2787,7 +2941,25 @@ app.post('/api/messages', authenticateToken, (req, res) => {
     privacy: wave.privacy,
   });
 
-  broadcastToWave(waveId, { type: 'new_message', data: message });
+  // Create push notification payload for offline users
+  const senderName = message.sender_name || db.findUserById(req.user.userId)?.displayName || 'Someone';
+  const contentPreview = content.replace(/<[^>]*>/g, '').substring(0, 100);
+  const pushPayload = {
+    title: `New message in ${wave.title}`,
+    body: `${senderName}: ${contentPreview}${content.length > 100 ? '...' : ''}`,
+    tag: `wave-${waveId}`,
+    url: `/?wave=${waveId}`,
+    waveId
+  };
+
+  // Broadcast to connected users and send push to offline users
+  broadcastToWaveWithPush(
+    waveId,
+    { type: 'new_message', data: message },
+    pushPayload,
+    null,
+    req.user.userId // Exclude sender from push notifications
+  );
   res.status(201).json(message);
 });
 
@@ -3044,6 +3216,68 @@ function broadcastToWave(waveId, message, excludeWs = null) {
         if (excludeWs && ws === excludeWs) continue;
         if (ws.readyState === 1) ws.send(JSON.stringify(message));
       }
+    }
+  }
+}
+
+// Send push notification to a user who isn't connected via WebSocket
+async function sendPushNotification(userId, payload) {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+
+  const subscriptions = db.getPushSubscriptions(userId);
+  if (subscriptions.length === 0) return;
+
+  const payloadString = JSON.stringify(payload);
+
+  for (const sub of subscriptions) {
+    try {
+      await webpush.sendNotification({
+        endpoint: sub.endpoint,
+        keys: sub.keys
+      }, payloadString);
+    } catch (error) {
+      if (error.statusCode === 410 || error.statusCode === 404) {
+        // Subscription expired or invalid - clean up
+        db.removeExpiredPushSubscription(sub.endpoint);
+        console.log(`🔕 Removed expired push subscription`);
+      } else {
+        console.error('Push notification error:', error.message);
+      }
+    }
+  }
+}
+
+// Broadcast to wave with optional push notifications for offline users
+function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs = null, excludeUserId = null) {
+  const wave = db.getWave(waveId);
+  if (!wave) return;
+
+  // Get all users who should receive this
+  let recipients = new Set();
+
+  // Direct participants
+  db.getWaveParticipants(waveId).forEach(p => recipients.add(p.id));
+
+  // For group waves, all group members
+  if (wave.privacy === 'group' && wave.groupId) {
+    db.getGroupMembers(wave.groupId).forEach(m => recipients.add(m.id));
+  }
+
+  for (const userId of recipients) {
+    // Skip the excluded user (usually the message sender)
+    if (excludeUserId && userId === excludeUserId) continue;
+
+    const isConnected = clients.has(userId) && clients.get(userId).size > 0;
+
+    if (isConnected) {
+      // User is online - send via WebSocket
+      for (const ws of clients.get(userId)) {
+        if (excludeWs && ws === excludeWs) continue;
+        if (ws.readyState === 1) ws.send(JSON.stringify(message));
+      }
+    } else if (pushPayload) {
+      // User is offline - send push notification
+      sendPushNotification(userId, pushPayload);
     }
   }
 }

@@ -1,6 +1,6 @@
 # Cortex v1.8.0 - Implementation Plan
 
-## 🎯 RELEASE STATUS: IN PROGRESS (5/10 Phases Complete)
+## 🎯 RELEASE STATUS: IN PROGRESS (6/10 Phases Complete)
 
 **Target Scope:** User Profiles, Scale & Organization
 **Branch:** `v1.8.0`
@@ -30,8 +30,8 @@ Version 1.8.0 focuses on enhanced user profiles and platform scalability. Users 
 | # | Feature | Priority | Est. Time | Status |
 |---|---------|----------|-----------|--------|
 | 5 | SQLite Database Migration | High | 12-16h | ✅ Complete |
-| 6 | PWA Push Notifications | High | 8-10h | ⏳ Next |
-| 7 | Image/File Upload System | High | 8-10h | Pending |
+| 6 | PWA Push Notifications | High | 8-10h | ✅ Complete |
+| 7 | Image/File Upload System | High | 8-10h | ⏳ Next |
 | 8 | Message Pagination | Medium | 6-8h | Pending |
 | 9 | Full-Text Search (FTS) | Medium | 4-6h | Pending |
 | 10 | Rich Media Embeds (YouTube, TikTok, etc.) | Medium | 10-14h | Pending |
@@ -189,38 +189,44 @@ Migrate from JSON files to SQLite for better performance and querying.
 ---
 
 ### Phase 6: PWA Push Notifications
-**Priority:** High | **Estimate:** 8-10h | **Status:** Pending
+**Priority:** High | **Estimate:** 8-10h | **Status:** ✅ Complete
 
 Enable real push notifications when the app is closed/backgrounded. Currently, notifications only work when the app is open (using browser Notification API). This phase adds server-sent push notifications via the Web Push API.
 
 #### 6.1 Server - VAPID Keys & Web Push
-- [ ] Install `web-push` dependency
-- [ ] Generate VAPID keys (public/private key pair)
-- [ ] Store VAPID keys in environment variables
-- [ ] Create `push_subscriptions` table (SQLite) or JSON file
-- [ ] `POST /api/push/subscribe` - Save user's push subscription
-- [ ] `DELETE /api/push/subscribe` - Remove subscription
-- [ ] `POST /api/push/test` - Send test notification (dev only)
+- [x] Install `web-push` dependency
+- [x] Generate VAPID keys (public/private key pair)
+- [x] Store VAPID keys in environment variables
+- [x] Create `push_subscriptions` table (SQLite) or JSON file
+- [x] `POST /api/push/subscribe` - Save user's push subscription
+- [x] `DELETE /api/push/subscribe` - Remove subscription
+- [x] `POST /api/push/test` - Send test notification (dev only)
+- [x] `GET /api/push/vapid-key` - Get public key for client
 
 #### 6.2 Server - Sending Push Notifications
-- [ ] Create `sendPushNotification(userId, payload)` function
-- [ ] Integrate with `new_message` WebSocket events
-- [ ] Send push when user is not connected via WebSocket
-- [ ] Handle expired/invalid subscriptions (auto-cleanup)
-- [ ] Rate limit push notifications (max 1 per wave per minute)
+- [x] Create `sendPushNotification(userId, payload)` function
+- [x] Create `broadcastToWaveWithPush()` function
+- [x] Integrate with `new_message` WebSocket events
+- [x] Send push when user is not connected via WebSocket
+- [x] Handle expired/invalid subscriptions (auto-cleanup on 410/404)
+- [ ] Rate limit push notifications (max 1 per wave per minute) - TODO
 
 #### 6.3 Client - Subscription Management
-- [ ] Request notification permission (if not already granted)
-- [ ] Get push subscription from service worker: `registration.pushManager.subscribe()`
-- [ ] Send subscription to server on login
-- [ ] Resubscribe if VAPID key changes
-- [ ] UI toggle in Profile Settings to enable/disable push
+- [x] Request notification permission (if not already granted)
+- [x] Get push subscription from service worker: `registration.pushManager.subscribe()`
+- [x] Send subscription to server on login
+- [x] `subscribeToPush()` and `unsubscribeFromPush()` helper functions
+- [x] `urlBase64ToUint8Array()` for VAPID key conversion
+- [x] UI toggle in Profile Settings to enable/disable push
+- [x] Push enabled state persisted in localStorage
 
 #### 6.4 Service Worker - Push Handling
-- [ ] Update `sw.js` push event handler (already exists, may need updates)
-- [ ] Handle different notification types (new_message, contact_request, etc.)
-- [ ] Click-to-open: Focus existing window or open new
-- [ ] Badge management for unread count (if supported)
+- [x] `sw.js` push event handler parses JSON payload
+- [x] Shows notification with title, body, icon, badge
+- [x] Click-to-open: Focus existing window or open new
+- [x] `navigate-to-wave` message to navigate to specific wave
+- [x] Dismiss action support
+- [x] Updated to v1.8.0
 
 #### 6.5 Testing Checklist
 - [ ] Push works when app is closed
@@ -494,8 +500,8 @@ npm install multer sharp better-sqlite3
 
 ### Remaining
 - ~~Phase 5: SQLite Database Migration~~ ✅
-- **Phase 6: PWA Push Notifications** ⏳ (NEXT)
-- Phase 7: Image/File Upload System (for messages)
+- ~~Phase 6: PWA Push Notifications~~ ✅
+- **Phase 7: Image/File Upload System** ⏳ (NEXT)
 - Phase 8: Message Pagination
 - Phase 9: Full-Text Search (FTS)
 - Phase 10: Rich Media Embeds (YouTube, TikTok, Twitter, Spotify, etc.)

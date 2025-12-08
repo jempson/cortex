@@ -1,5 +1,6 @@
-// Cortex Service Worker v1.6.1
-const CACHE_NAME = 'cortex-v1.6.1';
+// Cortex Service Worker v1.8.0
+// Includes: Push notifications, offline caching, stale-while-revalidate
+const CACHE_NAME = 'cortex-v1.8.0';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -8,7 +9,7 @@ const STATIC_ASSETS = [
 
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.6.0...');
+  console.log('[SW] Installing service worker v1.8.0...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');
