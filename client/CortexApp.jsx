@@ -1451,7 +1451,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   };
 
   return (
-    <div>
+    <div data-message-id={message.id}>
       <div
         onClick={handleMessageClick}
         style={{
@@ -2345,10 +2345,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const hasMarkedAsReadRef = useRef(false);
   const scrollPositionToRestore = useRef(null);
   const lastTypingSentRef = useRef(null);
+  const hasScrolledToUnreadRef = useRef(false);
 
   useEffect(() => {
     loadWave();
     hasMarkedAsReadRef.current = false; // Reset when switching waves
+    hasScrolledToUnreadRef.current = false; // Reset scroll-to-unread for new wave
   }, [wave.id]);
 
   // Reload wave when reloadTrigger changes (from WebSocket events)
@@ -2375,6 +2377,38 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       });
     }
   }, [waveData]);
+
+  // Scroll to first unread message or bottom on initial wave load
+  useEffect(() => {
+    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading) return;
+
+    // Only run once per wave
+    hasScrolledToUnreadRef.current = true;
+
+    const allMessages = waveData.all_messages || [];
+
+    // Find first unread message (not authored by current user)
+    const firstUnreadMessage = allMessages.find(m =>
+      m.is_unread && m.author_id !== currentUser?.id
+    );
+
+    setTimeout(() => {
+      const container = messagesRef.current;
+      if (!container) return;
+
+      if (firstUnreadMessage) {
+        // Scroll to first unread message
+        const messageElement = container.querySelector(`[data-message-id="${firstUnreadMessage.id}"]`);
+        if (messageElement) {
+          messageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+      }
+
+      // No unread messages or element not found - scroll to bottom
+      container.scrollTop = container.scrollHeight;
+    }, 100);
+  }, [waveData, loading, currentUser?.id]);
 
   // Mark wave as read when user scrolls to bottom or views unread messages
   useEffect(() => {

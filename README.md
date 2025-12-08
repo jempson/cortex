@@ -211,6 +211,7 @@ Visual display of who has read messages in a wave.
 - **Smart Scrolling**: Root messages still scroll to bottom (expected behavior)
 - **Long Wave Support**: No more disruptive jumping in waves with 100+ messages
 - **Seamless UX**: Scroll restoration happens automatically and smoothly
+- **Scroll-to-Unread**: Opening a wave auto-scrolls to first unread message (or bottom if all read)
 
 ## What Was New in v1.3.3
 

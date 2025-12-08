@@ -190,6 +190,10 @@ Demo data seeded if `SEED_DEMO_DATA=true` (password: "Demo123!")
 - **Auto-Initialize**: Author automatically added to readBy on message creation
 - **Backward Compatible**: Old messages get readBy arrays initialized on first access
 - **Scroll Preservation**: Clicking messages or replying preserves scroll position to prevent disruptive jumping in long waves
+- **Scroll-to-Unread**: When opening a wave, automatically scrolls to first unread message or bottom if all read
+  - Uses `data-message-id` attribute on message elements for scroll targeting
+  - `hasScrolledToUnreadRef` prevents re-scrolling on WebSocket updates
+  - Smooth scroll animation with `scrollIntoView({ behavior: 'smooth', block: 'start' })`
 - **Client Storage**: Theme/font applied via CSS variables and inline styles
 - **Future**: Full CSS variable refactoring for complete theme support
 
