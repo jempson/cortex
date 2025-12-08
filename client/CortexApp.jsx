@@ -3172,123 +3172,132 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             Drop image to upload
           </div>
         )}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', position: 'relative' }}>
-          <textarea
-            ref={textareaRef}
-            value={newMessage}
-            onChange={(e) => {
-              setNewMessage(e.target.value);
-              handleTyping();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+        {/* Textarea - full width */}
+        <textarea
+          ref={textareaRef}
+          value={newMessage}
+          onChange={(e) => {
+            setNewMessage(e.target.value);
+            handleTyping();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSendMessage();
+            }
+          }}
+          onPaste={(e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+              if (item.type.startsWith('image/')) {
                 e.preventDefault();
-                handleSendMessage();
+                const file = item.getAsFile();
+                if (file) handleImageUpload(file);
+                return;
               }
-            }}
-            onPaste={(e) => {
-              const items = e.clipboardData?.items;
-              if (!items) return;
-              for (const item of items) {
-                if (item.type.startsWith('image/')) {
-                  e.preventDefault();
-                  const file = item.getAsFile();
-                  if (file) handleImageUpload(file);
-                  return;
-                }
-              }
-            }}
-            placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a message... (Shift+Enter for new line)'}
-            rows={1}
-            style={{
-              flex: 1,
-              padding: isMobile ? '14px 16px' : '12px 16px',
-              minHeight: isMobile ? '44px' : 'auto',
-              maxHeight: '200px',
-              background: '#0a100a',
-              border: '1px solid #2a3a2a',
-              color: '#c5d5c5',
-              fontSize: isMobile ? '1rem' : '0.9rem',
-              fontFamily: 'inherit',
-              resize: 'none',
-              overflowY: 'auto',
-            }}
-          />
-          <button
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            style={{
-              padding: isMobile ? '8px 10px' : '10px 12px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: showEmojiPicker ? '#ffd23f20' : 'transparent',
-              border: `1px solid ${showEmojiPicker ? '#ffd23f' : '#2a3a2a'}`,
-              color: '#ffd23f',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: isMobile ? '0.7rem' : '0.65rem',
-              fontWeight: 700,
-            }}
-            title="Insert Emoji"
-          >
-            EMO
-          </button>
-          <button
-            onClick={() => setShowGifSearch(true)}
-            style={{
-              padding: isMobile ? '8px 10px' : '10px 12px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: showGifSearch ? '#3bceac20' : 'transparent',
-              border: `1px solid ${showGifSearch ? '#3bceac' : '#2a3a2a'}`,
-              color: '#3bceac',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: isMobile ? '0.7rem' : '0.65rem',
-              fontWeight: 700,
-            }}
-            title="Insert GIF"
-          >
-            GIF
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleImageUpload(file);
-            }}
-            accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-            style={{ display: 'none' }}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            style={{
-              padding: isMobile ? '8px 10px' : '10px 12px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: uploading ? '#f9844a20' : 'transparent',
-              border: `1px solid ${uploading ? '#f9844a' : '#2a3a2a'}`,
-              color: '#f9844a',
-              cursor: uploading ? 'wait' : 'pointer',
-              fontFamily: 'monospace',
-              fontSize: isMobile ? '0.7rem' : '0.65rem',
-              fontWeight: 700,
-              opacity: uploading ? 0.7 : 1,
-            }}
-            title="Upload Image"
-          >
-            {uploading ? '...' : 'IMG'}
-          </button>
+            }
+          }}
+          placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a message... (Shift+Enter for new line)'}
+          rows={1}
+          style={{
+            width: '100%',
+            padding: isMobile ? '14px 16px' : '12px 16px',
+            minHeight: isMobile ? '44px' : 'auto',
+            maxHeight: '200px',
+            background: '#0a100a',
+            border: '1px solid #2a3a2a',
+            color: '#c5d5c5',
+            fontSize: isMobile ? '1rem' : '0.9rem',
+            fontFamily: 'inherit',
+            resize: 'none',
+            overflowY: 'auto',
+            boxSizing: 'border-box',
+          }}
+        />
+        {/* Button row - below textarea */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center', position: 'relative', flexWrap: 'wrap' }}>
+          {/* Left side: media buttons */}
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              style={{
+                padding: isMobile ? '8px 10px' : '8px 10px',
+                minHeight: isMobile ? '38px' : '32px',
+                background: showEmojiPicker ? '#ffd23f20' : 'transparent',
+                border: `1px solid ${showEmojiPicker ? '#ffd23f' : '#2a3a2a'}`,
+                color: '#ffd23f',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                fontWeight: 700,
+              }}
+              title="Insert Emoji"
+            >
+              EMO
+            </button>
+            <button
+              onClick={() => setShowGifSearch(true)}
+              style={{
+                padding: isMobile ? '8px 10px' : '8px 10px',
+                minHeight: isMobile ? '38px' : '32px',
+                background: showGifSearch ? '#3bceac20' : 'transparent',
+                border: `1px solid ${showGifSearch ? '#3bceac' : '#2a3a2a'}`,
+                color: '#3bceac',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                fontWeight: 700,
+              }}
+              title="Insert GIF"
+            >
+              GIF
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImageUpload(file);
+              }}
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+              style={{ display: 'none' }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              style={{
+                padding: isMobile ? '8px 10px' : '8px 10px',
+                minHeight: isMobile ? '38px' : '32px',
+                background: uploading ? '#f9844a20' : 'transparent',
+                border: `1px solid ${uploading ? '#f9844a' : '#2a3a2a'}`,
+                color: '#f9844a',
+                cursor: uploading ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                fontWeight: 700,
+                opacity: uploading ? 0.7 : 1,
+              }}
+              title="Upload Image"
+            >
+              {uploading ? '...' : 'IMG'}
+            </button>
+          </div>
+          {/* Spacer */}
+          <div style={{ flex: 1 }} />
+          {/* Right side: send button */}
           <button
             onClick={handleSendMessage}
             disabled={!newMessage.trim() || uploading}
             style={{
-              padding: isMobile ? '14px 20px' : '12px 24px',
-              minHeight: isMobile ? '44px' : 'auto',
+              padding: isMobile ? '10px 20px' : '8px 20px',
+              minHeight: isMobile ? '38px' : '32px',
               background: newMessage.trim() ? '#ffd23f20' : 'transparent',
               border: `1px solid ${newMessage.trim() ? '#ffd23f' : '#3a4a3a'}`,
               color: newMessage.trim() ? '#ffd23f' : '#5a6a5a',
               cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
               fontFamily: 'monospace',
-              fontSize: isMobile ? '0.9rem' : '0.85rem',
+              fontSize: isMobile ? '0.85rem' : '0.75rem',
             }}
           >
             SEND
