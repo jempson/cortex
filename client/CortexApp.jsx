@@ -1897,7 +1897,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editContent, setEditContent] = useState('');
   const [requestModalParticipant, setRequestModalParticipant] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const playbackRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Helper functions for participant contact status
   const isContact = (userId) => contacts?.some(c => c.id === userId) || false;
@@ -2145,6 +2148,56 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     } catch (err) {
       showToast('Failed to send message', 'error');
       scrollPositionToRestore.current = null; // Clear on error
+    }
+  };
+
+  // Handle image upload for messages
+  const handleImageUpload = async (file) => {
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      showToast('Invalid file type. Allowed: jpg, png, gif, webp', 'error');
+      return;
+    }
+
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('File too large. Maximum size is 10MB', 'error');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const token = storage.getToken();
+      const response = await fetch(`${API_URL}/uploads`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      const data = await response.json();
+      // Insert the image URL into the message - it will auto-embed when sent
+      setNewMessage(prev => prev + (prev ? '\n' : '') + data.url);
+      showToast('Image uploaded', 'success');
+      textareaRef.current?.focus();
+    } catch (err) {
+      showToast(err.message || 'Failed to upload image', 'error');
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -2653,13 +2706,32 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       )}
 
       {/* Compose */}
-      <div ref={composeRef} style={{
-        flexShrink: 0,
-        padding: isMobile ? '12px' : '16px 20px',
-        paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom, 0px))' : '16px',
-        background: 'linear-gradient(0deg, #0d150d, #1a2a1a)',
-        borderTop: '1px solid #2a3a2a'
-      }}>
+      <div
+        ref={composeRef}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file && file.type.startsWith('image/')) {
+            handleImageUpload(file);
+          }
+        }}
+        style={{
+          flexShrink: 0,
+          padding: isMobile ? '12px' : '16px 20px',
+          paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom, 0px))' : '16px',
+          background: dragOver ? 'linear-gradient(0deg, #1a2a1a, #2a3a2a)' : 'linear-gradient(0deg, #0d150d, #1a2a1a)',
+          borderTop: dragOver ? '2px dashed #f9844a' : '1px solid #2a3a2a',
+          transition: 'all 0.2s ease',
+        }}>
         {replyingTo && (
           <div style={{
             padding: isMobile ? '10px 14px' : '8px 12px',
@@ -2679,6 +2751,20 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             }}>✕</button>
           </div>
         )}
+        {dragOver && (
+          <div style={{
+            padding: '12px',
+            marginBottom: '10px',
+            background: '#f9844a15',
+            border: '2px dashed #f9844a',
+            textAlign: 'center',
+            color: '#f9844a',
+            fontSize: '0.85rem',
+            fontFamily: 'monospace',
+          }}>
+            Drop image to upload
+          </div>
+        )}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', position: 'relative' }}>
           <textarea
             ref={textareaRef}
@@ -2691,6 +2777,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 handleSendMessage();
+              }
+            }}
+            onPaste={(e) => {
+              const items = e.clipboardData?.items;
+              if (!items) return;
+              for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                  e.preventDefault();
+                  const file = item.getAsFile();
+                  if (file) handleImageUpload(file);
+                  return;
+                }
               }
             }}
             placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a message... (Shift+Enter for new line)'}
@@ -2743,9 +2841,38 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           >
             GIF
           </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImageUpload(file);
+            }}
+            accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+            style={{ display: 'none' }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={{
+              padding: isMobile ? '8px 10px' : '10px 12px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: uploading ? '#f9844a20' : 'transparent',
+              border: `1px solid ${uploading ? '#f9844a' : '#2a3a2a'}`,
+              color: '#f9844a',
+              cursor: uploading ? 'wait' : 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.7rem' : '0.65rem',
+              fontWeight: 700,
+              opacity: uploading ? 0.7 : 1,
+            }}
+            title="Upload Image"
+          >
+            {uploading ? '...' : 'IMG'}
+          </button>
           <button
             onClick={handleSendMessage}
-            disabled={!newMessage.trim()}
+            disabled={!newMessage.trim() || uploading}
             style={{
               padding: isMobile ? '14px 20px' : '12px 24px',
               minHeight: isMobile ? '44px' : 'auto',

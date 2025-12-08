@@ -64,16 +64,33 @@ const DATA_FILES = {
 // Uploads directory for avatars
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const AVATARS_DIR = path.join(UPLOADS_DIR, 'avatars');
+const MESSAGES_DIR = path.join(UPLOADS_DIR, 'messages');
 
 // Ensure uploads directories exist
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!fs.existsSync(AVATARS_DIR)) fs.mkdirSync(AVATARS_DIR, { recursive: true });
+if (!fs.existsSync(MESSAGES_DIR)) fs.mkdirSync(MESSAGES_DIR, { recursive: true });
 
 // Multer configuration for avatar uploads
 const avatarStorage = multer.memoryStorage();
 const avatarUpload = multer({
   storage: avatarStorage,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB max
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Allowed: jpg, png, gif, webp'), false);
+    }
+  },
+});
+
+// Multer configuration for message image uploads
+const messageStorage = multer.memoryStorage();
+const messageUpload = multer({
+  storage: messageStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (allowedTypes.includes(file.mimetype)) {
@@ -2004,6 +2021,64 @@ app.delete('/api/profile/avatar', authenticateToken, (req, res) => {
   } catch (err) {
     console.error('Avatar delete error:', err);
     res.status(500).json({ error: 'Failed to delete avatar' });
+  }
+});
+
+// ============ Message Image Upload ============
+// Upload image for use in messages
+app.post('/api/uploads', authenticateToken, (req, res, next) => {
+  messageUpload.single('image')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large. Maximum size is 10MB' });
+      }
+      return res.status(400).json({ error: err.message || 'File upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Generate unique filename: userId-timestamp.ext
+    const timestamp = Date.now();
+    const ext = req.file.mimetype === 'image/gif' ? 'gif' : 'webp';
+    const filename = `${user.id}-${timestamp}.${ext}`;
+    const filepath = path.join(MESSAGES_DIR, filename);
+
+    // Process image with sharp
+    // For GIFs, preserve animation; for others, resize and convert to webp
+    if (req.file.mimetype === 'image/gif') {
+      // Keep GIF as-is to preserve animation, just resize if too large
+      const metadata = await sharp(req.file.buffer).metadata();
+      if (metadata.width > 1200 || metadata.height > 1200) {
+        await sharp(req.file.buffer, { animated: true })
+          .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+          .toFile(filepath);
+      } else {
+        // Save as-is
+        fs.writeFileSync(filepath, req.file.buffer);
+      }
+    } else {
+      // Convert to webp, resize if needed, strip metadata
+      await sharp(req.file.buffer)
+        .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 85 })
+        .toFile(filepath);
+    }
+
+    const imageUrl = `/uploads/messages/${filename}`;
+    console.log(`📷 Image uploaded by ${user.handle}: ${imageUrl}`);
+
+    res.json({ success: true, url: imageUrl });
+  } catch (err) {
+    console.error('Image upload error:', err);
+    res.status(500).json({ error: 'Failed to upload image' });
   }
 });
 

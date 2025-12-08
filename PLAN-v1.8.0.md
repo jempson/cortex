@@ -1,6 +1,6 @@
 # Cortex v1.8.0 - Implementation Plan
 
-## 🎯 RELEASE STATUS: IN PROGRESS (6/10 Phases Complete)
+## 🎯 RELEASE STATUS: IN PROGRESS (7/10 Phases Complete)
 
 **Target Scope:** User Profiles, Scale & Organization
 **Branch:** `v1.8.0`
@@ -31,7 +31,7 @@ Version 1.8.0 focuses on enhanced user profiles and platform scalability. Users 
 |---|---------|----------|-----------|--------|
 | 5 | SQLite Database Migration | High | 12-16h | ✅ Complete |
 | 6 | PWA Push Notifications | High | 8-10h | ✅ Complete |
-| 7 | Image/File Upload System | High | 8-10h | ⏳ Next |
+| 7 | Image/File Upload System | High | 8-10h | ✅ Complete |
 | 8 | Message Pagination | Medium | 6-8h | Pending |
 | 9 | Full-Text Search (FTS) | Medium | 4-6h | Pending |
 | 10 | Rich Media Embeds (YouTube, TikTok, etc.) | Medium | 10-14h | Pending |
@@ -240,25 +240,26 @@ Enable real push notifications when the app is closed/backgrounded. Currently, n
 ---
 
 ### Phase 7: Image/File Upload System
-**Priority:** High | **Estimate:** 8-10h
+**Priority:** High | **Estimate:** 8-10h | **Status:** ✅ Complete
 
 Allow users to upload images directly instead of just pasting URLs.
 
 #### 7.1 Backend
-- [ ] Create `uploads/messages/` directory
-- [ ] `POST /api/uploads` - Upload file
+- [x] Create `uploads/messages/` directory
+- [x] `POST /api/uploads` - Upload file
   - Accept: images (jpg, png, gif, webp)
   - Max size: 10MB
+  - Processing: Resize to max 1200×1200, convert to webp (except GIFs)
   - Return URL to uploaded file
-- [ ] Serve uploaded files from `/uploads/messages/`
-- [ ] Cleanup: Delete orphaned uploads periodically
+- [x] Serve uploaded files from `/uploads/messages/` (via existing static middleware)
+- [ ] Cleanup: Delete orphaned uploads periodically (deferred - manual for now)
 
 #### 7.2 Frontend
-- [ ] Add file upload button in message composer
-- [ ] Drag-and-drop file onto message input
-- [ ] Paste image from clipboard
-- [ ] Upload progress indicator
-- [ ] Insert uploaded image URL into message
+- [x] Add file upload button in message composer (IMG button, orange color)
+- [x] Drag-and-drop file onto compose area (visual feedback with dashed border)
+- [x] Paste image from clipboard (Ctrl+V with image)
+- [x] Upload progress indicator (button shows "..." during upload)
+- [x] Insert uploaded image URL into message (auto-embeds via detectAndEmbedMedia)
 
 ---
 
@@ -500,10 +501,22 @@ npm install multer sharp better-sqlite3
 ### Remaining
 - ~~Phase 5: SQLite Database Migration~~ ✅
 - ~~Phase 6: PWA Push Notifications~~ ✅
-- **Phase 7: Image/File Upload System** ⏳ (NEXT)
-- Phase 8: Message Pagination
+- ~~Phase 7: Image/File Upload System~~ ✅
+- **Phase 8: Message Pagination** ⏳ (NEXT)
 - Phase 9: Full-Text Search (FTS)
 - Phase 10: Rich Media Embeds (YouTube, TikTok, Twitter, Spotify, etc.)
+
+- ✅ **Phase 7**: Image/File Upload System
+  - Backend: `POST /api/uploads` endpoint with multer + sharp
+    - 10MB max file size
+    - Accepts: jpg, png, gif, webp
+    - Resizes to max 1200×1200, converts to webp (except GIFs)
+    - Serves from `/uploads/messages/`
+  - Frontend: IMG button in message composer (orange, matches EMO/GIF style)
+    - Drag-and-drop onto compose area with visual feedback
+    - Paste image from clipboard (Ctrl+V)
+    - Progress indicator (button shows "...")
+    - Uploaded URL inserted into message (auto-embeds on send)
 
 ### December 8, 2025
 - ✅ **Phase 5**: SQLite Database Migration

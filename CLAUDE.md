@@ -388,6 +388,24 @@ Uploadable profile pictures with automatic processing.
   - Must add `/uploads` location proxying to port 3001 (see README.md)
   - **Nginx Proxy Manager**: Must disable "Cache Assets" option, otherwise NPM intercepts image requests and returns cached HTML instead of images
 
+### Message Image Upload (v1.8.0+)
+Upload images directly in messages instead of pasting URLs.
+
+- **Upload Endpoint**: `POST /api/uploads`
+  - Accepts: jpg, jpeg, png, gif, webp (max 10MB)
+  - Processing: Resize to max 1200×1200, convert to webp (except animated GIFs)
+  - Storage: `/uploads/messages/{userId}-{timestamp}.{ext}`
+  - Returns: `{ success: true, url: "/uploads/messages/..." }`
+- **Static Serving**: Files served from `/uploads/messages/`
+- **Frontend Features**:
+  - **IMG Button**: Orange button in message composer (between GIF and SEND)
+  - **Drag-and-Drop**: Drop images onto compose area (visual feedback with dashed border)
+  - **Clipboard Paste**: Paste images with Ctrl+V
+  - **Progress Indicator**: Button shows "..." during upload
+  - **Auto-Embed**: Uploaded URL inserted into message, auto-embeds via `detectAndEmbedMedia()`
+- **Client State**: `uploading` state disables SEND button during upload
+- **Dependencies**: Uses same `multer` + `sharp` as avatar uploads
+
 ### About Me / Bio (v1.8.0+)
 User bio/about section visible on profiles.
 
@@ -479,6 +497,11 @@ Cleaner UI showing display names instead of @handles.
     - Push subscription management in Profile Settings
     - Service worker handles push display and navigation
     - Auto-cleanup of expired subscriptions
+  - **Message Image Upload**:
+    - `POST /api/uploads` with multer + sharp processing
+    - Max 10MB, resize to 1200×1200, convert to webp (except GIFs)
+    - IMG button in composer (orange), drag-and-drop, clipboard paste
+    - Uploaded URL auto-embeds via `detectAndEmbedMedia()`
 
 - **v1.7.0 (December 2025)** - Contact & Invitation Approval System + Moderation + GIF Search
   - Contact Request System: Send/accept/decline contact requests
