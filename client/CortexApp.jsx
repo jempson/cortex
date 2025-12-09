@@ -397,18 +397,42 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
   useEffect(() => {
     if (oembedHtml && embedContainerRef.current) {
       // TikTok embed script
-      if (embed.platform === 'tiktok' && !document.querySelector('script[src*="tiktok.com/embed.js"]')) {
-        const script = document.createElement('script');
-        script.src = 'https://www.tiktok.com/embed.js';
-        script.async = true;
-        document.body.appendChild(script);
+      if (embed.platform === 'tiktok') {
+        const existingScript = document.querySelector('script[src*="tiktok.com/embed.js"]');
+        if (!existingScript) {
+          const script = document.createElement('script');
+          script.src = 'https://www.tiktok.com/embed.js';
+          script.async = true;
+          document.body.appendChild(script);
+        } else if (window.tiktokEmbed) {
+          // Script already loaded - re-process embeds
+          window.tiktokEmbed.lib.render();
+        }
+        // Also try after a delay in case script is still loading
+        setTimeout(() => {
+          if (window.tiktokEmbed) {
+            window.tiktokEmbed.lib.render();
+          }
+        }, 1000);
       }
       // Twitter/X embed script
-      if (embed.platform === 'twitter' && !document.querySelector('script[src*="platform.twitter.com"]')) {
-        const script = document.createElement('script');
-        script.src = 'https://platform.twitter.com/widgets.js';
-        script.async = true;
-        document.body.appendChild(script);
+      if (embed.platform === 'twitter') {
+        const existingScript = document.querySelector('script[src*="platform.twitter.com"]');
+        if (!existingScript) {
+          const script = document.createElement('script');
+          script.src = 'https://platform.twitter.com/widgets.js';
+          script.async = true;
+          document.body.appendChild(script);
+        } else if (window.twttr?.widgets) {
+          // Script already loaded - re-process embeds
+          window.twttr.widgets.load(embedContainerRef.current);
+        }
+        // Also try after a delay in case script is still loading
+        setTimeout(() => {
+          if (window.twttr?.widgets) {
+            window.twttr.widgets.load(embedContainerRef.current);
+          }
+        }, 1000);
       }
       // SoundCloud doesn't need external script - oEmbed returns iframe directly
     }
