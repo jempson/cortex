@@ -289,25 +289,28 @@ const EMBED_URL_PATTERNS = {
   ],
 };
 
-// Detect embed URLs in text (skip URLs already embedded in HTML tags)
+// Detect embed URLs in text (skip image URLs already embedded as <img> tags)
 function detectEmbedUrls(text) {
   const embeds = [];
+  const seenUrls = new Set(); // Prevent duplicate embeds
 
-  // First, collect all URLs that are already in HTML tags (img src, a href)
-  const embeddedUrlRegex = /<(?:img[^>]+src|a[^>]+href)=["']([^"']+)["']/gi;
-  const alreadyEmbedded = new Set();
-  let embeddedMatch;
-  while ((embeddedMatch = embeddedUrlRegex.exec(text)) !== null) {
-    alreadyEmbedded.add(embeddedMatch[1]);
+  // Collect URLs already embedded as <img> tags (we don't want to re-embed images)
+  const imgSrcRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+  const alreadyEmbeddedImages = new Set();
+  let imgMatch;
+  while ((imgMatch = imgSrcRegex.exec(text)) !== null) {
+    alreadyEmbeddedImages.add(imgMatch[1]);
   }
 
-  // Find all URLs in the text
+  // Find all URLs in the text (including those in <a> tags - we want to embed videos)
   const urlRegex = /https?:\/\/[^\s<>"]+/gi;
   const urls = text.match(urlRegex) || [];
 
   for (const url of urls) {
-    // Skip URLs that are already embedded as img/a tags
-    if (alreadyEmbedded.has(url)) continue;
+    // Skip URLs already embedded as images
+    if (alreadyEmbeddedImages.has(url)) continue;
+    // Skip duplicate URLs
+    if (seenUrls.has(url)) continue;
 
     for (const [platform, patterns] of Object.entries(EMBED_URL_PATTERNS)) {
       for (const pattern of patterns) {
@@ -332,6 +335,7 @@ function detectEmbedUrls(text) {
           }
 
           embeds.push(embed);
+          seenUrls.add(url);
           break;
         }
       }
@@ -5950,10 +5954,11 @@ function MainApp() {
 
       {/* Footer */}
       <footer style={{
-        padding: '8px 12px', background: '#050805', borderTop: '1px solid #2a3a2a',
-        display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
+        padding: '8px 8px', background: '#050805', borderTop: '1px solid #2a3a2a',
+        display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
       }}>
-        <div style={{ color: '#5a6a5a', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ color: '#5a6a5a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: '#3a4a3a' }}>v1.8.1</span>
           <span><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</span>
           <span><span style={{ color: apiConnected ? '#0ead69' : '#ff6b35' }}>●</span> API</span>
           <span><span style={{ color: wsConnected ? '#0ead69' : '#ff6b35' }}>●</span> LIVE</span>
