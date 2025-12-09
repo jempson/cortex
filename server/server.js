@@ -3440,15 +3440,15 @@ app.post('/api/messages', authenticateToken, (req, res) => {
     privacy: wave.privacy,
   });
 
-  // Create push notification payload for offline users
+  // Create push notification payload
   const senderName = message.sender_name || db.findUserById(req.user.userId)?.displayName || 'Someone';
   const contentPreview = content.replace(/<[^>]*>/g, '').substring(0, 100);
   const pushPayload = {
     title: `New message in ${wave.title}`,
     body: `${senderName}: ${contentPreview}${content.length > 100 ? '...' : ''}`,
-    tag: `wave-${waveId}`,
     url: `/?wave=${waveId}`,
-    waveId
+    waveId,
+    messageId: message.id // Include messageId for unique notification tags
   };
 
   // Broadcast to connected users and send push to offline users
@@ -3769,13 +3769,18 @@ function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs 
     const isConnected = clients.has(userId) && clients.get(userId).size > 0;
 
     if (isConnected) {
-      // User is online - send via WebSocket
+      // User has active WebSocket - send via WebSocket
       for (const ws of clients.get(userId)) {
         if (excludeWs && ws === excludeWs) continue;
         if (ws.readyState === 1) ws.send(JSON.stringify(message));
       }
-    } else if (pushPayload) {
-      // User is offline - send push notification
+    }
+
+    // Always send push notification if payload provided (for backgrounded PWAs)
+    // The service worker will show the notification even if the app is in background
+    // On Android PWA, WebSocket may stay connected but app is not in foreground
+    // Push notifications are the only reliable way to alert backgrounded users
+    if (pushPayload) {
       sendPushNotification(userId, pushPayload);
     }
   }

@@ -1,6 +1,7 @@
-// Cortex Service Worker v1.8.0
+// Cortex Service Worker v1.8.1
 // Includes: Push notifications, offline caching, stale-while-revalidate
-const CACHE_NAME = 'cortex-v1.8.0';
+// v1.8.1: Fixed push notification issues - unique tags, background detection
+const CACHE_NAME = 'cortex-v1.8.1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -107,15 +108,24 @@ self.addEventListener('push', (event) => {
     };
   }
 
+  // Use unique tag per message to prevent notification replacement
+  // Fall back to timestamp if no messageId provided
+  const uniqueTag = data.messageId
+    ? `cortex-msg-${data.messageId}`
+    : `cortex-${Date.now()}`;
+
   const options = {
     body: data.body || 'New message received',
     icon: '/icons/icon-192x192.png',
     badge: '/icons/icon-96x96.png',
-    tag: data.tag || 'cortex-notification',
+    tag: uniqueTag,
     renotify: true,
+    requireInteraction: false, // Auto-dismiss after a while on mobile
+    silent: false, // Ensure notification makes sound
     data: {
       url: data.url || '/',
-      waveId: data.waveId
+      waveId: data.waveId,
+      messageId: data.messageId
     },
     vibrate: [100, 50, 100],
     actions: [
@@ -124,8 +134,23 @@ self.addEventListener('push', (event) => {
     ]
   };
 
+  // Check if app is in foreground - if so, skip notification
+  // (WebSocket will deliver the message directly to the app)
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Cortex', options)
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // Check if any client window is visible/focused
+        const hasVisibleClient = clientList.some(client =>
+          client.visibilityState === 'visible'
+        );
+
+        // Only show notification if app is not visible (backgrounded or closed)
+        if (!hasVisibleClient) {
+          return self.registration.showNotification(data.title || 'Cortex', options);
+        }
+        // If app is visible, WebSocket message will show the message directly
+        return Promise.resolve();
+      })
   );
 });
 

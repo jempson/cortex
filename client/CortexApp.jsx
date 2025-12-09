@@ -289,13 +289,26 @@ const EMBED_URL_PATTERNS = {
   ],
 };
 
-// Detect embed URLs in text
+// Detect embed URLs in text (skip URLs already embedded in HTML tags)
 function detectEmbedUrls(text) {
   const embeds = [];
+
+  // First, collect all URLs that are already in HTML tags (img src, a href)
+  const embeddedUrlRegex = /<(?:img[^>]+src|a[^>]+href)=["']([^"']+)["']/gi;
+  const alreadyEmbedded = new Set();
+  let embeddedMatch;
+  while ((embeddedMatch = embeddedUrlRegex.exec(text)) !== null) {
+    alreadyEmbedded.add(embeddedMatch[1]);
+  }
+
+  // Find all URLs in the text
   const urlRegex = /https?:\/\/[^\s<>"]+/gi;
   const urls = text.match(urlRegex) || [];
 
   for (const url of urls) {
+    // Skip URLs that are already embedded as img/a tags
+    if (alreadyEmbedded.has(url)) continue;
+
     for (const [platform, patterns] of Object.entries(EMBED_URL_PATTERNS)) {
       for (const pattern of patterns) {
         const match = url.match(pattern);
@@ -332,7 +345,13 @@ function detectEmbedUrls(text) {
 const RichEmbed = ({ embed, autoLoad = false }) => {
   const [loaded, setLoaded] = useState(autoLoad);
   const [error, setError] = useState(false);
+  const [oembedHtml, setOembedHtml] = useState(null);
+  const [oembedLoading, setOembedLoading] = useState(false);
   const platform = EMBED_PLATFORMS[embed.platform] || { icon: '🔗', color: '#666', name: 'Link' };
+  const embedContainerRef = useRef(null);
+
+  // Platforms that require oEmbed HTML injection (no direct iframe embed URL)
+  const requiresOembed = ['tiktok', 'twitter', 'soundcloud'].includes(embed.platform);
 
   // Determine iframe dimensions based on platform
   const getDimensions = () => {
@@ -343,12 +362,53 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
         return { width: '100%', height: '166px' };
       case 'twitter':
         return { width: '100%', height: '400px' };
-      default: // YouTube, Vimeo, TikTok
+      case 'tiktok':
+        return { width: '100%', height: '750px' };
+      default: // YouTube, Vimeo
         return { width: '100%', height: '315px' };
     }
   };
 
   const dimensions = getDimensions();
+
+  // Fetch oEmbed data when loaded for platforms that need it
+  useEffect(() => {
+    if (loaded && requiresOembed && !oembedHtml && !oembedLoading) {
+      setOembedLoading(true);
+      fetch(`${API_URL}/embeds/oembed?url=${encodeURIComponent(embed.url)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.html) {
+            setOembedHtml(data.html);
+          } else {
+            setError(true);
+          }
+        })
+        .catch(() => setError(true))
+        .finally(() => setOembedLoading(false));
+    }
+  }, [loaded, requiresOembed, oembedHtml, oembedLoading, embed.url]);
+
+  // Load external embed scripts after oEmbed HTML is inserted
+  useEffect(() => {
+    if (oembedHtml && embedContainerRef.current) {
+      // TikTok embed script
+      if (embed.platform === 'tiktok' && !document.querySelector('script[src*="tiktok.com/embed.js"]')) {
+        const script = document.createElement('script');
+        script.src = 'https://www.tiktok.com/embed.js';
+        script.async = true;
+        document.body.appendChild(script);
+      }
+      // Twitter/X embed script
+      if (embed.platform === 'twitter' && !document.querySelector('script[src*="platform.twitter.com"]')) {
+        const script = document.createElement('script');
+        script.src = 'https://platform.twitter.com/widgets.js';
+        script.async = true;
+        document.body.appendChild(script);
+      }
+      // SoundCloud doesn't need external script - oEmbed returns iframe directly
+    }
+  }, [oembedHtml, embed.platform]);
 
   if (error) {
     return (
@@ -443,7 +503,42 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
     );
   }
 
-  // Loaded state - render iframe
+  // Loading state for oEmbed platforms
+  if (requiresOembed && oembedLoading) {
+    return (
+      <div style={{
+        width: '100%',
+        maxWidth: '560px',
+        padding: '20px',
+        background: '#0a100a',
+        border: '1px solid #2a3a2a',
+        borderRadius: '4px',
+        marginTop: '8px',
+        textAlign: 'center',
+        color: '#8a9a8a',
+      }}>
+        Loading {platform.name}...
+      </div>
+    );
+  }
+
+  // Render oEmbed HTML for platforms that need it
+  if (requiresOembed && oembedHtml) {
+    return (
+      <div
+        ref={embedContainerRef}
+        style={{
+          width: '100%',
+          maxWidth: '560px',
+          marginTop: '8px',
+          overflow: 'hidden',
+        }}
+        dangerouslySetInnerHTML={{ __html: oembedHtml }}
+      />
+    );
+  }
+
+  // Loaded state - render iframe (for YouTube, Vimeo, Spotify)
   return (
     <div style={{
       width: '100%',
@@ -5021,8 +5116,14 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
             {storage.getPushEnabled() ? '🔔 ENABLED' : '🔕 DISABLED'}
           </button>
           <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
-            Receive notifications when the app is closed
+            Receive notifications when the app is closed or in background
           </div>
+          {/* iOS warning */}
+          {/iPad|iPhone|iPod/.test(navigator.userAgent) && (
+            <div style={{ color: '#ff6b35', fontSize: '0.65rem', marginTop: '6px', padding: '6px', background: '#ff6b3510', border: '1px solid #ff6b3530' }}>
+              ⚠️ iOS does not support push notifications for web apps. This is a platform limitation by Apple.
+            </div>
+          )}
         </div>
 
         <div style={{ color: '#5a6a5a', fontSize: '0.7rem', padding: '10px', background: '#0a100a', border: '1px solid #2a3a2a' }}>
