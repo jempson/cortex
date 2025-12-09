@@ -527,8 +527,9 @@ Automatic embedding of videos and media from popular platforms.
   - YouTube thumbnails from `img.youtube.com/vi/{id}/hqdefault.jpg`
   - Embeds detected at render time (not stored in DB)
   - URLs stripped from displayed content when embed shown
-  - **oEmbed platforms** (TikTok, Twitter, SoundCloud): Fetch HTML via `/api/embeds/oembed`, inject platform scripts dynamically
   - **iframe platforms** (YouTube, Vimeo, Spotify): Direct embed URL in iframe
+  - **oEmbed platforms** (Twitter, SoundCloud): Fetch HTML via `/api/embeds/oembed`, inject platform scripts
+  - **Link card** (TikTok): Styled link card opens in new tab (embed.js incompatible with React)
 
 ### Responsive Design (Updated v1.3.2)
 - **Multiple breakpoints:**
@@ -611,13 +612,20 @@ Automatic embedding of videos and media from popular platforms.
     - CSP frame-src directive for secure iframe embedding
     - Platform-specific thumbnails and play buttons
 
-- **v1.8.1 (December 2025)** - Bug Fixes: Embeds & Push Notifications
-  - **TikTok Embed Fix**: TikTok embeds now work via oEmbed API
-    - Fetches embed HTML from TikTok's oEmbed endpoint
-    - Dynamically injects TikTok's `embed.js` script
-    - Also improved Twitter/X and SoundCloud embeds (same approach)
+- **v1.8.1 (December 2025)** - Bug Fixes: Embeds, Push Notifications & UX
+  - **Video Embed Fix**: YouTube, Spotify, Vimeo now properly show embedded players
+    - Fixed `detectEmbedUrls()` to only skip image URLs in `<img>` tags
+    - Video URLs in `<a>` tags now correctly detected for embed players
+    - Added `seenUrls` set to prevent duplicate embeds
+  - **TikTok Link Card**: TikTok URLs show styled link card (opens in new tab)
+    - TikTok's embed.js incompatible with React's virtual DOM
+    - Replaced with branded link card (pink border, music icon)
+    - No external scripts or API calls required
+  - **Twitter/SoundCloud oEmbed**: Fetch embed HTML via oEmbed API
+    - Script tags stripped from oEmbed HTML for security
+    - Platform scripts loaded once and re-triggered for new embeds
   - **Duplicate Embed Fix**: Images no longer appear twice in messages
-    - Client-side `detectEmbedUrls()` now skips URLs already in HTML tags
+    - Client-side detection skips URLs already in `<img>` tags
     - Prevents double-embedding by server and client
   - **Mobile Push Notification Fixes**:
     - Unique notification tags per message (prevents replacement)
@@ -625,6 +633,7 @@ Automatic embedding of videos and media from popular platforms.
     - Notifications only shown when app is backgrounded/closed
     - iOS limitation warning added to Profile Settings
   - **iOS Push Limitation**: Documented that iOS/Safari does not support Web Push API for PWAs (Apple platform limitation)
+  - **Footer**: Added version number (v1.8.1), tightened padding
   - Service worker version bump to v1.8.1
 
 - **v1.7.0 (December 2025)** - Contact & Invitation Approval System + Moderation + GIF Search
