@@ -5,6 +5,34 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2025-12-09
+
+### Fixed
+
+#### Video Embeds
+- **YouTube/Spotify/Vimeo Working**: Fixed embed detection to not skip video URLs in anchor tags (only skip image URLs)
+- **TikTok Link Card**: Replaced TikTok oEmbed with styled link card (TikTok's embed.js incompatible with React, caused infinite re-renders)
+- **Duplicate Image Embeds**: Fixed duplicate embeds by tracking already-embedded image URLs
+
+#### Push Notifications
+- **Unique Notification Tags**: Each message now has unique tag (`cortex-msg-{messageId}`) to prevent notification replacement
+- **Visibility Filtering**: Push notifications only show when app is not in foreground (client-side `clients.matchAll()` check)
+- **iOS Warning**: Added console warning about iOS push notification limitations in PWA
+
+### Added
+
+#### Version Display
+- **Footer Version**: Added "v1.8.1" version indicator to application footer
+- **Tighter Footer**: Reduced footer padding for cleaner appearance
+
+### Technical Details
+
+- TikTok styled link card with gradient background and platform branding
+- Service worker visibility check using `clients.matchAll({ type: 'window', includeUncontrolled: true })`
+- Push payload includes `messageId` for unique notification tags
+
+---
+
 ## [1.8.0] - 2025-12-08
 
 ### Added

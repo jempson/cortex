@@ -1,334 +1,6 @@
-# CORTEX - Secure Wave Communications v1.8.0-alpha
+# CORTEX - Secure Wave Communications
 
-A privacy-first, federated communication platform inspired by Google Wave with a Firefly aesthetic.
-
-## What's New in v1.8.0
-
-### 🖼️ Profile Images
-Upload custom profile pictures to replace letter avatars.
-
-- **Image Upload**: Upload jpg, png, gif, or webp images (up to 2MB)
-- **Auto-Processing**: Images resized to 256×256 and converted to efficient webp format
-- **Privacy**: EXIF metadata automatically stripped from uploads
-- **Fallback**: Letter avatar shown if no image set or if image fails to load
-- **Message Display**: Profile images appear next to your messages in waves
-
-### 📝 About Me / Bio
-Add a bio to your profile that others can view.
-
-- **500 Characters**: Express yourself with a generous character limit
-- **Public Profile**: Bio visible when others view your profile
-- **Character Counter**: Real-time count shows remaining characters
-
-### 👤 User Profile Modal
-Click on any user's name or avatar to view their profile.
-
-- **Profile Display**: Large avatar, display name, @handle, bio, join date
-- **Quick Actions**: Add Contact, Block, or Mute directly from profile
-- **Universal**: Works in messages, participants list, and contacts
-
-### 🎨 Cleaner UI
-Display names now shown instead of @handles in most places.
-
-- **Simplified Display**: Only display names shown in messages, participants, wave list
-- **@handle Preserved**: Still visible in Profile Settings and User Profile Modal
-- **Clickable**: Names/avatars open the profile modal
-
-### 📦 Message Layout Cleanup
-Consolidated message footer for a more compact view.
-
-- **Before**: 4 rows (Reply/Edit/Delete → Reactions → Emoji picker → Seen by)
-- **After**: 2 rows (Actions + reactions inline → Compact read count)
-- **Icon Buttons**: Edit (✏️) and Delete (✕) shortened to icons only
-- **Inline Reactions**: Reactions now appear on same row as action buttons
-- **Compact Read Count**: "✓3" instead of "Seen by 3 people" (expandable)
-
-### 😀 Emoji Picker Improvements
-Fixed and improved the message composer emoji picker.
-
-- **Centering Fix**: Emojis properly centered at all font sizes
-- **Cleaner UI**: Removed redundant CLOSE button (click EMO to dismiss)
-- **Compact Grid**: 8-column layout on desktop (16 emojis in 2 rows)
-
-### 🗄️ SQLite Database (Optional)
-Migrate from JSON files to SQLite for better performance.
-
-- **Better Performance**: SQLite handles large datasets more efficiently than JSON files
-- **Optional Upgrade**: Set `USE_SQLITE=true` to enable (JSON remains default)
-- **Migration Script**: `node migrate-json-to-sqlite.js` converts existing data
-- **Dry Run**: Use `--dry-run` flag to preview migration without changes
-- **Auto-Backup**: JSON files backed up to `data/json-backup/` before migration
-- **14 Tables**: Users, waves, messages, groups, contacts, and all related data
-
-### 🔔 PWA Push Notifications
-Receive notifications even when the app is closed or backgrounded.
-
-- **Background Notifications**: Server-sent push via Web Push API
-- **Toggle Control**: Enable/disable in Profile Settings → Display Preferences
-- **Smart Delivery**: Only sent to offline users (WebSocket users get real-time)
-- **Click to Open**: Tap notification to open the specific wave
-- **Auto-Cleanup**: Expired subscriptions automatically removed
-- **VAPID Authentication**: Secure push delivery with public/private keys
-
----
-
-## What Was New in v1.7.0
-
-### 📬 Contact Request System
-Users must send and accept contact requests before becoming contacts.
-
-- **Request Workflow**: Send contact requests with optional messages
-- **Accept/Decline**: Recipients can accept or decline requests
-- **Participant Quick Actions**: Add contacts directly from wave participants
-- **Real-Time Updates**: WebSocket notifications for all request events
-- **Badge Count**: Teal badge on Contacts nav shows pending requests
-
-### 👥 Group Invitation System
-Users must be invited to groups and can accept or decline.
-
-- **Invite Contacts**: Send invitations to multiple contacts at once
-- **Accept/Decline**: View and respond to pending invitations
-- **Leave Group**: Any member can leave a group voluntarily
-- **Access Control**: Leaving a group immediately revokes wave access
-- **Badge Count**: Amber badge on Groups nav shows pending invitations
-
-### 🚫 User Moderation (Block/Mute)
-Privacy controls for managing interactions with other users.
-
-- **Block Users**: Prevents contact requests, group invitations, and hides messages
-- **Mute Users**: Hides messages without blocking other interactions
-- **Participant Menu**: Quick block/mute from ⋮ dropdown in wave participants
-- **Management UI**: View and manage blocked/muted users in Profile Settings
-
-### 🎬 GIF Search Integration
-GIPHY-powered GIF search and embedding.
-
-- **Search GIFs**: Search GIPHY database directly from message composer
-- **Trending GIFs**: Browse trending GIFs when opening the modal
-- **One-Click Insert**: Click a GIF to insert it into your message
-- **Requires API Key**: Set `GIPHY_API_KEY` in server `.env` file
-
----
-
-## What Was New in v1.6.1
-
-### Mobile Header Improvements
-- **App Icon Logo** - PWA icon replaces "CORTEX" text on mobile for compact header
-- **Compact Layout** - No more header wrapping on small screens
-- **Logout Relocated** - Moved to Profile Settings under new "SESSION" section
-
-### Collapsible Wave Toolbar
-- **Combined Toolbar** - Participants and Playback merged into single compact bar
-- **Toggle Buttons** - Click "PARTICIPANTS (n)" or "PLAYBACK" to expand/collapse
-- **Collapsed by Default** - Saves vertical space, especially on mobile
-- **Mark All Read** - Stays visible in toolbar when unread messages exist
-
----
-
-## What Was New in v1.6.0
-
-### Progressive Web App (PWA) Support
-Cortex is now a fully installable Progressive Web App that works on Android and iOS devices.
-
-- **Installable App** - Add Cortex to your home screen on Android (Chrome) and iOS (Safari)
-- **Offline Support** - Service worker caches static assets for offline shell access
-- **Install Prompt** - Custom "Install Cortex" banner appears after 2nd visit
-- **Offline Indicator** - Orange banner shows when network connection is lost
-- **App Icons** - 13 custom icons for all device sizes including maskable icons for Android
-- **iOS Optimized** - Full iOS PWA support with apple-touch-icon and status bar styling
-
-#### PWA Technical Details
-- **Service Worker** - Stale-while-revalidate caching strategy for static assets
-- **Web App Manifest** - Complete manifest with shortcuts, theme colors, and display mode
-- **Auto-Updates** - Service worker checks for updates hourly
-- **Network Detection** - Real-time online/offline status monitoring
-
-#### How to Install
-- **Android**: Open in Chrome → Menu → "Add to Home Screen" or use the install prompt
-- **iOS**: Open in Safari → Share → "Add to Home Screen"
-- **Desktop**: Chrome/Edge address bar → Install icon
-
-### Read Receipts Display
-Visual display of who has read messages in a wave.
-
-- **Participant Read Status** - Wave header shows all participants with ✓ (read) or ○ (unread) indicators
-- **Per-Message Receipts** - Expandable "Seen by X people" section on each message
-- **Mark All Read** - One-click button to mark all unread messages as read
-- **Real-Time Updates** - Read status updates live as participants read messages
-- **Visual Feedback** - Green highlighting for users who've read the latest message
-
-## What Was New in v1.5.0
-
-### ⌨️ Typing Indicators
-- **Real-Time Awareness**: See when others are typing in a wave
-- **Multi-User Display**: Shows "Alice, Bob are typing..." for multiple users
-- **Auto-Clear**: Indicators disappear after 5 seconds of inactivity
-- **Throttled Events**: Optimized to send max 1 event per 2 seconds
-- **Wave-Specific**: Only shows typing users in your current wave
-
-### 🎭 Message Reactions
-- **Emoji Support**: React to messages with 6 quick emojis (👍 ❤️ 😂 🎉 🤔 👏)
-- **Toggle Reactions**: Click same emoji again to remove your reaction
-- **Reaction Counts**: See count and list of users who reacted
-- **Real-Time Updates**: Reactions appear instantly across all clients
-- **Persistent**: Reactions saved and displayed after reload
-
-### 🔍 Message Search
-- **Full-Text Search**: Search across all your messages in all accessible waves
-- **Smart Security**: Only searches waves you have permission to view
-- **Search Modal**: Clean overlay UI with live search results
-- **Result Highlighting**: Search terms highlighted in yellow
-- **Jump to Message**: Click result to navigate directly to wave and message
-- **Rich Metadata**: Shows wave name, author, and date for each result
-
-### 🔔 Desktop Notifications
-- **Browser Notifications**: Native desktop notifications for new messages
-- **Smart Triggers**: Notifies when tab backgrounded or viewing different wave
-- **Click to Focus**: Clicking notification opens browser and focuses wave
-- **Auto-Permissions**: Requests permission automatically after login
-- **Privacy-Aware**: Never shows notifications for your own messages
-- **No Backend Needed**: Uses browser Notification API
-
-### 🐛 Critical Fixes
-- **WebSocket Stability**: Fixed disconnection issues with auto-reconnect and heartbeat ping
-- **Scroll Position**: Fixed race conditions causing scroll jumps on user actions
-- **Thread Nesting**: Fixed deep thread indentation going off-screen on mobile
-- **Real-Time Updates**: Fixed waveId extraction for proper message delivery
-
-## What Was New in v1.4.0
-
-### 📖 Per-Message Read Tracking
-- **Click-to-Read**: Messages marked as read only when explicitly clicked
-- **Visual Indicators**: Unread messages have amber border (#ffd23f) and background
-- **Hover Effects**: Pointer cursor and brightening effect on unread messages
-- **Granular Tracking**: Each message tracks which users have read it via `readBy` array
-- **Backend Enhancement**: New `/api/messages/:id/read` endpoint for marking individual messages
-- **Backward Compatible**: Old messages automatically initialized with `readBy` arrays
-
-### 🔄 Scroll Position Preservation
-- **Click Stability**: Clicking unread messages preserves your scroll position
-- **Reply Stability**: Replying to messages maintains current scroll position
-- **Smart Scrolling**: Root messages still scroll to bottom (expected behavior)
-- **Long Wave Support**: No more disruptive jumping in waves with 100+ messages
-- **Seamless UX**: Scroll restoration happens automatically and smoothly
-- **Scroll-to-Unread**: Opening a wave auto-scrolls to first unread message (or bottom if all read)
-
-## What Was New in v1.3.3
-
-### ✏️ Message Editing & Deletion
-- **Edit Messages**: Edit your own messages with inline editing interface
-- **Keyboard Shortcuts**: Ctrl+Enter to save, Escape to cancel
-- **Edit History**: Server tracks edit history with timestamps
-- **Delete Messages**: Delete your own messages with confirmation
-- **Real-Time Updates**: All participants see edits/deletions instantly via WebSocket
-
-### 🎯 Improved Wave UX
-- **Hover States**: Waves highlight on hover for better discoverability
-- **Smooth Transitions**: Polished 200ms transitions for visual feedback
-- **GIF Animation**: GIFs now load eagerly and animate immediately
-- **Clickable Clarity**: Enhanced visual feedback makes waves obviously interactive
-
-### 📊 Collapsible Playback Controls
-- **Space Saving**: Playback bar now hides by default
-- **Toggle Control**: Show/hide playback controls with one click
-- **Persistent State**: Remembers your preference during session
-- **Clean Interface**: Reduces clutter when not using playback mode
-
-### ⌨️ Auto-Focus on Reply
-- **Instant Focus**: Cursor automatically moves to input when clicking reply
-- **Smart Positioning**: Cursor placed at end of existing text
-- **Smooth Experience**: 150ms delay ensures smooth UI transition
-- **Works Everywhere**: Functions on mobile and desktop devices
-
-## What Was New in v1.3.2
-
-### 🎨 Rich Content & Media Support
-- **Emoji Picker**: 16 common emojis in a convenient popup picker
-- **Media Embedding**: Paste image/GIF URLs to embed them inline
-- **Auto-Detection**: Image URLs automatically converted to embedded images
-- **Multi-line Input**: Use Shift+Enter for new lines, Enter to send
-- **Security**: All HTML content sanitized with strict whitelist
-
-### 🗑️ Wave Deletion
-- Wave creators can delete waves with confirmation
-- Cascade deletion: removes wave, participants, messages, and history
-- Real-time notification to all participants
-- Auto-redirect for users viewing deleted wave
-
-### ⚙️ User Preferences
-- **Theme Selection**: Choose from Firefly (default), High Contrast, or Light Mode
-- **Font Size Control**: Adjust from Small to X-Large (4 sizes)
-- **Persistent Settings**: Preferences saved to your account
-
-### 👨‍💼 Admin Panel
-- **Handle Request Management**: Admins can approve/reject handle changes
-- **Centralized Review**: All pending requests in one place
-- **Optional Rejection Reason**: Provide feedback when rejecting
-
-### 📱 Mobile UX Improvements
-- **Multiple Breakpoints**: Optimized for phones (<600px), tablets (600-1024px), and desktops (≥1024px)
-- **Touch-Friendly**: 44px minimum touch targets throughout
-- **Better Fonts**: Improved font smoothing and rendering
-- **Browser Compatibility**: Enhanced support for Chrome, Firefox, and Safari
-
-## What Was New in v1.3.0
-
-### 🆔 UUID-Based Identity System
-- Users now have immutable UUIDs with changeable handles
-- Handle history tracking for audit trails
-- Old handles are reserved for 90 days after change
-- @mentions are stored as UUIDs, rendered as current handles
-
-### 👤 User Account Management
-- **Profile Settings**: Change display name and avatar
-- **Password Management**: Secure password change with validation
-- **Handle Change Requests**: Request handle changes (admin-approved)
-- Handle change cooldown: 30 days between changes
-
-### 📝 Terminology Update
-- "Threads" are now called "Waves" throughout the platform
-
-### 📁 Personal Wave Archiving
-- Archive waves without affecting other participants
-- View archived waves separately
-- Restore waves from archive
-
-## Project Structure
-
-```
-cortex/
-├── server/
-│   ├── server.js           # Express + WebSocket server
-│   ├── database-sqlite.js  # SQLite database class (v1.8.0+)
-│   ├── schema.sql          # SQLite schema (v1.8.0+)
-│   ├── migrate-json-to-sqlite.js  # Migration script (v1.8.0+)
-│   ├── package.json        # Server dependencies
-│   ├── .env                # Environment variables (create this)
-│   ├── uploads/            # Uploaded files (v1.8.0+)
-│   │   └── avatars/        # Profile images
-│   └── data/               # Data storage (auto-created)
-│       ├── cortex.db       # SQLite database (if USE_SQLITE=true)
-│       ├── json-backup/    # JSON backup after migration
-│       ├── users.json      # (JSON mode only)
-│       ├── waves.json
-│       ├── messages.json
-│       ├── groups.json
-│       ├── handle-requests.json
-│       ├── contact-requests.json  # v1.7.0+
-│       ├── group-invitations.json # v1.7.0+
-│       └── moderation.json        # v1.7.0+
-├── client/
-│   ├── CortexApp.jsx       # Main React application
-│   ├── main.jsx            # Entry point
-│   ├── index.html          # HTML template with PWA meta tags
-│   ├── vite.config.js      # Vite configuration
-│   ├── package.json        # Client dependencies
-│   └── public/
-│       ├── manifest.json   # PWA manifest
-│       ├── sw.js           # Service worker
-│       └── icons/          # PWA icons (13 files)
-└── README.md
-```
+**Version 1.8.1** | A privacy-first, federated communication platform inspired by Google Wave.
 
 ## Quick Start
 
@@ -337,6 +9,7 @@ cortex/
 ```bash
 cd server
 npm install
+cp .env.example .env  # Edit with your settings
 npm start
 ```
 
@@ -356,218 +29,136 @@ Client runs at `http://localhost:3000`
 
 Demo accounts (password: `demo123`):
 - `mal` - Malcolm Reynolds (Admin)
-- `zoe` - Zoe Washburne
-- `wash` - Hoban Washburne
-- `kaylee` - Kaylee Frye
-- `jayne` - Jayne Cobb
-- `inara` - Inara Serra
-- `simon` - Simon Tam
-- `river` - River Tam
+- `zoe`, `wash`, `kaylee`, `jayne`, `inara`, `simon`, `river`
 
-## API Endpoints
+---
+
+## Features
+
+### Core Features
+- **Waves** - Threaded conversations with playback timeline
+- **Real-Time** - WebSocket-powered instant messaging
+- **Groups & Contacts** - Organize connections with request/invitation workflows
+- **Search** - Full-text search across all messages (SQLite FTS)
+- **PWA** - Installable app with offline support and push notifications
+
+### Rich Media
+- **Embeds** - YouTube, Spotify, Vimeo, Twitter, SoundCloud players
+- **Images** - Upload or paste image URLs with auto-embedding
+- **GIFs** - GIPHY integration for searching and inserting GIFs
+- **Emoji** - Quick emoji picker for messages and reactions
+
+### User Features
+- **Profiles** - Customizable avatar, display name, and bio
+- **Preferences** - Theme selection and font size control
+- **Moderation** - Block and mute users
+- **Read Receipts** - Per-message read tracking
+
+### Security
+- JWT authentication with 7-day tokens
+- Rate limiting on all endpoints
+- Account lockout after failed attempts
+- HTML sanitization for all user content
+- Helmet.js security headers
+
+---
+
+## Project Structure
+
+```
+cortex/
+├── server/
+│   ├── server.js              # Express + WebSocket server
+│   ├── database-sqlite.js     # SQLite database (optional)
+│   ├── schema.sql             # Database schema
+│   ├── .env                   # Environment config
+│   └── data/                  # Data storage
+├── client/
+│   ├── CortexApp.jsx          # Main React app
+│   ├── public/
+│   │   ├── sw.js              # Service worker
+│   │   └── manifest.json      # PWA manifest
+│   └── package.json
+└── README.md
+```
+
+---
+
+## Configuration
+
+Create `server/.env`:
+
+```bash
+# Required
+PORT=3001
+JWT_SECRET=your-secret-key  # Generate: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+# Optional
+USE_SQLITE=true                    # SQLite instead of JSON (recommended)
+SEED_DEMO_DATA=true                # Create demo accounts
+GIPHY_API_KEY=your-key             # For GIF search
+ALLOWED_ORIGINS=https://your-domain.com
+
+# Push Notifications (optional)
+VAPID_PUBLIC_KEY=your-public-key   # npx web-push generate-vapid-keys
+VAPID_PRIVATE_KEY=your-private-key
+VAPID_EMAIL=mailto:admin@example.com
+
+# Rate Limits (defaults shown)
+RATE_LIMIT_LOGIN_MAX=30            # Per 15 minutes
+RATE_LIMIT_API_MAX=300             # Per minute
+RATE_LIMIT_OEMBED_MAX=30           # Per minute
+```
+
+---
+
+## API Overview
 
 ### Authentication
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/auth/register` | Create new account |
-| POST | `/api/auth/login` | Login and receive JWT |
-| GET | `/api/auth/me` | Get current user info |
-| POST | `/api/auth/logout` | Logout |
+| POST | `/api/auth/register` | Create account |
+| POST | `/api/auth/login` | Login (returns JWT) |
+| GET | `/api/auth/me` | Current user info |
 
-### User Account Management (New in v1.3)
+### Waves & Messages
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| PUT | `/api/users/profile` | Update display name, avatar, bio |
-| PUT | `/api/users/password` | Change password |
-| PUT | `/api/profile/preferences` | Update theme, font size (v1.3.2+) |
-| POST | `/api/users/handle/request` | Request handle change |
-| GET | `/api/users/handle/requests` | Get user's handle requests |
-| GET | `/api/users/handle/history` | Get handle change history |
-
-### Profile Images (v1.8.0+)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/profile/avatar` | Upload profile image (jpg, png, gif, webp, max 2MB) |
-| DELETE | `/api/profile/avatar` | Remove profile image (revert to letter) |
-| GET | `/api/users/:id/profile` | Get user's public profile (avatar, bio, etc.) |
-
-### Admin Endpoints (New in v1.3)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/admin/handle-requests` | List pending handle requests |
-| POST | `/api/admin/handle-requests/:id/review` | Approve/reject request |
-
-### Waves (renamed from Threads)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/waves` | List user's active waves |
-| GET | `/api/waves/archived` | List user's archived waves |
+| GET | `/api/waves` | List waves |
+| POST | `/api/waves` | Create wave |
 | GET | `/api/waves/:id` | Get wave with messages |
-| POST | `/api/waves` | Create new wave |
-| PUT | `/api/waves/:id` | Update wave |
-| DELETE | `/api/waves/:id` | Delete wave (creator only, v1.3.2+) |
-| POST | `/api/waves/:id/archive` | Archive wave for user |
-| POST | `/api/waves/:id/unarchive` | Restore wave from archive |
-| GET | `/api/waves/:id/playback` | Get playback timeline |
-
-### Messages
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/waves/:waveId/messages` | Send a message |
-| PUT | `/api/messages/:id` | Edit a message |
-| GET | `/api/messages/:id/history` | Get edit history |
+| POST | `/api/waves/:id/messages` | Send message |
+| PUT | `/api/messages/:id` | Edit message |
+| DELETE | `/api/messages/:id` | Delete message |
 
 ### Contacts & Groups
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/contacts` | List contacts |
-| GET | `/api/groups` | List groups |
-| POST | `/api/groups` | Create group |
-| POST | `/api/groups/:id/members` | Add member |
-| DELETE | `/api/groups/:id/members/:userId` | Remove member |
-
-### Contact Requests (v1.7.0+)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
 | POST | `/api/contacts/request` | Send contact request |
-| GET | `/api/contacts/requests` | Get received requests |
-| GET | `/api/contacts/requests/sent` | Get sent requests |
 | POST | `/api/contacts/requests/:id/accept` | Accept request |
-| POST | `/api/contacts/requests/:id/decline` | Decline request |
-| DELETE | `/api/contacts/requests/:id` | Cancel sent request |
-
-### Group Invitations (v1.7.0+)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/groups/:id/invite` | Invite users to group |
-| GET | `/api/groups/invitations` | Get pending invitations |
+| POST | `/api/groups/:id/invite` | Invite to group |
 | POST | `/api/groups/invitations/:id/accept` | Accept invitation |
-| POST | `/api/groups/invitations/:id/decline` | Decline invitation |
-| DELETE | `/api/groups/invitations/:id` | Cancel sent invitation |
 
-### User Moderation (v1.7.0+)
+### User Management
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| PUT | `/api/users/profile` | Update profile |
+| POST | `/api/profile/avatar` | Upload avatar |
 | POST | `/api/users/:id/block` | Block user |
-| DELETE | `/api/users/:id/block` | Unblock user |
 | POST | `/api/users/:id/mute` | Mute user |
-| DELETE | `/api/users/:id/mute` | Unmute user |
-| GET | `/api/users/blocked` | Get blocked users |
-| GET | `/api/users/muted` | Get muted users |
 
-### GIF Search (v1.7.0+)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/gifs/search?q=query` | Search GIFs (requires GIPHY_API_KEY) |
-| GET | `/api/gifs/trending` | Get trending GIFs |
+See `CLAUDE.md` for complete API documentation.
 
-## User Identity Model
+---
 
-```javascript
-{
-  id: "uuid-7a8b9c...",           // Immutable, used in all references
-  handle: "mal",                   // Changeable (admin-approved)
-  displayName: "Malcolm Reynolds", // Freely changeable
-  avatar: "M",                     // Freely changeable (1-2 chars)
-  avatarUrl: "/uploads/avatars/user-xxx.webp", // v1.8.0+ Profile image URL
-  bio: "Captain of the Serenity",  // v1.8.0+ About me (max 500 chars)
-  handleHistory: [
-    { handle: "mal", from: "2025-01-01", to: null }
-  ],
-  preferences: {                   // v1.3.2+
-    theme: "firefly",              // firefly, highContrast, light
-    fontSize: "medium",            // small, medium, large, xlarge
-    colorMode: "default"           // Future: accessibility modes
-  }
-}
-```
+## Deployment
 
-### Handle Change Rules
-- Changes require admin approval
-- 30-day cooldown between changes
-- Old handles reserved for 90 days
-- Mentions stored as UUIDs (always resolve to current handle)
-
-## Privacy Levels
-
-| Level | Icon | Description |
-|-------|------|-------------|
-| Private | ◉ | End-to-end encrypted, only participants |
-| Group | ◈ | Visible to local group members |
-| Cross-Server | ◇ | Shared across federated servers |
-| Public | ○ | Visible on federated public feeds |
-
-## Security Features
-
-- **Password Requirements**: 8+ chars, uppercase, lowercase, number
-- **Rate Limiting**: Login (5/15min), Register (3/hour), API (100/min)
-- **Account Lockout**: 5 failed attempts = 15 minute lockout
-- **XSS Protection**: All inputs sanitized
-- **Security Headers**: Helmet.js enabled
-- **JWT Authentication**: 7-day token expiry
-- **Media Embedding Security** (v1.3.2+):
-  - HTML sanitization with strict whitelist
-  - Only safe tags allowed: img, a, br, p, strong, em, code, pre
-  - HTTPS/HTTP protocols only (no data URIs)
-  - Auto-embedding with security transforms
-  - Lazy loading for external images
-
-## Environment Variables
-
-Create a `.env` file in the `server/` directory:
-
-```bash
-# Server Configuration
-PORT=3001                          # Server port
-JWT_SECRET=your-secret-key         # JWT signing key (required in production)
-JWT_EXPIRES_IN=7d                  # Token expiration
-ALLOWED_ORIGINS=https://your-domain.com  # CORS whitelist
-SEED_DEMO_DATA=true                # Seed demo accounts on first run
-
-# Database (v1.8.0+)
-USE_SQLITE=true                    # Use SQLite instead of JSON files (recommended)
-
-# GIF Search (v1.7.0+)
-GIPHY_API_KEY=your-giphy-api-key   # Get from developers.giphy.com
-
-# Push Notifications (v1.8.0+)
-VAPID_PUBLIC_KEY=your-public-key   # Generate with: npx web-push generate-vapid-keys
-VAPID_PRIVATE_KEY=your-private-key # Keep secret!
-VAPID_EMAIL=mailto:admin@your-domain.com
-```
-
-Generate a secure JWT_SECRET:
-```bash
-node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-```
-
-## WebSocket Events
-
-### Client → Server
-```json
-{ "type": "auth", "token": "jwt-token" }
-```
-
-### Server → Client
-```json
-{ "type": "auth_success" }
-{ "type": "new_message", "waveId": "...", "message": {...} }
-{ "type": "wave_created", "wave": {...} }
-{ "type": "wave_deleted", "waveId": "...", "deletedBy": "..." }
-{ "type": "handle_request_reviewed", "request": {...}, "newHandle": "..." }
-```
-
-## Deployment with Nginx
-
-Example nginx configuration for reverse proxy:
+### Nginx Reverse Proxy
 
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name cortex.yourdomain.com;
-
-    ssl_certificate /etc/letsencrypt/live/cortex.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/cortex.yourdomain.com/privkey.pem;
+    server_name cortex.example.com;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -575,15 +166,12 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
     }
 
     location /api {
         proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Host $host;
     }
 
     location /ws {
@@ -591,92 +179,69 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
     }
 
-    # Uploaded files (avatars, etc.) - added in v1.8.0
     location /uploads {
         proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
     }
 }
 ```
 
-### Nginx Proxy Manager
+**Nginx Proxy Manager Note:** Disable "Cache Assets" to prevent profile images from breaking.
 
-If using Nginx Proxy Manager (NPM), add these locations in the **Advanced** tab:
+---
 
-```nginx
-location /api {
-    proxy_pass http://your-backend:3001;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
+## Changelog
 
-location /ws {
-    proxy_pass http://your-backend:3001;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_read_timeout 86400;
-}
+### v1.8.1 (December 2025)
+- Fixed video embeds (YouTube, Spotify, Vimeo)
+- TikTok shows as styled link card (embed.js incompatible with React)
+- Fixed duplicate image embeds
+- Push notification improvements (unique tags, visibility filtering)
+- Added version number to footer
+- iOS push notification warning
 
-location /uploads {
-    proxy_pass http://your-backend:3001;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-}
-```
+### v1.8.0 (December 2025)
+- Profile images with upload and processing
+- About Me / Bio section
+- User Profile Modal
+- SQLite database option
+- PWA push notifications
+- Rich media embeds (YouTube, Spotify, Twitter, etc.)
+- Message image upload
+- Full-text search (FTS5)
 
-**Important NPM Settings:**
-- **Cache Assets**: Must be **disabled** for the proxy host. NPM's asset caching intercepts image requests (`.webp`, `.jpg`, etc.) and can return cached HTML instead of the actual images, breaking profile picture display.
-- **WebSockets Support**: Enable for real-time features.
-- **Block Common Exploits**: Can remain enabled.
+### v1.7.0 (December 2025)
+- Contact request system
+- Group invitation system
+- User blocking and muting
+- GIF search (GIPHY)
 
-## Roadmap
+### v1.6.0 (December 2025)
+- Progressive Web App (PWA)
+- Read receipts display
+- Offline support
 
-### Completed in v1.7.0
-- [x] Contact Request System (send/accept/decline)
-- [x] Group Invitation System (invite/accept/decline)
-- [x] Add contacts from wave participants
-- [x] Leave group functionality
-- [x] User blocking and muting
-- [x] GIF search integration (GIPHY)
-- [x] Environment variable loading (dotenv)
+### v1.5.0 (December 2025)
+- Typing indicators
+- Message reactions
+- Message search
+- Desktop notifications
 
-### Completed in v1.6.0
-- [x] Progressive Web App (PWA) support
-- [x] Service worker with offline caching
-- [x] App icons and manifest
-- [x] Install prompt and offline indicator
+See `CHANGELOG.md` for complete history.
 
-### Completed in v1.8.0
-- [x] Profile images (avatar upload with sharp processing)
-- [x] About Me / Bio section (500 char)
-- [x] User Profile Modal (view other users' profiles)
-- [x] Display name simplification (hide @handle in most UI)
-- [x] Profile images in wave messages
-- [x] Message layout cleanup (compact 2-row footer)
-- [x] Emoji picker improvements (centering, no close button)
-- [x] SQLite database migration (optional, `USE_SQLITE=true`)
-- [x] PWA Push Notifications (background notifications when app closed)
+---
 
-### v1.8 - Remaining (Scale & Organization)
-- [ ] Image/file upload for messages (not just URL embedding)
-- [ ] Message pagination/virtual scrolling
-- [ ] Full-text search with database FTS
-- [ ] Content reporting system
-- [ ] Admin reports dashboard
+## Privacy Levels
 
-### v2.0 - Federation
-- [ ] Cross-server communication protocol
-- [ ] Server discovery and trust system
-- [ ] End-to-end encryption for federated messages
-- [ ] Federated alert system
+| Level | Icon | Description |
+|-------|------|-------------|
+| Private | ◉ | Only invited participants |
+| Group | ◈ | All group members |
+| Cross-Server | ◇ | Federated servers (future) |
+| Public | ○ | Public feeds (future) |
+
+---
 
 ## License
 
