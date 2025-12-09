@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, createContext, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
 
 // ============ CONFIGURATION ============
 // Auto-detect production vs development
@@ -8,9 +8,10 @@ const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = isProduction ? window.location.hostname : 'localhost';
 const port = isProduction ? '' : ':3001';
 
-const API_URL = isProduction
-  ? `${protocol}//${hostname}/api`
-  : 'http://localhost:3001/api';
+const BASE_URL = isProduction
+  ? `${protocol}//${hostname}`
+  : 'http://localhost:3001';
+const API_URL = `${BASE_URL}/api`;
 const WS_URL = isProduction
   ? `${wsProtocol}//${hostname}/ws`
   : 'ws://localhost:3001';
@@ -89,36 +90,437 @@ const storage = {
   getUser: () => { try { return JSON.parse(localStorage.getItem('cortex_user')); } catch { return null; } },
   setUser: (user) => localStorage.setItem('cortex_user', JSON.stringify(user)),
   removeUser: () => localStorage.removeItem('cortex_user'),
+  getPushEnabled: () => localStorage.getItem('cortex_push_enabled') !== 'false', // Default true
+  setPushEnabled: (enabled) => localStorage.setItem('cortex_push_enabled', enabled ? 'true' : 'false'),
+};
+
+// ============ PUSH NOTIFICATION HELPERS ============
+// Subscribe to push notifications
+async function subscribeToPush(token) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    console.log('[Push] Push notifications not supported');
+    return false;
+  }
+
+  try {
+    // Get VAPID public key from server
+    const response = await fetch(`${API_URL}/push/vapid-key`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!response.ok) {
+      console.log('[Push] Push notifications not configured on server');
+      return false;
+    }
+
+    const { publicKey } = await response.json();
+
+    // Get service worker registration
+    const registration = await navigator.serviceWorker.ready;
+
+    // Check existing subscription
+    let subscription = await registration.pushManager.getSubscription();
+
+    // If no subscription or VAPID key changed, create new subscription
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+      console.log('[Push] New push subscription created');
+    }
+
+    // Send subscription to server
+    await fetch(`${API_URL}/push/subscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ subscription })
+    });
+
+    console.log('[Push] Push subscription registered with server');
+    return true;
+  } catch (error) {
+    console.error('[Push] Failed to subscribe:', error);
+    return false;
+  }
+}
+
+// Unsubscribe from push notifications
+async function unsubscribeFromPush(token) {
+  if (!('serviceWorker' in navigator)) return false;
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+
+    if (subscription) {
+      // Unsubscribe locally
+      await subscription.unsubscribe();
+
+      // Tell server to remove subscription
+      await fetch(`${API_URL}/push/subscribe`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ endpoint: subscription.endpoint })
+      });
+
+      console.log('[Push] Push subscription removed');
+    }
+    return true;
+  } catch (error) {
+    console.error('[Push] Failed to unsubscribe:', error);
+    return false;
+  }
+}
+
+// Convert base64 VAPID key to Uint8Array
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// ============ IMAGE LIGHTBOX COMPONENT ============
+const ImageLightbox = ({ src, onClose }) => {
+  if (!src) return null;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.9)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        cursor: 'zoom-out',
+        padding: '20px',
+      }}
+    >
+      <img
+        src={src}
+        alt="Full size"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '95vw',
+          maxHeight: '95vh',
+          objectFit: 'contain',
+          borderRadius: '4px',
+          boxShadow: '0 0 30px rgba(0, 0, 0, 0.5)',
+        }}
+      />
+      <button
+        onClick={onClose}
+        style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          background: 'rgba(0, 0, 0, 0.5)',
+          border: '1px solid #4a5a4a',
+          color: '#fff',
+          fontSize: '1.5rem',
+          width: '44px',
+          height: '44px',
+          borderRadius: '50%',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+};
+
+// ============ RICH EMBED COMPONENT ============
+// Platform icons and colors
+const EMBED_PLATFORMS = {
+  youtube: { icon: '▶', color: '#ff0000', name: 'YouTube' },
+  vimeo: { icon: '▶', color: '#1ab7ea', name: 'Vimeo' },
+  spotify: { icon: '🎵', color: '#1db954', name: 'Spotify' },
+  tiktok: { icon: '♪', color: '#ff0050', name: 'TikTok' },
+  twitter: { icon: '𝕏', color: '#1da1f2', name: 'X/Twitter' },
+  soundcloud: { icon: '☁', color: '#ff5500', name: 'SoundCloud' },
+};
+
+// URL patterns for detecting embeddable content (mirrors server)
+const EMBED_URL_PATTERNS = {
+  youtube: [
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/i,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/i,
+    /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/i,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i,
+  ],
+  vimeo: [
+    /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/i,
+  ],
+  spotify: [
+    /(?:https?:\/\/)?open\.spotify\.com\/(track|album|playlist|episode|show)\/([a-zA-Z0-9]+)/i,
+  ],
+  tiktok: [
+    /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[\w.-]+\/video\/(\d+)/i,
+    /(?:https?:\/\/)?(?:vm\.)?tiktok\.com\/([a-zA-Z0-9]+)/i,
+  ],
+  twitter: [
+    /(?:https?:\/\/)?(?:www\.)?(twitter|x)\.com\/\w+\/status\/(\d+)/i,
+  ],
+  soundcloud: [
+    /(?:https?:\/\/)?(?:www\.)?soundcloud\.com\/[\w-]+\/[\w-]+/i,
+  ],
+};
+
+// Detect embed URLs in text
+function detectEmbedUrls(text) {
+  const embeds = [];
+  const urlRegex = /https?:\/\/[^\s<>"]+/gi;
+  const urls = text.match(urlRegex) || [];
+
+  for (const url of urls) {
+    for (const [platform, patterns] of Object.entries(EMBED_URL_PATTERNS)) {
+      for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) {
+          const embed = { platform, url, contentId: match[1] };
+
+          // Handle Spotify's type/id format
+          if (platform === 'spotify' && match[2]) {
+            embed.contentType = match[1];
+            embed.contentId = match[2];
+          }
+
+          // Generate embed URLs
+          if (platform === 'youtube') {
+            embed.embedUrl = `https://www.youtube.com/embed/${embed.contentId}?rel=0`;
+            embed.thumbnail = `https://img.youtube.com/vi/${embed.contentId}/hqdefault.jpg`;
+          } else if (platform === 'vimeo') {
+            embed.embedUrl = `https://player.vimeo.com/video/${embed.contentId}`;
+          } else if (platform === 'spotify') {
+            embed.embedUrl = `https://open.spotify.com/embed/${embed.contentType}/${embed.contentId}`;
+          }
+
+          embeds.push(embed);
+          break;
+        }
+      }
+    }
+  }
+
+  return embeds;
+}
+
+// Single embed component with click-to-load
+const RichEmbed = ({ embed, autoLoad = false }) => {
+  const [loaded, setLoaded] = useState(autoLoad);
+  const [error, setError] = useState(false);
+  const platform = EMBED_PLATFORMS[embed.platform] || { icon: '🔗', color: '#666', name: 'Link' };
+
+  // Determine iframe dimensions based on platform
+  const getDimensions = () => {
+    switch (embed.platform) {
+      case 'spotify':
+        return { width: '100%', height: embed.contentType === 'track' ? '152px' : '352px' };
+      case 'soundcloud':
+        return { width: '100%', height: '166px' };
+      case 'twitter':
+        return { width: '100%', height: '400px' };
+      default: // YouTube, Vimeo, TikTok
+        return { width: '100%', height: '315px' };
+    }
+  };
+
+  const dimensions = getDimensions();
+
+  if (error) {
+    return (
+      <a
+        href={embed.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'block',
+          padding: '12px',
+          background: '#0a100a',
+          border: '1px solid #2a3a2a',
+          borderRadius: '4px',
+          color: '#8a9a8a',
+          textDecoration: 'none',
+          marginTop: '8px',
+        }}
+      >
+        <span style={{ color: platform.color, marginRight: '8px' }}>{platform.icon}</span>
+        {embed.url}
+      </a>
+    );
+  }
+
+  if (!loaded) {
+    return (
+      <div
+        onClick={() => setLoaded(true)}
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: '560px',
+          aspectRatio: embed.platform === 'spotify' ? 'auto' : '16/9',
+          height: embed.platform === 'spotify' ? dimensions.height : 'auto',
+          background: '#0a100a',
+          border: '1px solid #2a3a2a',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          marginTop: '8px',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {/* Thumbnail background for YouTube */}
+        {embed.thumbnail && (
+          <img
+            src={embed.thumbnail}
+            alt=""
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              opacity: 0.4,
+            }}
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+        )}
+
+        {/* Play button overlay */}
+        <div style={{
+          position: 'relative',
+          zIndex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <div style={{
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: platform.color,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '24px',
+            color: '#fff',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          }}>
+            {platform.icon}
+          </div>
+          <span style={{ color: '#c5d5c5', fontSize: '0.85rem', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+            Click to load {platform.name}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Loaded state - render iframe
+  return (
+    <div style={{
+      width: '100%',
+      maxWidth: embed.platform === 'spotify' || embed.platform === 'soundcloud' ? '100%' : '560px',
+      marginTop: '8px',
+    }}>
+      <iframe
+        src={embed.embedUrl}
+        width={dimensions.width}
+        height={dimensions.height}
+        style={{
+          border: '1px solid #2a3a2a',
+          borderRadius: '4px',
+          display: 'block',
+        }}
+        frameBorder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        loading="lazy"
+        sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+        onError={() => setError(true)}
+      />
+    </div>
+  );
+};
+
+// Component to render message content with embeds
+const MessageWithEmbeds = ({ content, autoLoadEmbeds = false }) => {
+  const embeds = useMemo(() => detectEmbedUrls(content), [content]);
+
+  // Get the plain text URLs that have embeds (to potentially hide them)
+  const embedUrls = useMemo(() => new Set(embeds.map(e => e.url)), [embeds]);
+
+  // Strip embed URLs from displayed content if we're showing the embed
+  const displayContent = useMemo(() => {
+    if (embeds.length === 0) return content;
+    let result = content;
+    for (const url of embedUrls) {
+      // Only hide the URL if it's on its own line or at the end
+      result = result.replace(new RegExp(`\\s*${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'g'), ' ');
+    }
+    return result.trim();
+  }, [content, embedUrls, embeds.length]);
+
+  return (
+    <>
+      <div dangerouslySetInnerHTML={{ __html: displayContent }} />
+      {embeds.map((embed, index) => (
+        <RichEmbed key={`${embed.platform}-${embed.contentId}-${index}`} embed={embed} autoLoad={autoLoadEmbeds} />
+      ))}
+    </>
+  );
 };
 
 // ============ EMOJI PICKER COMPONENT ============
-const EmojiPicker = ({ onSelect, onClose, isMobile }) => {
+const EmojiPicker = ({ onSelect, isMobile }) => {
   const emojis = ['😀', '😂', '😍', '🤔', '👍', '👎', '🎉', '🔥', '💯', '❤️', '😎', '🚀', '✨', '💪', '👏', '🙌'];
   return (
     <div style={{
       position: 'absolute', bottom: '100%', left: 0, marginBottom: '8px',
       background: '#0d150d', border: '1px solid #2a3a2a',
-      padding: isMobile ? '12px' : '8px', display: 'grid',
-      gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(6, 1fr)',
-      gap: isMobile ? '8px' : '4px',
+      padding: isMobile ? '10px' : '6px', display: 'grid',
+      gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(8, 1fr)',
+      gap: isMobile ? '6px' : '2px',
       zIndex: 10,
-      maxWidth: isMobile ? '100%' : '300px',
     }}>
       {emojis.map(emoji => (
         <button key={emoji} onClick={() => onSelect(emoji)} style={{
-          padding: isMobile ? '12px' : '8px',
-          minHeight: isMobile ? '44px' : 'auto',
+          width: isMobile ? '44px' : '32px',
+          height: isMobile ? '44px' : '32px',
+          padding: 0,
           background: 'transparent', border: '1px solid #2a3a2a',
-          cursor: 'pointer', fontSize: isMobile ? '1.5rem' : '1.2rem',
+          cursor: 'pointer', fontSize: isMobile ? '1.3rem' : '1.1rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          lineHeight: 1,
         }}>{emoji}</button>
       ))}
-      <button onClick={onClose} style={{
-        gridColumn: 'span 2', padding: isMobile ? '12px' : '8px',
-        minHeight: isMobile ? '44px' : 'auto',
-        background: 'transparent',
-        border: '1px solid #3a4a3a', color: '#6a7a6a', cursor: 'pointer',
-        fontSize: isMobile ? '0.85rem' : '0.7rem', fontFamily: 'monospace',
-      }}>CLOSE</button>
     </div>
   );
 };
@@ -700,27 +1102,49 @@ const GlowText = ({ children, color = '#ffd23f', size = '1rem', weight = 400 }) 
   </span>
 );
 
-const Avatar = ({ letter, color = '#ffd23f', size = 40, status }) => (
-  <div style={{ position: 'relative', flexShrink: 0 }}>
-    <div style={{
-      width: size, height: size,
-      background: `linear-gradient(135deg, ${color}40, ${color}10)`,
-      border: `1px solid ${color}60`, borderRadius: '2px',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontFamily: 'monospace', color, fontSize: size * 0.4,
-    }}>
-      {letter}
-    </div>
-    {status && (
+const Avatar = ({ letter, color = '#ffd23f', size = 40, status, imageUrl }) => {
+  const [imgError, setImgError] = useState(false);
+
+  // Reset error state when imageUrl changes
+  useEffect(() => {
+    setImgError(false);
+  }, [imageUrl]);
+
+  const showImage = imageUrl && !imgError;
+
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
       <div style={{
-        position: 'absolute', bottom: -2, right: -2,
-        width: '8px', height: '8px', borderRadius: '50%',
-        background: status === 'online' ? '#0ead69' : status === 'away' ? '#ffd23f' : '#5a6a5a',
-        boxShadow: status === 'online' ? '0 0 6px #0ead69' : 'none',
-      }} />
-    )}
-  </div>
-);
+        width: size, height: size,
+        background: showImage ? 'transparent' : `linear-gradient(135deg, ${color}40, ${color}10)`,
+        border: `1px solid ${color}60`, borderRadius: '2px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'monospace', color, fontSize: size * 0.4,
+        overflow: 'hidden',
+      }}>
+        {showImage ? (
+          <img
+            src={`${BASE_URL}${imageUrl}`}
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={() => setImgError(true)}
+            loading="lazy"
+          />
+        ) : (
+          letter
+        )}
+      </div>
+      {status && (
+        <div style={{
+          position: 'absolute', bottom: -2, right: -2,
+          width: '8px', height: '8px', borderRadius: '50%',
+          background: status === 'online' ? '#0ead69' : status === 'away' ? '#ffd23f' : '#5a6a5a',
+          boxShadow: status === 'online' ? '0 0 6px #0ead69' : 'none',
+        }} />
+      )}
+    </div>
+  );
+};
 
 const PrivacyBadge = ({ level, compact = false }) => {
   const config = PRIVACY_LEVELS[level] || PRIVACY_LEVELS.private;
@@ -766,6 +1190,47 @@ const LoadingSpinner = () => (
     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
   </div>
 );
+
+// ============ ERROR BOUNDARY ============
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary caught:', error, errorInfo);
+    this.setState({ errorInfo });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '20px', color: '#ff6b35', background: '#1a0a0a', border: '1px solid #ff6b35', margin: '10px' }}>
+          <h3 style={{ margin: '0 0 10px 0' }}>⚠️ Something went wrong</h3>
+          <pre style={{ fontSize: '0.8rem', whiteSpace: 'pre-wrap', color: '#ffd23f' }}>
+            {this.state.error?.toString()}
+          </pre>
+          <details style={{ marginTop: '10px', fontSize: '0.75rem', color: '#6a7a6a' }}>
+            <summary>Stack trace</summary>
+            <pre style={{ whiteSpace: 'pre-wrap' }}>{this.state.errorInfo?.componentStack}</pre>
+          </details>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
+            style={{ marginTop: '10px', padding: '8px 16px', background: '#0ead69', border: 'none', color: '#050805', cursor: 'pointer' }}
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ============ LOGIN SCREEN ============
 const LoginScreen = () => {
@@ -946,7 +1411,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
               </div>
             </div>
             <div style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.7rem' }}>
-              @{wave.creator_handle || 'unknown'} • {wave.message_count} msgs
+              {wave.creator_name || 'Unknown'} • {wave.message_count} msgs
               {wave.group_name && <span> • {wave.group_name}</span>}
             </div>
           </div>
@@ -957,7 +1422,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ THREADED MESSAGE ============
-const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [] }) => {
+const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -968,11 +1433,16 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   const canDelete = !isDeleted && message.author_id === currentUserId;
   const isEditing = !isDeleted && editingMessageId === message.id;
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState(null);
   const isUnread = !isDeleted && message.is_unread && message.author_id !== currentUserId;
 
   const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏'];
 
   if (!isVisible) return null;
+
+  // Don't render deleted messages unless they have children (replies)
+  // Deleted messages with children show placeholder to preserve thread context
+  if (isDeleted && !hasChildren) return null;
 
   const handleMessageClick = () => {
     if (isUnread && onMessageClick) {
@@ -981,7 +1451,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   };
 
   return (
-    <div>
+    <div data-message-id={message.id}>
       <div
         onClick={handleMessageClick}
         style={{
@@ -1007,12 +1477,16 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-            <Avatar letter={message.sender_avatar || '?'} color={config.color} size={isMobile ? 32 : 32} />
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, cursor: onShowProfile ? 'pointer' : 'default' }}
+            onClick={onShowProfile && message.author_id ? (e) => { e.stopPropagation(); onShowProfile(message.author_id); } : undefined}
+            title={onShowProfile ? 'View profile' : undefined}
+          >
+            <Avatar letter={message.sender_avatar || '?'} color={config.color} size={isMobile ? 32 : 28} imageUrl={message.sender_avatar_url} />
             <div style={{ minWidth: 0 }}>
               <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.sender_name}</div>
               <div style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.65rem', fontFamily: 'monospace' }}>
-                @{message.sender_handle} • {new Date(message.created_at).toLocaleString()}
+                {new Date(message.created_at).toLocaleString()}
               </div>
             </div>
           </div>
@@ -1081,184 +1555,179 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
           </div>
         ) : (
           <div
+            onClick={(e) => {
+              // Handle image clicks for lightbox
+              if (e.target.tagName === 'IMG' && e.target.classList.contains('zoomable-image')) {
+                e.stopPropagation();
+                setLightboxImage(e.target.src);
+              }
+            }}
             style={{
               color: '#9bab9b',
               fontSize: isMobile ? '0.95rem' : '0.85rem',
               lineHeight: 1.6,
               marginBottom: '10px',
               wordBreak: 'break-word',
-              whiteSpace: 'pre-wrap'
+              whiteSpace: 'pre-wrap',
+              overflow: 'hidden',
             }}
-            dangerouslySetInnerHTML={{ __html: message.content }}
-          />
+          >
+            <MessageWithEmbeds content={message.content} />
+          </div>
         )}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {/* Actions Row: Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>
           <button onClick={() => onReply(message)} style={{
-            padding: isMobile ? '10px 14px' : '4px 8px',
-            minHeight: isMobile ? '44px' : 'auto',
+            padding: isMobile ? '8px 12px' : '4px 8px',
+            minHeight: isMobile ? '38px' : 'auto',
             background: 'transparent', border: '1px solid #3a4a3a',
-            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
           }}>↵ REPLY</button>
           {hasChildren && (
             <button onClick={() => onToggleCollapse(message.id)} style={{
-              padding: isMobile ? '10px 14px' : '4px 8px',
-              minHeight: isMobile ? '44px' : 'auto',
+              padding: isMobile ? '8px 12px' : '4px 8px',
+              minHeight: isMobile ? '38px' : 'auto',
               background: 'transparent', border: '1px solid #3a4a3a',
-              color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+              color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }}>{isCollapsed ? `▶ ${message.children.length}` : '▼'}</button>
           )}
           {canDelete && !isEditing && (
             <>
               <button onClick={() => onEdit(message)} style={{
-                padding: isMobile ? '10px 14px' : '4px 8px',
-                minHeight: isMobile ? '44px' : 'auto',
+                padding: isMobile ? '8px 12px' : '4px 8px',
+                minHeight: isMobile ? '38px' : 'auto',
                 background: 'transparent', border: '1px solid #ffd23f30',
-                color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-              }}>✏️ EDIT</button>
+                color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+              }}>✏️</button>
               <button onClick={() => onDelete(message)} style={{
-                padding: isMobile ? '10px 14px' : '4px 8px',
-                minHeight: isMobile ? '44px' : 'auto',
+                padding: isMobile ? '8px 12px' : '4px 8px',
+                minHeight: isMobile ? '38px' : 'auto',
                 background: 'transparent', border: '1px solid #ff6b3530',
-                color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-              }}>✕ DELETE</button>
+                color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+              }}>✕</button>
             </>
           )}
-        </div>
 
-        {/* Reactions Display - hidden for deleted messages */}
-        {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px', marginBottom: '8px' }}>
-            {Object.entries(message.reactions).map(([emoji, userIds]) => {
+          {/* Emoji picker button - hidden for deleted messages */}
+          {!isDeleted && (
+            <>
+              <button
+                onClick={() => setShowReactionPicker(!showReactionPicker)}
+                style={{
+                  padding: isMobile ? '8px 10px' : '4px 8px',
+                  minHeight: isMobile ? '38px' : 'auto',
+                  background: showReactionPicker ? '#3a4a3a' : 'transparent',
+                  border: '1px solid #3a4a3a',
+                  color: '#6a7a6a',
+                  cursor: 'pointer',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
+                }}
+              >
+                {showReactionPicker ? '✕' : '😀'}
+              </button>
+
+              {showReactionPicker && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: isMobile ? '0' : 'auto',
+                  right: isMobile ? 'auto' : '0',
+                  marginTop: '4px',
+                  background: '#0d150d',
+                  border: '1px solid #2a3a2a',
+                  padding: '8px',
+                  display: 'flex',
+                  gap: '4px',
+                  zIndex: 10,
+                  flexWrap: 'wrap',
+                  maxWidth: isMobile ? '200px' : '250px',
+                }}>
+                  {quickReactions.map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={() => {
+                        onReact(message.id, emoji);
+                        setShowReactionPicker(false);
+                      }}
+                      style={{
+                        padding: isMobile ? '8px' : '6px',
+                        minHeight: isMobile ? '38px' : 'auto',
+                        minWidth: isMobile ? '38px' : 'auto',
+                        background: 'transparent',
+                        border: '1px solid #2a3a2a',
+                        cursor: 'pointer',
+                        fontSize: isMobile ? '1.3rem' : '1.1rem',
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Separator before reactions */}
+          {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
+            <span style={{ color: '#2a3a2a', margin: '0 2px' }}>│</span>
+          )}
+
+          {/* Inline Reactions Display */}
+          {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
+            Object.entries(message.reactions).map(([emoji, userIds]) => {
               const hasReacted = userIds.includes(currentUserId);
               return (
                 <button
                   key={emoji}
                   onClick={() => onReact(message.id, emoji)}
                   style={{
-                    padding: isMobile ? '6px 10px' : '4px 8px',
+                    padding: isMobile ? '6px 8px' : '3px 6px',
                     minHeight: isMobile ? '38px' : 'auto',
                     background: hasReacted ? '#ffd23f20' : 'transparent',
                     border: `1px solid ${hasReacted ? '#ffd23f' : '#3a4a3a'}`,
                     color: hasReacted ? '#ffd23f' : '#6a7a6a',
                     cursor: 'pointer',
-                    fontSize: isMobile ? '1.1rem' : '1rem',
+                    fontSize: isMobile ? '0.95rem' : '0.85rem',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px',
+                    gap: '3px',
                   }}
                 >
                   <span>{emoji}</span>
-                  <span style={{ fontSize: isMobile ? '0.8rem' : '0.7rem', fontFamily: 'monospace' }}>
+                  <span style={{ fontSize: isMobile ? '0.7rem' : '0.65rem', fontFamily: 'monospace' }}>
                     {userIds.length}
                   </span>
                 </button>
               );
-            })}
-          </div>
-        )}
-
-        {/* Quick React Buttons - hidden for deleted messages */}
-        {!isDeleted && (
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px', position: 'relative' }}>
-          <button
-            onClick={() => setShowReactionPicker(!showReactionPicker)}
-            style={{
-              padding: isMobile ? '6px 10px' : '4px 8px',
-              minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent',
-              border: '1px solid #3a4a3a',
-              color: '#6a7a6a',
-              cursor: 'pointer',
-              fontSize: isMobile ? '1rem' : '0.9rem',
-            }}
-          >
-            {showReactionPicker ? '✕' : '😀+'}
-          </button>
-
-          {showReactionPicker && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              marginTop: '4px',
-              background: '#0d150d',
-              border: '1px solid #2a3a2a',
-              padding: '8px',
-              display: 'flex',
-              gap: '4px',
-              zIndex: 10,
-              flexWrap: 'wrap',
-              maxWidth: isMobile ? '200px' : '250px',
-            }}>
-              {quickReactions.map(emoji => (
-                <button
-                  key={emoji}
-                  onClick={() => {
-                    onReact(message.id, emoji);
-                    setShowReactionPicker(false);
-                  }}
-                  style={{
-                    padding: isMobile ? '8px' : '6px',
-                    minHeight: isMobile ? '38px' : 'auto',
-                    minWidth: isMobile ? '38px' : 'auto',
-                    background: 'transparent',
-                    border: '1px solid #2a3a2a',
-                    cursor: 'pointer',
-                    fontSize: isMobile ? '1.3rem' : '1.1rem',
-                  }}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            })
           )}
         </div>
-        )}
 
-        {/* Read Receipts - hidden for deleted messages */}
+        {/* Read Receipts - compact display */}
         {!isDeleted && message.readBy && message.readBy.length > 0 && (
-          <details style={{
-            marginTop: '8px',
-            paddingTop: '8px',
-            borderTop: '1px solid #2a3a2a',
-            cursor: 'pointer'
-          }}>
+          <details style={{ marginTop: '6px', cursor: 'pointer' }}>
             <summary style={{
-              color: '#6a7a6a',
-              fontSize: isMobile ? '0.7rem' : '0.65rem',
+              color: '#5a6a5a',
+              fontSize: isMobile ? '0.65rem' : '0.6rem',
               userSelect: 'none',
               fontFamily: 'monospace',
               listStyle: 'none',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '4px'
+              gap: '3px'
             }}>
               <span style={{ color: '#0ead69' }}>✓</span>
-              Seen by {message.readBy.length} {message.readBy.length === 1 ? 'person' : 'people'}
+              {message.readBy.length}
             </summary>
-            <div style={{
-              marginTop: '6px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '4px'
-            }}>
+            <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
               {message.readBy.map(userId => {
                 const participant = participants.find(p => p.id === userId);
-                const displayName = participant ? participant.name : userId;
                 return (
-                  <span
-                    key={userId}
-                    title={participant?.handle || ''}
-                    style={{
-                      padding: '2px 6px',
-                      background: '#0ead6920',
-                      border: '1px solid #0ead69',
-                      color: '#0ead69',
-                      fontSize: isMobile ? '0.65rem' : '0.6rem',
-                      fontFamily: 'monospace'
-                    }}
-                  >
-                    {displayName}
+                  <span key={userId} title={participant?.handle || ''} style={{
+                    padding: '1px 4px', background: '#0ead6915', border: '1px solid #0ead6940',
+                    color: '#0ead69', fontSize: isMobile ? '0.6rem' : '0.55rem', fontFamily: 'monospace'
+                  }}>
+                    {participant ? participant.name : userId}
                   </span>
                 );
               })}
@@ -1274,9 +1743,12 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
               currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
               onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
-              participants={participants} />
+              participants={participants} onShowProfile={onShowProfile} />
           ))}
         </div>
+      )}
+      {lightboxImage && (
+        <ImageLightbox src={lightboxImage} onClose={() => setLightboxImage(null)} />
       )}
     </div>
   );
@@ -1381,6 +1853,141 @@ const DeleteConfirmModal = ({ isOpen, onClose, waveTitle, onConfirm, isMobile })
             fontWeight: 600,
           }}>DELETE WAVE</button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ USER PROFILE MODAL ============
+const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, showToast, contacts, blockedUsers, mutedUsers, onAddContact, onBlock, onMute, isMobile }) => {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && userId) {
+      setLoading(true);
+      fetchAPI(`/users/${userId}/profile`)
+        .then(data => setProfile(data))
+        .catch(err => {
+          console.error('Failed to load profile:', err);
+          showToast('Failed to load profile', 'error');
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [isOpen, userId, fetchAPI, showToast]);
+
+  if (!isOpen) return null;
+
+  const isCurrentUser = userId === currentUser?.id;
+  const isContact = contacts?.some(c => c.id === userId);
+  const isBlocked = blockedUsers?.some(u => u.blockedUserId === userId);
+  const isMuted = mutedUsers?.some(u => u.mutedUserId === userId);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'Unknown';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
+    }} onClick={onClose}>
+      <div style={{
+        width: '100%', maxWidth: '400px',
+        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+        border: '1px solid #2a3a2a', padding: isMobile ? '20px' : '24px',
+      }} onClick={(e) => e.stopPropagation()}>
+        {loading ? (
+          <div style={{ color: '#5a6a5a', textAlign: 'center', padding: '40px' }}>Loading...</div>
+        ) : profile ? (
+          <>
+            {/* Header with close button */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <GlowText color="#ffd23f" size={isMobile ? '1rem' : '1.1rem'}>User Profile</GlowText>
+              <button onClick={onClose} style={{
+                background: 'transparent', border: 'none', color: '#5a6a5a',
+                cursor: 'pointer', fontSize: '1.2rem', padding: '4px',
+              }}>✕</button>
+            </div>
+
+            {/* Avatar and basic info */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+              <Avatar letter={profile.avatar || profile.displayName?.[0] || '?'} color="#ffd23f" size={80} imageUrl={profile.avatarUrl} />
+              <div>
+                <div style={{ color: '#c5d5c5', fontSize: '1.2rem', fontWeight: 600 }}>{profile.displayName}</div>
+                <div style={{ color: '#5a6a5a', fontSize: '0.85rem' }}>@{profile.handle}</div>
+                <div style={{ color: '#4a5a4a', fontSize: '0.75rem', marginTop: '4px' }}>
+                  Joined {formatDate(profile.createdAt)}
+                </div>
+              </div>
+            </div>
+
+            {/* Bio section */}
+            {profile.bio && (
+              <div style={{
+                marginBottom: '20px', padding: '16px',
+                background: '#0a100a', border: '1px solid #1a2a1a',
+              }}>
+                <div style={{ color: '#6a7a6a', fontSize: '0.7rem', marginBottom: '8px' }}>ABOUT</div>
+                <div style={{ color: '#a5b5a5', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                  {profile.bio}
+                </div>
+              </div>
+            )}
+
+            {/* Action buttons (not shown for current user) */}
+            {!isCurrentUser && (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {!isContact && !isBlocked && onAddContact && (
+                  <button onClick={() => { onAddContact(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: '#0ead6920', border: '1px solid #0ead69',
+                    color: '#0ead69', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>+ ADD CONTACT</button>
+                )}
+                {isContact && (
+                  <div style={{ color: '#0ead69', fontSize: '0.8rem', padding: '8px 14px', background: '#0ead6910', border: '1px solid #0ead6940' }}>
+                    ✓ Contact
+                  </div>
+                )}
+                {!isBlocked && onBlock && (
+                  <button onClick={() => { onBlock(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'transparent', border: '1px solid #ff6b35',
+                    color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>BLOCK</button>
+                )}
+                {isBlocked && (
+                  <div style={{ color: '#ff6b35', fontSize: '0.8rem', padding: '8px 14px', background: '#ff6b3510', border: '1px solid #ff6b3540' }}>
+                    Blocked
+                  </div>
+                )}
+                {!isMuted && !isBlocked && onMute && (
+                  <button onClick={() => { onMute(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'transparent', border: '1px solid #ffd23f',
+                    color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>MUTE</button>
+                )}
+                {isMuted && (
+                  <div style={{ color: '#ffd23f', fontSize: '0.8rem', padding: '8px 14px', background: '#ffd23f10', border: '1px solid #ffd23f40' }}>
+                    Muted
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ color: '#ff6b35', textAlign: 'center', padding: '40px' }}>Profile not found</div>
+        )}
       </div>
     </div>
   );
@@ -1614,11 +2221,18 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
                 </span>
               </div>
               <div style={{ color: '#8a9a8a', fontSize: '0.8rem', marginBottom: '4px' }}>
-                @{result.authorHandle}
+                {result.authorName}
               </div>
-              <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}>
-                {highlightMatch(result.content, searchQuery)}
-              </div>
+              {result.snippet ? (
+                <div
+                  style={{ color: '#c5d5c5', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}
+                  dangerouslySetInnerHTML={{ __html: result.snippet }}
+                />
+              ) : (
+                <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}>
+                  {highlightMatch(result.content, searchQuery)}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1634,7 +2248,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -1653,7 +2267,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editContent, setEditContent] = useState('');
   const [requestModalParticipant, setRequestModalParticipant] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const playbackRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Helper functions for participant contact status
   const isContact = (userId) => contacts?.some(c => c.id === userId) || false;
@@ -1726,10 +2345,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const hasMarkedAsReadRef = useRef(false);
   const scrollPositionToRestore = useRef(null);
   const lastTypingSentRef = useRef(null);
+  const hasScrolledToUnreadRef = useRef(false);
 
   useEffect(() => {
     loadWave();
     hasMarkedAsReadRef.current = false; // Reset when switching waves
+    hasScrolledToUnreadRef.current = false; // Reset scroll-to-unread for new wave
   }, [wave.id]);
 
   // Reload wave when reloadTrigger changes (from WebSocket events)
@@ -1756,6 +2377,38 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       });
     }
   }, [waveData]);
+
+  // Scroll to first unread message or bottom on initial wave load
+  useEffect(() => {
+    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading) return;
+
+    // Only run once per wave
+    hasScrolledToUnreadRef.current = true;
+
+    const allMessages = waveData.all_messages || [];
+
+    // Find first unread message (not authored by current user)
+    const firstUnreadMessage = allMessages.find(m =>
+      m.is_unread && m.author_id !== currentUser?.id
+    );
+
+    setTimeout(() => {
+      const container = messagesRef.current;
+      if (!container) return;
+
+      if (firstUnreadMessage) {
+        // Scroll to first unread message
+        const messageElement = container.querySelector(`[data-message-id="${firstUnreadMessage.id}"]`);
+        if (messageElement) {
+          messageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+      }
+
+      // No unread messages or element not found - scroll to bottom
+      container.scrollTop = container.scrollHeight;
+    }, 100);
+  }, [waveData, loading, currentUser?.id]);
 
   // Mark wave as read when user scrolls to bottom or views unread messages
   useEffect(() => {
@@ -1805,7 +2458,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   }, [waveData, wave.id, fetchAPI, onWaveUpdate]);
 
   useEffect(() => {
-    if (isPlaying && waveData) {
+    if (isPlaying && waveData && waveData.all_messages) {
       const total = waveData.all_messages.length;
       playbackRef.current = setInterval(() => {
         setPlaybackIndex(prev => {
@@ -1854,6 +2507,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     setLoading(true);
     try {
       const data = await fetchAPI(`/waves/${wave.id}`);
+      console.log('Wave API response:', data);
+
+      // Ensure required fields exist with defaults
+      if (!data.messages) data.messages = [];
+      if (!data.all_messages) data.all_messages = [];
+      if (!data.participants) data.participants = [];
+
       let idx = 0;
       const addIndices = (msgs) => msgs.forEach(m => { m._index = idx++; if (m.children) addIndices(m.children); });
       addIndices(data.messages);
@@ -1862,13 +2522,79 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         privacy: data.privacy,
         can_edit: data.can_edit,
         createdBy: data.createdBy,
-        currentUserId: currentUser?.id
+        currentUserId: currentUser?.id,
+        totalMessages: data.total_messages,
+        hasMoreMessages: data.hasMoreMessages,
+        messageCount: data.messages?.length,
+        allMessagesCount: data.all_messages?.length
       });
       setWaveData(data);
+      setHasMoreMessages(data.hasMoreMessages || false);
     } catch (err) {
+      console.error('Failed to load wave:', err);
       showToast('Failed to load wave', 'error');
     }
     setLoading(false);
+  };
+
+  // Load older messages (pagination)
+  const loadMoreMessages = async () => {
+    if (loadingMore || !waveData?.all_messages?.length) return;
+
+    setLoadingMore(true);
+    try {
+      // Get the oldest message ID from current set
+      const oldestMessage = waveData.all_messages[0]; // First message is oldest (sorted by created_at)
+      const data = await fetchAPI(`/waves/${wave.id}/messages?limit=50&before=${oldestMessage.id}`);
+
+      if (data.messages.length > 0) {
+        // Save scroll position before adding messages
+        const container = messagesRef.current;
+        const scrollHeightBefore = container?.scrollHeight || 0;
+
+        // Merge older messages with existing ones
+        const mergedMessages = [...data.messages, ...waveData.all_messages];
+
+        // Rebuild the message tree - treat orphaned replies (parent not in set) as roots
+        const messageIds = new Set(mergedMessages.map(m => m.id));
+        function buildMessageTree(messages, parentId = null) {
+          return messages
+            .filter(m => {
+              if (parentId === null) {
+                // Root level: include messages with no parent OR whose parent isn't loaded
+                return m.parent_id === null || !messageIds.has(m.parent_id);
+              }
+              return m.parent_id === parentId;
+            })
+            .map(m => ({ ...m, children: buildMessageTree(messages, m.id) }));
+        }
+
+        let idx = 0;
+        const tree = buildMessageTree(mergedMessages);
+        const addIndices = (msgs) => msgs.forEach(m => { m._index = idx++; if (m.children) addIndices(m.children); });
+        addIndices(tree);
+
+        setWaveData(prev => ({
+          ...prev,
+          messages: tree,
+          all_messages: mergedMessages,
+        }));
+        setHasMoreMessages(data.hasMore);
+
+        // Restore scroll position after DOM updates
+        setTimeout(() => {
+          if (container) {
+            const scrollHeightAfter = container.scrollHeight;
+            container.scrollTop = scrollHeightAfter - scrollHeightBefore;
+          }
+        }, 50);
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch (err) {
+      showToast('Failed to load older messages', 'error');
+    }
+    setLoadingMore(false);
   };
 
   const handleSendMessage = async () => {
@@ -1901,6 +2627,56 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     } catch (err) {
       showToast('Failed to send message', 'error');
       scrollPositionToRestore.current = null; // Clear on error
+    }
+  };
+
+  // Handle image upload for messages
+  const handleImageUpload = async (file) => {
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      showToast('Invalid file type. Allowed: jpg, png, gif, webp', 'error');
+      return;
+    }
+
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('File too large. Maximum size is 10MB', 'error');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const token = storage.getToken();
+      const response = await fetch(`${API_URL}/uploads`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      const data = await response.json();
+      // Insert the image URL into the message - it will auto-embed when sent
+      setNewMessage(prev => prev + (prev ? '\n' : '') + data.url);
+      showToast('Image uploaded', 'success');
+      textareaRef.current?.focus();
+    } catch (err) {
+      showToast(err.message || 'Failed to upload image', 'error');
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -2036,7 +2812,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   if (loading) return <LoadingSpinner />;
   if (!waveData) return <div style={{ padding: '20px', color: '#6a7a6a' }}>Wave not found</div>;
 
-  const total = waveData.all_messages.length;
+  // Safe access with fallbacks for pagination fields
+  const allMessages = waveData.all_messages || [];
+  const participants = waveData.participants || [];
+  const messages = waveData.messages || [];
+  const total = allMessages.length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -2056,7 +2836,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             {waveData.group_name && <span style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>({waveData.group_name})</span>}
           </div>
           <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>
-            {waveData.participants.length} participants • {total} messages
+            {participants.length} participants • {total} messages
           </div>
         </div>
         <PrivacyBadge level={wave.privacy} compact={isMobile} />
@@ -2090,7 +2870,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       </div>
 
       {/* Wave Toolbar - Participants & Playback */}
-      {(waveData.participants?.length > 0 || total > 0) && (
+      {(participants.length > 0 || total > 0) && (
         <div style={{
           padding: isMobile ? '6px 12px' : '6px 20px',
           borderBottom: '1px solid #2a3a2a',
@@ -2101,7 +2881,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           flexShrink: 0
         }}>
           {/* Participants Toggle */}
-          {waveData.participants?.length > 0 && (
+          {participants.length > 0 && (
             <button
               onClick={() => setShowParticipants(!showParticipants)}
               style={{
@@ -2118,7 +2898,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               }}
             >
               <span>{showParticipants ? '▼' : '▶'}</span>
-              PARTICIPANTS ({waveData.participants.length})
+              PARTICIPANTS ({participants.length})
             </button>
           )}
 
@@ -2145,11 +2925,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           )}
 
           {/* Mark All Read Button - always visible if unread */}
-          {waveData.all_messages.some(m => m.is_unread && m.author_id !== currentUser.id) && (
+          {allMessages.some(m => m.is_unread && m.author_id !== currentUser.id) && (
             <button
               onClick={async () => {
                 try {
-                  const unreadMessages = waveData.all_messages
+                  const unreadMessages = allMessages
                     .filter(m => (m.readBy || [m.author_id]).includes(currentUser.id) === false && m.author_id !== currentUser.id);
                   if (unreadMessages.length === 0) return;
                   await Promise.all(unreadMessages.map(m => fetchAPI(`/messages/${m.id}/read`, { method: 'POST' })));
@@ -2178,7 +2958,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       )}
 
       {/* Expanded Participants Panel */}
-      {showParticipants && waveData.participants?.length > 0 && (
+      {showParticipants && participants.length > 0 && (
         <div style={{
           padding: isMobile ? '12px' : '12px 20px',
           borderBottom: '1px solid #2a3a2a',
@@ -2188,8 +2968,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           gap: '8px',
           flexShrink: 0
         }}>
-          {waveData.participants.map(p => {
-            const latestMessage = waveData.all_messages.length > 0 ? waveData.all_messages[waveData.all_messages.length - 1] : null;
+          {participants.map(p => {
+            const latestMessage = allMessages.length > 0 ? allMessages[allMessages.length - 1] : null;
             const hasReadLatest = latestMessage ? (latestMessage.readBy || [latestMessage.author_id]).includes(p.id) : true;
             const isCurrentUser = p.id === currentUser?.id;
             const isAlreadyContact = isContact(p.id);
@@ -2212,7 +2992,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 }}
               >
                 {/* Participant Info */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0, cursor: onShowProfile ? 'pointer' : 'default' }}
+                  onClick={onShowProfile ? () => onShowProfile(p.id) : undefined}
+                  title={onShowProfile ? 'View profile' : undefined}
+                >
                   <Avatar letter={p.avatar || p.name?.[0] || '?'} color={isCurrentUser ? '#ffd23f' : '#3bceac'} size={isMobile ? 32 : 28} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{
@@ -2227,7 +3011,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                       {userBlocked && <span style={{ color: '#ff6b35', marginLeft: '4px', fontSize: '0.65rem' }}>⊘ BLOCKED</span>}
                       {userMuted && !userBlocked && <span style={{ color: '#6a7a6a', marginLeft: '4px', fontSize: '0.65rem' }}>🔇 MUTED</span>}
                     </div>
-                    <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{p.handle}</div>
                   </div>
                 </div>
 
@@ -2380,13 +3163,34 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       {/* Messages */}
       <div ref={messagesRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '12px' : '20px' }}>
-        {waveData.messages.map(msg => (
+        {/* Load Older Messages Button */}
+        {hasMoreMessages && (
+          <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+            <button
+              onClick={loadMoreMessages}
+              disabled={loadingMore}
+              style={{
+                padding: isMobile ? '10px 20px' : '8px 16px',
+                background: 'transparent',
+                border: '1px solid #3a4a3a',
+                color: loadingMore ? '#5a6a5a' : '#0ead69',
+                cursor: loadingMore ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.75rem',
+              }}
+            >
+              {loadingMore ? 'Loading...' : `↑ Load older messages (${(waveData.total_messages || 0) - allMessages.length} more)`}
+            </button>
+          </div>
+        )}
+        {messages.map(msg => (
           <ThreadedMessage key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
             onEdit={handleStartEdit} onSaveEdit={handleSaveEdit} onCancelEdit={handleCancelEdit}
             editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={(id) => setCollapsed(p => ({ ...p, [id]: !p[id] }))} isMobile={isMobile}
-            onReact={handleReaction} onMessageClick={handleMessageClick} participants={waveData.participants || []} />
+            onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
+            onShowProfile={onShowProfile} />
         ))}
       </div>
 
@@ -2405,13 +3209,32 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       )}
 
       {/* Compose */}
-      <div ref={composeRef} style={{
-        flexShrink: 0,
-        padding: isMobile ? '12px' : '16px 20px',
-        paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom, 0px))' : '16px',
-        background: 'linear-gradient(0deg, #0d150d, #1a2a1a)',
-        borderTop: '1px solid #2a3a2a'
-      }}>
+      <div
+        ref={composeRef}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file && file.type.startsWith('image/')) {
+            handleImageUpload(file);
+          }
+        }}
+        style={{
+          flexShrink: 0,
+          padding: isMobile ? '12px' : '16px 20px',
+          paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom, 0px))' : '16px',
+          background: dragOver ? 'linear-gradient(0deg, #1a2a1a, #2a3a2a)' : 'linear-gradient(0deg, #0d150d, #1a2a1a)',
+          borderTop: dragOver ? '2px dashed #f9844a' : '1px solid #2a3a2a',
+          transition: 'all 0.2s ease',
+        }}>
         {replyingTo && (
           <div style={{
             padding: isMobile ? '10px 14px' : '8px 12px',
@@ -2431,79 +3254,146 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             }}>✕</button>
           </div>
         )}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', position: 'relative' }}>
-          <textarea
-            ref={textareaRef}
-            value={newMessage}
-            onChange={(e) => {
-              setNewMessage(e.target.value);
-              handleTyping();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+        {dragOver && (
+          <div style={{
+            padding: '12px',
+            marginBottom: '10px',
+            background: '#f9844a15',
+            border: '2px dashed #f9844a',
+            textAlign: 'center',
+            color: '#f9844a',
+            fontSize: '0.85rem',
+            fontFamily: 'monospace',
+          }}>
+            Drop image to upload
+          </div>
+        )}
+        {/* Textarea - full width */}
+        <textarea
+          ref={textareaRef}
+          value={newMessage}
+          onChange={(e) => {
+            setNewMessage(e.target.value);
+            handleTyping();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSendMessage();
+            }
+          }}
+          onPaste={(e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+              if (item.type.startsWith('image/')) {
                 e.preventDefault();
-                handleSendMessage();
+                const file = item.getAsFile();
+                if (file) handleImageUpload(file);
+                return;
               }
-            }}
-            placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a message... (Shift+Enter for new line)'}
-            rows={1}
-            style={{
-              flex: 1,
-              padding: isMobile ? '14px 16px' : '12px 16px',
-              minHeight: isMobile ? '44px' : 'auto',
-              maxHeight: '200px',
-              background: '#0a100a',
-              border: '1px solid #2a3a2a',
-              color: '#c5d5c5',
-              fontSize: isMobile ? '1rem' : '0.9rem',
-              fontFamily: 'inherit',
-              resize: 'none',
-              overflowY: 'auto',
-            }}
-          />
-          <button
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            style={{
-              padding: isMobile ? '8px 10px' : '10px 12px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: showEmojiPicker ? '#ffd23f20' : 'transparent',
-              border: `1px solid ${showEmojiPicker ? '#ffd23f' : '#2a3a2a'}`,
-              color: '#ffd23f',
-              cursor: 'pointer',
-              fontSize: isMobile ? '1.1rem' : '1.2rem',
-            }}
-          >
-            😀
-          </button>
-          <button
-            onClick={() => setShowGifSearch(true)}
-            style={{
-              padding: isMobile ? '8px 10px' : '10px 12px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: 'transparent',
-              border: '1px solid #2a3a2a',
-              color: '#3bceac',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: isMobile ? '0.7rem' : '0.65rem',
-              fontWeight: 700,
-            }}
-            title="Insert GIF"
-          >
-            GIF
-          </button>
+            }
+          }}
+          placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a message... (Shift+Enter for new line)'}
+          rows={1}
+          style={{
+            width: '100%',
+            padding: isMobile ? '14px 16px' : '12px 16px',
+            minHeight: isMobile ? '44px' : 'auto',
+            maxHeight: '200px',
+            background: '#0a100a',
+            border: '1px solid #2a3a2a',
+            color: '#c5d5c5',
+            fontSize: isMobile ? '1rem' : '0.9rem',
+            fontFamily: 'inherit',
+            resize: 'none',
+            overflowY: 'auto',
+            boxSizing: 'border-box',
+          }}
+        />
+        {/* Button row - below textarea */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center', position: 'relative', flexWrap: 'wrap' }}>
+          {/* Left side: media buttons */}
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              style={{
+                padding: isMobile ? '8px 10px' : '8px 10px',
+                minHeight: isMobile ? '38px' : '32px',
+                background: showEmojiPicker ? '#ffd23f20' : 'transparent',
+                border: `1px solid ${showEmojiPicker ? '#ffd23f' : '#2a3a2a'}`,
+                color: '#ffd23f',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                fontWeight: 700,
+              }}
+              title="Insert Emoji"
+            >
+              EMO
+            </button>
+            <button
+              onClick={() => setShowGifSearch(true)}
+              style={{
+                padding: isMobile ? '8px 10px' : '8px 10px',
+                minHeight: isMobile ? '38px' : '32px',
+                background: showGifSearch ? '#3bceac20' : 'transparent',
+                border: `1px solid ${showGifSearch ? '#3bceac' : '#2a3a2a'}`,
+                color: '#3bceac',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                fontWeight: 700,
+              }}
+              title="Insert GIF"
+            >
+              GIF
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImageUpload(file);
+              }}
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+              style={{ display: 'none' }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              style={{
+                padding: isMobile ? '8px 10px' : '8px 10px',
+                minHeight: isMobile ? '38px' : '32px',
+                background: uploading ? '#f9844a20' : 'transparent',
+                border: `1px solid ${uploading ? '#f9844a' : '#2a3a2a'}`,
+                color: '#f9844a',
+                cursor: uploading ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                fontWeight: 700,
+                opacity: uploading ? 0.7 : 1,
+              }}
+              title="Upload Image"
+            >
+              {uploading ? '...' : 'IMG'}
+            </button>
+          </div>
+          {/* Spacer */}
+          <div style={{ flex: 1 }} />
+          {/* Right side: send button */}
           <button
             onClick={handleSendMessage}
-            disabled={!newMessage.trim()}
+            disabled={!newMessage.trim() || uploading}
             style={{
-              padding: isMobile ? '14px 20px' : '12px 24px',
-              minHeight: isMobile ? '44px' : 'auto',
+              padding: isMobile ? '10px 20px' : '8px 20px',
+              minHeight: isMobile ? '38px' : '32px',
               background: newMessage.trim() ? '#ffd23f20' : 'transparent',
               border: `1px solid ${newMessage.trim() ? '#ffd23f' : '#3a4a3a'}`,
               color: newMessage.trim() ? '#ffd23f' : '#5a6a5a',
               cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
               fontFamily: 'monospace',
-              fontSize: isMobile ? '0.9rem' : '0.85rem',
+              fontSize: isMobile ? '0.85rem' : '0.75rem',
             }}
           >
             SEND
@@ -2514,7 +3404,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 setNewMessage(prev => prev + emoji);
                 setShowEmojiPicker(false);
               }}
-              onClose={() => setShowEmojiPicker(false)}
               isMobile={isMobile}
             />
           )}
@@ -2615,7 +3504,6 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
               <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {request.from_user?.displayName || 'Unknown'}
               </div>
-              <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{request.from_user?.handle}</div>
               {request.message && (
                 <div style={{ color: '#7a8a7a', fontSize: '0.8rem', marginTop: '4px', fontStyle: 'italic' }}>
                   "{request.message}"
@@ -2710,7 +3598,6 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
                   <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {request.to_user?.displayName || 'Unknown'}
                   </div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{request.to_user?.handle}</div>
                 </div>
               </div>
               <button
@@ -2784,7 +3671,6 @@ const SendContactRequestModal = ({ isOpen, onClose, toUser, fetchAPI, showToast,
           <Avatar letter={toUser.avatar || toUser.displayName?.[0] || '?'} color="#3bceac" size={44} />
           <div>
             <div style={{ color: '#c5d5c5' }}>{toUser.displayName}</div>
-            <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{toUser.handle}</div>
           </div>
         </div>
 
@@ -3044,7 +3930,6 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
                   <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {contact.name}
                   </div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>@{contact.handle}</div>
                 </div>
               </div>
             );
@@ -3197,7 +4082,6 @@ const ContactsView = ({
                   <Avatar letter={user.avatar || user.displayName[0]} color="#ffd23f" size={isMobile ? 40 : 36} status={user.status} />
                   <div>
                     <div style={{ color: '#c5d5c5' }}>{user.displayName}</div>
-                    <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{user.handle}</div>
                   </div>
                 </div>
                 {user.isContact ? (
@@ -3241,7 +4125,6 @@ const ContactsView = ({
                   <Avatar letter={contact.avatar || contact.name[0]} color="#ffd23f" size={44} status={contact.status} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</div>
-                    <div style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>@{contact.handle}</div>
                   </div>
                 </div>
                 <button onClick={() => handleRemoveContact(contact.id)} style={{
@@ -3526,7 +4409,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
                     <Avatar letter={member.avatar || member.name[0]} color={member.role === 'admin' ? '#ffd23f' : '#6a7a6a'} size={36} status={member.status} />
                     <div>
                       <div style={{ color: '#c5d5c5' }}>{member.name}</div>
-                      <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>@{member.handle} • {member.role}</div>
+                      <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>{member.role}</div>
                     </div>
                   </div>
                   {groupDetails.isAdmin && (
@@ -3727,6 +4610,8 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
 const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || null);
+  const [bio, setBio] = useState(user?.bio || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newHandle, setNewHandle] = useState('');
@@ -3734,6 +4619,8 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
   const [showBlockedMuted, setShowBlockedMuted] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [mutedUsers, setMutedUsers] = useState([]);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef(null);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
   // Load blocked/muted users when section is expanded
@@ -3773,11 +4660,76 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
 
   const handleSaveProfile = async () => {
     try {
-      const updated = await fetchAPI('/profile', { method: 'PUT', body: { displayName, avatar } });
+      const updated = await fetchAPI('/profile', { method: 'PUT', body: { displayName, avatar, bio } });
       showToast('Profile updated', 'success');
       onUserUpdate?.(updated);
     } catch (err) {
       showToast(err.message || 'Failed to update profile', 'error');
+    }
+  };
+
+  const handleAvatarUpload = async (file) => {
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      showToast('Invalid file type. Allowed: jpg, png, gif, webp', 'error');
+      return;
+    }
+
+    // Validate file size (2MB max)
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('File too large. Maximum size is 2MB', 'error');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      const response = await fetch(`${API_URL}/profile/avatar`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('cortex_token')}`,
+        },
+        body: formData,
+      });
+
+      // Try to parse as JSON, handle non-JSON responses gracefully
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(text || `Server error (${response.status})`);
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      setAvatarUrl(data.avatarUrl);
+      onUserUpdate?.({ ...user, avatarUrl: data.avatarUrl });
+      showToast('Profile image uploaded', 'success');
+    } catch (err) {
+      console.error('Avatar upload error:', err);
+      showToast(err.message || 'Failed to upload image', 'error');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    try {
+      await fetchAPI('/profile/avatar', { method: 'DELETE' });
+      setAvatarUrl(null);
+      onUserUpdate?.({ ...user, avatarUrl: null });
+      showToast('Profile image removed', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to remove image', 'error');
     }
   };
 
@@ -3828,12 +4780,62 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
       {/* Profile Info */}
       <div style={{ marginTop: '24px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
         <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '16px' }}>PROFILE</div>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <Avatar letter={avatar || displayName?.[0] || '?'} color="#ffd23f" size={60} />
+          <Avatar letter={avatar || displayName?.[0] || '?'} color="#ffd23f" size={60} imageUrl={avatarUrl} />
           <div>
             <div style={{ color: '#c5d5c5', fontSize: '1.1rem' }}>{displayName || user?.displayName}</div>
             <div style={{ color: '#5a6a5a', fontSize: '0.8rem' }}>@{user?.handle}</div>
+          </div>
+        </div>
+
+        {/* Profile Image Upload */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>PROFILE IMAGE</label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+              style={{ display: 'none' }}
+              onChange={(e) => handleAvatarUpload(e.target.files[0])}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingAvatar}
+              style={{
+                padding: isMobile ? '10px 16px' : '8px 14px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: '#0ead6920',
+                border: '1px solid #0ead69',
+                color: '#0ead69',
+                cursor: uploadingAvatar ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.8rem',
+              }}
+            >
+              {uploadingAvatar ? 'UPLOADING...' : 'UPLOAD IMAGE'}
+            </button>
+            {avatarUrl && (
+              <button
+                onClick={handleRemoveAvatar}
+                style={{
+                  padding: isMobile ? '10px 16px' : '8px 14px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: 'transparent',
+                  border: '1px solid #ff6b35',
+                  color: '#ff6b35',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.85rem' : '0.8rem',
+                }}
+              >
+                REMOVE IMAGE
+              </button>
+            )}
+          </div>
+          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '4px' }}>
+            Max 2MB. Formats: jpg, png, gif, webp. Image will be resized to 256×256.
           </div>
         </div>
 
@@ -3843,8 +4845,29 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>AVATAR (1-2 characters)</label>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>FALLBACK AVATAR (1-2 characters)</label>
           <input type="text" value={avatar} onChange={(e) => setAvatar(e.target.value.slice(0, 2))} maxLength={2} style={inputStyle} />
+          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '4px' }}>
+            Shown when no profile image is set or if it fails to load.
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
+            BIO <span style={{ color: '#5a6a5a' }}>({bio.length}/500)</span>
+          </label>
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value.slice(0, 500))}
+            maxLength={500}
+            rows={4}
+            placeholder="Tell others about yourself..."
+            style={{
+              ...inputStyle,
+              minHeight: '80px',
+              resize: 'vertical',
+            }}
+          />
         </div>
 
         <button onClick={handleSaveProfile} style={{
@@ -3959,6 +4982,49 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
           </div>
         </div>
 
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>PUSH NOTIFICATIONS</label>
+          <button
+            onClick={async () => {
+              const token = storage.getToken();
+              const currentlyEnabled = storage.getPushEnabled();
+              if (currentlyEnabled) {
+                // Disable push
+                storage.setPushEnabled(false);
+                await unsubscribeFromPush(token);
+                showToast('Push notifications disabled', 'success');
+              } else {
+                // Enable push
+                storage.setPushEnabled(true);
+                const success = await subscribeToPush(token);
+                if (success) {
+                  showToast('Push notifications enabled', 'success');
+                } else {
+                  showToast('Failed to enable push notifications', 'error');
+                  storage.setPushEnabled(false);
+                }
+              }
+              // Force re-render by updating a local state (use the component's state)
+              setDisplayName(prev => prev); // Trigger re-render
+            }}
+            style={{
+              padding: isMobile ? '10px 16px' : '8px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: storage.getPushEnabled() ? '#0ead6920' : 'transparent',
+              border: `1px solid ${storage.getPushEnabled() ? '#0ead69' : '#2a3a2a'}`,
+              color: storage.getPushEnabled() ? '#0ead69' : '#6a7a6a',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.9rem' : '0.85rem',
+            }}
+          >
+            {storage.getPushEnabled() ? '🔔 ENABLED' : '🔕 DISABLED'}
+          </button>
+          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+            Receive notifications when the app is closed
+          </div>
+        </div>
+
         <div style={{ color: '#5a6a5a', fontSize: '0.7rem', padding: '10px', background: '#0a100a', border: '1px solid #2a3a2a' }}>
           ℹ️ Theme customization will change colors throughout the app (coming soon). Other changes take effect immediately.
         </div>
@@ -4010,7 +5076,6 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                         <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="#ff6b35" size={28} />
                         <div>
                           <div style={{ color: '#c5d5c5', fontSize: '0.8rem' }}>{u.displayName}</div>
-                          <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{u.handle}</div>
                         </div>
                       </div>
                       <button
@@ -4056,7 +5121,6 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                         <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="#6a7a6a" size={28} />
                         <div>
                           <div style={{ color: '#8a9a8a', fontSize: '0.8rem' }}>{u.displayName}</div>
-                          <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{u.handle}</div>
                         </div>
                       </div>
                       <button
@@ -4296,6 +5360,7 @@ function MainApp() {
   const [groupInvitations, setGroupInvitations] = useState([]); // Received group invitations
   const [blockedUsers, setBlockedUsers] = useState([]); // Users blocked by current user
   const [mutedUsers, setMutedUsers] = useState([]); // Users muted by current user
+  const [profileUserId, setProfileUserId] = useState(null); // User ID for profile modal
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -4530,22 +5595,38 @@ function MainApp() {
     loadBlockedMutedUsers();
   }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers]);
 
-  // Request notification permission on first load
+  // Request notification permission and set up push on first load
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      // Request permission after a brief delay to avoid interrupting initial page load
-      const timer = setTimeout(() => {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            console.log('✅ Desktop notifications enabled');
-          } else {
-            console.log('❌ Desktop notifications denied');
-          }
-        });
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, []);
+    const token = storage.getToken();
+    if (!token) return;
+
+    const setupPushNotifications = async () => {
+      // Check if user has push enabled
+      if (!storage.getPushEnabled()) {
+        console.log('[Push] Push notifications disabled by user');
+        return;
+      }
+
+      // Request notification permission if not yet granted
+      if ('Notification' in window && Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          console.log('❌ Desktop notifications denied');
+          return;
+        }
+        console.log('✅ Desktop notifications enabled');
+      }
+
+      // If permission granted, subscribe to push
+      if ('Notification' in window && Notification.permission === 'granted') {
+        await subscribeToPush(token);
+      }
+    };
+
+    // Delay to avoid interrupting initial page load
+    const timer = setTimeout(setupPushNotifications, 2000);
+    return () => clearTimeout(timer);
+  }, [user]);
 
   const handleCreateWave = async (data) => {
     try {
@@ -4591,6 +5672,14 @@ function MainApp() {
           margin: 8px 0;
           display: block;
         }
+        /* Search result highlighting */
+        mark {
+          background: #ffd23f40;
+          color: #ffd23f;
+          font-weight: bold;
+          padding: 0 2px;
+          border-radius: 2px;
+        }
         /* Font scaling: base font size is set on root div and scales all content */
         /* Elements with explicit fontSize will maintain their relative proportions */
       `}</style>
@@ -4614,13 +5703,10 @@ function MainApp() {
           ) : (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
               <GlowText color="#ffd23f" size="1.5rem" weight={700}>CORTEX</GlowText>
-              <span style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>v1.7.0</span>
+              <span style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>v1.8.0</span>
             </div>
           )}
         </div>
-
-        {/* Connection Status - desktop only */}
-        {!isMobile && <ConnectionStatus wsConnected={wsConnected} apiConnected={apiConnected} />}
 
         {/* Nav Items - grows to fill space */}
         <div style={{ display: 'flex', gap: '4px', flex: 1, justifyContent: 'center' }}>
@@ -4682,7 +5768,6 @@ function MainApp() {
           {!isMobile && (
             <div style={{ textAlign: 'right' }}>
               <div style={{ color: '#ffd23f', fontSize: '0.8rem' }}>{user?.displayName}</div>
-              <div style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>@{user?.handle}</div>
             </div>
           )}
         </div>
@@ -4700,24 +5785,27 @@ function MainApp() {
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
               {selectedWave ? (
-                <WaveView wave={selectedWave} onBack={() => setSelectedWave(null)}
-                  fetchAPI={fetchAPI} showToast={showToastMsg} currentUser={user}
-                  groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile}
-                  sendWSMessage={sendWSMessage}
-                  typingUsers={typingUsers[selectedWave?.id] || {}}
-                  reloadTrigger={waveReloadTrigger}
-                  contacts={contacts}
-                  contactRequests={contactRequests}
-                  sentContactRequests={sentContactRequests}
-                  onRequestsChange={loadContactRequests}
-                  onContactsChange={loadContacts}
-                  blockedUsers={blockedUsers}
-                  mutedUsers={mutedUsers}
-                  onBlockUser={handleBlockUser}
-                  onUnblockUser={handleUnblockUser}
-                  onMuteUser={handleMuteUser}
-                  onUnmuteUser={handleUnmuteUser}
-                  onBlockedMutedChange={loadBlockedMutedUsers} />
+                <ErrorBoundary key={selectedWave.id}>
+                  <WaveView wave={selectedWave} onBack={() => setSelectedWave(null)}
+                    fetchAPI={fetchAPI} showToast={showToastMsg} currentUser={user}
+                    groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile}
+                    sendWSMessage={sendWSMessage}
+                    typingUsers={typingUsers[selectedWave?.id] || {}}
+                    reloadTrigger={waveReloadTrigger}
+                    contacts={contacts}
+                    contactRequests={contactRequests}
+                    sentContactRequests={sentContactRequests}
+                    onRequestsChange={loadContactRequests}
+                    onContactsChange={loadContacts}
+                    blockedUsers={blockedUsers}
+                    mutedUsers={mutedUsers}
+                    onBlockUser={handleBlockUser}
+                    onUnblockUser={handleUnblockUser}
+                    onMuteUser={handleMuteUser}
+                    onUnmuteUser={handleUnmuteUser}
+                    onBlockedMutedChange={loadBlockedMutedUsers}
+                    onShowProfile={setProfileUserId} />
+                </ErrorBoundary>
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
                   <div style={{ textAlign: 'center' }}>
@@ -4764,7 +5852,11 @@ function MainApp() {
         padding: '8px 12px', background: '#050805', borderTop: '1px solid #2a3a2a',
         display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
       }}>
-        <div style={{ color: '#5a6a5a' }}><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</div>
+        <div style={{ color: '#5a6a5a', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</span>
+          <span><span style={{ color: apiConnected ? '#0ead69' : '#ff6b35' }}>●</span> API</span>
+          <span><span style={{ color: wsConnected ? '#0ead69' : '#ff6b35' }}>●</span> LIVE</span>
+        </div>
         <div style={{ color: '#5a6a5a' }}>WAVES: {waves.length} • GROUPS: {groups.length} • CONTACTS: {contacts.length}</div>
       </footer>
 
@@ -4780,6 +5872,38 @@ function MainApp() {
           isMobile={isMobile}
         />
       )}
+
+      <UserProfileModal
+        isOpen={!!profileUserId}
+        onClose={() => setProfileUserId(null)}
+        userId={profileUserId}
+        currentUser={user}
+        fetchAPI={fetchAPI}
+        showToast={showToastMsg}
+        contacts={contacts}
+        blockedUsers={blockedUsers}
+        mutedUsers={mutedUsers}
+        onAddContact={async (userId, name) => {
+          try {
+            await fetchAPI('/contacts/request', { method: 'POST', body: { toUserId: userId } });
+            showToastMsg(`Contact request sent to ${name}`, 'success');
+            loadContactRequests();
+          } catch (e) {
+            showToastMsg(e.message || 'Failed to send contact request', 'error');
+          }
+        }}
+        onBlock={async (userId, name) => {
+          if (await handleBlockUser(userId)) {
+            showToastMsg(`Blocked ${name}`, 'success');
+          }
+        }}
+        onMute={async (userId, name) => {
+          if (await handleMuteUser(userId)) {
+            showToastMsg(`Muted ${name}`, 'success');
+          }
+        }}
+        isMobile={isMobile}
+      />
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 

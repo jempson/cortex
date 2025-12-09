@@ -1,8 +1,78 @@
-# CORTEX - Secure Wave Communications v1.7.0
+# CORTEX - Secure Wave Communications v1.8.0-alpha
 
 A privacy-first, federated communication platform inspired by Google Wave with a Firefly aesthetic.
 
-## What's New in v1.7.0
+## What's New in v1.8.0
+
+### 🖼️ Profile Images
+Upload custom profile pictures to replace letter avatars.
+
+- **Image Upload**: Upload jpg, png, gif, or webp images (up to 2MB)
+- **Auto-Processing**: Images resized to 256×256 and converted to efficient webp format
+- **Privacy**: EXIF metadata automatically stripped from uploads
+- **Fallback**: Letter avatar shown if no image set or if image fails to load
+- **Message Display**: Profile images appear next to your messages in waves
+
+### 📝 About Me / Bio
+Add a bio to your profile that others can view.
+
+- **500 Characters**: Express yourself with a generous character limit
+- **Public Profile**: Bio visible when others view your profile
+- **Character Counter**: Real-time count shows remaining characters
+
+### 👤 User Profile Modal
+Click on any user's name or avatar to view their profile.
+
+- **Profile Display**: Large avatar, display name, @handle, bio, join date
+- **Quick Actions**: Add Contact, Block, or Mute directly from profile
+- **Universal**: Works in messages, participants list, and contacts
+
+### 🎨 Cleaner UI
+Display names now shown instead of @handles in most places.
+
+- **Simplified Display**: Only display names shown in messages, participants, wave list
+- **@handle Preserved**: Still visible in Profile Settings and User Profile Modal
+- **Clickable**: Names/avatars open the profile modal
+
+### 📦 Message Layout Cleanup
+Consolidated message footer for a more compact view.
+
+- **Before**: 4 rows (Reply/Edit/Delete → Reactions → Emoji picker → Seen by)
+- **After**: 2 rows (Actions + reactions inline → Compact read count)
+- **Icon Buttons**: Edit (✏️) and Delete (✕) shortened to icons only
+- **Inline Reactions**: Reactions now appear on same row as action buttons
+- **Compact Read Count**: "✓3" instead of "Seen by 3 people" (expandable)
+
+### 😀 Emoji Picker Improvements
+Fixed and improved the message composer emoji picker.
+
+- **Centering Fix**: Emojis properly centered at all font sizes
+- **Cleaner UI**: Removed redundant CLOSE button (click EMO to dismiss)
+- **Compact Grid**: 8-column layout on desktop (16 emojis in 2 rows)
+
+### 🗄️ SQLite Database (Optional)
+Migrate from JSON files to SQLite for better performance.
+
+- **Better Performance**: SQLite handles large datasets more efficiently than JSON files
+- **Optional Upgrade**: Set `USE_SQLITE=true` to enable (JSON remains default)
+- **Migration Script**: `node migrate-json-to-sqlite.js` converts existing data
+- **Dry Run**: Use `--dry-run` flag to preview migration without changes
+- **Auto-Backup**: JSON files backed up to `data/json-backup/` before migration
+- **14 Tables**: Users, waves, messages, groups, contacts, and all related data
+
+### 🔔 PWA Push Notifications
+Receive notifications even when the app is closed or backgrounded.
+
+- **Background Notifications**: Server-sent push via Web Push API
+- **Toggle Control**: Enable/disable in Profile Settings → Display Preferences
+- **Smart Delivery**: Only sent to offline users (WebSocket users get real-time)
+- **Click to Open**: Tap notification to open the specific wave
+- **Auto-Cleanup**: Expired subscriptions automatically removed
+- **VAPID Authentication**: Secure push delivery with public/private keys
+
+---
+
+## What Was New in v1.7.0
 
 ### 📬 Contact Request System
 Users must send and accept contact requests before becoming contacts.
@@ -141,6 +211,7 @@ Visual display of who has read messages in a wave.
 - **Smart Scrolling**: Root messages still scroll to bottom (expected behavior)
 - **Long Wave Support**: No more disruptive jumping in waves with 100+ messages
 - **Seamless UX**: Scroll restoration happens automatically and smoothly
+- **Scroll-to-Unread**: Opening a wave auto-scrolls to first unread message (or bottom if all read)
 
 ## What Was New in v1.3.3
 
@@ -228,10 +299,17 @@ Visual display of who has read messages in a wave.
 cortex/
 ├── server/
 │   ├── server.js           # Express + WebSocket server
+│   ├── database-sqlite.js  # SQLite database class (v1.8.0+)
+│   ├── schema.sql          # SQLite schema (v1.8.0+)
+│   ├── migrate-json-to-sqlite.js  # Migration script (v1.8.0+)
 │   ├── package.json        # Server dependencies
 │   ├── .env                # Environment variables (create this)
-│   └── data/               # JSON data files (auto-created)
-│       ├── users.json
+│   ├── uploads/            # Uploaded files (v1.8.0+)
+│   │   └── avatars/        # Profile images
+│   └── data/               # Data storage (auto-created)
+│       ├── cortex.db       # SQLite database (if USE_SQLITE=true)
+│       ├── json-backup/    # JSON backup after migration
+│       ├── users.json      # (JSON mode only)
 │       ├── waves.json
 │       ├── messages.json
 │       ├── groups.json
@@ -299,12 +377,19 @@ Demo accounts (password: `demo123`):
 ### User Account Management (New in v1.3)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| PUT | `/api/users/profile` | Update display name, avatar |
+| PUT | `/api/users/profile` | Update display name, avatar, bio |
 | PUT | `/api/users/password` | Change password |
 | PUT | `/api/profile/preferences` | Update theme, font size (v1.3.2+) |
 | POST | `/api/users/handle/request` | Request handle change |
 | GET | `/api/users/handle/requests` | Get user's handle requests |
 | GET | `/api/users/handle/history` | Get handle change history |
+
+### Profile Images (v1.8.0+)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/profile/avatar` | Upload profile image (jpg, png, gif, webp, max 2MB) |
+| DELETE | `/api/profile/avatar` | Remove profile image (revert to letter) |
+| GET | `/api/users/:id/profile` | Get user's public profile (avatar, bio, etc.) |
 
 ### Admin Endpoints (New in v1.3)
 | Method | Endpoint | Description |
@@ -384,6 +469,8 @@ Demo accounts (password: `demo123`):
   handle: "mal",                   // Changeable (admin-approved)
   displayName: "Malcolm Reynolds", // Freely changeable
   avatar: "M",                     // Freely changeable (1-2 chars)
+  avatarUrl: "/uploads/avatars/user-xxx.webp", // v1.8.0+ Profile image URL
+  bio: "Captain of the Serenity",  // v1.8.0+ About me (max 500 chars)
   handleHistory: [
     { handle: "mal", from: "2025-01-01", to: null }
   ],
@@ -437,8 +524,16 @@ JWT_EXPIRES_IN=7d                  # Token expiration
 ALLOWED_ORIGINS=https://your-domain.com  # CORS whitelist
 SEED_DEMO_DATA=true                # Seed demo accounts on first run
 
+# Database (v1.8.0+)
+USE_SQLITE=true                    # Use SQLite instead of JSON files (recommended)
+
 # GIF Search (v1.7.0+)
 GIPHY_API_KEY=your-giphy-api-key   # Get from developers.giphy.com
+
+# Push Notifications (v1.8.0+)
+VAPID_PUBLIC_KEY=your-public-key   # Generate with: npx web-push generate-vapid-keys
+VAPID_PRIVATE_KEY=your-private-key # Keep secret!
+VAPID_EMAIL=mailto:admin@your-domain.com
 ```
 
 Generate a secure JWT_SECRET:
@@ -498,8 +593,49 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
     }
+
+    # Uploaded files (avatars, etc.) - added in v1.8.0
+    location /uploads {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
 }
 ```
+
+### Nginx Proxy Manager
+
+If using Nginx Proxy Manager (NPM), add these locations in the **Advanced** tab:
+
+```nginx
+location /api {
+    proxy_pass http://your-backend:3001;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /ws {
+    proxy_pass http://your-backend:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 86400;
+}
+
+location /uploads {
+    proxy_pass http://your-backend:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+}
+```
+
+**Important NPM Settings:**
+- **Cache Assets**: Must be **disabled** for the proxy host. NPM's asset caching intercepts image requests (`.webp`, `.jpg`, etc.) and can return cached HTML instead of the actual images, breaking profile picture display.
+- **WebSockets Support**: Enable for real-time features.
+- **Block Common Exploits**: Can remain enabled.
 
 ## Roadmap
 
@@ -518,9 +654,19 @@ server {
 - [x] App icons and manifest
 - [x] Install prompt and offline indicator
 
-### v1.8 - Scale & Organization
-- [ ] SQLite migration
-- [ ] Image/file upload (not just URL embedding)
+### Completed in v1.8.0
+- [x] Profile images (avatar upload with sharp processing)
+- [x] About Me / Bio section (500 char)
+- [x] User Profile Modal (view other users' profiles)
+- [x] Display name simplification (hide @handle in most UI)
+- [x] Profile images in wave messages
+- [x] Message layout cleanup (compact 2-row footer)
+- [x] Emoji picker improvements (centering, no close button)
+- [x] SQLite database migration (optional, `USE_SQLITE=true`)
+- [x] PWA Push Notifications (background notifications when app closed)
+
+### v1.8 - Remaining (Scale & Organization)
+- [ ] Image/file upload for messages (not just URL embedding)
 - [ ] Message pagination/virtual scrolling
 - [ ] Full-text search with database FTS
 - [ ] Content reporting system

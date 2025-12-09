@@ -70,6 +70,8 @@ Single-page React app with all components in one file:
 - `id`: Immutable UUID (used in all references)
 - `handle`: Changeable username (admin-approved, 30-day cooldown)
 - `displayName`, `avatar`: Freely changeable
+- `avatarUrl`: Profile image URL (uploaded via `/api/profile/avatar`)
+- `bio`: About me text (max 500 characters)
 - `handleHistory[]`: Audit trail of handle changes
 - `preferences`: User customization settings (theme, fontSize, colorMode)
   - `theme`: 'firefly' (default), 'highContrast', 'light'
@@ -124,9 +126,24 @@ Single-page React app with all components in one file:
   - All links open in new tab with `rel="noopener noreferrer"`
 
 ### Data Persistence
+Two storage backends are available (v1.8.0+):
+
+**JSON Files (default):**
 - Database class methods call `saveUsers()`, `saveWaves()`, etc. after mutations
 - Atomic writes to individual JSON files
-- Demo data seeded if `SEED_DEMO_DATA=true` (password: "Demo123!")
+- Simple but slower for large datasets
+
+**SQLite (recommended for production):**
+- Enable with `USE_SQLITE=true` environment variable
+- Database file: `data/cortex.db`
+- Schema: `schema.sql` (14 tables with indexes)
+- Better performance and query capabilities
+- Migration script: `node migrate-json-to-sqlite.js`
+  - Use `--dry-run` to preview without changes
+  - Backs up JSON files to `data/json-backup/`
+- SQLite class: `database-sqlite.js`
+
+Demo data seeded if `SEED_DEMO_DATA=true` (password: "Demo123!")
 
 ## Important Implementation Details
 
@@ -173,6 +190,10 @@ Single-page React app with all components in one file:
 - **Auto-Initialize**: Author automatically added to readBy on message creation
 - **Backward Compatible**: Old messages get readBy arrays initialized on first access
 - **Scroll Preservation**: Clicking messages or replying preserves scroll position to prevent disruptive jumping in long waves
+- **Scroll-to-Unread**: When opening a wave, automatically scrolls to first unread message or bottom if all read
+  - Uses `data-message-id` attribute on message elements for scroll targeting
+  - `hasScrolledToUnreadRef` prevents re-scrolling on WebSocket updates
+  - Smooth scroll animation with `scrollIntoView({ behavior: 'smooth', block: 'start' })`
 - **Client Storage**: Theme/font applied via CSS variables and inline styles
 - **Future**: Full CSS variable refactoring for complete theme support
 
@@ -204,17 +225,58 @@ Single-page React app with all components in one file:
 - **OfflineIndicator Component**: Orange banner when offline
 - **iOS Support**: apple-touch-icon, status bar styling
 
-### Read Receipts Display (v1.6.0+)
+### PWA Push Notifications (v1.8.0+)
+Server-sent push notifications for offline/background users via Web Push API.
+
+- **Server Setup**:
+  - `web-push` dependency for sending push notifications
+  - VAPID keys (public/private) stored in environment variables
+  - `push_subscriptions` table (SQLite) or JSON file for storing subscriptions
+- **API Endpoints**:
+  - `GET /api/push/vapid-key` - Get public VAPID key for client subscription
+  - `POST /api/push/subscribe` - Save user's push subscription (body: `{ subscription }`)
+  - `DELETE /api/push/subscribe` - Remove subscription (body: `{ endpoint? }`)
+  - `POST /api/push/test` - Send test notification (development)
+- **Server Functions**:
+  - `sendPushNotification(userId, payload)` - Send push to specific user
+  - `broadcastToWaveWithPush()` - Broadcast to wave with push for offline users
+  - Automatic cleanup of expired subscriptions (410/404 errors)
+- **Client Integration**:
+  - `subscribeToPush(token)` - Subscribe to push on login
+  - `unsubscribeFromPush(token)` - Unsubscribe when user disables
+  - Push toggle in Profile Settings → Display Preferences
+  - `cortex_push_enabled` localStorage key for user preference
+- **Service Worker** (`sw.js`):
+  - Push event handler parses JSON payload
+  - Shows notification with title, body, icon, badge, vibration
+  - Click-to-open: focuses existing window or opens new
+  - `navigate-to-wave` message to open specific wave
+- **Payload Format**:
+  ```javascript
+  {
+    title: 'New message in Wave Name',
+    body: 'Sender: Message preview...',
+    tag: 'wave-{waveId}',
+    url: '/?wave={waveId}',
+    waveId: 'uuid'
+  }
+  ```
+- **Environment Variables**:
+  - `VAPID_PUBLIC_KEY` - Public key for client subscription
+  - `VAPID_PRIVATE_KEY` - Private key for signing push messages
+  - `VAPID_EMAIL` - Contact email (format: `mailto:admin@domain.com`)
+
+### Read Receipts Display (v1.6.0+, updated v1.8.0)
 Visual UI for the per-message read tracking system (builds on v1.4.0 backend).
 
 - **Participant Read Status Bar**: Wave header shows all participants
   - Green ✓ for users who've read latest message
   - Gray ○ for users with unread messages
   - Located below wave title
-- **Per-Message Receipts**: Expandable "Seen by X people" on each message
-  - `<details>` element for expand/collapse
-  - Lists all users who read that message with green badges
-  - Located at bottom of message after reactions
+- **Per-Message Receipts**: Compact "✓N" display (updated v1.8.0)
+  - Shows checkmark and count: `✓3` instead of "Seen by 3 people"
+  - `<details>` element expands to show names with green badges
+  - Located below action buttons row
 - **Mark All Read Button**: One-click to mark all unread as read
   - Only appears when unread messages exist
   - Calls `POST /api/messages/:id/read` for each unread message
@@ -308,10 +370,156 @@ GIPHY API integration for searching and inserting GIFs into messages.
   - Click GIF to insert URL into message (auto-embedded on send)
 - **GIPHY Attribution**: Footer in modal as required by GIPHY terms
 
+### Profile Images (v1.8.0+)
+Uploadable profile pictures with automatic processing.
+
+- **Upload Endpoint**: `POST /api/profile/avatar`
+  - Accepts: jpg, jpeg, png, gif, webp (max 2MB)
+  - Processing: Resize to 256×256, convert to webp, strip EXIF metadata
+  - Storage: `/uploads/avatars/{userId}-{timestamp}.webp`
+- **Delete Endpoint**: `DELETE /api/profile/avatar`
+- **Static Serving**: Files served from `/uploads/avatars/`
+- **User Schema**: `avatarUrl` field stores URL path
+- **Avatar Component**: Supports both `imageUrl` and letter fallback
+  - Lazy loading with `loading="lazy"`
+  - Error handling falls back to letter avatar
+- **Message Display**: Messages include `sender_avatar_url` field
+  - Profile images appear next to messages in waves
+  - ThreadedMessage passes `imageUrl` to Avatar component
+- **Auth Responses**: Login, register, and `/api/auth/me` all return `avatarUrl`
+- **Dependencies**: `multer` (file upload), `sharp` (image processing)
+- **Nginx/Proxy Requirements**:
+  - Must add `/uploads` location proxying to port 3001 (see README.md)
+  - **Nginx Proxy Manager**: Must disable "Cache Assets" option, otherwise NPM intercepts image requests and returns cached HTML instead of images
+
+### Message Image Upload (v1.8.0+)
+Upload images directly in messages instead of pasting URLs.
+
+- **Upload Endpoint**: `POST /api/uploads`
+  - Accepts: jpg, jpeg, png, gif, webp (max 10MB)
+  - Processing: Resize to max 1200×1200, convert to webp (except animated GIFs)
+  - Storage: `/uploads/messages/{userId}-{timestamp}.{ext}`
+  - Returns: `{ success: true, url: "/uploads/messages/..." }`
+- **Static Serving**: Files served from `/uploads/messages/`
+- **Frontend Features**:
+  - **IMG Button**: Orange button in message composer (between GIF and SEND)
+  - **Drag-and-Drop**: Drop images onto compose area (visual feedback with dashed border)
+  - **Clipboard Paste**: Paste images with Ctrl+V
+  - **Progress Indicator**: Button shows "..." during upload
+  - **Auto-Embed**: Uploaded URL inserted into message, auto-embeds via `detectAndEmbedMedia()`
+- **Display**: Images shown as thumbnails (200×150 max) with click-to-zoom
+  - **Thumbnail**: `object-fit: cover` for nice cropping, subtle border
+  - **Lightbox**: Click thumbnail to view full-size image in overlay
+  - **ImageLightbox Component**: Full-screen overlay with close button
+- **Client State**: `uploading` state disables SEND button during upload
+- **Dependencies**: Uses same `multer` + `sharp` as avatar uploads
+- **Vite Proxy**: `/uploads` proxied to backend in development mode
+
+### About Me / Bio (v1.8.0+)
+User bio/about section visible on profiles.
+
+- **User Schema**: `bio` field (max 500 characters, nullable)
+- **Update**: `PUT /api/profile` accepts `bio` field
+- **Public Profile**: `GET /api/users/:id/profile` returns public fields:
+  - `id`, `handle`, `displayName`, `avatar`, `avatarUrl`, `bio`, `createdAt`
+  - Does NOT expose: email, passwordHash, preferences
+- **UI**: Textarea with character counter in Profile Settings
+
+### User Profile Modal (v1.8.0+)
+Modal for viewing other users' public profiles.
+
+- **Component**: `UserProfileModal`
+- **Trigger**: Click on user avatar/name in messages, participants, contacts
+- **Display**: Large avatar, display name, @handle, bio, join date
+- **Actions**: Add Contact, Block, Mute (for non-current user)
+- **Props**: `userId`, `currentUser`, `contacts`, `blockedUsers`, `mutedUsers`, handlers
+
+### Display Name Simplification (v1.8.0+)
+Cleaner UI showing display names instead of @handles.
+
+- **@handle Hidden In**: Message headers, wave list, participant list, contacts, search results
+- **@handle Shown In**: Profile Settings (own handle), User Profile Modal
+- **Implementation**: Removed `@{handle}` lines from various components
+- **Clickable Names**: Names/avatars open UserProfileModal via `onShowProfile` prop
+
 ### Message Threading
 - Messages have `parentId` (null for root messages)
 - Client renders recursively with depth tracking
 - Playback mode: Shows messages in chronological order with timeline slider
+- **Deleted Messages**: Only show "[Message deleted]" placeholder if message has replies
+  - Messages deleted with no children disappear completely
+  - Preserves thread context for replies while avoiding clutter
+
+### Message Pagination (v1.8.0+)
+Waves with many messages load in batches for better performance.
+
+- **Initial Load**: `/api/waves/:id` returns 50 most recent messages by default
+  - Response includes `hasMoreMessages: true/false` and `total_messages` count
+  - `limit` query param to adjust (max 100)
+- **Load More Endpoint**: `GET /api/waves/:id/messages?limit=50&before=messageId`
+  - `before`: Message ID to fetch messages older than
+  - Returns `{ messages, hasMore, total }`
+- **Frontend**:
+  - "Load older messages" button appears at top when `hasMoreMessages` is true
+  - Shows count of remaining messages
+  - Scroll position preserved when loading older (calculates offset)
+  - Messages merged with existing and tree rebuilt
+
+### Full-Text Search (FTS) (v1.8.0+)
+Fast, relevance-ranked message search using SQLite FTS5.
+
+- **FTS5 Virtual Table**: `messages_fts` with external content table
+  - Columns: `id` (unindexed), `content` (searchable)
+  - Synced via INSERT/UPDATE/DELETE triggers on `messages` table
+  - Auto-created on server startup for existing databases
+  - Existing messages indexed during FTS table creation
+- **Search Endpoint**: `GET /api/search?q=query`
+  - Uses FTS5 MATCH with BM25 ranking for relevance
+  - Prefix matching: `"term"*` for partial word matches
+  - Returns highlighted snippets using `snippet()` function
+  - Fallback to LIKE search if FTS query fails (special characters)
+- **Response Fields**:
+  ```javascript
+  {
+    id, content, snippet,  // snippet has <mark> tags around matches
+    waveId, waveName, authorId, authorName, authorHandle,
+    createdAt, parentId
+  }
+  ```
+- **Frontend**:
+  - Server-provided `snippet` rendered with `dangerouslySetInnerHTML`
+  - `<mark>` tag styled with amber background/text to match theme
+  - Falls back to client-side highlighting if no snippet provided
+
+### Rich Media Embeds (v1.8.0+)
+Automatic embedding of videos and media from popular platforms.
+
+- **Supported Platforms**:
+  - YouTube (`youtube.com/watch?v=`, `youtu.be/`, YouTube Shorts)
+  - Vimeo (`vimeo.com/`)
+  - Spotify (`open.spotify.com/track/`, `/album/`, `/playlist/`)
+  - TikTok (`tiktok.com/@user/video/`)
+  - Twitter/X (`twitter.com/`, `x.com/` status URLs)
+  - SoundCloud (`soundcloud.com/`)
+- **API Endpoints**:
+  - `POST /api/embeds/detect` - Detect embed URLs in content
+  - `GET /api/embeds/oembed?url=` - oEmbed proxy with 15-min cache
+  - `GET /api/embeds/info?url=` - Lightweight embed info (no fetch)
+- **Frontend Components**:
+  - `RichEmbed` - Click-to-load embed with platform icon/thumbnail
+  - `MessageWithEmbeds` - Wrapper that detects and renders embeds in messages
+  - `EMBED_PLATFORMS` - Platform icons and brand colors
+  - `EMBED_URL_PATTERNS` - Client-side URL detection patterns
+- **Security**:
+  - CSP `frame-src` directive whitelists embed domains
+  - iframe `sandbox` attribute: `allow-scripts allow-same-origin allow-presentation allow-popups`
+  - Click-to-load default (privacy: embeds don't auto-load)
+  - Rate limiting: 30 oEmbed requests/min per user
+- **Implementation**:
+  - Client-side detection mirrors server patterns
+  - YouTube thumbnails from `img.youtube.com/vi/{id}/hqdefault.jpg`
+  - Embeds detected at render time (not stored in DB)
+  - URLs stripped from displayed content when embed shown
 
 ### Responsive Design (Updated v1.3.2)
 - **Multiple breakpoints:**
@@ -333,6 +541,66 @@ GIPHY API integration for searching and inserting GIFs into messages.
   - Converts `username` → `handle`
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
+
+- **v1.8.0 (December 2025)** - User Profiles & UX Polish
+  - **Profile Images**: Upload avatar images (jpg, png, gif, webp up to 2MB)
+    - `POST /api/profile/avatar` with multer + sharp processing
+    - Auto-resize to 256×256, convert to webp
+    - `DELETE /api/profile/avatar` to remove image
+    - Avatar component supports both image URLs and letter fallback
+    - Profile images display in wave messages via `sender_avatar_url`
+  - **About Me / Bio**: 500-character bio field viewable by others
+    - `GET /api/users/:id/profile` public profile endpoint
+    - Bio textarea in Profile Settings
+  - **User Profile Modal**: Click on user names/avatars to view profiles
+    - Shows avatar (large), display name, @handle, bio, join date
+    - Action buttons: Add Contact, Block, Mute
+  - **Display Name Simplification**: @handle hidden in most UI
+    - Display name only shown in messages, participants, contacts
+    - @handle visible in Profile Settings and User Profile Modal
+  - **Message Layout Cleanup**: Consolidated message footer from 4 rows to 2
+    - Row 1: Reply | Collapse | ✏️ | ✕ | 😀 | reactions inline
+    - Row 2: ✓N compact read count (expandable to show names)
+    - Edit/Delete buttons shortened to icons only
+    - Reactions moved inline with action buttons
+  - **Emoji Picker Improvements**:
+    - Fixed centering at all font sizes (fixed 32×32px buttons with flexbox)
+    - Removed redundant CLOSE button (click EMO to dismiss)
+    - 8-column grid on desktop (16 emojis in 2 rows)
+  - **Auth Response Updates**: Login/register/me endpoints now return `avatarUrl` and `bio`
+  - **SQLite Database** (optional):
+    - Enable with `USE_SQLITE=true` environment variable
+    - `database-sqlite.js` drop-in replacement for JSON database
+    - `schema.sql` with 14+ tables and indexes
+    - Migration script: `node migrate-json-to-sqlite.js`
+    - Better performance for large datasets
+  - **PWA Push Notifications**:
+    - Server-sent push when app is closed/backgrounded
+    - `web-push` library with VAPID authentication
+    - Push subscription management in Profile Settings
+    - Service worker handles push display and navigation
+    - Auto-cleanup of expired subscriptions
+  - **Message Image Upload**:
+    - `POST /api/uploads` with multer + sharp processing
+    - Max 10MB, resize to 1200×1200, convert to webp (except GIFs)
+    - IMG button in composer (orange), drag-and-drop, clipboard paste
+    - Uploaded URL auto-embeds via `detectAndEmbedMedia()`
+    - Thumbnail display (200×150 max) with click-to-zoom lightbox
+  - **Message Pagination**:
+    - Initial load limited to 50 most recent messages
+    - `GET /api/waves/:id/messages?limit=50&before=messageId` for older
+    - "Load older messages" button with scroll position preservation
+  - **Full-Text Search (FTS)**:
+    - SQLite FTS5 virtual table with BM25 ranking
+    - Highlighted snippets with `<mark>` tags
+    - Auto-migration creates FTS table and indexes existing messages
+    - Fallback to LIKE search for special character queries
+  - **Rich Media Embeds**:
+    - YouTube, Vimeo, Spotify, TikTok, Twitter/X, SoundCloud
+    - Click-to-load privacy (embeds don't load until clicked)
+    - oEmbed proxy endpoint with 15-minute cache
+    - CSP frame-src directive for secure iframe embedding
+    - Platform-specific thumbnails and play buttons
 
 - **v1.7.0 (December 2025)** - Contact & Invitation Approval System + Moderation + GIF Search
   - Contact Request System: Send/accept/decline contact requests
@@ -403,6 +671,7 @@ JWT_EXPIRES_IN=7d                                   # Token expiration
 ALLOWED_ORIGINS=https://your-domain.com             # CORS whitelist (comma-separated)
 SEED_DEMO_DATA=true                                 # Seed demo accounts on first run
 GIPHY_API_KEY=your-giphy-api-key                    # Required for GIF search (get from developers.giphy.com)
+USE_SQLITE=true                                     # Use SQLite instead of JSON files (v1.8.0+)
 ```
 
 **Client:** Hardcoded to `localhost:3001` for development. Change `API_URL` and `WS_URL` in `CortexApp.jsx` for production.

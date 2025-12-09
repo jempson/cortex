@@ -5,6 +5,37 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2025-12-08
+
+### Added
+
+#### Scroll-to-Unread Navigation
+- **Auto-Scroll on Wave Open**: When clicking into a wave, automatically scrolls to first unread message
+- **Fallback to Bottom**: If all messages are read, scrolls to the most recent message at the bottom
+- **Smooth Animation**: Uses `scrollIntoView({ behavior: 'smooth', block: 'start' })` for pleasant UX
+- **One-Time Scroll**: Only triggers on initial wave load, not on WebSocket updates or refreshes
+
+### Fixed
+
+#### WaveView Crash Fix
+- **Missing useMemo Import**: Fixed `ReferenceError: useMemo is not defined` that caused blank screen when clicking into waves
+- **ErrorBoundary Added**: New error boundary component catches render errors and displays them gracefully instead of blank screen
+- **Defensive Null Checks**: Added fallback defaults for `waveData.messages`, `all_messages`, and `participants`
+
+### Changed
+
+#### Header Cleanup
+- **Removed Desktop Status**: API/WebSocket connection status removed from desktop header (now in footer only)
+
+### Technical Details
+
+#### Implementation
+- `data-message-id` attribute added to message elements for scroll targeting
+- `hasScrolledToUnreadRef` ref prevents duplicate scrolling
+- 100ms setTimeout ensures DOM is ready before scroll calculation
+
+---
+
 ## [1.6.1] - 2025-12-05
 
 ### Changed

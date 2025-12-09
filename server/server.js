@@ -12,6 +12,10 @@ import { createServer } from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
+import sharp from 'sharp';
+import webpush from 'web-push';
+import { DatabaseSQLite } from './database-sqlite.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,6 +30,22 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 // GIPHY API configuration
 const GIPHY_API_KEY = process.env.GIPHY_API_KEY || null;
 
+// Web Push (VAPID) configuration
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || null;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || null;
+const VAPID_EMAIL = process.env.VAPID_EMAIL || 'mailto:admin@cortex.local';
+
+// Configure web-push if VAPID keys are available
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  console.log('🔔 Web Push notifications enabled');
+} else {
+  console.log('⚠️  Web Push disabled: Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in .env');
+}
+
+// Database configuration - set USE_SQLITE=true to use SQLite instead of JSON files
+const USE_SQLITE = process.env.USE_SQLITE === 'true';
+
 // Data directory and files
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILES = {
@@ -38,7 +58,48 @@ const DATA_FILES = {
   moderation: path.join(DATA_DIR, 'moderation.json'),
   contactRequests: path.join(DATA_DIR, 'contact-requests.json'),
   groupInvitations: path.join(DATA_DIR, 'group-invitations.json'),
+  pushSubscriptions: path.join(DATA_DIR, 'push-subscriptions.json'),
 };
+
+// Uploads directory for avatars
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const AVATARS_DIR = path.join(UPLOADS_DIR, 'avatars');
+const MESSAGES_DIR = path.join(UPLOADS_DIR, 'messages');
+
+// Ensure uploads directories exist
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+if (!fs.existsSync(AVATARS_DIR)) fs.mkdirSync(AVATARS_DIR, { recursive: true });
+if (!fs.existsSync(MESSAGES_DIR)) fs.mkdirSync(MESSAGES_DIR, { recursive: true });
+
+// Multer configuration for avatar uploads
+const avatarStorage = multer.memoryStorage();
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB max
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Allowed: jpg, png, gif, webp'), false);
+    }
+  },
+});
+
+// Multer configuration for message image uploads
+const messageStorage = multer.memoryStorage();
+const messageUpload = multer({
+  storage: messageStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Allowed: jpg, png, gif, webp'), false);
+    }
+  },
+});
 
 // CORS configuration
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
@@ -46,9 +107,15 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   : null;
 
 // ============ Security: Rate Limiting ============
+// Configurable via .env - set higher values for development/testing
+const RATE_LIMIT_LOGIN_MAX = parseInt(process.env.RATE_LIMIT_LOGIN_MAX) || 30;
+const RATE_LIMIT_REGISTER_MAX = parseInt(process.env.RATE_LIMIT_REGISTER_MAX) || 15;
+const RATE_LIMIT_API_MAX = parseInt(process.env.RATE_LIMIT_API_MAX) || 300;
+const RATE_LIMIT_GIF_MAX = parseInt(process.env.RATE_LIMIT_GIF_MAX) || 30;
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: RATE_LIMIT_LOGIN_MAX,
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -57,7 +124,7 @@ const loginLimiter = rateLimit({
 
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 15,
+  max: RATE_LIMIT_REGISTER_MAX,
   message: { error: 'Too many registration attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -65,7 +132,7 @@ const registerLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 300,
+  max: RATE_LIMIT_API_MAX,
   message: { error: 'Too many requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -73,16 +140,26 @@ const apiLimiter = rateLimit({
 
 const gifSearchLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 30,  // 30 searches per minute per user
+  max: RATE_LIMIT_GIF_MAX,
   message: { error: 'Too many GIF searches. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
+const RATE_LIMIT_OEMBED_MAX = parseInt(process.env.RATE_LIMIT_OEMBED_MAX) || 30;
+const oembedLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: RATE_LIMIT_OEMBED_MAX,
+  message: { error: 'Too many embed requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ============ Security: Account Lockout ============
+// Configurable via .env
 const failedAttempts = new Map();
-const LOCKOUT_THRESHOLD = 15;
-const LOCKOUT_DURATION = 15 * 60 * 1000;
+const LOCKOUT_THRESHOLD = parseInt(process.env.LOCKOUT_THRESHOLD) || 15;
+const LOCKOUT_DURATION = (parseInt(process.env.LOCKOUT_DURATION_MINUTES) || 15) * 60 * 1000;
 
 function checkAccountLockout(handle) {
   const record = failedAttempts.get(handle);
@@ -172,16 +249,201 @@ function detectAndEmbedMedia(content) {
   const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg)(\?[^\s]*)?$/i;
   const imageHosts = /(media\.giphy\.com|i\.giphy\.com|media\.tenor\.com|c\.tenor\.com)/i;
 
+  // Shared image style - thumbnails by default, click to view full size
+  const imgStyle = 'max-width:200px;max-height:150px;border-radius:4px;cursor:pointer;object-fit:cover;display:block;border:1px solid #3a4a3a;';
+
   content = content.replace(urlRegex, (match) => {
     // Check if this URL should be embedded as an image
     if (imageExtensions.test(match) || imageHosts.test(match)) {
-      return `<img src="${match}" alt="Embedded media" />`;
+      return `<img src="${match}" alt="Embedded media" style="${imgStyle}" class="zoomable-image" />`;
     }
     // Otherwise, make it a clickable link
     return `<a href="${match}" target="_blank" rel="noopener noreferrer">${match}</a>`;
   });
 
+  // Also detect and embed relative upload paths (e.g., /uploads/messages/...)
+  const uploadPathRegex = /(?<!["'>])(\/uploads\/(?:messages|avatars)\/[^\s<]+)(?![^<]*>|[^<>]*<\/)/gi;
+  content = content.replace(uploadPathRegex, (match) => {
+    // These are always images from our upload system
+    if (imageExtensions.test(match)) {
+      return `<img src="${match}" alt="Uploaded image" style="${imgStyle}" class="zoomable-image" />`;
+    }
+    return match;
+  });
+
   return content;
+}
+
+// ============ Rich Media Embed Detection ============
+// Patterns for detecting embeddable URLs from supported platforms
+const EMBED_PATTERNS = {
+  youtube: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/i,
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/i,
+      /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/i,
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i,
+    ],
+    embedUrl: (id) => `https://www.youtube.com/embed/${id}`,
+    thumbnail: (id) => `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+  },
+  vimeo: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/i,
+      /(?:https?:\/\/)?player\.vimeo\.com\/video\/(\d+)/i,
+    ],
+    embedUrl: (id) => `https://player.vimeo.com/video/${id}`,
+    oembedUrl: (url) => `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`,
+  },
+  spotify: {
+    patterns: [
+      /(?:https?:\/\/)?open\.spotify\.com\/(track|album|playlist|episode|show)\/([a-zA-Z0-9]+)/i,
+    ],
+    embedUrl: (type, id) => `https://open.spotify.com/embed/${type}/${id}`,
+  },
+  tiktok: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[\w.-]+\/video\/(\d+)/i,
+      /(?:https?:\/\/)?(?:vm\.)?tiktok\.com\/([a-zA-Z0-9]+)/i,
+    ],
+    oembedUrl: (url) => `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`,
+  },
+  twitter: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?(twitter|x)\.com\/\w+\/status\/(\d+)/i,
+    ],
+    oembedUrl: (url) => `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`,
+  },
+  soundcloud: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?soundcloud\.com\/[\w-]+\/[\w-]+/i,
+    ],
+    oembedUrl: (url) => `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(url)}`,
+  },
+};
+
+// Simple in-memory cache for oEmbed responses (15 min TTL)
+const oembedCache = new Map();
+const OEMBED_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+function getCachedOembed(url) {
+  const cached = oembedCache.get(url);
+  if (cached && Date.now() - cached.timestamp < OEMBED_CACHE_TTL) {
+    return cached.data;
+  }
+  oembedCache.delete(url);
+  return null;
+}
+
+function setCachedOembed(url, data) {
+  // Limit cache size to prevent memory issues
+  if (oembedCache.size > 1000) {
+    const oldest = oembedCache.keys().next().value;
+    oembedCache.delete(oldest);
+  }
+  oembedCache.set(url, { data, timestamp: Date.now() });
+}
+
+// Detect embed URLs in content and return metadata
+function detectEmbedUrls(content) {
+  const embeds = [];
+  const urlRegex = /https?:\/\/[^\s<>"]+/gi;
+  const urls = content.match(urlRegex) || [];
+
+  for (const url of urls) {
+    for (const [platform, config] of Object.entries(EMBED_PATTERNS)) {
+      for (const pattern of config.patterns) {
+        const match = url.match(pattern);
+        if (match) {
+          const embed = {
+            platform,
+            url,
+            contentId: match[1],
+          };
+
+          // Handle Spotify's type/id format
+          if (platform === 'spotify' && match[2]) {
+            embed.contentType = match[1]; // track, album, playlist, etc.
+            embed.contentId = match[2];
+            embed.embedUrl = config.embedUrl(match[1], match[2]);
+          } else if (config.embedUrl && typeof config.embedUrl === 'function') {
+            embed.embedUrl = config.embedUrl(match[1]);
+          }
+
+          // Add thumbnail for YouTube
+          if (platform === 'youtube' && config.thumbnail) {
+            embed.thumbnail = config.thumbnail(match[1]);
+          }
+
+          // Flag if oEmbed is available
+          if (config.oembedUrl) {
+            embed.oembedUrl = config.oembedUrl(url);
+          }
+
+          embeds.push(embed);
+          break;
+        }
+      }
+    }
+  }
+
+  return embeds;
+}
+
+// Generate embed HTML for a platform (used for server-side rendering if needed)
+function generateEmbedHtml(embed) {
+  const { platform, embedUrl, contentId } = embed;
+
+  // Common iframe attributes for security
+  const sandbox = 'allow-scripts allow-same-origin allow-presentation allow-popups';
+  const allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+
+  switch (platform) {
+    case 'youtube':
+      return `<iframe
+        src="${embedUrl}?rel=0"
+        width="560" height="315"
+        frameborder="0"
+        sandbox="${sandbox}"
+        allow="${allow}"
+        allowfullscreen
+        loading="lazy"
+        class="rich-embed youtube-embed"
+        data-platform="youtube"
+        data-content-id="${contentId}"
+      ></iframe>`;
+
+    case 'vimeo':
+      return `<iframe
+        src="${embedUrl}"
+        width="560" height="315"
+        frameborder="0"
+        sandbox="${sandbox}"
+        allow="${allow}"
+        allowfullscreen
+        loading="lazy"
+        class="rich-embed vimeo-embed"
+        data-platform="vimeo"
+        data-content-id="${contentId}"
+      ></iframe>`;
+
+    case 'spotify':
+      const height = embed.contentType === 'track' ? '152' : '352';
+      return `<iframe
+        src="${embedUrl}"
+        width="100%" height="${height}"
+        frameborder="0"
+        sandbox="${sandbox}"
+        allow="encrypted-media"
+        loading="lazy"
+        class="rich-embed spotify-embed"
+        data-platform="spotify"
+        data-content-id="${contentId}"
+      ></iframe>`;
+
+    default:
+      return null;
+  }
 }
 
 // ============ Security: Password Validation ============
@@ -210,6 +472,7 @@ class Database {
     this.moderation = { blocks: [], mutes: [] };
     this.contactRequests = { requests: [] };
     this.groupInvitations = { invitations: [] };
+    this.pushSubscriptions = { subscriptions: [] };
     this.load();
   }
 
@@ -255,6 +518,7 @@ class Database {
       this.moderation = this.loadFile(DATA_FILES.moderation, { blocks: [], mutes: [] });
       this.contactRequests = this.loadFile(DATA_FILES.contactRequests, { requests: [] });
       this.groupInvitations = this.loadFile(DATA_FILES.groupInvitations, { invitations: [] });
+      this.pushSubscriptions = this.loadFile(DATA_FILES.pushSubscriptions, { subscriptions: [] });
       console.log('📂 Loaded data from separated files');
     } else {
       if (process.env.SEED_DEMO_DATA === 'true') {
@@ -286,6 +550,7 @@ class Database {
   saveContactRequests() { this.saveFile(DATA_FILES.contactRequests, this.contactRequests); }
   saveGroupInvitations() { this.saveFile(DATA_FILES.groupInvitations, this.groupInvitations); }
   saveModeration() { this.saveFile(DATA_FILES.moderation, this.moderation); }
+  savePushSubscriptions() { this.saveFile(DATA_FILES.pushSubscriptions, this.pushSubscriptions); }
 
   initEmpty() {
     console.log('📝 Initializing empty database');
@@ -380,6 +645,8 @@ class Database {
       lastHandleChange: null,
       isAdmin: this.users.users.length === 0, // First user is admin
       preferences: { theme: 'firefly', fontSize: 'medium' },
+      bio: null, // About me section (max 500 chars)
+      avatarUrl: null, // Profile image URL
     };
     this.users.users.push(user);
     this.saveUsers();
@@ -493,19 +760,23 @@ class Database {
   rejectHandleChange(requestId, adminId, reason) {
     const admin = this.findUserById(adminId);
     if (!admin?.isAdmin) return { success: false, error: 'Not authorized' };
-    
+
     const request = this.handleRequests.requests.find(r => r.id === requestId);
     if (!request || request.status !== 'pending') {
       return { success: false, error: 'Request not found or already processed' };
     }
-    
+
     request.status = 'rejected';
     request.reason = reason;
     request.processedAt = new Date().toISOString();
     request.processedBy = adminId;
-    
+
     this.saveHandleRequests();
     return { success: true };
+  }
+
+  getPendingHandleRequests() {
+    return this.handleRequests.requests.filter(r => r.status === 'pending');
   }
 
   searchUsers(query, excludeUserId) {
@@ -868,6 +1139,63 @@ class Database {
     }
 
     return { success: true };
+  }
+
+  // === Push Subscription Methods ===
+  getPushSubscriptions(userId) {
+    return this.pushSubscriptions.subscriptions.filter(s => s.userId === userId);
+  }
+
+  addPushSubscription(userId, subscription) {
+    // Remove any existing subscription with the same endpoint for this user
+    this.pushSubscriptions.subscriptions = this.pushSubscriptions.subscriptions.filter(
+      s => !(s.userId === userId && s.endpoint === subscription.endpoint)
+    );
+
+    this.pushSubscriptions.subscriptions.push({
+      id: uuidv4(),
+      userId,
+      endpoint: subscription.endpoint,
+      keys: subscription.keys,
+      createdAt: new Date().toISOString()
+    });
+
+    this.savePushSubscriptions();
+    return true;
+  }
+
+  removePushSubscription(userId, endpoint) {
+    const initialLength = this.pushSubscriptions.subscriptions.length;
+    this.pushSubscriptions.subscriptions = this.pushSubscriptions.subscriptions.filter(
+      s => !(s.userId === userId && s.endpoint === endpoint)
+    );
+
+    if (this.pushSubscriptions.subscriptions.length < initialLength) {
+      this.savePushSubscriptions();
+      return true;
+    }
+    return false;
+  }
+
+  removeAllPushSubscriptions(userId) {
+    const initialLength = this.pushSubscriptions.subscriptions.length;
+    this.pushSubscriptions.subscriptions = this.pushSubscriptions.subscriptions.filter(
+      s => s.userId !== userId
+    );
+
+    if (this.pushSubscriptions.subscriptions.length < initialLength) {
+      this.savePushSubscriptions();
+      return true;
+    }
+    return false;
+  }
+
+  removeExpiredPushSubscription(endpoint) {
+    // Called when a push notification fails (subscription expired/invalid)
+    this.pushSubscriptions.subscriptions = this.pushSubscriptions.subscriptions.filter(
+      s => s.endpoint !== endpoint
+    );
+    this.savePushSubscriptions();
   }
 
   // === Moderation Methods ===
@@ -1423,6 +1751,7 @@ class Database {
           ...m,
           sender_name: author?.displayName || 'Unknown',
           sender_avatar: author?.avatar || '?',
+          sender_avatar_url: author?.avatarUrl || null,
           sender_handle: author?.handle || 'unknown',
           author_id: m.authorId,
           parent_id: m.parentId,
@@ -1463,6 +1792,7 @@ class Database {
       ...message,
       sender_name: author?.displayName || 'Unknown',
       sender_avatar: author?.avatar || '?',
+      sender_avatar_url: author?.avatarUrl || null,
       sender_handle: author?.handle || 'unknown',
       author_id: message.authorId,
       parent_id: message.parentId,
@@ -1499,6 +1829,7 @@ class Database {
       ...message,
       sender_name: author?.displayName || 'Unknown',
       sender_avatar: author?.avatar || '?',
+      sender_avatar_url: author?.avatarUrl || null,
       sender_handle: author?.handle || 'unknown',
       author_id: message.authorId,
       parent_id: message.parentId,
@@ -1615,6 +1946,30 @@ class Database {
       return true;
     });
 
+    // Helper to create highlighted snippet
+    const createSnippet = (content, term) => {
+      // Strip HTML tags for snippet
+      const plainText = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const lowerText = plainText.toLowerCase();
+      const termIndex = lowerText.indexOf(term);
+      if (termIndex === -1) return plainText.substring(0, 128) + (plainText.length > 128 ? '...' : '');
+
+      // Extract context around match (64 chars before and after)
+      const start = Math.max(0, termIndex - 64);
+      const end = Math.min(plainText.length, termIndex + term.length + 64);
+      let snippet = plainText.substring(start, end);
+
+      // Add ellipsis if truncated
+      if (start > 0) snippet = '...' + snippet;
+      if (end < plainText.length) snippet = snippet + '...';
+
+      // Highlight match with <mark> tags (case-insensitive)
+      const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      snippet = snippet.replace(regex, '<mark>$1</mark>');
+
+      return snippet;
+    };
+
     // Enrich results with author and wave info
     return results.map(message => {
       const author = this.findUserById(message.authorId);
@@ -1623,6 +1978,7 @@ class Database {
       return {
         id: message.id,
         content: message.content,
+        snippet: createSnippet(message.content, searchTerm),
         waveId: message.waveId,
         waveName: wave?.name || 'Unknown Wave',
         authorId: message.authorId,
@@ -1635,12 +1991,44 @@ class Database {
   }
 }
 
-const db = new Database();
+// Initialize database - use SQLite or JSON based on USE_SQLITE environment variable
+const db = USE_SQLITE ? new DatabaseSQLite() : new Database();
+if (USE_SQLITE) {
+  console.log('🗄️  Using SQLite database');
+} else {
+  console.log('📁 Using JSON file storage');
+}
 
 // ============ Express App ============
 const app = express();
 
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+      fontSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'", 'wss:', 'ws:', 'https:'],
+      mediaSrc: ["'self'", 'https:', 'blob:'],
+      frameSrc: [
+        "'self'",
+        'https://www.youtube.com',
+        'https://www.youtube-nocookie.com',
+        'https://player.vimeo.com',
+        'https://open.spotify.com',
+        'https://www.tiktok.com',
+        'https://platform.twitter.com',
+        'https://w.soundcloud.com',
+      ],
+      frameAncestors: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(cors({
   origin: ALLOWED_ORIGINS ? (origin, callback) => {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) callback(null, true);
@@ -1651,6 +2039,13 @@ app.use(cors({
 app.use(express.json({ limit: '100kb' }));
 app.use('/api/', apiLimiter);
 app.set('trust proxy', 1);
+
+// Serve uploaded files (avatars, etc.) with cross-origin headers for dev mode
+app.use('/uploads', (req, res, next) => {
+  // Allow cross-origin access for images (needed when client runs on different port)
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(UPLOADS_DIR));
 
 // ============ Auth Middleware ============
 function authenticateToken(req, res, next) {
@@ -1707,7 +2102,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
 
     res.status(201).json({
       token,
-      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
+      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
     });
   } catch (err) {
     console.error('Registration error:', err);
@@ -1749,7 +2144,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: 'online', isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
+      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: 'online', isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -1760,7 +2155,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json({ id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } });
+  res.json({ id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } });
 });
 
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
@@ -1773,11 +2168,163 @@ app.put('/api/profile', authenticateToken, (req, res) => {
   const updates = {};
   if (req.body.displayName) updates.displayName = sanitizeInput(req.body.displayName).slice(0, 50);
   if (req.body.avatar) updates.avatar = sanitizeInput(req.body.avatar).slice(0, 2);
-  
+  if (req.body.bio !== undefined) updates.bio = req.body.bio ? sanitizeInput(req.body.bio).slice(0, 500) : null;
+
   const user = db.updateUser(req.user.userId, updates);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  res.json({ id: user.id, handle: user.handle, displayName: user.displayName, avatar: user.avatar, preferences: user.preferences });
+  res.json({ id: user.id, handle: user.handle, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, preferences: user.preferences, bio: user.bio });
+});
+
+// Get public profile for any user
+app.get('/api/users/:id/profile', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  // Return only public profile fields (no email, passwordHash, preferences, etc.)
+  res.json({
+    id: user.id,
+    handle: user.handle,
+    displayName: user.displayName,
+    avatar: user.avatar,
+    avatarUrl: user.avatarUrl || null,
+    bio: user.bio || null,
+    createdAt: user.createdAt,
+  });
+});
+
+// Upload profile avatar image
+app.post('/api/profile/avatar', authenticateToken, (req, res, next) => {
+  avatarUpload.single('avatar')(req, res, (err) => {
+    if (err) {
+      // Handle multer errors (file too large, invalid type, etc.)
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large. Maximum size is 2MB' });
+      }
+      return res.status(400).json({ error: err.message || 'File upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Generate unique filename
+    const filename = `${user.id}-${Date.now()}.webp`;
+    const filepath = path.join(AVATARS_DIR, filename);
+
+    // Process image with sharp: resize to 256x256, convert to webp, strip metadata
+    await sharp(req.file.buffer)
+      .resize(256, 256, { fit: 'cover', position: 'center' })
+      .webp({ quality: 85 })
+      .toFile(filepath);
+
+    // Delete old avatar if exists
+    if (user.avatarUrl) {
+      const oldFilename = path.basename(user.avatarUrl);
+      const oldFilepath = path.join(AVATARS_DIR, oldFilename);
+      if (fs.existsSync(oldFilepath)) {
+        fs.unlinkSync(oldFilepath);
+      }
+    }
+
+    // Update user with new avatar URL
+    const avatarUrl = `/uploads/avatars/${filename}`;
+    db.updateUser(user.id, { avatarUrl });
+
+    res.json({ success: true, avatarUrl });
+  } catch (err) {
+    console.error('Avatar upload error:', err);
+    res.status(500).json({ error: 'Failed to upload avatar' });
+  }
+});
+
+// Delete profile avatar image
+app.delete('/api/profile/avatar', authenticateToken, (req, res) => {
+  try {
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.avatarUrl) {
+      // Delete the file
+      const filename = path.basename(user.avatarUrl);
+      const filepath = path.join(AVATARS_DIR, filename);
+      if (fs.existsSync(filepath)) {
+        fs.unlinkSync(filepath);
+      }
+
+      // Update user to remove avatar URL
+      db.updateUser(user.id, { avatarUrl: null });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Avatar delete error:', err);
+    res.status(500).json({ error: 'Failed to delete avatar' });
+  }
+});
+
+// ============ Message Image Upload ============
+// Upload image for use in messages
+app.post('/api/uploads', authenticateToken, (req, res, next) => {
+  messageUpload.single('image')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large. Maximum size is 10MB' });
+      }
+      return res.status(400).json({ error: err.message || 'File upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Generate unique filename: userId-timestamp.ext
+    const timestamp = Date.now();
+    const ext = req.file.mimetype === 'image/gif' ? 'gif' : 'webp';
+    const filename = `${user.id}-${timestamp}.${ext}`;
+    const filepath = path.join(MESSAGES_DIR, filename);
+
+    // Process image with sharp
+    // For GIFs, preserve animation; for others, resize and convert to webp
+    if (req.file.mimetype === 'image/gif') {
+      // Keep GIF as-is to preserve animation, just resize if too large
+      const metadata = await sharp(req.file.buffer).metadata();
+      if (metadata.width > 1200 || metadata.height > 1200) {
+        await sharp(req.file.buffer, { animated: true })
+          .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+          .toFile(filepath);
+      } else {
+        // Save as-is
+        fs.writeFileSync(filepath, req.file.buffer);
+      }
+    } else {
+      // Convert to webp, resize if needed, strip metadata
+      await sharp(req.file.buffer)
+        .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 85 })
+        .toFile(filepath);
+    }
+
+    const imageUrl = `/uploads/messages/${filename}`;
+    console.log(`📷 Image uploaded by ${user.handle}: ${imageUrl}`);
+
+    res.json({ success: true, url: imageUrl });
+  } catch (err) {
+    console.error('Image upload error:', err);
+    res.status(500).json({ error: 'Failed to upload image' });
+  }
 });
 
 app.post('/api/profile/password', authenticateToken, async (req, res) => {
@@ -1826,17 +2373,94 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   res.json({ success: true, preferences: user.preferences });
 });
 
+// ============ Push Notification Routes ============
+
+// Get VAPID public key for client subscription
+app.get('/api/push/vapid-key', authenticateToken, (req, res) => {
+  if (!VAPID_PUBLIC_KEY) {
+    return res.status(501).json({ error: 'Push notifications not configured' });
+  }
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+// Subscribe to push notifications
+app.post('/api/push/subscribe', authenticateToken, (req, res) => {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    return res.status(501).json({ error: 'Push notifications not configured' });
+  }
+
+  const { subscription } = req.body;
+  if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+    return res.status(400).json({ error: 'Invalid subscription object' });
+  }
+
+  db.addPushSubscription(req.user.userId, subscription);
+  console.log(`🔔 Push subscription added for user ${req.user.userId}`);
+  res.json({ success: true });
+});
+
+// Unsubscribe from push notifications
+app.delete('/api/push/subscribe', authenticateToken, (req, res) => {
+  const { endpoint } = req.body;
+  if (!endpoint) {
+    // Remove all subscriptions for this user
+    db.removeAllPushSubscriptions(req.user.userId);
+    console.log(`🔕 All push subscriptions removed for user ${req.user.userId}`);
+  } else {
+    // Remove specific subscription
+    db.removePushSubscription(req.user.userId, endpoint);
+    console.log(`🔕 Push subscription removed for user ${req.user.userId}`);
+  }
+  res.json({ success: true });
+});
+
+// Test push notification (development only)
+app.post('/api/push/test', authenticateToken, async (req, res) => {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    return res.status(501).json({ error: 'Push notifications not configured' });
+  }
+
+  const subscriptions = db.getPushSubscriptions(req.user.userId);
+  if (subscriptions.length === 0) {
+    return res.status(400).json({ error: 'No push subscriptions found' });
+  }
+
+  const payload = JSON.stringify({
+    title: 'Cortex Test',
+    body: 'Push notifications are working!',
+    tag: 'test',
+    url: '/'
+  });
+
+  let sent = 0;
+  for (const sub of subscriptions) {
+    try {
+      await webpush.sendNotification({
+        endpoint: sub.endpoint,
+        keys: sub.keys
+      }, payload);
+      sent++;
+    } catch (error) {
+      console.error('Push notification failed:', error.statusCode);
+      if (error.statusCode === 410 || error.statusCode === 404) {
+        // Subscription expired or invalid
+        db.removeExpiredPushSubscription(sub.endpoint);
+      }
+    }
+  }
+
+  res.json({ success: true, sent, total: subscriptions.length });
+});
+
 // Admin handle request management
 app.get('/api/admin/handle-requests', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
   if (!user?.isAdmin) return res.status(403).json({ error: 'Not authorized' });
-  
-  const requests = db.handleRequests.requests
-    .filter(r => r.status === 'pending')
-    .map(r => {
-      const requestUser = db.findUserById(r.userId);
-      return { ...r, displayName: requestUser?.displayName };
-    });
+
+  const requests = db.getPendingHandleRequests().map(r => {
+    const requestUser = db.findUserById(r.userId);
+    return { ...r, displayName: requestUser?.displayName };
+  });
   res.json(requests);
 });
 
@@ -2298,6 +2922,125 @@ app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, r
   }
 });
 
+// ============ Rich Media Embed Endpoints ============
+
+// Detect embeddable URLs in content
+app.post('/api/embeds/detect', authenticateToken, (req, res) => {
+  const { content } = req.body;
+
+  if (!content || typeof content !== 'string') {
+    return res.status(400).json({ error: 'Content is required' });
+  }
+
+  const embeds = detectEmbedUrls(content);
+  res.json({ embeds });
+});
+
+// oEmbed proxy endpoint with caching
+app.get('/api/embeds/oembed', authenticateToken, oembedLimiter, async (req, res) => {
+  const { url } = req.query;
+
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  // Validate URL is from a supported platform
+  const embeds = detectEmbedUrls(url);
+  if (embeds.length === 0) {
+    return res.status(400).json({ error: 'URL is not from a supported platform' });
+  }
+
+  const embed = embeds[0];
+  if (!embed.oembedUrl) {
+    // Return what we have if no oEmbed available
+    return res.json({
+      platform: embed.platform,
+      embedUrl: embed.embedUrl,
+      contentId: embed.contentId,
+      thumbnail: embed.thumbnail,
+    });
+  }
+
+  // Check cache first
+  const cached = getCachedOembed(url);
+  if (cached) {
+    return res.json({ ...cached, cached: true });
+  }
+
+  try {
+    const response = await fetch(embed.oembedUrl, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(5000), // 5 second timeout
+    });
+
+    if (!response.ok) {
+      console.error(`oEmbed fetch failed for ${embed.platform}:`, response.status);
+      // Return basic embed info without oEmbed data
+      return res.json({
+        platform: embed.platform,
+        embedUrl: embed.embedUrl,
+        contentId: embed.contentId,
+        thumbnail: embed.thumbnail,
+        error: 'oEmbed data unavailable',
+      });
+    }
+
+    const data = await response.json();
+
+    const result = {
+      platform: embed.platform,
+      embedUrl: embed.embedUrl,
+      contentId: embed.contentId,
+      thumbnail: embed.thumbnail || data.thumbnail_url,
+      title: data.title,
+      author: data.author_name,
+      html: data.html, // Some platforms provide embed HTML
+      width: data.width,
+      height: data.height,
+    };
+
+    // Cache the result
+    setCachedOembed(url, result);
+
+    res.json(result);
+  } catch (err) {
+    console.error('oEmbed proxy error:', err);
+    // Return basic embed info on error
+    res.json({
+      platform: embed.platform,
+      embedUrl: embed.embedUrl,
+      contentId: embed.contentId,
+      thumbnail: embed.thumbnail,
+      error: 'Failed to fetch oEmbed data',
+    });
+  }
+});
+
+// Get embed info for a URL (lightweight, no oEmbed fetch)
+app.get('/api/embeds/info', authenticateToken, (req, res) => {
+  const { url } = req.query;
+
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  const embeds = detectEmbedUrls(url);
+  if (embeds.length === 0) {
+    return res.json({ embeddable: false });
+  }
+
+  const embed = embeds[0];
+  res.json({
+    embeddable: true,
+    platform: embed.platform,
+    embedUrl: embed.embedUrl,
+    contentId: embed.contentId,
+    contentType: embed.contentType,
+    thumbnail: embed.thumbnail,
+    hasOembed: !!embed.oembedUrl,
+  });
+});
+
 // Create report
 app.post('/api/reports', authenticateToken, (req, res) => {
   const { type, targetId, reason, details } = req.body;
@@ -2480,9 +3223,27 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
   const allMessages = db.getMessagesForWave(wave.id, req.user.userId);
   const group = wave.groupId ? db.getGroup(wave.groupId) : null;
 
+  // Pagination: limit initial messages, return most recent ones
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const totalMessages = allMessages.length;
+  const hasMoreMessages = totalMessages > limit;
+
+  // Get the most recent messages (sorted by created_at, take last N)
+  const limitedMessages = hasMoreMessages
+    ? allMessages.slice(-limit) // Take last 'limit' messages (most recent)
+    : allMessages;
+
+  // Build message tree - treat messages whose parent isn't in the set as root messages
   function buildMessageTree(messages, parentId = null) {
+    const messageIds = new Set(messages.map(m => m.id));
     return messages
-      .filter(m => m.parent_id === parentId)
+      .filter(m => {
+        if (parentId === null) {
+          // Root level: include messages with no parent OR whose parent isn't in current set
+          return m.parent_id === null || !messageIds.has(m.parent_id);
+        }
+        return m.parent_id === parentId;
+      })
       .map(m => ({ ...m, children: buildMessageTree(messages, m.id) }));
   }
 
@@ -2491,10 +3252,52 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
     creator_name: creator?.displayName || 'Unknown',
     creator_handle: creator?.handle || 'unknown',
     participants,
-    messages: buildMessageTree(allMessages),
-    all_messages: allMessages,
+    messages: buildMessageTree(limitedMessages),
+    all_messages: limitedMessages,
+    total_messages: totalMessages,
+    hasMoreMessages,
     group_name: group?.name,
     can_edit: wave.createdBy === req.user.userId,
+  });
+});
+
+// Paginated messages endpoint for loading messages in batches
+app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const wave = db.getWave(waveId);
+  if (!wave) return res.status(404).json({ error: 'Wave not found' });
+  if (!db.canAccessWave(waveId, req.user.userId)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 per request
+  const before = req.query.before; // Message ID to load messages before
+
+  // Get all messages for this wave (filtered for blocked/muted)
+  let allMessages = db.getMessagesForWave(wave.id, req.user.userId);
+
+  // Sort by created_at descending (newest first) for pagination
+  allMessages.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  // If 'before' is specified, filter to only messages before that one
+  if (before) {
+    const beforeIndex = allMessages.findIndex(m => m.id === before);
+    if (beforeIndex !== -1) {
+      allMessages = allMessages.slice(beforeIndex + 1);
+    }
+  }
+
+  // Take the requested limit
+  const messages = allMessages.slice(0, limit);
+  const hasMore = allMessages.length > limit;
+
+  // Reverse to return oldest-first within the batch (natural reading order)
+  messages.reverse();
+
+  res.json({
+    messages,
+    hasMore,
+    total: db.getMessagesForWave(wave.id, req.user.userId).length,
   });
 });
 
@@ -2637,7 +3440,25 @@ app.post('/api/messages', authenticateToken, (req, res) => {
     privacy: wave.privacy,
   });
 
-  broadcastToWave(waveId, { type: 'new_message', data: message });
+  // Create push notification payload for offline users
+  const senderName = message.sender_name || db.findUserById(req.user.userId)?.displayName || 'Someone';
+  const contentPreview = content.replace(/<[^>]*>/g, '').substring(0, 100);
+  const pushPayload = {
+    title: `New message in ${wave.title}`,
+    body: `${senderName}: ${contentPreview}${content.length > 100 ? '...' : ''}`,
+    tag: `wave-${waveId}`,
+    url: `/?wave=${waveId}`,
+    waveId
+  };
+
+  // Broadcast to connected users and send push to offline users
+  broadcastToWaveWithPush(
+    waveId,
+    { type: 'new_message', data: message },
+    pushPayload,
+    null,
+    req.user.userId // Exclude sender from push notifications
+  );
   res.status(201).json(message);
 });
 
@@ -2793,6 +3614,9 @@ wss.on('connection', (ws, req) => {
         } catch (err) {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'Invalid token' }));
         }
+      } else if (message.type === 'ping') {
+        // Respond to client heartbeat ping with pong
+        ws.send(JSON.stringify({ type: 'pong' }));
       } else if (message.type === 'user_typing') {
         // Broadcast typing indicator to other users in the wave
         if (!userId) return; // Must be authenticated
@@ -2830,6 +3654,27 @@ wss.on('connection', (ws, req) => {
       }
     }
   });
+
+  // Mark connection as alive on pong response
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+});
+
+// Server-side heartbeat: Send native ping every 30 seconds, terminate dead connections
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      // Connection didn't respond to last ping - terminate it
+      console.log('💀 Terminating dead WebSocket connection');
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping(); // Send native WebSocket ping frame
+  });
+}, 30000);
+
+wss.on('close', () => {
+  clearInterval(heartbeatInterval);
 });
 
 // Broadcast to specific users by their IDs
@@ -2870,6 +3715,68 @@ function broadcastToWave(waveId, message, excludeWs = null) {
         if (excludeWs && ws === excludeWs) continue;
         if (ws.readyState === 1) ws.send(JSON.stringify(message));
       }
+    }
+  }
+}
+
+// Send push notification to a user who isn't connected via WebSocket
+async function sendPushNotification(userId, payload) {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+
+  const subscriptions = db.getPushSubscriptions(userId);
+  if (subscriptions.length === 0) return;
+
+  const payloadString = JSON.stringify(payload);
+
+  for (const sub of subscriptions) {
+    try {
+      await webpush.sendNotification({
+        endpoint: sub.endpoint,
+        keys: sub.keys
+      }, payloadString);
+    } catch (error) {
+      if (error.statusCode === 410 || error.statusCode === 404) {
+        // Subscription expired or invalid - clean up
+        db.removeExpiredPushSubscription(sub.endpoint);
+        console.log(`🔕 Removed expired push subscription`);
+      } else {
+        console.error('Push notification error:', error.message);
+      }
+    }
+  }
+}
+
+// Broadcast to wave with optional push notifications for offline users
+function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs = null, excludeUserId = null) {
+  const wave = db.getWave(waveId);
+  if (!wave) return;
+
+  // Get all users who should receive this
+  let recipients = new Set();
+
+  // Direct participants
+  db.getWaveParticipants(waveId).forEach(p => recipients.add(p.id));
+
+  // For group waves, all group members
+  if (wave.privacy === 'group' && wave.groupId) {
+    db.getGroupMembers(wave.groupId).forEach(m => recipients.add(m.id));
+  }
+
+  for (const userId of recipients) {
+    // Skip the excluded user (usually the message sender)
+    if (excludeUserId && userId === excludeUserId) continue;
+
+    const isConnected = clients.has(userId) && clients.get(userId).size > 0;
+
+    if (isConnected) {
+      // User is online - send via WebSocket
+      for (const ws of clients.get(userId)) {
+        if (excludeWs && ws === excludeWs) continue;
+        if (ws.readyState === 1) ws.send(JSON.stringify(message));
+      }
+    } else if (pushPayload) {
+      // User is offline - send push notification
+      sendPushNotification(userId, pushPayload);
     }
   }
 }

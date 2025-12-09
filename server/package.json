@@ -1,6 +1,6 @@
 {
   "name": "cortex-server",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Cortex - Privacy-First Federated Communication Platform",
   "type": "module",
   "scripts": {
@@ -9,14 +9,18 @@
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.5.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.21.0",
     "express-rate-limit": "^7.4.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
     "sanitize-html": "^2.13.0",
+    "sharp": "^0.34.5",
     "uuid": "^10.0.0",
+    "web-push": "^3.6.7",
     "ws": "^8.18.0"
   },
   "keywords": [
