@@ -355,7 +355,8 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
   const embedContainerRef = useRef(null);
 
   // Platforms that require oEmbed HTML injection (no direct iframe embed URL)
-  const requiresOembed = ['tiktok', 'twitter', 'soundcloud'].includes(embed.platform);
+  // Note: TikTok removed - their embed.js doesn't work well with React's virtual DOM
+  const requiresOembed = ['twitter', 'soundcloud'].includes(embed.platform);
 
   // Determine iframe dimensions based on platform
   const getDimensions = () => {
@@ -401,18 +402,6 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
     if (oembedHtml && embedContainerRef.current && !scriptLoadedRef.current) {
       scriptLoadedRef.current = true;
 
-      // TikTok embed script
-      if (embed.platform === 'tiktok') {
-        if (window.tiktokEmbed) {
-          // Script already loaded - re-process embeds
-          setTimeout(() => window.tiktokEmbed.lib.render(), 100);
-        } else if (!document.querySelector('script[src*="tiktok.com/embed.js"]')) {
-          const script = document.createElement('script');
-          script.src = 'https://www.tiktok.com/embed.js';
-          script.async = true;
-          document.body.appendChild(script);
-        }
-      }
       // Twitter/X embed script
       if (embed.platform === 'twitter') {
         if (window.twttr?.widgets) {
@@ -428,6 +417,51 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
       // SoundCloud doesn't need external script - oEmbed returns iframe directly
     }
   }, [oembedHtml, embed.platform]);
+
+  // TikTok doesn't work with React - show a styled link card instead
+  if (embed.platform === 'tiktok') {
+    return (
+      <a
+        href={embed.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '12px 16px',
+          background: 'linear-gradient(135deg, #0a100a, #1a0a1a)',
+          border: '1px solid #ff0050',
+          borderRadius: '8px',
+          color: '#e5e5e5',
+          textDecoration: 'none',
+          marginTop: '8px',
+          maxWidth: '400px',
+        }}
+      >
+        <div style={{
+          width: '48px',
+          height: '48px',
+          borderRadius: '8px',
+          background: '#ff0050',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '24px',
+          flexShrink: 0,
+        }}>
+          ♪
+        </div>
+        <div style={{ overflow: 'hidden' }}>
+          <div style={{ color: '#ff0050', fontSize: '0.75rem', marginBottom: '2px' }}>TikTok</div>
+          <div style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Click to open in TikTok
+          </div>
+        </div>
+        <div style={{ marginLeft: 'auto', color: '#ff0050', fontSize: '1.2rem' }}>→</div>
+      </a>
+    );
+  }
 
   if (error) {
     return (
