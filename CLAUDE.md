@@ -225,7 +225,7 @@ Demo data seeded if `SEED_DEMO_DATA=true` (password: "Demo123!")
 - **OfflineIndicator Component**: Orange banner when offline
 - **iOS Support**: apple-touch-icon, status bar styling
 
-### PWA Push Notifications (v1.8.0+)
+### PWA Push Notifications (v1.8.0+, updated v1.8.1)
 Server-sent push notifications for offline/background users via Web Push API.
 
 - **Server Setup**:
@@ -239,32 +239,39 @@ Server-sent push notifications for offline/background users via Web Push API.
   - `POST /api/push/test` - Send test notification (development)
 - **Server Functions**:
   - `sendPushNotification(userId, payload)` - Send push to specific user
-  - `broadcastToWaveWithPush()` - Broadcast to wave with push for offline users
+  - `broadcastToWaveWithPush()` - Always sends push (v1.8.1: service worker filters by visibility)
   - Automatic cleanup of expired subscriptions (410/404 errors)
 - **Client Integration**:
   - `subscribeToPush(token)` - Subscribe to push on login
   - `unsubscribeFromPush(token)` - Unsubscribe when user disables
   - Push toggle in Profile Settings → Display Preferences
   - `cortex_push_enabled` localStorage key for user preference
+  - iOS warning displayed (Web Push not supported on iOS)
 - **Service Worker** (`sw.js`):
   - Push event handler parses JSON payload
   - Shows notification with title, body, icon, badge, vibration
   - Click-to-open: focuses existing window or opens new
   - `navigate-to-wave` message to open specific wave
+  - **v1.8.1**: Checks `visibilityState` - only shows notification when app is backgrounded/closed
+  - **v1.8.1**: Unique tags per message (`cortex-msg-{messageId}`) to prevent replacement
 - **Payload Format**:
   ```javascript
   {
     title: 'New message in Wave Name',
     body: 'Sender: Message preview...',
-    tag: 'wave-{waveId}',
     url: '/?wave={waveId}',
-    waveId: 'uuid'
+    waveId: 'uuid',
+    messageId: 'msg-uuid'  // v1.8.1: for unique notification tags
   }
   ```
 - **Environment Variables**:
   - `VAPID_PUBLIC_KEY` - Public key for client subscription
   - `VAPID_PRIVATE_KEY` - Private key for signing push messages
   - `VAPID_EMAIL` - Contact email (format: `mailto:admin@domain.com`)
+- **Platform Limitations**:
+  - **iOS/Safari**: Does NOT support Web Push API for PWAs (Apple limitation)
+  - **Android**: Full support in Chrome, Edge, Firefox
+  - **Desktop**: Full support in all major browsers
 
 ### Read Receipts Display (v1.6.0+, updated v1.8.0)
 Visual UI for the per-message read tracking system (builds on v1.4.0 backend).
@@ -520,6 +527,9 @@ Automatic embedding of videos and media from popular platforms.
   - YouTube thumbnails from `img.youtube.com/vi/{id}/hqdefault.jpg`
   - Embeds detected at render time (not stored in DB)
   - URLs stripped from displayed content when embed shown
+  - **iframe platforms** (YouTube, Vimeo, Spotify): Direct embed URL in iframe
+  - **oEmbed platforms** (Twitter, SoundCloud): Fetch HTML via `/api/embeds/oembed`, inject platform scripts
+  - **Link card** (TikTok): Styled link card opens in new tab (embed.js incompatible with React)
 
 ### Responsive Design (Updated v1.3.2)
 - **Multiple breakpoints:**
@@ -601,6 +611,30 @@ Automatic embedding of videos and media from popular platforms.
     - oEmbed proxy endpoint with 15-minute cache
     - CSP frame-src directive for secure iframe embedding
     - Platform-specific thumbnails and play buttons
+
+- **v1.8.1 (December 2025)** - Bug Fixes: Embeds, Push Notifications & UX
+  - **Video Embed Fix**: YouTube, Spotify, Vimeo now properly show embedded players
+    - Fixed `detectEmbedUrls()` to only skip image URLs in `<img>` tags
+    - Video URLs in `<a>` tags now correctly detected for embed players
+    - Added `seenUrls` set to prevent duplicate embeds
+  - **TikTok Link Card**: TikTok URLs show styled link card (opens in new tab)
+    - TikTok's embed.js incompatible with React's virtual DOM
+    - Replaced with branded link card (pink border, music icon)
+    - No external scripts or API calls required
+  - **Twitter/SoundCloud oEmbed**: Fetch embed HTML via oEmbed API
+    - Script tags stripped from oEmbed HTML for security
+    - Platform scripts loaded once and re-triggered for new embeds
+  - **Duplicate Embed Fix**: Images no longer appear twice in messages
+    - Client-side detection skips URLs already in `<img>` tags
+    - Prevents double-embedding by server and client
+  - **Mobile Push Notification Fixes**:
+    - Unique notification tags per message (prevents replacement)
+    - Push sent for all messages (service worker filters by visibility)
+    - Notifications only shown when app is backgrounded/closed
+    - iOS limitation warning added to Profile Settings
+  - **iOS Push Limitation**: Documented that iOS/Safari does not support Web Push API for PWAs (Apple platform limitation)
+  - **Footer**: Added version number (v1.8.1), tightened padding
+  - Service worker version bump to v1.8.1
 
 - **v1.7.0 (December 2025)** - Contact & Invitation Approval System + Moderation + GIF Search
   - Contact Request System: Send/accept/decline contact requests
