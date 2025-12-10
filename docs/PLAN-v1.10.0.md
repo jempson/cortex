@@ -1,18 +1,18 @@
 # Cortex v1.10.0 - Implementation Plan
 
-## RELEASE STATUS: IN PROGRESS (2/7 Phases)
+## RELEASE STATUS: IN PROGRESS (3/7 Phases)
 
-**Target Scope:** Droplets Architecture - Phase 1 & 2 (Terminology + Focus View)
+**Target Scope:** Droplets Architecture - Phases 1, 2 & 3 (Terminology + Focus View Desktop & Mobile)
 **Branch:** `v1.10.0`
 
 ---
 
 ## Overview
 
-Version 1.10.0 implements the Droplets architecture including terminology rename and Focus View. Users can now click "Focus" on any droplet with replies to view it in a full wave-like presentation with breadcrumb navigation.
+Version 1.10.0 implements the Droplets architecture including terminology rename and Focus View for both desktop and mobile. Users can click "Focus" on desktop or tap droplet content on mobile to view any droplet with replies in a full wave-like presentation with breadcrumb navigation.
 
 **Release Type:** Architecture Foundation + UX Enhancement
-**Focus Areas:** Terminology rename, Focus View, breadcrumb navigation
+**Focus Areas:** Terminology rename, Focus View, mobile gestures, breadcrumb navigation
 
 ---
 
@@ -134,6 +134,36 @@ Version 1.10.0 implements the Droplets architecture including terminology rename
 
 ---
 
+## Phase 3: Focus View - Mobile
+**Status:** Complete ✓
+
+### 3.1 Tap-to-Focus on Droplet Content
+- [x] Tapping droplet content area enters focus view (when droplet has replies)
+- [x] Visual hint shows "⤢ Tap to focus (N replies)" on mobile
+- [x] Hint styled with teal dashed border to indicate interactivity
+- [x] Image clicks still work for lightbox (handled before tap-to-focus)
+
+### 3.2 Swipe-Back Navigation
+- [x] Swipe right to go back one focus level
+- [x] From first focus level, swipe returns to wave view
+- [x] Uses `useSwipeGesture` hook with 80px threshold
+- [x] Swipe hint bar shown at top: "← Swipe right to go back"
+
+### 3.3 Compact Breadcrumb Header
+- [x] Shorter truncation on mobile (15 chars vs 30 on desktop)
+- [x] Wave name truncated to 12 chars on mobile
+- [x] Earlier truncation threshold (3 levels vs 4 on desktop)
+- [x] On mobile, deep paths show: `Wave … Current`
+- [x] No-wrap breadcrumb with overflow hidden
+
+### 3.4 Gesture Conflict Testing
+- [x] Verified swipe gesture is horizontal-only (deltaY < 100)
+- [x] No conflict with pull-to-refresh (vertical, not currently active)
+- [x] Tap-to-focus only fires on content area, not buttons
+- [x] Build passes with no errors
+
+---
+
 ## Migration Strategy
 
 ### For SQLite Databases
@@ -203,7 +233,7 @@ if (fs.existsSync('data/messages.json') && !fs.existsSync('data/droplets.json'))
 - [ ] Search returns droplets
 - [ ] Embeds display correctly
 
-### Focus View Tests
+### Focus View Tests (Desktop)
 - [ ] Focus button appears on droplets with replies
 - [ ] Clicking Focus enters FocusView with correct droplet
 - [ ] Breadcrumb shows correct navigation path
@@ -213,6 +243,16 @@ if (fs.existsSync('data/messages.json') && !fs.existsSync('data/droplets.json'))
 - [ ] Reply to child works correctly
 - [ ] Nested focus (Focus within FocusView) works
 - [ ] Breadcrumb truncation at 4+ levels works
+
+### Focus View Tests (Mobile)
+- [ ] Tap-to-focus hint appears on droplets with replies
+- [ ] Tapping content area enters FocusView
+- [ ] Swipe right navigates back one level
+- [ ] Swipe from first level returns to wave
+- [ ] Swipe hint bar displayed at top of FocusView
+- [ ] Compact breadcrumb fits on mobile screen
+- [ ] Deep breadcrumb truncates to "Wave … Current"
+- [ ] Image lightbox still works (not intercepted by tap-to-focus)
 
 ### Migration Tests
 - [ ] Fresh install works with new schema

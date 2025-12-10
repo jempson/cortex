@@ -1960,6 +1960,12 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               if (e.target.tagName === 'IMG' && e.target.classList.contains('zoomable-image')) {
                 e.stopPropagation();
                 setLightboxImage(e.target.src);
+                return;
+              }
+              // Mobile tap-to-focus: tap content area to enter focus view if droplet has replies
+              if (isMobile && hasChildren && onFocus) {
+                e.stopPropagation();
+                onFocus(message);
               }
             }}
             style={{
@@ -1970,9 +1976,30 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               wordBreak: 'break-word',
               whiteSpace: 'pre-wrap',
               overflow: 'hidden',
+              // Visual hint for tap-to-focus on mobile
+              cursor: (isMobile && hasChildren && onFocus) ? 'pointer' : 'default',
             }}
           >
             <MessageWithEmbeds content={message.content} />
+            {/* Mobile tap-to-focus hint */}
+            {isMobile && hasChildren && onFocus && (
+              <div style={{
+                marginTop: '6px',
+                padding: '4px 8px',
+                background: '#3bceac10',
+                border: '1px dashed #3bceac30',
+                borderRadius: '4px',
+                fontSize: '0.65rem',
+                color: '#3bceac',
+                fontFamily: 'monospace',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <span>⤢</span>
+                <span>Tap to focus ({message.children?.length} {message.children?.length === 1 ? 'reply' : 'replies'})</span>
+              </div>
+            )}
           </div>
         )}
         {/* Actions Row: Parent, Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
@@ -5155,9 +5182,23 @@ const FocusView = ({
   const [editContent, setEditContent] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const containerRef = useRef(null);
   const messagesRef = useRef(null);
   const textareaRef = useRef(null);
   const lastTypingSentRef = useRef(null);
+
+  // Swipe-back gesture for mobile navigation
+  useSwipeGesture(containerRef, {
+    onSwipeRight: isMobile ? () => {
+      // Swipe right to go back
+      if (focusStack.length > 1) {
+        onBack();
+      } else {
+        onClose();
+      }
+    } : undefined,
+    threshold: 80 // Slightly lower threshold for easier back navigation
+  });
 
   // Reload droplet data when reloadTrigger changes
   useEffect(() => {
@@ -5279,13 +5320,19 @@ const FocusView = ({
 
   // Build breadcrumb from focus stack
   const buildBreadcrumb = () => {
+    // On mobile, show more compact breadcrumb
+    const maxLabelLength = isMobile ? 15 : 30;
+    const truncateThreshold = isMobile ? 3 : 4;
+
+    const waveName = wave?.name || wave?.title || 'Wave';
     const items = [
-      { label: wave?.name || 'Wave', onClick: onClose, isWave: true }
+      { label: isMobile ? (waveName.substring(0, 12) + (waveName.length > 12 ? '…' : '')) : waveName, onClick: onClose, isWave: true }
     ];
 
     focusStack.forEach((item, index) => {
-      const truncatedContent = item.droplet?.content?.replace(/<[^>]*>/g, '').substring(0, 30) +
-        (item.droplet?.content?.length > 30 ? '...' : '');
+      const rawContent = item.droplet?.content?.replace(/<[^>]*>/g, '') || '';
+      const truncatedContent = rawContent.substring(0, maxLabelLength) +
+        (rawContent.length > maxLabelLength ? '…' : '');
 
       if (index < focusStack.length - 1) {
         // Previous items are clickable
@@ -5304,12 +5351,17 @@ const FocusView = ({
       }
     });
 
-    // Truncate middle items if more than 4 levels
-    if (items.length > 4) {
+    // Truncate middle items based on screen size
+    if (items.length > truncateThreshold) {
       const first = items[0];
       const last = items[items.length - 1];
-      const secondLast = items[items.length - 2];
-      return [first, { label: '...', ellipsis: true }, secondLast, last];
+      if (isMobile) {
+        // On mobile, just show wave and current
+        return [first, { label: '…', ellipsis: true }, last];
+      } else {
+        const secondLast = items[items.length - 2];
+        return [first, { label: '...', ellipsis: true }, secondLast, last];
+      }
     }
 
     return items;
@@ -5326,16 +5378,31 @@ const FocusView = ({
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+    <div ref={containerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Mobile swipe hint - shown briefly on first focus */}
+      {isMobile && (
+        <div style={{
+          padding: '4px 12px',
+          background: '#3bceac10',
+          borderBottom: '1px solid #3bceac20',
+          fontSize: '0.65rem',
+          color: '#5a6a5a',
+          textAlign: 'center',
+          fontFamily: 'monospace'
+        }}>
+          ← Swipe right to go back
+        </div>
+      )}
       {/* Breadcrumb Header */}
       <div style={{
-        padding: isMobile ? '10px 12px' : '12px 16px',
+        padding: isMobile ? '8px 12px' : '12px 16px',
         background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
         borderBottom: `2px solid ${config.color}40`,
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
-        flexWrap: 'wrap'
+        gap: isMobile ? '6px' : '8px',
+        flexWrap: isMobile ? 'nowrap' : 'wrap',
+        overflow: isMobile ? 'hidden' : 'visible'
       }}>
         {/* Back button */}
         <button
@@ -7274,8 +7341,14 @@ function MainApp() {
 
   // Focus View handlers
   const handleFocusDroplet = useCallback((waveId, droplet) => {
-    // Push a new item onto the focus stack
-    setFocusStack(prev => [...prev, { waveId, dropletId: droplet.id, droplet }]);
+    // Prevent focusing on the same droplet that's already on the stack
+    setFocusStack(prev => {
+      const lastFocused = prev[prev.length - 1];
+      if (lastFocused?.dropletId === droplet.id) {
+        return prev; // Already focused on this droplet
+      }
+      return [...prev, { waveId, dropletId: droplet.id, droplet }];
+    });
   }, []);
 
   const handleFocusBack = useCallback(() => {
@@ -7290,11 +7363,19 @@ function MainApp() {
 
   const handleFocusDeeper = useCallback((droplet) => {
     // Focus on a child droplet within the current focus view
-    if (focusStack.length > 0) {
-      const currentWaveId = focusStack[focusStack.length - 1].waveId;
-      setFocusStack(prev => [...prev, { waveId: currentWaveId, dropletId: droplet.id, droplet }]);
-    }
-  }, [focusStack]);
+    setFocusStack(prev => {
+      if (prev.length === 0) return prev;
+
+      // Prevent focusing on the same droplet that's already focused
+      const lastFocused = prev[prev.length - 1];
+      if (lastFocused?.dropletId === droplet.id) {
+        return prev; // Already focused on this droplet
+      }
+
+      const currentWaveId = lastFocused.waveId;
+      return [...prev, { waveId: currentWaveId, dropletId: droplet.id, droplet }];
+    });
+  }, []);
 
   useEffect(() => {
     loadWaves();
