@@ -34,23 +34,24 @@ The following features have been implemented and are no longer outstanding:
 
 ---
 
-## Medium Priority Features
+## In Progress (v1.9.0)
 
-### 1. Message Threading Improvements
-**Complexity:** Medium
+The following features are currently being implemented in v1.9.0:
 
-Enhance message threading with better visualization and navigation.
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Message Threading Improvements | In Progress | Collapse/expand, visual connectors, navigation |
+| Mobile Gesture Enhancements | In Progress | Swipe gestures, pull-to-refresh, bottom nav |
+| Report System | In Progress | Content moderation, admin dashboard |
+| Public REST API Documentation | In Progress | Full endpoint documentation |
 
-**Requirements:**
-- Collapse/expand entire threads
-- Thread summary view (show root + reply count)
-- "Jump to parent" button on replies
-- Thread depth limit warnings
-- Visual thread connectors (lines)
+See `docs/PLAN-v1.9.0.md` for detailed implementation plan.
 
 ---
 
-### 2. Export Wave as PDF/HTML
+## Medium Priority Features
+
+### 1. Export Wave as PDF/HTML
 **Complexity:** Medium
 
 Export entire waves for archival or sharing.
@@ -68,7 +69,7 @@ Export entire waves for archival or sharing.
 
 ---
 
-### 3. Advanced Search Filters
+### 2. Advanced Search Filters
 **Complexity:** Medium
 
 Enhanced search with advanced filters and boolean operators.
@@ -79,50 +80,6 @@ Enhanced search with advanced filters and boolean operators.
 - Filter by: author, date range, wave privacy level, has:media, has:reactions
 - Sort by: relevance, date, author
 - Save search queries
-
----
-
-### 4. Mobile Gesture Enhancements
-**Complexity:** Medium
-
-Advanced mobile features for better app-like experience.
-
-**Requirements:**
-- Swipe gestures for navigation (swipe right to go back)
-- Pull-to-refresh on wave list
-- Bottom navigation bar for primary actions
-- Haptic feedback on actions
-
----
-
-## Low Priority Features
-
-### 5. Report System
-**Complexity:** Medium
-
-User-driven content moderation via reports.
-
-**Requirements:**
-- Report messages/waves for review
-- Report reasons: spam, harassment, inappropriate, other
-- Admin dashboard to view reports
-- Mark reports as resolved/dismissed
-- Audit log of moderation actions
-
----
-
-### 6. Public REST API Documentation
-**Complexity:** Low-Medium
-
-Document and formalize existing API for third-party clients.
-
-**Requirements:**
-- Document all existing endpoints
-- Request/response examples
-- Authentication guide (JWT)
-- Error codes and messages
-- Rate limiting policies
-- Optional: API keys for applications
 
 ---
 
@@ -158,14 +115,14 @@ These features require significant architectural changes:
 
 ## Priority Matrix
 
-| Feature | Priority | Complexity | User Impact |
-|---------|----------|------------|-------------|
-| Threading Improvements | Medium | Medium | Medium |
-| Export Wave | Low | Medium | Low |
-| Advanced Search | Low | Medium | Medium |
-| Mobile Gestures | Medium | Medium | Medium |
-| Report System | Low | Medium | Medium |
-| API Documentation | Low | Low-Medium | Low |
+| Feature | Priority | Complexity | User Impact | Status |
+|---------|----------|------------|-------------|--------|
+| Threading Improvements | Medium | Medium | Medium | v1.9.0 |
+| Mobile Gestures | Medium | Medium | Medium | v1.9.0 |
+| Report System | Medium | Medium | Medium | v1.9.0 |
+| API Documentation | Low-Medium | Low-Medium | Low | v1.9.0 |
+| Export Wave | Low | Medium | Low | Backlog |
+| Advanced Search | Low | Medium | Medium | Backlog |
 
 ---
 

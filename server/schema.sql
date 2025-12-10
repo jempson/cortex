@@ -178,9 +178,32 @@ CREATE TABLE IF NOT EXISTS reports (
     details TEXT DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending',
     resolution TEXT,
+    resolution_notes TEXT,
     created_at TEXT NOT NULL,
     resolved_at TEXT,
     resolved_by TEXT REFERENCES users(id)
+);
+
+-- User warnings (issued by moderators)
+CREATE TABLE IF NOT EXISTS warnings (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    issued_by TEXT NOT NULL REFERENCES users(id),
+    reason TEXT NOT NULL,
+    report_id TEXT REFERENCES reports(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+);
+
+-- Moderation audit log
+CREATE TABLE IF NOT EXISTS moderation_log (
+    id TEXT PRIMARY KEY,
+    admin_id TEXT NOT NULL REFERENCES users(id),
+    action_type TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    reason TEXT,
+    details TEXT,
+    created_at TEXT NOT NULL
 );
 
 -- ============ Indexes ============
@@ -254,6 +277,16 @@ CREATE INDEX IF NOT EXISTS idx_mutes_muted ON mutes(muted_user_id);
 CREATE INDEX IF NOT EXISTS idx_reports_reporter ON reports(reporter_id);
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(type);
+
+-- Warning lookups
+CREATE INDEX IF NOT EXISTS idx_warnings_user ON warnings(user_id);
+CREATE INDEX IF NOT EXISTS idx_warnings_issued_by ON warnings(issued_by);
+CREATE INDEX IF NOT EXISTS idx_warnings_report ON warnings(report_id);
+
+-- Moderation log lookups
+CREATE INDEX IF NOT EXISTS idx_moderation_log_admin ON moderation_log(admin_id);
+CREATE INDEX IF NOT EXISTS idx_moderation_log_target ON moderation_log(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_moderation_log_created ON moderation_log(created_at DESC);
 
 -- ============ Push Subscriptions ============
 

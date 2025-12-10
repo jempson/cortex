@@ -155,6 +155,15 @@ const oembedLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const RATE_LIMIT_REPORT_MAX = parseInt(process.env.RATE_LIMIT_REPORT_MAX) || 10;
+const reportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: RATE_LIMIT_REPORT_MAX,
+  message: { error: 'Too many reports. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ============ Security: Account Lockout ============
 // Configurable via .env
 const failedAttempts = new Map();
@@ -1323,7 +1332,7 @@ class Database {
   }
 
   getReports(filters = {}) {
-    let reports = this.reports.reports;
+    let reports = this.reports.reports || [];
 
     if (filters.status) {
       reports = reports.filter(r => r.status === filters.status);
@@ -1331,6 +1340,10 @@ class Database {
 
     if (filters.type) {
       reports = reports.filter(r => r.type === filters.type);
+    }
+
+    if (filters.reporterId) {
+      reports = reports.filter(r => r.reporterId === filters.reporterId);
     }
 
     // Enrich with context
@@ -1376,7 +1389,7 @@ class Database {
     }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }
 
-  resolveReport(reportId, resolution, userId) {
+  resolveReport(reportId, resolution, userId, notes = null) {
     const report = this.reports.reports.find(r => r.id === reportId);
     if (!report) return false;
 
@@ -1384,9 +1397,129 @@ class Database {
     report.resolvedAt = new Date().toISOString();
     report.resolvedBy = userId;
     report.resolution = resolution;
+    if (notes) report.resolutionNotes = notes;
 
     this.saveReports();
-    return true;
+    return report;
+  }
+
+  dismissReport(reportId, userId, reason = null) {
+    const report = this.reports.reports.find(r => r.id === reportId);
+    if (!report) return false;
+
+    report.status = 'dismissed';
+    report.resolvedAt = new Date().toISOString();
+    report.resolvedBy = userId;
+    report.resolution = 'dismissed';
+    if (reason) report.resolutionNotes = reason;
+
+    this.saveReports();
+    return report;
+  }
+
+  getReportsByUser(userId) {
+    return this.getReports({ reporterId: userId });
+  }
+
+  getReportsByStatus(status, limit = 50, offset = 0) {
+    const reports = this.getReports({ status });
+    return reports.slice(offset, offset + limit);
+  }
+
+  getPendingReports(limit = 50, offset = 0) {
+    return this.getReportsByStatus('pending', limit, offset);
+  }
+
+  getReportById(reportId) {
+    const report = this.reports.reports.find(r => r.id === reportId);
+    if (!report) return null;
+    return this.getReports({}).find(r => r.id === reportId);
+  }
+
+  // === Warning Methods ===
+  createWarning(userId, issuedBy, reason, reportId = null) {
+    const warning = {
+      id: uuidv4(),
+      userId,
+      issuedBy,
+      reason,
+      reportId,
+      createdAt: new Date().toISOString()
+    };
+
+    if (!this.reports.warnings) this.reports.warnings = [];
+    this.reports.warnings.push(warning);
+    this.saveReports();
+    return warning;
+  }
+
+  getWarningsByUser(userId) {
+    if (!this.reports.warnings) return [];
+    return this.reports.warnings
+      .filter(w => w.userId === userId)
+      .map(w => {
+        const issuer = this.findUserById(w.issuedBy);
+        return {
+          ...w,
+          issuerHandle: issuer?.handle,
+          issuerName: issuer?.displayName
+        };
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
+  getUserWarningCount(userId) {
+    if (!this.reports.warnings) return 0;
+    return this.reports.warnings.filter(w => w.userId === userId).length;
+  }
+
+  // === Moderation Log Methods ===
+  logModerationAction(adminId, actionType, targetType, targetId, reason = null, details = null) {
+    const logEntry = {
+      id: uuidv4(),
+      adminId,
+      actionType,
+      targetType,
+      targetId,
+      reason,
+      details,
+      createdAt: new Date().toISOString()
+    };
+
+    if (!this.reports.moderationLog) this.reports.moderationLog = [];
+    this.reports.moderationLog.push(logEntry);
+    this.saveReports();
+    return logEntry;
+  }
+
+  getModerationLog(limit = 50, offset = 0) {
+    if (!this.reports.moderationLog) return [];
+    return this.reports.moderationLog
+      .map(entry => {
+        const admin = this.findUserById(entry.adminId);
+        return {
+          ...entry,
+          adminHandle: admin?.handle,
+          adminName: admin?.displayName
+        };
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(offset, offset + limit);
+  }
+
+  getModerationLogForTarget(targetType, targetId) {
+    if (!this.reports.moderationLog) return [];
+    return this.reports.moderationLog
+      .filter(entry => entry.targetType === targetType && entry.targetId === targetId)
+      .map(entry => {
+        const admin = this.findUserById(entry.adminId);
+        return {
+          ...entry,
+          adminHandle: admin?.handle,
+          adminName: admin?.displayName
+        };
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }
 
   // === Group Methods ===
@@ -3041,31 +3174,43 @@ app.get('/api/embeds/info', authenticateToken, (req, res) => {
   });
 });
 
-// Create report
-app.post('/api/reports', authenticateToken, (req, res) => {
+// ============ Report Routes ============
+
+// Create report (rate limited: 10 per hour)
+app.post('/api/reports', authenticateToken, reportLimiter, (req, res) => {
   const { type, targetId, reason, details } = req.body;
 
+  // Validate required fields
   if (!type || !targetId || !reason) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
+  // Validate type
   if (!['message', 'wave', 'user'].includes(type)) {
-    return res.status(400).json({ error: 'Invalid report type' });
+    return res.status(400).json({ error: 'Invalid report type. Must be: message, wave, or user' });
   }
 
+  // Validate reason
   if (!['spam', 'harassment', 'inappropriate', 'other'].includes(reason)) {
-    return res.status(400).json({ error: 'Invalid reason' });
+    return res.status(400).json({ error: 'Invalid reason. Must be: spam, harassment, inappropriate, or other' });
   }
 
-  const report = db.createReport({
-    reporterId: req.user.userId,
-    type: sanitizeInput(type),
-    targetId: sanitizeInput(targetId),
-    reason: sanitizeInput(reason),
-    details: sanitizeInput(details || '')
-  });
+  // Create report
+  const report = db.createReport(
+    req.user.userId,
+    sanitizeInput(type),
+    sanitizeInput(targetId),
+    sanitizeInput(reason),
+    sanitizeInput(details || '')
+  );
 
   res.json({ success: true, reportId: report.id });
+});
+
+// Get user's own submitted reports
+app.get('/api/reports', authenticateToken, (req, res) => {
+  const reports = db.getReportsByUser(req.user.userId);
+  res.json({ reports, count: reports.length });
 });
 
 // Get reports (admin only)
@@ -3076,9 +3221,21 @@ app.get('/api/admin/reports', authenticateToken, (req, res) => {
   }
 
   const status = req.query.status ? sanitizeInput(req.query.status) : null;
-  const type = req.query.type ? sanitizeInput(req.query.type) : null;
+  const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+  const offset = req.query.offset ? parseInt(req.query.offset) : 0;
 
-  const reports = db.getReports({ status, type });
+  // Validate status
+  if (status && !['pending', 'resolved', 'dismissed'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status. Must be: pending, resolved, or dismissed' });
+  }
+
+  let reports;
+  if (status) {
+    reports = db.getReportsByStatus(status, limit, offset);
+  } else {
+    reports = db.getReports({ limit, offset });
+  }
+
   res.json({ reports, count: reports.length });
 });
 
@@ -3090,13 +3247,145 @@ app.post('/api/admin/reports/:id/resolve', authenticateToken, (req, res) => {
   }
 
   const reportId = sanitizeInput(req.params.id);
-  const { resolution } = req.body;
+  const { resolution, notes } = req.body;
 
-  if (!db.resolveReport(reportId, resolution, req.user.userId)) {
-    return res.status(404).json({ error: 'Report not found' });
+  if (!resolution || resolution.trim().length === 0) {
+    return res.status(400).json({ error: 'Resolution is required' });
   }
 
-  res.json({ success: true });
+  const updatedReport = db.resolveReport(reportId, sanitizeInput(resolution), req.user.userId, notes ? sanitizeInput(notes) : null);
+
+  if (!updatedReport) {
+    return res.status(404).json({ error: 'Report not found or already processed' });
+  }
+
+  // Notify reporter via WebSocket
+  const reporter = db.findUserById(updatedReport.reporterId);
+  if (reporter) {
+    broadcast({
+      type: 'report_resolved',
+      reportId: updatedReport.id,
+      status: updatedReport.status,
+      resolution: updatedReport.resolution,
+      targetUserId: updatedReport.reporterId
+    });
+  }
+
+  res.json({ success: true, report: updatedReport });
+});
+
+// Dismiss report (admin only)
+app.post('/api/admin/reports/:id/dismiss', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const reportId = sanitizeInput(req.params.id);
+  const { reason } = req.body;
+
+  const updatedReport = db.dismissReport(reportId, req.user.userId, reason ? sanitizeInput(reason) : null);
+
+  if (!updatedReport) {
+    return res.status(404).json({ error: 'Report not found or already processed' });
+  }
+
+  // Notify reporter via WebSocket
+  const reporter = db.findUserById(updatedReport.reporterId);
+  if (reporter) {
+    broadcast({
+      type: 'report_resolved',
+      reportId: updatedReport.id,
+      status: updatedReport.status,
+      resolution: updatedReport.resolution,
+      targetUserId: updatedReport.reporterId
+    });
+  }
+
+  res.json({ success: true, report: updatedReport });
+});
+
+// Issue warning to user (admin only)
+app.post('/api/admin/users/:id/warn', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const targetUserId = sanitizeInput(req.params.id);
+  const { reason, reportId } = req.body;
+
+  if (!reason || reason.trim().length === 0) {
+    return res.status(400).json({ error: 'Reason is required' });
+  }
+
+  const targetUser = db.findUserById(targetUserId);
+  if (!targetUser) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const warning = db.createWarning(
+    targetUserId,
+    req.user.userId,
+    sanitizeInput(reason),
+    reportId ? sanitizeInput(reportId) : null
+  );
+
+  // Notify user via WebSocket
+  broadcast({
+    type: 'warning_received',
+    warning,
+    targetUserId
+  });
+
+  res.json({ success: true, warning });
+});
+
+// Get warnings for a user (admin only)
+app.get('/api/admin/users/:id/warnings', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const targetUserId = sanitizeInput(req.params.id);
+  const warnings = db.getWarningsByUser(targetUserId);
+
+  res.json({ warnings, count: warnings.length });
+});
+
+// Get moderation log (admin only)
+app.get('/api/admin/moderation-log', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+
+  const logs = db.getModerationLog(limit, offset);
+
+  res.json({ logs, count: logs.length });
+});
+
+// Get moderation log for specific target (admin only)
+app.get('/api/admin/moderation-log/:targetType/:targetId', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const targetType = sanitizeInput(req.params.targetType);
+  const targetId = sanitizeInput(req.params.targetId);
+
+  if (!['user', 'message', 'wave'].includes(targetType)) {
+    return res.status(400).json({ error: 'Invalid target type' });
+  }
+
+  const logs = db.getModerationLogForTarget(targetType, targetId);
+
+  res.json({ logs, count: logs.length });
 });
 
 // ============ Group Routes ============

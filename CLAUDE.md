@@ -612,6 +612,43 @@ Automatic embedding of videos and media from popular platforms.
     - CSP frame-src directive for secure iframe embedding
     - Platform-specific thumbnails and play buttons
 
+- **v1.9.0 (December 2025)** - Threading, Mobile UX, Moderation & API Documentation
+  - **Message Threading Improvements**:
+    - Thread collapse/expand with localStorage persistence per wave
+    - "Collapse All" / "Expand All" buttons in wave toolbar
+    - "↑ Parent" button to jump to parent message with highlight animation
+    - Thread depth indicator for deeply nested messages (depth > 3)
+    - Visual thread connectors (dashed lines) for reply hierarchy
+    - Responsive connector sizing for mobile
+  - **Mobile Gesture Enhancements**:
+    - `useSwipeGesture` hook for swipe navigation
+    - `usePullToRefresh` hook with PullIndicator component
+    - `BottomNav` component with 5-tab navigation (Waves, Contacts, Groups, Search, Profile)
+    - Haptic feedback on navigation (10ms vibration)
+    - Badge indicators for unread counts and pending requests
+    - Safe area insets for notched devices
+  - **Report System**:
+    - Report messages, waves, or users for: spam, harassment, inappropriate, other
+    - Rate limit: 10 reports per hour per user
+    - `ReportModal` component with reason selection and details textarea
+    - Admin `ReportsAdminPanel` with tabs (Pending/Resolved/Dismissed)
+    - Resolution options: Warning Issued, Content Removed, User Banned, No Action
+    - `MyReportsPanel` for users to view their submitted reports
+    - WebSocket `report_resolved` event notifies reporters of resolution
+  - **Moderation Actions**:
+    - Warning system with `warnings` table and `createWarning()` method
+    - Moderation audit log with `moderation_log` table
+    - `POST /api/admin/users/:id/warn` - Issue warning to user
+    - `GET /api/admin/users/:id/warnings` - Get user's warnings
+    - `GET /api/admin/moderation-log` - Get full moderation history
+    - WebSocket `warning_received` event notifies warned users
+  - **API Documentation**:
+    - Comprehensive `docs/API.md` with 70+ endpoints documented
+    - All authentication, users, waves, messages, contacts, groups endpoints
+    - WebSocket events documentation
+    - Rate limiting and error response formats
+    - curl examples for key endpoints
+
 - **v1.8.1 (December 2025)** - Bug Fixes: Embeds, Push Notifications & UX
   - **Video Embed Fix**: YouTube, Spotify, Vimeo now properly show embedded players
     - Fixed `detectEmbedUrls()` to only skip image URLs in `<img>` tags

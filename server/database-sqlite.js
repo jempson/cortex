@@ -112,6 +112,83 @@ export class DatabaseSQLite {
 
       console.log('✅ FTS5 search index created');
     }
+
+    // Check if reports table exists (v1.9.0)
+    const reportsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='reports'
+    `).get();
+
+    if (!reportsExists) {
+      console.log('📝 Creating reports table...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS reports (
+          id TEXT PRIMARY KEY,
+          reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          type TEXT NOT NULL,
+          target_id TEXT NOT NULL,
+          reason TEXT NOT NULL,
+          details TEXT DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'pending',
+          resolution TEXT,
+          resolution_notes TEXT,
+          created_at TEXT NOT NULL,
+          resolved_at TEXT,
+          resolved_by TEXT REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_reports_reporter ON reports(reporter_id);
+        CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
+        CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(type);
+      `);
+      console.log('✅ Reports table created');
+    }
+
+    // Check if warnings table exists (v1.9.0)
+    const warningsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='warnings'
+    `).get();
+
+    if (!warningsExists) {
+      console.log('📝 Creating warnings table...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS warnings (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          issued_by TEXT NOT NULL REFERENCES users(id),
+          reason TEXT NOT NULL,
+          report_id TEXT REFERENCES reports(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_warnings_user ON warnings(user_id);
+        CREATE INDEX IF NOT EXISTS idx_warnings_issued_by ON warnings(issued_by);
+        CREATE INDEX IF NOT EXISTS idx_warnings_report ON warnings(report_id);
+      `);
+      console.log('✅ Warnings table created');
+    }
+
+    // Check if moderation_log table exists (v1.9.0)
+    const modLogExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='moderation_log'
+    `).get();
+
+    if (!modLogExists) {
+      console.log('📝 Creating moderation_log table...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS moderation_log (
+          id TEXT PRIMARY KEY,
+          admin_id TEXT NOT NULL REFERENCES users(id),
+          action_type TEXT NOT NULL,
+          target_type TEXT NOT NULL,
+          target_id TEXT NOT NULL,
+          reason TEXT,
+          details TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_moderation_log_admin ON moderation_log(admin_id);
+        CREATE INDEX IF NOT EXISTS idx_moderation_log_target ON moderation_log(target_type, target_id);
+        CREATE INDEX IF NOT EXISTS idx_moderation_log_created ON moderation_log(created_at DESC);
+      `);
+      console.log('✅ Moderation log table created');
+    }
   }
 
   prepareStatements() {
@@ -991,14 +1068,14 @@ export class DatabaseSQLite {
   }
 
   // === Report Methods ===
-  createReport(data) {
+  createReport(reporterId, type, targetId, reason, details = '') {
     const report = {
       id: uuidv4(),
-      reporterId: data.reporterId,
-      type: data.type,
-      targetId: data.targetId,
-      reason: data.reason,
-      details: data.details || '',
+      reporterId: reporterId,
+      type: type,
+      targetId: targetId,
+      reason: reason,
+      details: details || '',
       status: 'pending',
       createdAt: new Date().toISOString(),
     };
@@ -1009,6 +1086,36 @@ export class DatabaseSQLite {
     `).run(report.id, report.reporterId, report.type, report.targetId, report.reason, report.details, report.status, report.createdAt);
 
     return report;
+  }
+
+  getReportsByUser(userId) {
+    const rows = this.db.prepare(`
+      SELECT * FROM reports WHERE reporter_id = ? ORDER BY created_at DESC
+    `).all(userId);
+
+    return rows.map(r => this._enrichReport(r));
+  }
+
+  getPendingReports(limit = 50, offset = 0) {
+    const rows = this.db.prepare(`
+      SELECT * FROM reports WHERE status = 'pending' ORDER BY created_at DESC LIMIT ? OFFSET ?
+    `).all(limit, offset);
+
+    return rows.map(r => this._enrichReport(r));
+  }
+
+  getReportsByStatus(status, limit = 50, offset = 0) {
+    const rows = this.db.prepare(`
+      SELECT * FROM reports WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?
+    `).all(status, limit, offset);
+
+    return rows.map(r => this._enrichReport(r));
+  }
+
+  getReportById(reportId) {
+    const row = this.db.prepare('SELECT * FROM reports WHERE id = ?').get(reportId);
+    if (!row) return null;
+    return this._enrichReport(row);
   }
 
   getReports(filters = {}) {
@@ -1026,50 +1133,201 @@ export class DatabaseSQLite {
 
     sql += ' ORDER BY created_at DESC';
 
-    const rows = this.db.prepare(sql).all(...params);
-
-    return rows.map(r => {
-      const reporter = this.findUserById(r.reporter_id);
-      let context = {};
-
-      if (r.type === 'message') {
-        const msg = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(r.target_id);
-        if (msg) {
-          const author = this.findUserById(msg.author_id);
-          context = { content: msg.content, authorHandle: author?.handle, authorName: author?.displayName, createdAt: msg.created_at };
-        }
-      } else if (r.type === 'wave') {
-        const wave = this.getWave(r.target_id);
-        if (wave) context = { title: wave.title, privacy: wave.privacy };
-      } else if (r.type === 'user') {
-        const user = this.findUserById(r.target_id);
-        if (user) context = { handle: user.handle, displayName: user.displayName };
+    if (filters.limit) {
+      sql += ' LIMIT ?';
+      params.push(filters.limit);
+      if (filters.offset) {
+        sql += ' OFFSET ?';
+        params.push(filters.offset);
       }
+    }
 
-      return {
-        id: r.id,
-        reporterId: r.reporter_id,
-        type: r.type,
-        targetId: r.target_id,
-        reason: r.reason,
-        details: r.details,
-        status: r.status,
-        resolution: r.resolution,
-        createdAt: r.created_at,
-        resolvedAt: r.resolved_at,
-        resolvedBy: r.resolved_by,
-        reporterHandle: reporter?.handle,
-        reporterName: reporter?.displayName,
-        context,
-      };
-    });
+    const rows = this.db.prepare(sql).all(...params);
+    return rows.map(r => this._enrichReport(r));
   }
 
-  resolveReport(reportId, resolution, userId) {
+  resolveReport(reportId, resolution, resolvedBy, notes = null) {
+    const report = this.db.prepare('SELECT * FROM reports WHERE id = ?').get(reportId);
+    if (!report) return null;
+    if (report.status !== 'pending') return null;
+
     const now = new Date().toISOString();
-    const status = resolution === 'dismiss' ? 'dismissed' : 'resolved';
-    const result = this.db.prepare('UPDATE reports SET status = ?, resolution = ?, resolved_at = ?, resolved_by = ? WHERE id = ?').run(status, resolution, now, userId, reportId);
-    return result.changes > 0;
+    const resolutionText = notes ? `${resolution}: ${notes}` : resolution;
+
+    this.db.prepare(`
+      UPDATE reports SET status = 'resolved', resolution = ?, resolved_at = ?, resolved_by = ? WHERE id = ?
+    `).run(resolutionText, now, resolvedBy, reportId);
+
+    return this.getReportById(reportId);
+  }
+
+  dismissReport(reportId, resolvedBy, reason = null) {
+    const report = this.db.prepare('SELECT * FROM reports WHERE id = ?').get(reportId);
+    if (!report) return null;
+    if (report.status !== 'pending') return null;
+
+    const now = new Date().toISOString();
+    const resolutionText = reason ? `Dismissed: ${reason}` : 'Dismissed';
+
+    this.db.prepare(`
+      UPDATE reports SET status = 'dismissed', resolution = ?, resolved_at = ?, resolved_by = ? WHERE id = ?
+    `).run(resolutionText, now, resolvedBy, reportId);
+
+    return this.getReportById(reportId);
+  }
+
+  // Helper method to enrich report data with context
+  _enrichReport(r) {
+    const reporter = this.findUserById(r.reporter_id);
+    let context = {};
+
+    if (r.type === 'message') {
+      const msg = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(r.target_id);
+      if (msg) {
+        const author = this.findUserById(msg.author_id);
+        const wave = this.getWave(msg.wave_id);
+        context = {
+          content: msg.content,
+          authorHandle: author?.handle,
+          authorName: author?.displayName,
+          createdAt: msg.created_at,
+          waveId: msg.wave_id,
+          waveName: wave?.title
+        };
+      }
+    } else if (r.type === 'wave') {
+      const wave = this.getWave(r.target_id);
+      if (wave) {
+        const creator = this.findUserById(wave.createdBy);
+        context = {
+          title: wave.title,
+          privacy: wave.privacy,
+          creatorHandle: creator?.handle,
+          creatorName: creator?.displayName
+        };
+      }
+    } else if (r.type === 'user') {
+      const user = this.findUserById(r.target_id);
+      if (user) context = { handle: user.handle, displayName: user.displayName };
+    }
+
+    return {
+      id: r.id,
+      reporterId: r.reporter_id,
+      type: r.type,
+      targetId: r.target_id,
+      reason: r.reason,
+      details: r.details,
+      status: r.status,
+      resolution: r.resolution,
+      createdAt: r.created_at,
+      resolvedAt: r.resolved_at,
+      resolvedBy: r.resolved_by,
+      reporterHandle: reporter?.handle,
+      reporterName: reporter?.displayName,
+      context,
+    };
+  }
+
+  // === Warning Methods ===
+  createWarning(userId, issuedBy, reason, reportId = null) {
+    const id = `warn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO warnings (id, user_id, issued_by, reason, report_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, userId, issuedBy, reason, reportId, now);
+
+    // Log the moderation action
+    this.logModerationAction(issuedBy, 'warning_issued', 'user', userId, reason);
+
+    return { id, userId, issuedBy, reason, reportId, createdAt: now };
+  }
+
+  getWarningsByUser(userId) {
+    const warnings = this.db.prepare(`
+      SELECT w.*, u.handle as issued_by_handle, u.display_name as issued_by_name
+      FROM warnings w
+      LEFT JOIN users u ON w.issued_by = u.id
+      WHERE w.user_id = ?
+      ORDER BY w.created_at DESC
+    `).all(userId);
+
+    return warnings.map(w => ({
+      id: w.id,
+      userId: w.user_id,
+      issuedBy: w.issued_by,
+      issuedByHandle: w.issued_by_handle,
+      issuedByName: w.issued_by_name,
+      reason: w.reason,
+      reportId: w.report_id,
+      createdAt: w.created_at,
+    }));
+  }
+
+  getUserWarningCount(userId) {
+    const result = this.db.prepare('SELECT COUNT(*) as count FROM warnings WHERE user_id = ?').get(userId);
+    return result?.count || 0;
+  }
+
+  // === Moderation Log Methods ===
+  logModerationAction(adminId, actionType, targetType, targetId, reason = null, details = null) {
+    const id = `modlog-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO moderation_log (id, admin_id, action_type, target_type, target_id, reason, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, adminId, actionType, targetType, targetId, reason, details, now);
+
+    return { id, adminId, actionType, targetType, targetId, reason, details, createdAt: now };
+  }
+
+  getModerationLog(limit = 50, offset = 0) {
+    const logs = this.db.prepare(`
+      SELECT ml.*, u.handle as admin_handle, u.display_name as admin_name
+      FROM moderation_log ml
+      LEFT JOIN users u ON ml.admin_id = u.id
+      ORDER BY ml.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset);
+
+    return logs.map(l => ({
+      id: l.id,
+      adminId: l.admin_id,
+      adminHandle: l.admin_handle,
+      adminName: l.admin_name,
+      actionType: l.action_type,
+      targetType: l.target_type,
+      targetId: l.target_id,
+      reason: l.reason,
+      details: l.details,
+      createdAt: l.created_at,
+    }));
+  }
+
+  getModerationLogForTarget(targetType, targetId) {
+    const logs = this.db.prepare(`
+      SELECT ml.*, u.handle as admin_handle, u.display_name as admin_name
+      FROM moderation_log ml
+      LEFT JOIN users u ON ml.admin_id = u.id
+      WHERE ml.target_type = ? AND ml.target_id = ?
+      ORDER BY ml.created_at DESC
+    `).all(targetType, targetId);
+
+    return logs.map(l => ({
+      id: l.id,
+      adminId: l.admin_id,
+      adminHandle: l.admin_handle,
+      adminName: l.admin_name,
+      actionType: l.action_type,
+      targetType: l.target_type,
+      targetId: l.target_id,
+      reason: l.reason,
+      details: l.details,
+      createdAt: l.created_at,
+    }));
   }
 
   // === Wave Methods ===

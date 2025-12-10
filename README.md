@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 1.8.1** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 1.9.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
 ## Quick Start
 
@@ -153,6 +153,114 @@ See `CLAUDE.md` for complete API documentation.
 
 ## Deployment
 
+### Production Server with PM2
+
+[PM2](https://pm2.keymetrics.io/) is a production process manager for Node.js that keeps your server running, handles restarts, and provides monitoring.
+
+#### Install PM2
+
+```bash
+npm install -g pm2
+```
+
+#### Start the Server
+
+```bash
+cd server
+
+# Start with PM2
+pm2 start server.js --name cortex
+
+# Or with environment variables
+pm2 start server.js --name cortex --env production
+```
+
+#### PM2 Ecosystem File (Recommended)
+
+Create `ecosystem.config.js` in the project root:
+
+```javascript
+module.exports = {
+  apps: [{
+    name: 'cortex',
+    script: './server/server.js',
+    instances: 1,              // Use 1 for WebSocket compatibility
+    exec_mode: 'fork',         // Fork mode required for WebSocket
+    env: {
+      NODE_ENV: 'development',
+      PORT: 3001
+    },
+    env_production: {
+      NODE_ENV: 'production',
+      PORT: 3001,
+      USE_SQLITE: 'true'
+    },
+    // Restart settings
+    max_memory_restart: '500M',
+    restart_delay: 1000,
+    // Logging
+    log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    error_file: './logs/cortex-error.log',
+    out_file: './logs/cortex-out.log',
+    merge_logs: true,
+    // Watch (optional, for development)
+    watch: false,
+    ignore_watch: ['node_modules', 'data', 'logs', 'uploads']
+  }]
+};
+```
+
+Then start with:
+
+```bash
+# Development
+pm2 start ecosystem.config.js
+
+# Production
+pm2 start ecosystem.config.js --env production
+```
+
+#### Common PM2 Commands
+
+```bash
+pm2 list                    # List all processes
+pm2 logs cortex             # View logs (real-time)
+pm2 logs cortex --lines 100 # View last 100 lines
+pm2 monit                   # Terminal-based monitoring
+pm2 restart cortex          # Restart the server
+pm2 stop cortex             # Stop the server
+pm2 delete cortex           # Remove from PM2
+pm2 save                    # Save process list for startup
+pm2 startup                 # Generate startup script
+```
+
+#### Auto-Start on Boot
+
+```bash
+# Generate startup script (run as root or with sudo)
+pm2 startup
+
+# Save current process list
+pm2 save
+```
+
+This ensures Cortex automatically restarts after server reboots.
+
+#### Serving the Client
+
+For production, build the client and serve statically:
+
+```bash
+cd client
+npm run build
+```
+
+Then either:
+1. **Nginx**: Serve `client/dist/` directly (recommended)
+2. **PM2 + serve**: `pm2 serve client/dist 3000 --name cortex-client --spa`
+
+---
+
 ### Nginx Reverse Proxy
 
 ```nginx
@@ -192,6 +300,14 @@ server {
 ---
 
 ## Changelog
+
+### v1.9.0 (December 2025)
+- **Message Threading Improvements**: Collapse/expand threads, jump-to-parent, visual connectors
+- **Mobile Gestures**: Bottom navigation bar, swipe navigation, pull-to-refresh
+- **Report System**: Users can report content, admin dashboard for moderation
+- **Moderation Actions**: Warning system, audit log, content removal
+- **API Documentation**: Comprehensive docs/API.md with 70+ endpoints
+- Mobile header shows CORTEX logo with status indicators
 
 ### v1.8.1 (December 2025)
 - Fixed video embeds (YouTube, Spotify, Vimeo)

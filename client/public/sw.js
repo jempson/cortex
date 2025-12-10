@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.8.1
+// Cortex Service Worker v1.9.0
 // Includes: Push notifications, offline caching, stale-while-revalidate
-// v1.8.1: Fixed push notification issues - unique tags, background detection
-const CACHE_NAME = 'cortex-v1.8.1';
+// v1.9.0: Threading improvements, mobile gestures, report system
+const CACHE_NAME = 'cortex-v1.9.0';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,7 @@ const STATIC_ASSETS = [
 
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.8.0...');
+  console.log('[SW] Installing service worker v1.9.0...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');
