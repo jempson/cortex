@@ -1915,7 +1915,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
                 fontSize: isMobile ? '0.95rem' : '0.85rem',
                 resize: 'vertical',
               }}
-              placeholder="Edit your message..."
+              placeholder="Edit your droplet..."
               autoFocus
             />
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
@@ -1951,7 +1951,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               fontStyle: 'italic',
             }}
           >
-            [Message deleted]
+            [Droplet deleted]
           </div>
         ) : (
           <div
@@ -2023,7 +2023,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               minHeight: isMobile ? '38px' : 'auto',
               background: 'transparent', border: '1px solid #6a7a6a30',
               color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-            }} title="Report message">⚐</button>
+            }} title="Report droplet">⚐</button>
           )}
 
           {/* Emoji picker button - hidden for deleted messages */}
@@ -2413,7 +2413,7 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
 
 // ============ REPORT MODAL ============
 const REPORT_REASONS = [
-  { value: 'spam', label: 'Spam', desc: 'Unwanted promotional content or repetitive messages' },
+  { value: 'spam', label: 'Spam', desc: 'Unwanted promotional content or repetitive droplets' },
   { value: 'harassment', label: 'Harassment', desc: 'Bullying, threats, or targeted abuse' },
   { value: 'inappropriate', label: 'Inappropriate Content', desc: 'Offensive, explicit, or harmful content' },
   { value: 'other', label: 'Other', desc: 'Other violation of community guidelines' },
@@ -2458,7 +2458,7 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
 
   if (!isOpen) return null;
 
-  const typeLabels = { message: 'Message', wave: 'Wave', user: 'User' };
+  const typeLabels = { message: 'Droplet', droplet: 'Droplet', wave: 'Wave', user: 'User' };
 
   return (
     <div style={{
@@ -3167,7 +3167,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="Search messages..."
+            placeholder="Search droplets..."
             style={{
               flex: 1,
               padding: isMobile ? '14px' : '12px',
@@ -3243,7 +3243,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 
         {hasSearched && results.length === 0 && (
           <div style={{ textAlign: 'center', color: '#6a7a6a', padding: '40px 20px' }}>
-            No messages found matching "{searchQuery}"
+            No droplets found matching "{searchQuery}"
           </div>
         )}
       </div>
@@ -3662,7 +3662,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         setHasMoreMessages(false);
       }
     } catch (err) {
-      showToast('Failed to load older messages', 'error');
+      showToast('Failed to load older droplets', 'error');
     }
     setLoadingMore(false);
   };
@@ -3682,7 +3682,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       });
       setNewMessage('');
       setReplyingTo(null);
-      showToast('Message sent', 'success');
+      showToast('Droplet sent', 'success');
       await loadWave();
 
       // Only scroll to bottom if posting a root message (not a reply)
@@ -3695,7 +3695,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }
       // If it was a reply, scroll position will be restored by the useEffect
     } catch (err) {
-      showToast('Failed to send message', 'error');
+      showToast('Failed to send droplet', 'error');
       scrollPositionToRestore.current = null; // Clear on error
     }
   };
@@ -3793,7 +3793,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   const handleSaveEdit = async (messageId) => {
     if (!editContent.trim()) {
-      showToast('Message cannot be empty', 'error');
+      showToast('Droplet cannot be empty', 'error');
       return;
     }
     try {
@@ -3801,12 +3801,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         method: 'PUT',
         body: { content: editContent },
       });
-      showToast('Message updated', 'success');
+      showToast('Droplet updated', 'success');
       setEditingMessageId(null);
       setEditContent('');
       await loadWave();
     } catch (err) {
-      showToast(err.message || 'Failed to update message', 'error');
+      showToast(err.message || 'Failed to update droplet', 'error');
     }
   };
 
@@ -3838,7 +3838,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     // Extract preview text from message content (strip HTML tags)
     const textContent = message.content?.replace(/<[^>]*>/g, '').slice(0, 100) || '';
     setReportTarget({
-      type: 'message',
+      type: 'droplet',
       targetId: message.id,
       targetPreview: `${message.sender_name}: ${textContent}${message.content?.length > 100 ? '...' : ''}`,
     });
@@ -3848,10 +3848,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     if (!messageToDelete) return;
     try {
       await fetchAPI(`/messages/${messageToDelete.id}`, { method: 'DELETE' });
-      showToast('Message deleted', 'success');
+      showToast('Droplet deleted', 'success');
       loadWave();
     } catch (err) {
-      showToast(err.message || 'Failed to delete message', 'error');
+      showToast(err.message || 'Failed to delete droplet', 'error');
     }
   };
 
@@ -3870,7 +3870,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       onWaveUpdate?.();
     } catch (err) {
       console.error(`❌ Failed to mark message ${messageId} as read:`, err);
-      showToast('Failed to mark message as read', 'error');
+      showToast('Failed to mark droplet as read', 'error');
       scrollPositionToRestore.current = null; // Clear on error
     }
   };
@@ -4053,7 +4053,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                   onWaveUpdate?.();
                   showToast(`Marked ${unreadMessages.length} message${unreadMessages.length !== 1 ? 's' : ''} as read`, 'success');
                 } catch (err) {
-                  showToast('Failed to mark messages as read', 'error');
+                  showToast('Failed to mark droplets as read', 'error');
                 }
               }}
               style={{
@@ -4410,7 +4410,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               }
             }
           }}
-          placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a message... (Shift+Enter for new line)'}
+          placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a droplet... (Shift+Enter for new line)'}
           rows={1}
           style={{
             width: '100%',
@@ -6553,7 +6553,7 @@ function MainApp() {
         if ((isViewingDifferentWave || isBackgrounded) && !isOwnMessage) {
           if ('Notification' in window && Notification.permission === 'granted') {
             const waveName = waves.find(w => w.id === eventWaveId)?.name || 'Unknown Wave';
-            const notification = new Notification(`New message in ${waveName}`, {
+            const notification = new Notification(`New droplet in ${waveName}`, {
               body: `${data.data.sender_name}: ${data.data.content.substring(0, 100)}${data.data.content.length > 100 ? '...' : ''}`,
               icon: '/favicon.ico',
               tag: eventWaveId, // Group notifications by wave
@@ -6880,7 +6880,7 @@ function MainApp() {
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <GlowText color="#ffd23f" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            <span style={{ color: '#5a6a5a', fontSize: '0.55rem' }}>v1.9.0</span>
+            <span style={{ color: '#5a6a5a', fontSize: '0.55rem' }}>v1.10.0</span>
           </div>
           {/* Status indicators */}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', fontSize: '0.55rem', fontFamily: 'monospace' }}>
@@ -7036,7 +7036,7 @@ function MainApp() {
           display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
         }}>
           <div style={{ color: '#5a6a5a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ color: '#3a4a3a' }}>v1.9.0</span>
+            <span style={{ color: '#3a4a3a' }}>v1.10.0</span>
             <span><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</span>
             <span><span style={{ color: apiConnected ? '#0ead69' : '#ff6b35' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? '#0ead69' : '#ff6b35' }}>●</span> LIVE</span>

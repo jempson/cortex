@@ -1,5 +1,5 @@
 -- Cortex SQLite Database Schema
--- Version 1.8.0
+-- Version 1.10.0
 
 -- ============ Users ============
 CREATE TABLE IF NOT EXISTS users (
@@ -58,11 +58,11 @@ CREATE TABLE IF NOT EXISTS wave_participants (
     PRIMARY KEY (wave_id, user_id)
 );
 
--- ============ Messages ============
-CREATE TABLE IF NOT EXISTS messages (
+-- ============ Droplets (formerly Messages) ============
+CREATE TABLE IF NOT EXISTS droplets (
     id TEXT PRIMARY KEY,
     wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
-    parent_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+    parent_id TEXT REFERENCES droplets(id) ON DELETE SET NULL,
     author_id TEXT NOT NULL REFERENCES users(id),
     content TEXT NOT NULL,
     privacy TEXT DEFAULT 'private',
@@ -75,18 +75,18 @@ CREATE TABLE IF NOT EXISTS messages (
     reactions TEXT DEFAULT '{}'
 );
 
--- Message read tracking (many-to-many)
-CREATE TABLE IF NOT EXISTS message_read_by (
-    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+-- Droplet read tracking (many-to-many)
+CREATE TABLE IF NOT EXISTS droplet_read_by (
+    droplet_id TEXT NOT NULL REFERENCES droplets(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     read_at TEXT NOT NULL,
-    PRIMARY KEY (message_id, user_id)
+    PRIMARY KEY (droplet_id, user_id)
 );
 
--- Message edit history
-CREATE TABLE IF NOT EXISTS message_history (
+-- Droplet edit history
+CREATE TABLE IF NOT EXISTS droplet_history (
     id TEXT PRIMARY KEY,
-    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    droplet_id TEXT NOT NULL REFERENCES droplets(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     version INTEGER NOT NULL,
     edited_at TEXT NOT NULL
@@ -231,19 +231,19 @@ CREATE INDEX IF NOT EXISTS idx_wave_participants_user ON wave_participants(user_
 CREATE INDEX IF NOT EXISTS idx_wave_participants_wave ON wave_participants(wave_id);
 CREATE INDEX IF NOT EXISTS idx_wave_participants_archived ON wave_participants(user_id, archived);
 
--- Message lookups
-CREATE INDEX IF NOT EXISTS idx_messages_wave ON messages(wave_id);
-CREATE INDEX IF NOT EXISTS idx_messages_author ON messages(author_id);
-CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);
-CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(wave_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_messages_deleted ON messages(deleted);
+-- Droplet lookups
+CREATE INDEX IF NOT EXISTS idx_droplets_wave ON droplets(wave_id);
+CREATE INDEX IF NOT EXISTS idx_droplets_author ON droplets(author_id);
+CREATE INDEX IF NOT EXISTS idx_droplets_parent ON droplets(parent_id);
+CREATE INDEX IF NOT EXISTS idx_droplets_created ON droplets(wave_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_droplets_deleted ON droplets(deleted);
 
--- Message read tracking
-CREATE INDEX IF NOT EXISTS idx_message_read_user ON message_read_by(user_id);
-CREATE INDEX IF NOT EXISTS idx_message_read_message ON message_read_by(message_id);
+-- Droplet read tracking
+CREATE INDEX IF NOT EXISTS idx_droplet_read_user ON droplet_read_by(user_id);
+CREATE INDEX IF NOT EXISTS idx_droplet_read_droplet ON droplet_read_by(droplet_id);
 
--- Message history
-CREATE INDEX IF NOT EXISTS idx_message_history_message ON message_history(message_id);
+-- Droplet history
+CREATE INDEX IF NOT EXISTS idx_droplet_history_droplet ON droplet_history(droplet_id);
 
 -- Group lookups
 CREATE INDEX IF NOT EXISTS idx_groups_created_by ON groups(created_by);
@@ -307,29 +307,29 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON push_subscriptions
 
 -- ============ Full-Text Search ============
 
--- FTS5 virtual table for message content search
-CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+-- FTS5 virtual table for droplet content search
+CREATE VIRTUAL TABLE IF NOT EXISTS droplets_fts USING fts5(
     id UNINDEXED,
     content,
-    content='messages',
+    content='droplets',
     content_rowid='rowid'
 );
 
--- Triggers to keep FTS table in sync with messages table
+-- Triggers to keep FTS table in sync with droplets table
 -- Note: These triggers use external content table, so we need to handle inserts/updates/deletes
 
 -- After INSERT trigger
-CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
-    INSERT INTO messages_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+CREATE TRIGGER IF NOT EXISTS droplets_fts_insert AFTER INSERT ON droplets BEGIN
+    INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
 END;
 
 -- After DELETE trigger
-CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
-    INSERT INTO messages_fts(messages_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+CREATE TRIGGER IF NOT EXISTS droplets_fts_delete AFTER DELETE ON droplets BEGIN
+    INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
 END;
 
 -- After UPDATE trigger
-CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
-    INSERT INTO messages_fts(messages_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
-    INSERT INTO messages_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+CREATE TRIGGER IF NOT EXISTS droplets_fts_update AFTER UPDATE ON droplets BEGIN
+    INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+    INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
 END;

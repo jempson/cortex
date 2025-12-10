@@ -66,9 +66,83 @@ export class DatabaseSQLite {
   }
 
   applySchemaUpdates() {
-    // Check if FTS table exists
+    // Check if we need to migrate messages to droplets (v1.10.0)
+    const messagesExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='messages'
+    `).get();
+    const dropletsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='droplets'
+    `).get();
+
+    if (messagesExists && !dropletsExists) {
+      console.log('📝 Migrating messages table to droplets (v1.10.0)...');
+
+      // Rename messages table to droplets
+      this.db.exec('ALTER TABLE messages RENAME TO droplets');
+
+      // Rename message_read_by to droplet_read_by
+      const readByExists = this.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name='message_read_by'
+      `).get();
+      if (readByExists) {
+        this.db.exec('ALTER TABLE message_read_by RENAME TO droplet_read_by');
+        this.db.exec('ALTER TABLE droplet_read_by RENAME COLUMN message_id TO droplet_id');
+      }
+
+      // Rename message_history to droplet_history
+      const historyExists = this.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name='message_history'
+      `).get();
+      if (historyExists) {
+        this.db.exec('ALTER TABLE message_history RENAME TO droplet_history');
+        this.db.exec('ALTER TABLE droplet_history RENAME COLUMN message_id TO droplet_id');
+      }
+
+      // Drop old FTS table and triggers
+      this.db.exec('DROP TRIGGER IF EXISTS messages_fts_insert');
+      this.db.exec('DROP TRIGGER IF EXISTS messages_fts_delete');
+      this.db.exec('DROP TRIGGER IF EXISTS messages_fts_update');
+      this.db.exec('DROP TABLE IF EXISTS messages_fts');
+
+      // Create new droplets_fts table
+      this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS droplets_fts USING fts5(
+          id UNINDEXED,
+          content,
+          content='droplets',
+          content_rowid='rowid'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS droplets_fts_insert AFTER INSERT ON droplets BEGIN
+          INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS droplets_fts_delete AFTER DELETE ON droplets BEGIN
+          INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS droplets_fts_update AFTER UPDATE ON droplets BEGIN
+          INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+          INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+        END;
+      `);
+
+      // Populate FTS with existing droplets
+      const dropletCount = this.db.prepare('SELECT COUNT(*) as count FROM droplets').get().count;
+      if (dropletCount > 0) {
+        console.log(`📚 Indexing ${dropletCount} existing droplets...`);
+        this.db.exec(`
+          INSERT INTO droplets_fts(rowid, id, content)
+          SELECT rowid, id, content FROM droplets;
+        `);
+      }
+
+      console.log('✅ Migration to droplets complete');
+    }
+
+    // Check if FTS table exists (for fresh installs or post-migration)
     const ftsExists = this.db.prepare(`
-      SELECT name FROM sqlite_master WHERE type='table' AND name='messages_fts'
+      SELECT name FROM sqlite_master WHERE type='table' AND name='droplets_fts'
     `).get();
 
     if (!ftsExists) {
@@ -76,37 +150,37 @@ export class DatabaseSQLite {
 
       // Create FTS5 virtual table
       this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+        CREATE VIRTUAL TABLE IF NOT EXISTS droplets_fts USING fts5(
           id UNINDEXED,
           content,
-          content='messages',
+          content='droplets',
           content_rowid='rowid'
         );
       `);
 
       // Create triggers to keep FTS in sync
       this.db.exec(`
-        CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
-          INSERT INTO messages_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+        CREATE TRIGGER IF NOT EXISTS droplets_fts_insert AFTER INSERT ON droplets BEGIN
+          INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
         END;
 
-        CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
-          INSERT INTO messages_fts(messages_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+        CREATE TRIGGER IF NOT EXISTS droplets_fts_delete AFTER DELETE ON droplets BEGIN
+          INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
         END;
 
-        CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
-          INSERT INTO messages_fts(messages_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
-          INSERT INTO messages_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+        CREATE TRIGGER IF NOT EXISTS droplets_fts_update AFTER UPDATE ON droplets BEGIN
+          INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+          INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
         END;
       `);
 
-      // Populate FTS with existing messages
-      const messageCount = this.db.prepare('SELECT COUNT(*) as count FROM messages').get().count;
-      if (messageCount > 0) {
-        console.log(`📚 Indexing ${messageCount} existing messages...`);
+      // Populate FTS with existing droplets
+      const dropletCount = this.db.prepare('SELECT COUNT(*) as count FROM droplets').get().count;
+      if (dropletCount > 0) {
+        console.log(`📚 Indexing ${dropletCount} existing droplets...`);
         this.db.exec(`
-          INSERT INTO messages_fts(rowid, id, content)
-          SELECT rowid, id, content FROM messages;
+          INSERT INTO droplets_fts(rowid, id, content)
+          SELECT rowid, id, content FROM droplets;
         `);
       }
 
@@ -290,26 +364,26 @@ export class DatabaseSQLite {
       insertParticipant.run(p.waveId, p.userId, now);
     }
 
-    // Demo messages
-    const messages = [
-      { id: 'msg-1', waveId: 'wave-1', authorId: 'user-mal', content: 'Welcome to Cortex! This is a public wave visible to everyone.', privacy: 'public' },
-      { id: 'msg-2', waveId: 'wave-2', authorId: 'user-mal', content: 'This is a private wave for testing.', privacy: 'private' },
-      { id: 'msg-3', waveId: 'wave-3', authorId: 'user-mal', content: 'This is a group wave for the crew.', privacy: 'group' },
-      { id: 'msg-4', waveId: 'wave-4', authorId: 'user-zoe', content: "Zoe's private wave.", privacy: 'private' },
-      { id: 'msg-5', waveId: 'wave-5', authorId: 'user-wash', content: "Wash's public wave.", privacy: 'public' },
+    // Demo droplets
+    const droplets = [
+      { id: 'droplet-1', waveId: 'wave-1', authorId: 'user-mal', content: 'Welcome to Cortex! This is a public wave visible to everyone.', privacy: 'public' },
+      { id: 'droplet-2', waveId: 'wave-2', authorId: 'user-mal', content: 'This is a private wave for testing.', privacy: 'private' },
+      { id: 'droplet-3', waveId: 'wave-3', authorId: 'user-mal', content: 'This is a group wave for the crew.', privacy: 'group' },
+      { id: 'droplet-4', waveId: 'wave-4', authorId: 'user-zoe', content: "Zoe's private wave.", privacy: 'private' },
+      { id: 'droplet-5', waveId: 'wave-5', authorId: 'user-wash', content: "Wash's public wave.", privacy: 'public' },
     ];
 
-    const insertMessage = this.db.prepare(`
-      INSERT INTO messages (id, wave_id, author_id, content, privacy, version, created_at, reactions)
+    const insertDroplet = this.db.prepare(`
+      INSERT INTO droplets (id, wave_id, author_id, content, privacy, version, created_at, reactions)
       VALUES (?, ?, ?, ?, ?, 1, ?, '{}')
     `);
     const insertReadBy = this.db.prepare(`
-      INSERT INTO message_read_by (message_id, user_id, read_at) VALUES (?, ?, ?)
+      INSERT INTO droplet_read_by (droplet_id, user_id, read_at) VALUES (?, ?, ?)
     `);
 
-    for (const m of messages) {
-      insertMessage.run(m.id, m.waveId, m.authorId, m.content, m.privacy, now);
-      insertReadBy.run(m.id, m.authorId, now);
+    for (const d of droplets) {
+      insertDroplet.run(d.id, d.waveId, d.authorId, d.content, d.privacy, now);
+      insertReadBy.run(d.id, d.authorId, now);
     }
 
     console.log('✅ Demo data seeded (password: Demo123!)');
@@ -1181,17 +1255,18 @@ export class DatabaseSQLite {
     const reporter = this.findUserById(r.reporter_id);
     let context = {};
 
-    if (r.type === 'message') {
-      const msg = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(r.target_id);
-      if (msg) {
-        const author = this.findUserById(msg.author_id);
-        const wave = this.getWave(msg.wave_id);
+    if (r.type === 'droplet' || r.type === 'message') {
+      // Support both 'droplet' (new) and 'message' (legacy) report types
+      const droplet = this.db.prepare('SELECT * FROM droplets WHERE id = ?').get(r.target_id);
+      if (droplet) {
+        const author = this.findUserById(droplet.author_id);
+        const wave = this.getWave(droplet.wave_id);
         context = {
-          content: msg.content,
+          content: droplet.content,
           authorHandle: author?.handle,
           authorName: author?.displayName,
-          createdAt: msg.created_at,
-          waveId: msg.wave_id,
+          createdAt: droplet.created_at,
+          waveId: droplet.wave_id,
           waveName: wave?.title
         };
       }
@@ -1344,7 +1419,7 @@ export class DatabaseSQLite {
       SELECT w.*, wp.archived, wp.last_read,
         u.display_name as creator_name, u.avatar as creator_avatar, u.handle as creator_handle,
         g.name as group_name,
-        (SELECT COUNT(*) FROM messages WHERE wave_id = w.id) as message_count
+        (SELECT COUNT(*) FROM droplets WHERE wave_id = w.id) as droplet_count
       FROM waves w
       LEFT JOIN wave_participants wp ON w.id = wp.wave_id AND wp.user_id = ?
       LEFT JOIN users u ON w.created_by = u.id
@@ -1372,13 +1447,13 @@ export class DatabaseSQLite {
 
       // Calculate unread count
       const unreadCount = this.db.prepare(`
-        SELECT COUNT(*) as count FROM messages m
-        WHERE m.wave_id = ?
-          AND m.deleted = 0
-          AND m.author_id != ?
-          AND m.author_id NOT IN (${blockedIds.map(() => '?').join(',') || 'NULL'})
-          AND m.author_id NOT IN (${mutedIds.map(() => '?').join(',') || 'NULL'})
-          AND NOT EXISTS (SELECT 1 FROM message_read_by mrb WHERE mrb.message_id = m.id AND mrb.user_id = ?)
+        SELECT COUNT(*) as count FROM droplets d
+        WHERE d.wave_id = ?
+          AND d.deleted = 0
+          AND d.author_id != ?
+          AND d.author_id NOT IN (${blockedIds.map(() => '?').join(',') || 'NULL'})
+          AND d.author_id NOT IN (${mutedIds.map(() => '?').join(',') || 'NULL'})
+          AND NOT EXISTS (SELECT 1 FROM droplet_read_by drb WHERE drb.droplet_id = d.id AND drb.user_id = ?)
       `).get(r.id, userId, ...blockedIds, ...mutedIds, userId).count;
 
       return {
@@ -1393,7 +1468,7 @@ export class DatabaseSQLite {
         creator_avatar: r.creator_avatar || '?',
         creator_handle: r.creator_handle || 'unknown',
         participants,
-        message_count: r.message_count,
+        droplet_count: r.droplet_count,
         unread_count: unreadCount,
         is_participant: r.archived !== null,
         is_archived: r.archived === 1,
@@ -1533,8 +1608,8 @@ export class DatabaseSQLite {
     return { success: true, wave, participants };
   }
 
-  // === Message Methods ===
-  getMessagesForWave(waveId, userId = null) {
+  // === Droplet Methods (formerly Message Methods) ===
+  getDropletsForWave(waveId, userId = null) {
     // Get blocked/muted users
     let blockedIds = [];
     let mutedIds = [];
@@ -1544,67 +1619,72 @@ export class DatabaseSQLite {
     }
 
     let sql = `
-      SELECT m.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle
-      FROM messages m
-      JOIN users u ON m.author_id = u.id
-      WHERE m.wave_id = ?
+      SELECT d.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle
+      FROM droplets d
+      JOIN users u ON d.author_id = u.id
+      WHERE d.wave_id = ?
     `;
     const params = [waveId];
 
     if (blockedIds.length > 0) {
-      sql += ` AND m.author_id NOT IN (${blockedIds.map(() => '?').join(',')})`;
+      sql += ` AND d.author_id NOT IN (${blockedIds.map(() => '?').join(',')})`;
       params.push(...blockedIds);
     }
     if (mutedIds.length > 0) {
-      sql += ` AND m.author_id NOT IN (${mutedIds.map(() => '?').join(',')})`;
+      sql += ` AND d.author_id NOT IN (${mutedIds.map(() => '?').join(',')})`;
       params.push(...mutedIds);
     }
 
-    sql += ' ORDER BY m.created_at ASC';
+    sql += ' ORDER BY d.created_at ASC';
 
     const rows = this.db.prepare(sql).all(...params);
 
-    return rows.map(m => {
-      // Check if user has read this message
-      const hasRead = userId ? !!this.db.prepare('SELECT 1 FROM message_read_by WHERE message_id = ? AND user_id = ?').get(m.id, userId) : false;
-      const isUnread = m.deleted ? false : (userId ? !hasRead && m.author_id !== userId : false);
+    return rows.map(d => {
+      // Check if user has read this droplet
+      const hasRead = userId ? !!this.db.prepare('SELECT 1 FROM droplet_read_by WHERE droplet_id = ? AND user_id = ?').get(d.id, userId) : false;
+      const isUnread = d.deleted ? false : (userId ? !hasRead && d.author_id !== userId : false);
 
       // Get read by users
-      const readBy = this.db.prepare('SELECT user_id FROM message_read_by WHERE message_id = ?').all(m.id).map(r => r.user_id);
+      const readBy = this.db.prepare('SELECT user_id FROM droplet_read_by WHERE droplet_id = ?').all(d.id).map(r => r.user_id);
 
       return {
-        id: m.id,
-        waveId: m.wave_id,
-        parentId: m.parent_id,
-        authorId: m.author_id,
-        content: m.content,
-        privacy: m.privacy,
-        version: m.version,
-        createdAt: m.created_at,
-        editedAt: m.edited_at,
-        deleted: m.deleted === 1,
-        deletedAt: m.deleted_at,
-        reactions: m.reactions ? JSON.parse(m.reactions) : {},
+        id: d.id,
+        waveId: d.wave_id,
+        parentId: d.parent_id,
+        authorId: d.author_id,
+        content: d.content,
+        privacy: d.privacy,
+        version: d.version,
+        createdAt: d.created_at,
+        editedAt: d.edited_at,
+        deleted: d.deleted === 1,
+        deletedAt: d.deleted_at,
+        reactions: d.reactions ? JSON.parse(d.reactions) : {},
         readBy,
-        sender_name: m.sender_name,
-        sender_avatar: m.sender_avatar,
-        sender_avatar_url: m.sender_avatar_url,
-        sender_handle: m.sender_handle,
-        author_id: m.author_id,
-        parent_id: m.parent_id,
-        wave_id: m.wave_id,
-        created_at: m.created_at,
-        edited_at: m.edited_at,
-        deleted_at: m.deleted_at,
+        sender_name: d.sender_name,
+        sender_avatar: d.sender_avatar,
+        sender_avatar_url: d.sender_avatar_url,
+        sender_handle: d.sender_handle,
+        author_id: d.author_id,
+        parent_id: d.parent_id,
+        wave_id: d.wave_id,
+        created_at: d.created_at,
+        edited_at: d.edited_at,
+        deleted_at: d.deleted_at,
         is_unread: isUnread,
       };
     });
   }
 
-  createMessage(data) {
+  // Backward compatibility alias
+  getMessagesForWave(waveId, userId = null) {
+    return this.getDropletsForWave(waveId, userId);
+  }
+
+  createDroplet(data) {
     const now = new Date().toISOString();
-    const message = {
-      id: `msg-${uuidv4()}`,
+    const droplet = {
+      id: `droplet-${uuidv4()}`,
       waveId: data.waveId,
       parentId: data.parentId || null,
       authorId: data.authorId,
@@ -1617,52 +1697,57 @@ export class DatabaseSQLite {
     };
 
     this.db.prepare(`
-      INSERT INTO messages (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions)
+      INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
-    `).run(message.id, message.waveId, message.parentId, message.authorId, message.content, message.privacy, message.version, message.createdAt);
+    `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt);
 
-    // Author has read their own message
-    this.db.prepare('INSERT INTO message_read_by (message_id, user_id, read_at) VALUES (?, ?, ?)').run(message.id, data.authorId, now);
+    // Author has read their own droplet
+    this.db.prepare('INSERT INTO droplet_read_by (droplet_id, user_id, read_at) VALUES (?, ?, ?)').run(droplet.id, data.authorId, now);
 
     // Update wave timestamp
     this.updateWaveTimestamp(data.waveId);
 
     const author = this.findUserById(data.authorId);
     return {
-      ...message,
+      ...droplet,
       sender_name: author?.displayName || 'Unknown',
       sender_avatar: author?.avatar || '?',
       sender_avatar_url: author?.avatarUrl || null,
       sender_handle: author?.handle || 'unknown',
-      author_id: message.authorId,
-      parent_id: message.parentId,
-      wave_id: message.waveId,
-      created_at: message.createdAt,
-      edited_at: message.editedAt,
+      author_id: droplet.authorId,
+      parent_id: droplet.parentId,
+      wave_id: droplet.waveId,
+      created_at: droplet.createdAt,
+      edited_at: droplet.editedAt,
     };
   }
 
-  updateMessage(messageId, content) {
-    const message = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
-    if (!message || message.deleted) return null;
+  // Backward compatibility alias
+  createMessage(data) {
+    return this.createDroplet(data);
+  }
+
+  updateDroplet(dropletId, content) {
+    const droplet = this.db.prepare('SELECT * FROM droplets WHERE id = ?').get(dropletId);
+    if (!droplet || droplet.deleted) return null;
 
     // Save history
     this.db.prepare(`
-      INSERT INTO message_history (id, message_id, content, version, edited_at)
+      INSERT INTO droplet_history (id, droplet_id, content, version, edited_at)
       VALUES (?, ?, ?, ?, ?)
-    `).run(`hist-${uuidv4()}`, messageId, message.content, message.version, new Date().toISOString());
+    `).run(`hist-${uuidv4()}`, dropletId, droplet.content, droplet.version, new Date().toISOString());
 
-    // Update message
+    // Update droplet
     const now = new Date().toISOString();
-    this.db.prepare('UPDATE messages SET content = ?, version = ?, edited_at = ? WHERE id = ?').run(content, message.version + 1, now, messageId);
+    this.db.prepare('UPDATE droplets SET content = ?, version = ?, edited_at = ? WHERE id = ?').run(content, droplet.version + 1, now, dropletId);
 
-    // Return updated message
+    // Return updated droplet
     const updated = this.db.prepare(`
-      SELECT m.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle
-      FROM messages m
-      JOIN users u ON m.author_id = u.id
-      WHERE m.id = ?
-    `).get(messageId);
+      SELECT d.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle
+      FROM droplets d
+      JOIN users u ON d.author_id = u.id
+      WHERE d.id = ?
+    `).get(dropletId);
 
     return {
       id: updated.id,
@@ -1686,35 +1771,45 @@ export class DatabaseSQLite {
     };
   }
 
-  deleteMessage(messageId, userId) {
-    const message = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
-    if (!message) return { success: false, error: 'Message not found' };
-    if (message.deleted) return { success: false, error: 'Message already deleted' };
-    if (message.author_id !== userId) return { success: false, error: 'Only message author can delete' };
+  // Backward compatibility alias
+  updateMessage(dropletId, content) {
+    return this.updateDroplet(dropletId, content);
+  }
+
+  deleteDroplet(dropletId, userId) {
+    const droplet = this.db.prepare('SELECT * FROM droplets WHERE id = ?').get(dropletId);
+    if (!droplet) return { success: false, error: 'Droplet not found' };
+    if (droplet.deleted) return { success: false, error: 'Droplet already deleted' };
+    if (droplet.author_id !== userId) return { success: false, error: 'Only droplet author can delete' };
 
     const now = new Date().toISOString();
 
     // Soft delete
     this.db.prepare(`
-      UPDATE messages SET content = '[Message deleted]', deleted = 1, deleted_at = ?, reactions = '{}'
+      UPDATE droplets SET content = '[Droplet deleted]', deleted = 1, deleted_at = ?, reactions = '{}'
       WHERE id = ?
-    `).run(now, messageId);
+    `).run(now, dropletId);
 
     // Clear read status
-    this.db.prepare('DELETE FROM message_read_by WHERE message_id = ?').run(messageId);
+    this.db.prepare('DELETE FROM droplet_read_by WHERE droplet_id = ?').run(dropletId);
 
     // Clear history
-    this.db.prepare('DELETE FROM message_history WHERE message_id = ?').run(messageId);
+    this.db.prepare('DELETE FROM droplet_history WHERE droplet_id = ?').run(dropletId);
 
-    return { success: true, messageId, waveId: message.wave_id, deleted: true };
+    return { success: true, dropletId, waveId: droplet.wave_id, deleted: true };
   }
 
-  toggleMessageReaction(messageId, userId, emoji) {
-    const message = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
-    if (!message) return { success: false, error: 'Message not found' };
-    if (message.deleted) return { success: false, error: 'Cannot react to deleted message' };
+  // Backward compatibility alias
+  deleteMessage(dropletId, userId) {
+    return this.deleteDroplet(dropletId, userId);
+  }
 
-    let reactions = message.reactions ? JSON.parse(message.reactions) : {};
+  toggleDropletReaction(dropletId, userId, emoji) {
+    const droplet = this.db.prepare('SELECT * FROM droplets WHERE id = ?').get(dropletId);
+    if (!droplet) return { success: false, error: 'Droplet not found' };
+    if (droplet.deleted) return { success: false, error: 'Cannot react to deleted droplet' };
+
+    let reactions = droplet.reactions ? JSON.parse(droplet.reactions) : {};
     if (!reactions[emoji]) reactions[emoji] = [];
 
     const userIndex = reactions[emoji].indexOf(userId);
@@ -1725,18 +1820,23 @@ export class DatabaseSQLite {
       reactions[emoji].push(userId);
     }
 
-    this.db.prepare('UPDATE messages SET reactions = ? WHERE id = ?').run(JSON.stringify(reactions), messageId);
+    this.db.prepare('UPDATE droplets SET reactions = ? WHERE id = ?').run(JSON.stringify(reactions), dropletId);
 
-    return { success: true, messageId, reactions, waveId: message.wave_id };
+    return { success: true, dropletId, reactions, waveId: droplet.wave_id };
   }
 
-  markMessageAsRead(messageId, userId) {
-    const message = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
-    if (!message) return false;
-    if (message.deleted) return true;
+  // Backward compatibility alias
+  toggleMessageReaction(dropletId, userId, emoji) {
+    return this.toggleDropletReaction(dropletId, userId, emoji);
+  }
+
+  markDropletAsRead(dropletId, userId) {
+    const droplet = this.db.prepare('SELECT * FROM droplets WHERE id = ?').get(dropletId);
+    if (!droplet) return false;
+    if (droplet.deleted) return true;
 
     try {
-      this.db.prepare('INSERT INTO message_read_by (message_id, user_id, read_at) VALUES (?, ?, ?)').run(messageId, userId, new Date().toISOString());
+      this.db.prepare('INSERT INTO droplet_read_by (droplet_id, user_id, read_at) VALUES (?, ?, ?)').run(dropletId, userId, new Date().toISOString());
       return true;
     } catch {
       // Already read
@@ -1744,7 +1844,12 @@ export class DatabaseSQLite {
     }
   }
 
-  searchMessages(query, filters = {}) {
+  // Backward compatibility alias
+  markMessageAsRead(dropletId, userId) {
+    return this.markDropletAsRead(dropletId, userId);
+  }
+
+  searchDroplets(query, filters = {}) {
     const { waveId, authorId, fromDate, toDate } = filters;
     const searchTerm = query.trim();
     if (!searchTerm) return [];
@@ -1764,44 +1869,44 @@ export class DatabaseSQLite {
     // snippet() returns text with highlighted matches using <mark> tags
     let sql = `
       SELECT
-        m.id,
-        m.content,
-        snippet(messages_fts, 1, '<mark>', '</mark>', '...', 64) as snippet,
-        m.wave_id,
-        m.author_id,
-        m.created_at,
-        m.parent_id,
+        d.id,
+        d.content,
+        snippet(droplets_fts, 1, '<mark>', '</mark>', '...', 64) as snippet,
+        d.wave_id,
+        d.author_id,
+        d.created_at,
+        d.parent_id,
         w.title as wave_name,
         u.display_name as author_name,
         u.handle as author_handle,
-        bm25(messages_fts) as rank
-      FROM messages_fts
-      JOIN messages m ON messages_fts.id = m.id
-      JOIN waves w ON m.wave_id = w.id
-      JOIN users u ON m.author_id = u.id
-      WHERE messages_fts MATCH ? AND m.deleted = 0
+        bm25(droplets_fts) as rank
+      FROM droplets_fts
+      JOIN droplets d ON droplets_fts.id = d.id
+      JOIN waves w ON d.wave_id = w.id
+      JOIN users u ON d.author_id = u.id
+      WHERE droplets_fts MATCH ? AND d.deleted = 0
     `;
     const params = [ftsQuery];
 
     if (waveId) {
-      sql += ' AND m.wave_id = ?';
+      sql += ' AND d.wave_id = ?';
       params.push(waveId);
     }
     if (authorId) {
-      sql += ' AND m.author_id = ?';
+      sql += ' AND d.author_id = ?';
       params.push(authorId);
     }
     if (fromDate) {
-      sql += ' AND m.created_at >= ?';
+      sql += ' AND d.created_at >= ?';
       params.push(fromDate);
     }
     if (toDate) {
-      sql += ' AND m.created_at <= ?';
+      sql += ' AND d.created_at <= ?';
       params.push(toDate);
     }
 
     // Order by relevance (bm25), then by date
-    sql += ' ORDER BY rank, m.created_at DESC LIMIT 100';
+    sql += ' ORDER BY rank, d.created_at DESC LIMIT 100';
 
     try {
       const rows = this.db.prepare(sql).all(...params);
@@ -1821,44 +1926,49 @@ export class DatabaseSQLite {
     } catch (err) {
       // Fallback to LIKE search if FTS fails (e.g., invalid query)
       console.warn('FTS search failed, falling back to LIKE:', err.message);
-      return this.searchMessagesLike(query, filters);
+      return this.searchDropletsLike(query, filters);
     }
   }
 
+  // Backward compatibility alias
+  searchMessages(query, filters = {}) {
+    return this.searchDroplets(query, filters);
+  }
+
   // Fallback LIKE-based search for when FTS fails
-  searchMessagesLike(query, filters = {}) {
+  searchDropletsLike(query, filters = {}) {
     const { waveId, authorId, fromDate, toDate } = filters;
     const searchTerm = query.toLowerCase().trim();
     if (!searchTerm) return [];
 
     let sql = `
-      SELECT m.id, m.content, m.wave_id, m.author_id, m.created_at, m.parent_id,
+      SELECT d.id, d.content, d.wave_id, d.author_id, d.created_at, d.parent_id,
         w.title as wave_name, u.display_name as author_name, u.handle as author_handle
-      FROM messages m
-      JOIN waves w ON m.wave_id = w.id
-      JOIN users u ON m.author_id = u.id
-      WHERE m.content LIKE ? AND m.deleted = 0
+      FROM droplets d
+      JOIN waves w ON d.wave_id = w.id
+      JOIN users u ON d.author_id = u.id
+      WHERE d.content LIKE ? AND d.deleted = 0
     `;
     const params = [`%${searchTerm}%`];
 
     if (waveId) {
-      sql += ' AND m.wave_id = ?';
+      sql += ' AND d.wave_id = ?';
       params.push(waveId);
     }
     if (authorId) {
-      sql += ' AND m.author_id = ?';
+      sql += ' AND d.author_id = ?';
       params.push(authorId);
     }
     if (fromDate) {
-      sql += ' AND m.created_at >= ?';
+      sql += ' AND d.created_at >= ?';
       params.push(fromDate);
     }
     if (toDate) {
-      sql += ' AND m.created_at <= ?';
+      sql += ' AND d.created_at <= ?';
       params.push(toDate);
     }
 
-    sql += ' ORDER BY m.created_at DESC LIMIT 100';
+    sql += ' ORDER BY d.created_at DESC LIMIT 100';
 
     const rows = this.db.prepare(sql).all(...params);
 
@@ -1874,6 +1984,11 @@ export class DatabaseSQLite {
       createdAt: r.created_at,
       parentId: r.parent_id,
     }));
+  }
+
+  // Backward compatibility alias
+  searchMessagesLike(query, filters = {}) {
+    return this.searchDropletsLike(query, filters);
   }
 
   // ============ Push Subscription Methods ============
@@ -1931,7 +2046,8 @@ export class DatabaseSQLite {
   // Placeholder for JSON compatibility - not needed with SQLite
   saveUsers() {}
   saveWaves() {}
-  saveMessages() {}
+  saveDroplets() {}
+  saveMessages() {} // Backward compatibility alias
   saveGroups() {}
   saveHandleRequests() {}
   saveReports() {}
