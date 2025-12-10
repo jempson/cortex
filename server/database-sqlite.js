@@ -1543,6 +1543,13 @@ export class DatabaseSQLite {
     }));
   }
 
+  isWaveParticipant(waveId, userId) {
+    const row = this.db.prepare(`
+      SELECT 1 FROM wave_participants WHERE wave_id = ? AND user_id = ?
+    `).get(waveId, userId);
+    return !!row;
+  }
+
   canAccessWave(waveId, userId) {
     const wave = this.getWave(waveId);
     if (!wave) return false;

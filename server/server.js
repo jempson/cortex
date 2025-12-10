@@ -1378,7 +1378,7 @@ class Database {
       let context = {};
 
       if (r.type === 'message') {
-        const msg = this.messages.messages.find(m => m.id === r.targetId);
+        const msg = this.droplets.droplets.find(m => m.id === r.targetId);
         if (msg) {
           const author = this.findUserById(msg.authorId);
           context = {
@@ -1698,7 +1698,7 @@ class Database {
       .map(wave => {
         const creator = this.findUserById(wave.createdBy);
         const participants = this.getWaveParticipants(wave.id);
-        const messageCount = this.messages.messages.filter(m => m.waveId === wave.id).length;
+        const messageCount = this.droplets.droplets.filter(m => m.waveId === wave.id).length;
         const group = wave.groupId ? this.getGroup(wave.groupId) : null;
         const userParticipant = this.waves.participants.find(p => p.waveId === wave.id && p.userId === userId);
 
@@ -1711,7 +1711,7 @@ class Database {
           .filter(m => m.userId === userId)
           .map(m => m.mutedUserId);
 
-        const unreadCount = this.messages.messages.filter(m => {
+        const unreadCount = this.droplets.droplets.filter(m => {
           if (m.waveId !== wave.id) return false;
           if (m.deleted) return false; // Deleted messages have no content to read
           if (m.authorId === userId) return false; // Don't count own messages
@@ -1750,6 +1750,10 @@ class Database {
         return user ? { id: user.id, name: user.displayName, avatar: user.avatar, status: user.status, handle: user.handle } : null;
       })
       .filter(Boolean);
+  }
+
+  isWaveParticipant(waveId, userId) {
+    return this.waves.participants.some(p => p.waveId === waveId && p.userId === userId);
   }
 
   canAccessWave(waveId, userId) {
@@ -1868,11 +1872,11 @@ class Database {
     this.waves.participants = this.waves.participants.filter(p => p.waveId !== waveId);
 
     // Delete messages
-    this.messages.messages = this.messages.messages.filter(m => m.waveId !== waveId);
+    this.droplets.droplets = this.droplets.droplets.filter(m => m.waveId !== waveId);
 
     // Delete message history for this wave
-    const messageIds = this.messages.messages.filter(m => m.waveId === waveId).map(m => m.id);
-    this.messages.history = this.messages.history.filter(h => !messageIds.includes(h.messageId));
+    const messageIds = this.droplets.droplets.filter(m => m.waveId === waveId).map(m => m.id);
+    this.droplets.history = this.droplets.history.filter(h => !messageIds.includes(h.messageId));
 
     this.saveWaves();
     this.saveMessages();
@@ -1885,7 +1889,7 @@ class Database {
     const now = new Date().toISOString();
 
     // Get the original droplet
-    const droplet = this.messages.messages.find(m => m.id === dropletId);
+    const droplet = this.droplets.droplets.find(m => m.id === dropletId);
     if (!droplet) {
       return { success: false, error: 'Droplet not found' };
     }
@@ -1900,7 +1904,7 @@ class Database {
 
     // Get all child droplets recursively
     const getAllChildren = (parentId) => {
-      const children = this.messages.messages.filter(m => m.parentId === parentId);
+      const children = this.droplets.droplets.filter(m => m.parentId === parentId);
       let allIds = children.map(c => c.id);
       for (const child of children) {
         allIds = allIds.concat(getAllChildren(child.id));
@@ -1965,7 +1969,7 @@ class Database {
 
   // === Message Methods ===
   getMessagesForWave(waveId, userId = null) {
-    let messages = this.messages.messages.filter(m => m.waveId === waveId);
+    let messages = this.droplets.droplets.filter(m => m.waveId === waveId);
 
     // Filter out messages from blocked or muted users
     if (userId) {
@@ -2016,7 +2020,7 @@ class Database {
   }
 
   getMessage(messageId) {
-    const m = this.messages.messages.find(msg => msg.id === messageId);
+    const m = this.droplets.droplets.find(msg => msg.id === messageId);
     if (!m) return null;
 
     const author = this.findUserById(m.authorId);
@@ -2057,7 +2061,7 @@ class Database {
 
     // Recursively get droplet and all descendants
     const getAllDescendants = (parentId, results = []) => {
-      const droplet = this.messages.messages.find(m => m.id === parentId);
+      const droplet = this.droplets.droplets.find(m => m.id === parentId);
       if (!droplet) return results;
 
       // Skip blocked/muted users
@@ -2068,7 +2072,7 @@ class Database {
       results.push(droplet);
 
       // Get children
-      const children = this.messages.messages.filter(m => m.parentId === parentId);
+      const children = this.droplets.droplets.filter(m => m.parentId === parentId);
       for (const child of children) {
         getAllDescendants(child.id, results);
       }
@@ -2127,7 +2131,7 @@ class Database {
       reactions: {}, // { emoji: [userId1, userId2, ...] }
       readBy: [data.authorId], // Author has read their own message
     };
-    this.messages.messages.push(message);
+    this.droplets.droplets.push(message);
     this.updateWaveTimestamp(data.waveId);
     this.saveMessages();
 
@@ -2147,11 +2151,11 @@ class Database {
   }
 
   updateMessage(messageId, content) {
-    const message = this.messages.messages.find(m => m.id === messageId);
+    const message = this.droplets.droplets.find(m => m.id === messageId);
     if (!message) return null;
     if (message.deleted) return null; // Cannot edit deleted messages
 
-    this.messages.history.push({
+    this.droplets.history.push({
       id: `hist-${uuidv4()}`,
       messageId,
       content: message.content,
@@ -2184,7 +2188,7 @@ class Database {
   }
 
   deleteMessage(messageId, userId) {
-    const message = this.messages.messages.find(m => m.id === messageId);
+    const message = this.droplets.droplets.find(m => m.id === messageId);
     if (!message) return { success: false, error: 'Message not found' };
     if (message.deleted) return { success: false, error: 'Message already deleted' };
     if (message.authorId !== userId) return { success: false, error: 'Only message author can delete' };
@@ -2199,7 +2203,7 @@ class Database {
     message.readBy = [];     // Clear read status (nothing to read)
 
     // Remove edit history for this message (no longer relevant)
-    this.messages.history = this.messages.history.filter(h => h.messageId !== messageId);
+    this.droplets.history = this.droplets.history.filter(h => h.messageId !== messageId);
 
     this.saveMessages();
 
@@ -2207,7 +2211,7 @@ class Database {
   }
 
   toggleMessageReaction(messageId, userId, emoji) {
-    const message = this.messages.messages.find(m => m.id === messageId);
+    const message = this.droplets.droplets.find(m => m.id === messageId);
     if (!message) return { success: false, error: 'Message not found' };
     if (message.deleted) return { success: false, error: 'Cannot react to deleted message' };
 
@@ -2239,7 +2243,7 @@ class Database {
   }
 
   markMessageAsRead(messageId, userId) {
-    const message = this.messages.messages.find(m => m.id === messageId);
+    const message = this.droplets.droplets.find(m => m.id === messageId);
     if (!message) return false;
     if (message.deleted) return true; // Deleted messages are always "read" (nothing to read)
 
@@ -2263,7 +2267,7 @@ class Database {
 
     if (!searchTerm) return [];
 
-    let results = this.messages.messages.filter(message => {
+    let results = this.droplets.droplets.filter(message => {
       // Filter by search term in content
       if (!message.content.toLowerCase().includes(searchTerm)) {
         return false;
@@ -3995,7 +3999,7 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
   if (!canAccess) return res.status(403).json({ error: 'Access denied' });
 
   // Auto-join public waves
-  const isParticipant = db.waves.participants.some(p => p.waveId === waveId && p.userId === req.user.userId);
+  const isParticipant = db.isWaveParticipant(waveId, req.user.userId);
   if (!isParticipant && wave.privacy === 'public') {
     db.addWaveParticipant(waveId, req.user.userId);
   }
@@ -4039,7 +4043,7 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
 // Edit droplet
 app.put('/api/droplets/:id', authenticateToken, (req, res) => {
   const dropletId = sanitizeInput(req.params.id);
-  const droplet = db.messages.messages.find(m => m.id === dropletId);
+  const droplet = db.getMessage(dropletId);
   if (!droplet) return res.status(404).json({ error: 'Droplet not found' });
   if (droplet.authorId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
 
@@ -4055,7 +4059,7 @@ app.put('/api/droplets/:id', authenticateToken, (req, res) => {
 // Delete droplet
 app.delete('/api/droplets/:id', authenticateToken, (req, res) => {
   const dropletId = sanitizeInput(req.params.id);
-  const droplet = db.messages.messages.find(m => m.id === dropletId);
+  const droplet = db.getMessage(dropletId);
 
   if (!droplet) return res.status(404).json({ error: 'Droplet not found' });
   if (droplet.authorId !== req.user.userId) {
@@ -4210,7 +4214,7 @@ app.post('/api/messages', authenticateToken, (req, res) => {
   if (!canAccess) return res.status(403).json({ error: 'Access denied' });
 
   // Auto-join public waves
-  const isParticipant = db.waves.participants.some(p => p.waveId === waveId && p.userId === req.user.userId);
+  const isParticipant = db.isWaveParticipant(waveId, req.user.userId);
   if (!isParticipant && wave.privacy === 'public') {
     db.addWaveParticipant(waveId, req.user.userId);
   }
@@ -4249,7 +4253,7 @@ app.post('/api/messages', authenticateToken, (req, res) => {
 
 app.put('/api/messages/:id', authenticateToken, (req, res) => {
   const messageId = sanitizeInput(req.params.id);
-  const message = db.messages.messages.find(m => m.id === messageId);
+  const message = db.getMessage(messageId);
   if (!message) return res.status(404).json({ error: 'Message not found' });
   if (message.authorId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
 
@@ -4263,7 +4267,7 @@ app.put('/api/messages/:id', authenticateToken, (req, res) => {
 
 app.delete('/api/messages/:id', authenticateToken, (req, res) => {
   const messageId = sanitizeInput(req.params.id);
-  const message = db.messages.messages.find(m => m.id === messageId);
+  const message = db.getMessage(messageId);
 
   if (!message) return res.status(404).json({ error: 'Message not found' });
   if (message.authorId !== req.user.userId) {
