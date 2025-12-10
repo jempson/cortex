@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 1.9.0** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 1.10.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
 ## Quick Start
 
@@ -36,11 +36,18 @@ Demo accounts (password: `demo123`):
 ## Features
 
 ### Core Features
-- **Waves** - Threaded conversations with playback timeline
+- **Waves** - Conversation containers where droplets create discussions
+- **Droplets** - Threaded messages with Focus View and Ripple capabilities
 - **Real-Time** - WebSocket-powered instant messaging
 - **Groups & Contacts** - Organize connections with request/invitation workflows
-- **Search** - Full-text search across all messages (SQLite FTS)
+- **Search** - Full-text search across all droplets (SQLite FTS)
 - **PWA** - Installable app with offline support and push notifications
+
+### Droplets Architecture (v1.10.0)
+- **Focus View** - View any droplet with replies as its own wave-like context
+- **Ripple** - Spin off deep threads into new waves while maintaining links
+- **Threading Depth Limit** - 3-level inline limit, unlimited in Focus View
+- **Breadcrumb Navigation** - Navigate focus stack with clickable path
 
 ### Rich Media
 - **Embeds** - YouTube, Spotify, Vimeo, Twitter, SoundCloud players
@@ -121,15 +128,16 @@ RATE_LIMIT_OEMBED_MAX=30           # Per minute
 | POST | `/api/auth/login` | Login (returns JWT) |
 | GET | `/api/auth/me` | Current user info |
 
-### Waves & Messages
+### Waves & Droplets
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/waves` | List waves |
 | POST | `/api/waves` | Create wave |
-| GET | `/api/waves/:id` | Get wave with messages |
-| POST | `/api/waves/:id/messages` | Send message |
-| PUT | `/api/messages/:id` | Edit message |
-| DELETE | `/api/messages/:id` | Delete message |
+| GET | `/api/waves/:id` | Get wave with droplets |
+| POST | `/api/waves/:id/droplets` | Send droplet |
+| PUT | `/api/droplets/:id` | Edit droplet |
+| DELETE | `/api/droplets/:id` | Delete droplet |
+| POST | `/api/droplets/:id/ripple` | Ripple to new wave |
 
 ### Contacts & Groups
 | Method | Endpoint | Description |
@@ -300,6 +308,22 @@ server {
 ---
 
 ## Changelog
+
+### v1.10.0 (December 2025)
+- **Droplets Architecture**: Messages renamed to Droplets throughout
+- **Focus View**: View any droplet with replies as its own wave-like context
+  - Desktop: "⤢ FOCUS" button on droplets with children
+  - Mobile: Tap droplet content, swipe right to go back
+  - Breadcrumb navigation with clickable path items
+- **Ripple System**: Spin off droplet threads into new waves
+  - "◈ RIPPLE" button creates new wave from droplet tree
+  - Link card shows "Rippled to wave..." in original
+  - Nested ripple tracking for lineage
+- **Threading Depth Limit**: 3-level inline limit in WaveView
+  - "FOCUS TO REPLY" button at depth limit
+  - Focus View allows unlimited depth
+- **Database Schema**: New fields for ripple tracking
+- **Backward Compatibility**: Legacy `/messages` endpoints still work
 
 ### v1.9.0 (December 2025)
 - **Message Threading Improvements**: Collapse/expand threads, jump-to-parent, visual connectors

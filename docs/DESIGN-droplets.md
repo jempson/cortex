@@ -1,9 +1,9 @@
 # Droplets: Message-to-Wave Evolution
 
-## Design Document - DRAFT v0.2
+## Design Document - v1.0
 
-**Status:** Planning (Decisions Finalized)
-**Target Version:** v1.10.0 or v2.0.0 (depending on scope)
+**Status:** Implemented in v1.10.0
+**Version:** v1.10.0
 **Last Updated:** December 2025
 
 ---
@@ -19,7 +19,7 @@ This document outlines the evolution of Cortex's messaging model from flat/threa
 | **Wave** | A conversation container - where a droplet "hits the water" |
 | **Droplet** | A single message unit (formerly "message") |
 | **Focus View** | Viewing a droplet and its replies as if it were a wave |
-| **Break Out** | Creating a new wave from a droplet and its replies |
+| **Ripple** | Creating a new wave from a droplet and its replies (formerly "Break Out") |
 
 ### Metaphor
 > *"Droplets in water create waves. The wave contains where the drop hit the water."*
@@ -96,42 +96,42 @@ Wave: "Project Discussion"
 
 ---
 
-## Feature 2: Break Out to New Wave
+## Feature 2: Ripple to New Wave
 
 ### Description
 Take a droplet and all its replies and spin them off into a completely new, independent wave. The original droplet is replaced with a link to the new wave.
 
 ### User Flow
-1. User clicks "Break Out" action on a droplet
+1. User clicks "◈ RIPPLE" action on a droplet
 2. Modal appears:
    - New wave title (pre-filled from droplet content)
    - Participant list (inherited, can modify)
    - Preview of what will be moved
 3. User confirms
 4. New wave is created with the droplet + all replies
-5. Original droplet is replaced with link card: `[Continued in: "New Wave Title"]`
+5. Original droplet is replaced with link card: `[Rippled to wave: "New Wave Title"]`
 6. User is navigated to the new wave
 
 ### Data Model: Reference Method
 
-Break out uses a **reference** approach - the new wave points to the same droplet data rather than copying it. This is efficient and maintains a single source of truth.
+Ripple uses a **reference** approach - the new wave points to the same droplet data rather than copying it. This is efficient and maintains a single source of truth.
 
-#### Before Break Out
+#### Before Ripple
 ```
 Wave: "Project Discussion"
 ├─ Droplet A
-├─ Droplet B (will be broken out)
+├─ Droplet B (will be rippled)
 │   ├─ Reply B.1
 │   └─ Reply B.2
 └─ Droplet C
 ```
 
-#### After Break Out
+#### After Ripple
 ```
-Wave: "Project Discussion"                Wave: "New Discussion" (broken out)
+Wave: "Project Discussion"                Wave: "New Discussion" (rippled)
 ├─ Droplet A                              │
 ├─ Droplet B [LINK CARD]  ─────────────── ├─ Droplet B (root, same data)
-│   "Continued in: New Discussion"        │   ├─ Reply B.1
+│   "Rippled to wave: New Discussion"     │   ├─ Reply B.1
 │   broken_out_to: wave-xyz               │   └─ Reply B.2
 └─ Droplet C                              │
                                           (Droplets reference same IDs)
@@ -139,20 +139,20 @@ Wave: "Project Discussion"                Wave: "New Discussion" (broken out)
 
 #### Reference Mechanics
 - Original droplet gets `broken_out_to` field set to new wave ID
-- New wave gets `root_droplet_id` field pointing to the broken-out droplet
+- New wave gets `root_droplet_id` field pointing to the rippled droplet
 - Replies are re-parented: their `wave_id` changes but `parent_id` stays same
 - Original droplet displays as link card in original wave
 - Droplet content/reactions/read status shared across both contexts
 
-### Break Out Chain Tracking
+### Ripple Chain Tracking
 
-When a droplet in a broken-out wave is itself broken out, we track the full chain:
+When a droplet in a rippled wave is itself rippled, we track the full chain:
 
 ```
 Wave A: "Infrastructure Planning"
-  └─ Droplet X breaks out to →
+  └─ Droplet X ripples to →
       Wave B: "Network Architecture"
-        └─ Droplet Y breaks out to →
+        └─ Droplet Y ripples to →
             Wave C: "Firewall Rules"
 ```
 
@@ -176,11 +176,11 @@ Wave A: "Infrastructure Planning"
 - Useful for understanding context of how a discussion evolved
 
 ### Link Card Component
-When a droplet has been broken out, display a special card:
+When a droplet has been rippled, display a special card:
 
 ```
 ┌─────────────────────────────────────────────┐
-│  ◈ Continued in wave...                     │
+│  ◈ Rippled to wave...                       │
 │  "New Wave Title"                           │
 │  → Click to open                            │
 │                                             │
@@ -198,7 +198,7 @@ When a droplet has been broken out, display a special card:
 | Original wave participants | Auto-inherit to new wave (can be modified) |
 
 ### Participant Removal Considerations
-- If a user had replies in the broken-out conversation, removing them is sensitive
+- If a user had replies in the rippled conversation, removing them is sensitive
 - Options to consider:
   - Warn when removing someone who contributed
   - Allow removal but keep their droplets (attributed to "Former Participant")
@@ -246,62 +246,62 @@ Full rename throughout codebase, UI, and documentation.
 
 ## Implementation Phases
 
-### Phase 1: Terminology Rename
+### Phase 1: Terminology Rename ✅ COMPLETE
 **Effort:** Medium | **Risk:** Low
 
-1. Rename UI-facing text (messages → droplets)
-2. Rename React components
-3. Update documentation
-4. Keep database/API internals unchanged for now
+1. ✅ Rename UI-facing text (messages → droplets)
+2. ✅ Rename database tables (messages → droplets)
+3. ✅ Update API endpoints (with backward compatibility)
+4. ✅ Update WebSocket events (with legacy aliases)
 
-### Phase 2: Focus View - Desktop
+### Phase 2: Focus View - Desktop ✅ COMPLETE
 **Effort:** High | **Risk:** Medium
 
-1. Add Focus button to droplets
-2. Create FocusView component (reuses WaveView patterns)
-3. Implement breadcrumb navigation
-4. Add navigation stack state management
-5. Handle compose in focus context
+1. ✅ Add Focus button to droplets with children
+2. ✅ Create FocusView component (~450 lines)
+3. ✅ Implement breadcrumb navigation
+4. ✅ Add navigation stack state management
+5. ✅ Handle compose in focus context
 
-### Phase 3: Focus View - Mobile
+### Phase 3: Focus View - Mobile ✅ COMPLETE
 **Effort:** Medium | **Risk:** Low
 
-1. Tap-to-focus on droplet content
-2. Swipe-back navigation
-3. Compact breadcrumb header
-4. Test gesture conflicts
+1. ✅ Tap-to-focus on droplet content
+2. ✅ Swipe-back navigation (80px threshold)
+3. ✅ Compact breadcrumb header
+4. ✅ Test gesture conflicts
 
-### Phase 4: Threading Depth Limit
+### Phase 4: Threading Depth Limit ✅ COMPLETE
 **Effort:** Low | **Risk:** Low
 
-1. Add depth limit constant (3 levels)
-2. At limit, hide reply button, show focus/break-out prompt
-3. Auto-suggest breaking out when deep
+1. ✅ Add depth limit constant (THREAD_DEPTH_LIMIT = 3)
+2. ✅ At limit, show "FOCUS TO REPLY" button
+3. ✅ Visual depth indicator banner
 
-### Phase 5: Break Out - Core
+### Phase 5: Ripple - Core ✅ COMPLETE
 **Effort:** High | **Risk:** Medium
 
-1. Database: Add `broken_out_to` field to droplets
-2. API: `POST /api/droplets/:id/breakout`
-3. Backend: Copy droplet tree to new wave
-4. Backend: Replace original with link reference
-5. WebSocket: Notify participants of break out
+1. ✅ Database: Add `broken_out_to`, `original_wave_id` fields to droplets
+2. ✅ Database: Add `root_droplet_id`, `broken_out_from`, `breakout_chain` to waves
+3. ✅ API: `POST /api/droplets/:id/ripple` endpoint
+4. ✅ Backend: Reference model (droplets stay, wave points to root)
+5. ✅ WebSocket: `droplet_rippled` and `wave_created` events
 
-### Phase 6: Break Out - UI
+### Phase 6: Ripple - UI ✅ COMPLETE
 **Effort:** Medium | **Risk:** Low
 
-1. Break Out modal component
-2. Link card component for broken-out droplets
-3. Permission request flow
-4. Navigation to new wave
+1. ✅ RippleModal component with title/participant selection
+2. ✅ RippledLinkCard component for rippled droplets
+3. ✅ "◈ RIPPLE" button on droplets
+4. ✅ Navigation to new wave on link card click
 
-### Phase 7: Polish & Edge Cases
-**Effort:** Medium | **Risk:** Low
+### Phase 7: Documentation ✅ COMPLETE
+**Effort:** Low | **Risk:** Low
 
-1. Handle deleted droplets in broken-out chains
-2. Search indexing for broken-out content
-3. Notification preferences for break outs
-4. Mobile-specific UX polish
+1. ✅ Update CLAUDE.md with terminology and features
+2. ✅ Update docs/API.md with new endpoints
+3. ✅ Update README.md with changelog
+4. ✅ Update DESIGN-droplets.md to mark complete
 
 ---
 
