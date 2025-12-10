@@ -51,7 +51,8 @@ const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILES = {
   users: path.join(DATA_DIR, 'users.json'),
   waves: path.join(DATA_DIR, 'waves.json'),
-  messages: path.join(DATA_DIR, 'messages.json'),
+  droplets: path.join(DATA_DIR, 'droplets.json'),
+  messages: path.join(DATA_DIR, 'messages.json'), // Legacy, for migration
   groups: path.join(DATA_DIR, 'groups.json'),
   handleRequests: path.join(DATA_DIR, 'handle-requests.json'),
   reports: path.join(DATA_DIR, 'reports.json'),
@@ -64,12 +65,14 @@ const DATA_FILES = {
 // Uploads directory for avatars
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const AVATARS_DIR = path.join(UPLOADS_DIR, 'avatars');
-const MESSAGES_DIR = path.join(UPLOADS_DIR, 'messages');
+const DROPLETS_DIR = path.join(UPLOADS_DIR, 'droplets');
+const MESSAGES_DIR = path.join(UPLOADS_DIR, 'messages'); // Legacy alias
 
 // Ensure uploads directories exist
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!fs.existsSync(AVATARS_DIR)) fs.mkdirSync(AVATARS_DIR, { recursive: true });
-if (!fs.existsSync(MESSAGES_DIR)) fs.mkdirSync(MESSAGES_DIR, { recursive: true });
+if (!fs.existsSync(DROPLETS_DIR)) fs.mkdirSync(DROPLETS_DIR, { recursive: true });
+if (!fs.existsSync(MESSAGES_DIR)) fs.mkdirSync(MESSAGES_DIR, { recursive: true }); // Legacy support
 
 // Multer configuration for avatar uploads
 const avatarStorage = multer.memoryStorage();
@@ -474,7 +477,7 @@ class Database {
   constructor() {
     this.users = { users: [], contacts: [] };
     this.waves = { waves: [], participants: [] };
-    this.messages = { messages: [], history: [] };
+    this.droplets = { droplets: [], history: [] };
     this.groups = { groups: [], members: [] };
     this.handleRequests = { requests: [] };
     this.reports = { reports: [] };
@@ -483,6 +486,14 @@ class Database {
     this.groupInvitations = { invitations: [] };
     this.pushSubscriptions = { subscriptions: [] };
     this.load();
+  }
+
+  // Backward compatibility getter for messages
+  get messages() {
+    return { messages: this.droplets.droplets, history: this.droplets.history };
+  }
+  set messages(val) {
+    this.droplets = { droplets: val.messages || [], history: val.history || [] };
   }
 
   // === File Operations ===
@@ -514,13 +525,27 @@ class Database {
 
   load() {
     this.ensureDataDir();
-    
+
     const hasData = fs.existsSync(DATA_FILES.users);
-    
+
     if (hasData) {
       this.users = this.loadFile(DATA_FILES.users, { users: [], contacts: [] });
       this.waves = this.loadFile(DATA_FILES.waves, { waves: [], participants: [] });
-      this.messages = this.loadFile(DATA_FILES.messages, { messages: [], history: [] });
+
+      // Migration: messages.json -> droplets.json (v1.10.0)
+      if (fs.existsSync(DATA_FILES.droplets)) {
+        this.droplets = this.loadFile(DATA_FILES.droplets, { droplets: [], history: [] });
+      } else if (fs.existsSync(DATA_FILES.messages)) {
+        // Migrate from messages.json to droplets.json
+        console.log('📝 Migrating messages.json to droplets.json...');
+        const messagesData = this.loadFile(DATA_FILES.messages, { messages: [], history: [] });
+        this.droplets = { droplets: messagesData.messages || [], history: messagesData.history || [] };
+        this.saveDroplets();
+        console.log('✅ Migration complete');
+      } else {
+        this.droplets = { droplets: [], history: [] };
+      }
+
       this.groups = this.loadFile(DATA_FILES.groups, { groups: [], members: [] });
       this.handleRequests = this.loadFile(DATA_FILES.handleRequests, { requests: [] });
       this.reports = this.loadFile(DATA_FILES.reports, { reports: [] });
@@ -541,7 +566,7 @@ class Database {
   saveAll() {
     this.saveFile(DATA_FILES.users, this.users);
     this.saveFile(DATA_FILES.waves, this.waves);
-    this.saveFile(DATA_FILES.messages, this.messages);
+    this.saveFile(DATA_FILES.droplets, this.droplets);
     this.saveFile(DATA_FILES.groups, this.groups);
     this.saveFile(DATA_FILES.handleRequests, this.handleRequests);
     this.saveFile(DATA_FILES.reports, this.reports);
@@ -552,7 +577,8 @@ class Database {
 
   saveUsers() { this.saveFile(DATA_FILES.users, this.users); }
   saveWaves() { this.saveFile(DATA_FILES.waves, this.waves); }
-  saveMessages() { this.saveFile(DATA_FILES.messages, this.messages); }
+  saveDroplets() { this.saveFile(DATA_FILES.droplets, this.droplets); }
+  saveMessages() { this.saveDroplets(); } // Backward compatibility alias
   saveGroups() { this.saveFile(DATA_FILES.groups, this.groups); }
   saveHandleRequests() { this.saveFile(DATA_FILES.handleRequests, this.handleRequests); }
   saveReports() { this.saveFile(DATA_FILES.reports, this.reports); }
@@ -620,12 +646,12 @@ class Database {
       { waveId: 'wave-5', userId: 'user-wash', joinedAt: now, archived: false },
     ];
 
-    this.messages.messages = [
-      { id: 'msg-1', waveId: 'wave-1', parentId: null, authorId: 'user-mal', content: 'Welcome to Cortex! This is a public wave visible to everyone.', privacy: 'public', version: 1, createdAt: now, editedAt: null },
-      { id: 'msg-2', waveId: 'wave-2', parentId: null, authorId: 'user-mal', content: 'This is a private wave for testing.', privacy: 'private', version: 1, createdAt: now, editedAt: null },
-      { id: 'msg-3', waveId: 'wave-3', parentId: null, authorId: 'user-mal', content: 'This is a group wave for the crew.', privacy: 'group', version: 1, createdAt: now, editedAt: null },
-      { id: 'msg-4', waveId: 'wave-4', parentId: null, authorId: 'user-zoe', content: 'Zoe\'s private wave.', privacy: 'private', version: 1, createdAt: now, editedAt: null },
-      { id: 'msg-5', waveId: 'wave-5', parentId: null, authorId: 'user-wash', content: 'Wash\'s public wave.', privacy: 'public', version: 1, createdAt: now, editedAt: null },
+    this.droplets.droplets = [
+      { id: 'droplet-1', waveId: 'wave-1', parentId: null, authorId: 'user-mal', content: 'Welcome to Cortex! This is a public wave visible to everyone.', privacy: 'public', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
+      { id: 'droplet-2', waveId: 'wave-2', parentId: null, authorId: 'user-mal', content: 'This is a private wave for testing.', privacy: 'private', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
+      { id: 'droplet-3', waveId: 'wave-3', parentId: null, authorId: 'user-mal', content: 'This is a group wave for the crew.', privacy: 'group', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
+      { id: 'droplet-4', waveId: 'wave-4', parentId: null, authorId: 'user-zoe', content: 'Zoe\'s private wave.', privacy: 'private', version: 1, createdAt: now, editedAt: null, readBy: ['user-zoe'] },
+      { id: 'droplet-5', waveId: 'wave-5', parentId: null, authorId: 'user-wash', content: 'Wash\'s public wave.', privacy: 'public', version: 1, createdAt: now, editedAt: null, readBy: ['user-wash'] },
     ];
 
     this.saveAll();
@@ -1352,7 +1378,7 @@ class Database {
       let context = {};
 
       if (r.type === 'message') {
-        const msg = this.messages.messages.find(m => m.id === r.targetId);
+        const msg = this.droplets.droplets.find(m => m.id === r.targetId);
         if (msg) {
           const author = this.findUserById(msg.authorId);
           context = {
@@ -1672,7 +1698,7 @@ class Database {
       .map(wave => {
         const creator = this.findUserById(wave.createdBy);
         const participants = this.getWaveParticipants(wave.id);
-        const messageCount = this.messages.messages.filter(m => m.waveId === wave.id).length;
+        const messageCount = this.droplets.droplets.filter(m => m.waveId === wave.id).length;
         const group = wave.groupId ? this.getGroup(wave.groupId) : null;
         const userParticipant = this.waves.participants.find(p => p.waveId === wave.id && p.userId === userId);
 
@@ -1685,7 +1711,7 @@ class Database {
           .filter(m => m.userId === userId)
           .map(m => m.mutedUserId);
 
-        const unreadCount = this.messages.messages.filter(m => {
+        const unreadCount = this.droplets.droplets.filter(m => {
           if (m.waveId !== wave.id) return false;
           if (m.deleted) return false; // Deleted messages have no content to read
           if (m.authorId === userId) return false; // Don't count own messages
@@ -1724,6 +1750,10 @@ class Database {
         return user ? { id: user.id, name: user.displayName, avatar: user.avatar, status: user.status, handle: user.handle } : null;
       })
       .filter(Boolean);
+  }
+
+  isWaveParticipant(waveId, userId) {
+    return this.waves.participants.some(p => p.waveId === waveId && p.userId === userId);
   }
 
   canAccessWave(waveId, userId) {
@@ -1842,11 +1872,11 @@ class Database {
     this.waves.participants = this.waves.participants.filter(p => p.waveId !== waveId);
 
     // Delete messages
-    this.messages.messages = this.messages.messages.filter(m => m.waveId !== waveId);
+    this.droplets.droplets = this.droplets.droplets.filter(m => m.waveId !== waveId);
 
     // Delete message history for this wave
-    const messageIds = this.messages.messages.filter(m => m.waveId === waveId).map(m => m.id);
-    this.messages.history = this.messages.history.filter(h => !messageIds.includes(h.messageId));
+    const messageIds = this.droplets.droplets.filter(m => m.waveId === waveId).map(m => m.id);
+    this.droplets.history = this.droplets.history.filter(h => !messageIds.includes(h.messageId));
 
     this.saveWaves();
     this.saveMessages();
@@ -1854,9 +1884,92 @@ class Database {
     return { success: true, wave, participants };
   }
 
+  // Break out a droplet and its replies into a new wave
+  breakoutDroplet(dropletId, newWaveTitle, participants, userId) {
+    const now = new Date().toISOString();
+
+    // Get the original droplet
+    const droplet = this.droplets.droplets.find(m => m.id === dropletId);
+    if (!droplet) {
+      return { success: false, error: 'Droplet not found' };
+    }
+
+    // Check if already broken out
+    if (droplet.brokenOutTo) {
+      return { success: false, error: 'Droplet already broken out' };
+    }
+
+    const originalWaveId = droplet.waveId;
+    const originalWave = this.getWave(originalWaveId);
+
+    // Get all child droplets recursively
+    const getAllChildren = (parentId) => {
+      const children = this.droplets.droplets.filter(m => m.parentId === parentId);
+      let allIds = children.map(c => c.id);
+      for (const child of children) {
+        allIds = allIds.concat(getAllChildren(child.id));
+      }
+      return allIds;
+    };
+
+    const childIds = getAllChildren(dropletId);
+
+    // Build breakout chain
+    let breakoutChain = originalWave.breakoutChain || [];
+    breakoutChain = [...breakoutChain, {
+      wave_id: originalWaveId,
+      droplet_id: dropletId,
+      title: originalWave.title
+    }];
+
+    // Create the new wave
+    const newWaveId = `wave-${uuidv4()}`;
+    const newWave = {
+      id: newWaveId,
+      title: newWaveTitle.slice(0, 200),
+      privacy: originalWave.privacy || 'private',
+      groupId: originalWave.groupId || null,
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now,
+      rootDropletId: dropletId,
+      brokenOutFrom: originalWaveId,
+      breakoutChain: breakoutChain,
+    };
+    this.waves.waves.push(newWave);
+
+    // Add participants to new wave
+    const participantSet = new Set(participants);
+    participantSet.add(userId);
+    for (const participantId of participantSet) {
+      if (!this.waves.participants.some(p => p.waveId === newWaveId && p.userId === participantId)) {
+        this.waves.participants.push({ waveId: newWaveId, userId: participantId, joinedAt: now, archived: false });
+      }
+    }
+
+    // Mark the original droplet as broken out
+    droplet.brokenOutTo = newWaveId;
+
+    this.saveWaves();
+    this.saveMessages();
+
+    return {
+      success: true,
+      newWave,
+      originalWaveId,
+      dropletId,
+      childCount: childIds.length
+    };
+  }
+
+  // Alias for rippleDroplet (new terminology)
+  rippleDroplet(dropletId, newWaveTitle, participants, userId) {
+    return this.breakoutDroplet(dropletId, newWaveTitle, participants, userId);
+  }
+
   // === Message Methods ===
   getMessagesForWave(waveId, userId = null) {
-    let messages = this.messages.messages.filter(m => m.waveId === waveId);
+    let messages = this.droplets.droplets.filter(m => m.waveId === waveId);
 
     // Filter out messages from blocked or muted users
     if (userId) {
@@ -1880,6 +1993,13 @@ class Database {
         // Deleted messages are never unread (nothing to read)
         const isUnread = m.deleted ? false : (userId ? !readBy.includes(userId) && m.authorId !== userId : false);
 
+        // Get broken-out wave title if applicable
+        let brokenOutToTitle = null;
+        if (m.brokenOutTo) {
+          const brokenOutWave = this.waves.waves.find(w => w.id === m.brokenOutTo);
+          brokenOutToTitle = brokenOutWave?.title || null;
+        }
+
         return {
           ...m,
           sender_name: author?.displayName || 'Unknown',
@@ -1893,9 +2013,104 @@ class Database {
           edited_at: m.editedAt,
           deleted_at: m.deletedAt || null,
           is_unread: isUnread,
+          brokenOutToTitle,
         };
       })
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  }
+
+  getMessage(messageId) {
+    const m = this.droplets.droplets.find(msg => msg.id === messageId);
+    if (!m) return null;
+
+    const author = this.findUserById(m.authorId);
+
+    return {
+      ...m,
+      sender_name: author?.displayName || 'Unknown',
+      sender_avatar: author?.avatar || '?',
+      sender_avatar_url: author?.avatarUrl || null,
+      sender_handle: author?.handle || 'unknown',
+      author_id: m.authorId,
+      parent_id: m.parentId,
+      wave_id: m.waveId,
+      created_at: m.createdAt,
+      edited_at: m.editedAt,
+      deleted_at: m.deletedAt || null,
+    };
+  }
+
+  // Get droplets for a breakout wave (includes root droplet and descendants from original wave)
+  getDropletsForBreakoutWave(waveId, userId = null) {
+    const wave = this.getWave(waveId);
+    if (!wave || !wave.rootDropletId) {
+      return this.getMessagesForWave(waveId, userId);
+    }
+
+    // Get blocked/muted users
+    let blockedIds = [];
+    let mutedIds = [];
+    if (userId) {
+      blockedIds = this.moderation.blocks
+        .filter(b => b.userId === userId)
+        .map(b => b.blockedUserId);
+      mutedIds = this.moderation.mutes
+        .filter(m => m.userId === userId)
+        .map(m => m.mutedUserId);
+    }
+
+    // Recursively get droplet and all descendants
+    const getAllDescendants = (parentId, results = []) => {
+      const droplet = this.droplets.droplets.find(m => m.id === parentId);
+      if (!droplet) return results;
+
+      // Skip blocked/muted users
+      if (blockedIds.includes(droplet.authorId) || mutedIds.includes(droplet.authorId)) {
+        return results;
+      }
+
+      results.push(droplet);
+
+      // Get children
+      const children = this.droplets.droplets.filter(m => m.parentId === parentId);
+      for (const child of children) {
+        getAllDescendants(child.id, results);
+      }
+
+      return results;
+    };
+
+    const droplets = getAllDescendants(wave.rootDropletId);
+
+    return droplets.map(m => {
+      const author = this.findUserById(m.authorId);
+      const readBy = m.readBy || [m.authorId];
+      const isUnread = m.deleted ? false : (userId ? !readBy.includes(userId) && m.authorId !== userId : false);
+
+      // Get broken-out wave title if applicable
+      let brokenOutToTitle = null;
+      if (m.brokenOutTo) {
+        const brokenOutWave = this.waves.waves.find(w => w.id === m.brokenOutTo);
+        brokenOutToTitle = brokenOutWave?.title || null;
+      }
+
+      return {
+        ...m,
+        waveId: waveId, // Report as belonging to this wave for UI purposes
+        wave_id: waveId,
+        sender_name: author?.displayName || 'Unknown',
+        sender_avatar: author?.avatar || '?',
+        sender_avatar_url: author?.avatarUrl || null,
+        sender_handle: author?.handle || 'unknown',
+        author_id: m.authorId,
+        parent_id: m.parentId,
+        created_at: m.createdAt,
+        edited_at: m.editedAt,
+        deleted_at: m.deletedAt || null,
+        is_unread: isUnread,
+        brokenOutToTitle,
+      };
+    }).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   }
 
   createMessage(data) {
@@ -1916,7 +2131,7 @@ class Database {
       reactions: {}, // { emoji: [userId1, userId2, ...] }
       readBy: [data.authorId], // Author has read their own message
     };
-    this.messages.messages.push(message);
+    this.droplets.droplets.push(message);
     this.updateWaveTimestamp(data.waveId);
     this.saveMessages();
 
@@ -1936,11 +2151,11 @@ class Database {
   }
 
   updateMessage(messageId, content) {
-    const message = this.messages.messages.find(m => m.id === messageId);
+    const message = this.droplets.droplets.find(m => m.id === messageId);
     if (!message) return null;
     if (message.deleted) return null; // Cannot edit deleted messages
 
-    this.messages.history.push({
+    this.droplets.history.push({
       id: `hist-${uuidv4()}`,
       messageId,
       content: message.content,
@@ -1973,7 +2188,7 @@ class Database {
   }
 
   deleteMessage(messageId, userId) {
-    const message = this.messages.messages.find(m => m.id === messageId);
+    const message = this.droplets.droplets.find(m => m.id === messageId);
     if (!message) return { success: false, error: 'Message not found' };
     if (message.deleted) return { success: false, error: 'Message already deleted' };
     if (message.authorId !== userId) return { success: false, error: 'Only message author can delete' };
@@ -1988,7 +2203,7 @@ class Database {
     message.readBy = [];     // Clear read status (nothing to read)
 
     // Remove edit history for this message (no longer relevant)
-    this.messages.history = this.messages.history.filter(h => h.messageId !== messageId);
+    this.droplets.history = this.droplets.history.filter(h => h.messageId !== messageId);
 
     this.saveMessages();
 
@@ -1996,7 +2211,7 @@ class Database {
   }
 
   toggleMessageReaction(messageId, userId, emoji) {
-    const message = this.messages.messages.find(m => m.id === messageId);
+    const message = this.droplets.droplets.find(m => m.id === messageId);
     if (!message) return { success: false, error: 'Message not found' };
     if (message.deleted) return { success: false, error: 'Cannot react to deleted message' };
 
@@ -2028,7 +2243,7 @@ class Database {
   }
 
   markMessageAsRead(messageId, userId) {
-    const message = this.messages.messages.find(m => m.id === messageId);
+    const message = this.droplets.droplets.find(m => m.id === messageId);
     if (!message) return false;
     if (message.deleted) return true; // Deleted messages are always "read" (nothing to read)
 
@@ -2052,7 +2267,7 @@ class Database {
 
     if (!searchTerm) return [];
 
-    let results = this.messages.messages.filter(message => {
+    let results = this.droplets.droplets.filter(message => {
       // Filter by search term in content
       if (!message.content.toLowerCase().includes(searchTerm)) {
         return false;
@@ -3509,31 +3724,36 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
 
   const creator = db.findUserById(wave.createdBy);
   const participants = db.getWaveParticipants(wave.id);
-  const allMessages = db.getMessagesForWave(wave.id, req.user.userId);
+
+  // For breakout waves, use special method that fetches from original wave's droplet tree
+  const allMessages = wave.rootDropletId && db.getDropletsForBreakoutWave
+    ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
+    : db.getMessagesForWave(wave.id, req.user.userId);
+
   const group = wave.groupId ? db.getGroup(wave.groupId) : null;
 
-  // Pagination: limit initial messages, return most recent ones
+  // Pagination: limit initial droplets, return most recent ones
   const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-  const totalMessages = allMessages.length;
-  const hasMoreMessages = totalMessages > limit;
+  const totalDroplets = allMessages.length;
+  const hasMoreDroplets = totalDroplets > limit;
 
-  // Get the most recent messages (sorted by created_at, take last N)
-  const limitedMessages = hasMoreMessages
-    ? allMessages.slice(-limit) // Take last 'limit' messages (most recent)
+  // Get the most recent droplets (sorted by created_at, take last N)
+  const limitedDroplets = hasMoreDroplets
+    ? allMessages.slice(-limit) // Take last 'limit' droplets (most recent)
     : allMessages;
 
-  // Build message tree - treat messages whose parent isn't in the set as root messages
-  function buildMessageTree(messages, parentId = null) {
-    const messageIds = new Set(messages.map(m => m.id));
-    return messages
-      .filter(m => {
+  // Build droplet tree - treat droplets whose parent isn't in the set as root droplets
+  function buildDropletTree(droplets, parentId = null) {
+    const dropletIds = new Set(droplets.map(d => d.id));
+    return droplets
+      .filter(d => {
         if (parentId === null) {
-          // Root level: include messages with no parent OR whose parent isn't in current set
-          return m.parent_id === null || !messageIds.has(m.parent_id);
+          // Root level: include droplets with no parent OR whose parent isn't in current set
+          return d.parent_id === null || !dropletIds.has(d.parent_id);
         }
-        return m.parent_id === parentId;
+        return d.parent_id === parentId;
       })
-      .map(m => ({ ...m, children: buildMessageTree(messages, m.id) }));
+      .map(d => ({ ...d, children: buildDropletTree(droplets, d.id) }));
   }
 
   res.json({
@@ -3541,16 +3761,70 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
     creator_name: creator?.displayName || 'Unknown',
     creator_handle: creator?.handle || 'unknown',
     participants,
-    messages: buildMessageTree(limitedMessages),
-    all_messages: limitedMessages,
-    total_messages: totalMessages,
-    hasMoreMessages,
+    // New droplet terminology
+    droplets: buildDropletTree(limitedDroplets),
+    all_droplets: limitedDroplets,
+    total_droplets: totalDroplets,
+    hasMoreDroplets,
+    // Legacy backward compatibility
+    messages: buildDropletTree(limitedDroplets),
+    all_messages: limitedDroplets,
+    total_messages: totalDroplets,
+    hasMoreMessages: hasMoreDroplets,
     group_name: group?.name,
     can_edit: wave.createdBy === req.user.userId,
   });
 });
 
-// Paginated messages endpoint for loading messages in batches
+// Paginated droplets endpoint for loading droplets in batches (v1.10.0)
+app.get('/api/waves/:id/droplets', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const wave = db.getWave(waveId);
+  if (!wave) return res.status(404).json({ error: 'Wave not found' });
+  if (!db.canAccessWave(waveId, req.user.userId)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 per request
+  const before = req.query.before; // Droplet ID to load droplets before
+
+  // Get all droplets for this wave (filtered for blocked/muted)
+  // For breakout waves, use special method that fetches from original wave's droplet tree
+  let allDroplets = wave.rootDropletId && db.getDropletsForBreakoutWave
+    ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
+    : db.getMessagesForWave(wave.id, req.user.userId);
+
+  // Sort by created_at descending (newest first) for pagination
+  allDroplets.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  // If 'before' is specified, filter to only droplets before that one
+  if (before) {
+    const beforeIndex = allDroplets.findIndex(d => d.id === before);
+    if (beforeIndex !== -1) {
+      allDroplets = allDroplets.slice(beforeIndex + 1);
+    }
+  }
+
+  // Take the requested limit
+  const droplets = allDroplets.slice(0, limit);
+  const hasMore = allDroplets.length > limit;
+
+  // Reverse to return oldest-first within the batch (natural reading order)
+  droplets.reverse();
+
+  // Get total using same method
+  const totalDroplets = wave.rootDropletId && db.getDropletsForBreakoutWave
+    ? db.getDropletsForBreakoutWave(wave.id, req.user.userId).length
+    : db.getMessagesForWave(wave.id, req.user.userId).length;
+
+  res.json({
+    droplets,
+    hasMore,
+    total: totalDroplets,
+  });
+});
+
+// Paginated messages endpoint for loading messages in batches (Legacy - backward compatibility)
 app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
   const waveId = sanitizeInput(req.params.id);
   const wave = db.getWave(waveId);
@@ -3563,7 +3837,10 @@ app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
   const before = req.query.before; // Message ID to load messages before
 
   // Get all messages for this wave (filtered for blocked/muted)
-  let allMessages = db.getMessagesForWave(wave.id, req.user.userId);
+  // For breakout waves, use special method that fetches from original wave's droplet tree
+  let allMessages = wave.rootDropletId && db.getDropletsForBreakoutWave
+    ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
+    : db.getMessagesForWave(wave.id, req.user.userId);
 
   // Sort by created_at descending (newest first) for pagination
   allMessages.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -3583,10 +3860,15 @@ app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
   // Reverse to return oldest-first within the batch (natural reading order)
   messages.reverse();
 
+  // Get total using same method
+  const totalMessages = wave.rootDropletId && db.getDropletsForBreakoutWave
+    ? db.getDropletsForBreakoutWave(wave.id, req.user.userId).length
+    : db.getMessagesForWave(wave.id, req.user.userId).length;
+
   res.json({
     messages,
     hasMore,
-    total: db.getMessagesForWave(wave.id, req.user.userId).length,
+    total: totalMessages,
   });
 });
 
@@ -3701,7 +3983,231 @@ app.delete('/api/waves/:id', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
-// ============ Message Routes ============
+// ============ Droplet Routes (v1.10.0) ============
+// Note: /api/messages endpoints below are backward-compatible aliases
+
+// Create droplet
+app.post('/api/droplets', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.body.wave_id || req.body.thread_id);
+  const content = req.body.content;
+  if (!waveId || !content) return res.status(400).json({ error: 'Wave ID and content required' });
+
+  const wave = db.getWave(waveId);
+  if (!wave) return res.status(404).json({ error: 'Wave not found' });
+
+  const canAccess = db.canAccessWave(waveId, req.user.userId);
+  if (!canAccess) return res.status(403).json({ error: 'Access denied' });
+
+  // Auto-join public waves
+  const isParticipant = db.isWaveParticipant(waveId, req.user.userId);
+  if (!isParticipant && wave.privacy === 'public') {
+    db.addWaveParticipant(waveId, req.user.userId);
+  }
+
+  if (content.length > 10000) return res.status(400).json({ error: 'Droplet too long' });
+
+  // For rippled waves, default parent to root droplet if no parent specified
+  let parentId = req.body.parent_id ? sanitizeInput(req.body.parent_id) : null;
+  if (!parentId && wave.rootDropletId) {
+    parentId = wave.rootDropletId;
+  }
+
+  const droplet = db.createMessage({
+    waveId,
+    parentId,
+    authorId: req.user.userId,
+    content,
+    privacy: wave.privacy,
+  });
+
+  // Create push notification payload
+  const senderName = droplet.sender_name || db.findUserById(req.user.userId)?.displayName || 'Someone';
+  const contentPreview = content.replace(/<[^>]*>/g, '').substring(0, 100);
+  const pushPayload = {
+    title: `New droplet in ${wave.title}`,
+    body: `${senderName}: ${contentPreview}${content.length > 100 ? '...' : ''}`,
+    url: `/?wave=${waveId}`,
+    waveId,
+    dropletId: droplet.id
+  };
+
+  // Broadcast to connected users and send push to offline users
+  broadcastToWaveWithPush(
+    waveId,
+    { type: 'new_droplet', data: droplet },
+    pushPayload,
+    null,
+    req.user.userId // Exclude sender from push notifications
+  );
+
+  // Also broadcast legacy event for backward compatibility
+  broadcastToWave(waveId, { type: 'new_message', data: droplet });
+
+  res.status(201).json(droplet);
+});
+
+// Edit droplet
+app.put('/api/droplets/:id', authenticateToken, (req, res) => {
+  const dropletId = sanitizeInput(req.params.id);
+  const droplet = db.getMessage(dropletId);
+  if (!droplet) return res.status(404).json({ error: 'Droplet not found' });
+  if (droplet.authorId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
+
+  const content = req.body.content;
+  if (content.length > 10000) return res.status(400).json({ error: 'Droplet too long' });
+
+  const updated = db.updateMessage(dropletId, content);
+  broadcastToWave(droplet.waveId, { type: 'droplet_edited', data: updated });
+  broadcastToWave(droplet.waveId, { type: 'message_edited', data: updated }); // Legacy
+  res.json(updated);
+});
+
+// Delete droplet
+app.delete('/api/droplets/:id', authenticateToken, (req, res) => {
+  const dropletId = sanitizeInput(req.params.id);
+  const droplet = db.getMessage(dropletId);
+
+  if (!droplet) return res.status(404).json({ error: 'Droplet not found' });
+  if (droplet.authorId !== req.user.userId) {
+    return res.status(403).json({ error: 'Only droplet author can delete' });
+  }
+
+  const result = db.deleteMessage(dropletId, req.user.userId);
+  if (!result.success) return res.status(400).json({ error: result.error });
+
+  // Broadcast deletion to all participants
+  broadcastToWave(result.waveId, {
+    type: 'droplet_deleted',
+    dropletId: result.dropletId || result.messageId,
+    waveId: result.waveId
+  });
+  // Legacy event
+  broadcastToWave(result.waveId, {
+    type: 'message_deleted',
+    messageId: result.dropletId || result.messageId,
+    waveId: result.waveId
+  });
+
+  res.json({ success: true });
+});
+
+// Toggle emoji reaction on droplet
+app.post('/api/droplets/:id/react', authenticateToken, (req, res) => {
+  const dropletId = sanitizeInput(req.params.id);
+  const emoji = req.body.emoji;
+
+  if (!emoji || typeof emoji !== 'string' || emoji.length > 10) {
+    return res.status(400).json({ error: 'Invalid emoji' });
+  }
+
+  const result = db.toggleMessageReaction(dropletId, req.user.userId, emoji);
+  if (!result.success) return res.status(400).json({ error: result.error });
+
+  // Broadcast reaction update to all participants
+  broadcastToWave(result.waveId, {
+    type: 'droplet_reaction',
+    dropletId: result.dropletId || result.messageId,
+    reactions: result.reactions,
+    waveId: result.waveId,
+  });
+  // Legacy event
+  broadcastToWave(result.waveId, {
+    type: 'message_reaction',
+    messageId: result.dropletId || result.messageId,
+    reactions: result.reactions,
+    waveId: result.waveId,
+  });
+
+  res.json({ success: true, reactions: result.reactions });
+});
+
+// Mark individual droplet as read
+app.post('/api/droplets/:id/read', authenticateToken, (req, res) => {
+  const dropletId = sanitizeInput(req.params.id);
+
+  console.log(`📖 Marking droplet ${dropletId} as read for user ${req.user.userId}`);
+
+  if (!db.markMessageAsRead(dropletId, req.user.userId)) {
+    console.log(`❌ Failed to mark droplet ${dropletId} as read`);
+    return res.status(404).json({ error: 'Droplet not found' });
+  }
+
+  console.log(`✅ Droplet ${dropletId} marked as read`);
+  res.json({ success: true });
+});
+
+// Ripple a droplet into a new wave
+app.post('/api/droplets/:id/ripple', authenticateToken, (req, res) => {
+  const dropletId = sanitizeInput(req.params.id);
+  const { title, participants } = req.body;
+
+  if (!title || typeof title !== 'string' || title.trim().length === 0) {
+    return res.status(400).json({ error: 'Title is required' });
+  }
+
+  // Get the droplet to check permissions
+  const droplet = db.getMessage ? db.getMessage(dropletId) : null;
+  if (!droplet) {
+    return res.status(404).json({ error: 'Droplet not found' });
+  }
+
+  // Check if user has access to the wave containing this droplet
+  const wave = db.getWave(droplet.waveId || droplet.wave_id);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  if (!db.canAccessWave(wave.id, req.user.userId)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  // Validate participants array
+  let participantIds = [];
+  if (Array.isArray(participants)) {
+    participantIds = participants.filter(p => typeof p === 'string');
+  }
+
+  // Perform the ripple (uses existing breakoutDroplet method internally)
+  const result = db.rippleDroplet ? db.rippleDroplet(dropletId, title.trim(), participantIds, req.user.userId)
+    : db.breakoutDroplet(dropletId, title.trim(), participantIds, req.user.userId);
+
+  if (!result.success) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Broadcast to original wave that a droplet was rippled
+  broadcastToWave(result.originalWaveId, {
+    type: 'droplet_rippled',
+    dropletId: dropletId,
+    newWaveId: result.newWave.id,
+    newWaveTitle: result.newWave.title,
+    waveId: result.originalWaveId,
+  });
+
+  // Broadcast to participants of the new wave
+  broadcastToWave(result.newWave.id, {
+    type: 'wave_created',
+    wave: result.newWave,
+  });
+
+  console.log(`🌊 Droplet ${dropletId} rippled to new wave: ${result.newWave.title}`);
+
+  res.json({
+    success: true,
+    newWave: result.newWave,
+    originalWaveId: result.originalWaveId,
+    childCount: result.childCount,
+  });
+});
+
+// Legacy endpoint - backward compatibility
+app.post('/api/droplets/:id/breakout', authenticateToken, (req, res) => {
+  // Redirect to ripple endpoint
+  req.url = `/api/droplets/${req.params.id}/ripple`;
+  return app._router.handle(req, res);
+});
+
+// ============ Message Routes (Legacy - v1.9.0 backward compatibility) ============
 app.post('/api/messages', authenticateToken, (req, res) => {
   const waveId = sanitizeInput(req.body.wave_id || req.body.thread_id);
   const content = req.body.content;
@@ -3714,16 +4220,22 @@ app.post('/api/messages', authenticateToken, (req, res) => {
   if (!canAccess) return res.status(403).json({ error: 'Access denied' });
 
   // Auto-join public waves
-  const isParticipant = db.waves.participants.some(p => p.waveId === waveId && p.userId === req.user.userId);
+  const isParticipant = db.isWaveParticipant(waveId, req.user.userId);
   if (!isParticipant && wave.privacy === 'public') {
     db.addWaveParticipant(waveId, req.user.userId);
   }
 
   if (content.length > 10000) return res.status(400).json({ error: 'Message too long' });
 
+  // For rippled waves, default parent to root droplet if no parent specified
+  let parentId = req.body.parent_id ? sanitizeInput(req.body.parent_id) : null;
+  if (!parentId && wave.rootDropletId) {
+    parentId = wave.rootDropletId;
+  }
+
   const message = db.createMessage({
     waveId,
-    parentId: req.body.parent_id ? sanitizeInput(req.body.parent_id) : null,
+    parentId,
     authorId: req.user.userId,
     content,
     privacy: wave.privacy,
@@ -3753,7 +4265,7 @@ app.post('/api/messages', authenticateToken, (req, res) => {
 
 app.put('/api/messages/:id', authenticateToken, (req, res) => {
   const messageId = sanitizeInput(req.params.id);
-  const message = db.messages.messages.find(m => m.id === messageId);
+  const message = db.getMessage(messageId);
   if (!message) return res.status(404).json({ error: 'Message not found' });
   if (message.authorId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
 
@@ -3767,7 +4279,7 @@ app.put('/api/messages/:id', authenticateToken, (req, res) => {
 
 app.delete('/api/messages/:id', authenticateToken, (req, res) => {
   const messageId = sanitizeInput(req.params.id);
-  const message = db.messages.messages.find(m => m.id === messageId);
+  const message = db.getMessage(messageId);
 
   if (!message) return res.status(404).json({ error: 'Message not found' });
   if (message.authorId !== req.user.userId) {

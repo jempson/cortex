@@ -1,14 +1,21 @@
 #!/usr/bin/env node
 /**
  * Cortex JSON to SQLite Migration Script
+ * Version: 1.10.0 (Droplets Architecture)
  *
  * This script migrates data from JSON files to SQLite database.
+ * Supports both legacy messages.json and v1.10.0 droplets.json files.
  *
  * Usage: node migrate-json-to-sqlite.js [--dry-run] [--no-backup]
  *
  * Options:
  *   --dry-run    Show what would be migrated without making changes
  *   --no-backup  Skip backing up JSON files
+ *
+ * v1.10.0 Changes:
+ *   - Migrates messages.json OR droplets.json to droplets table
+ *   - Includes ripple fields: broken_out_to, original_wave_id
+ *   - Includes wave ripple fields: root_droplet_id, broken_out_from, breakout_chain
  */
 
 import Database from 'better-sqlite3';
@@ -27,7 +34,8 @@ const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 const DATA_FILES = {
   users: path.join(DATA_DIR, 'users.json'),
   waves: path.join(DATA_DIR, 'waves.json'),
-  messages: path.join(DATA_DIR, 'messages.json'),
+  droplets: path.join(DATA_DIR, 'droplets.json'),
+  messages: path.join(DATA_DIR, 'messages.json'), // Legacy fallback
   groups: path.join(DATA_DIR, 'groups.json'),
   handleRequests: path.join(DATA_DIR, 'handle-requests.json'),
   reports: path.join(DATA_DIR, 'reports.json'),
@@ -90,10 +98,20 @@ async function migrate() {
 
   // Step 2: Load all JSON data
   console.log('\nStep 2: Loading JSON data...');
+
+  // Load droplets (v1.10.0) or fall back to messages (legacy)
+  let dropletsData = loadJson(DATA_FILES.droplets);
+  if (!dropletsData && fs.existsSync(DATA_FILES.messages)) {
+    console.log('  Note: Using legacy messages.json (will migrate to droplets table)');
+    const messagesData = loadJson(DATA_FILES.messages) || { messages: [], history: [] };
+    dropletsData = { droplets: messagesData.messages || [], history: messagesData.history || [] };
+  }
+  dropletsData = dropletsData || { droplets: [], history: [] };
+
   const data = {
     users: loadJson(DATA_FILES.users) || { users: [], contacts: [] },
     waves: loadJson(DATA_FILES.waves) || { waves: [], participants: [] },
-    messages: loadJson(DATA_FILES.messages) || { messages: [], history: [] },
+    droplets: dropletsData,
     groups: loadJson(DATA_FILES.groups) || { groups: [], members: [] },
     handleRequests: loadJson(DATA_FILES.handleRequests) || { requests: [] },
     reports: loadJson(DATA_FILES.reports) || { reports: [] },
@@ -108,8 +126,8 @@ async function migrate() {
   console.log(`    Contacts: ${data.users.contacts?.length || 0}`);
   console.log(`    Waves: ${data.waves.waves?.length || 0}`);
   console.log(`    Wave Participants: ${data.waves.participants?.length || 0}`);
-  console.log(`    Messages: ${data.messages.messages?.length || 0}`);
-  console.log(`    Message History: ${data.messages.history?.length || 0}`);
+  console.log(`    Droplets: ${data.droplets.droplets?.length || 0}`);
+  console.log(`    Droplet History: ${data.droplets.history?.length || 0}`);
   console.log(`    Groups: ${data.groups.groups?.length || 0}`);
   console.log(`    Group Members: ${data.groups.members?.length || 0}`);
   console.log(`    Handle Requests: ${data.handleRequests.requests?.length || 0}`);
@@ -235,13 +253,31 @@ async function migrate() {
     }
     console.log(`    Migrated ${data.groups.members?.length || 0} group members`);
 
-    // 5.5 Migrate waves
+    // 5.5 Migrate waves (v1.10.0: includes ripple/breakout fields)
+    // Note: Insert waves without root_droplet_id first due to circular FK dependency
+    // We'll update root_droplet_id after droplets are inserted
     console.log('  Migrating waves...');
     const insertWave = db.prepare(`
-      INSERT INTO waves (id, title, privacy, group_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO waves (id, title, privacy, group_id, created_by, created_at, updated_at, broken_out_from, breakout_chain)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    const wavesWithRootDroplet = [];
     for (const w of (data.waves.waves || [])) {
-      insertWave.run(w.id, w.title, w.privacy, w.groupId || null, w.createdBy, w.createdAt, w.updatedAt);
+      insertWave.run(
+        w.id,
+        w.title,
+        w.privacy,
+        w.groupId || null,
+        w.createdBy,
+        w.createdAt,
+        w.updatedAt,
+        w.brokenOutFrom || null,
+        w.breakoutChain ? JSON.stringify(w.breakoutChain) : null
+      );
+      // Track waves that need root_droplet_id updated after droplets are inserted
+      if (w.rootDropletId) {
+        wavesWithRootDroplet.push({ waveId: w.id, rootDropletId: w.rootDropletId });
+      }
     }
     console.log(`    Migrated ${data.waves.waves?.length || 0} waves`);
 
@@ -255,51 +291,67 @@ async function migrate() {
     }
     console.log(`    Migrated ${data.waves.participants?.length || 0} wave participants`);
 
-    // 5.7 Migrate messages
-    console.log('  Migrating messages...');
-    const insertMessage = db.prepare(`
-      INSERT INTO messages (id, wave_id, parent_id, author_id, content, privacy, version, created_at, edited_at, deleted, deleted_at, reactions)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    // 5.7 Migrate droplets (v1.10.0: renamed from messages, includes ripple fields)
+    console.log('  Migrating droplets...');
+    const insertDroplet = db.prepare(`
+      INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, edited_at, deleted, deleted_at, reactions, broken_out_to, original_wave_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertReadBy = db.prepare(`
-      INSERT OR IGNORE INTO message_read_by (message_id, user_id, read_at) VALUES (?, ?, ?)
+      INSERT OR IGNORE INTO droplet_read_by (droplet_id, user_id, read_at) VALUES (?, ?, ?)
     `);
 
-    for (const m of (data.messages.messages || [])) {
-      insertMessage.run(
-        m.id,
-        m.waveId,
-        m.parentId || null,
-        m.authorId,
-        m.content,
-        m.privacy || 'private',
-        m.version || 1,
-        m.createdAt,
-        m.editedAt || null,
-        m.deleted ? 1 : 0,
-        m.deletedAt || null,
-        JSON.stringify(m.reactions || {})
+    for (const d of (data.droplets.droplets || [])) {
+      insertDroplet.run(
+        d.id,
+        d.waveId,
+        d.parentId || null,
+        d.authorId,
+        d.content,
+        d.privacy || 'private',
+        d.version || 1,
+        d.createdAt,
+        d.editedAt || null,
+        d.deleted ? 1 : 0,
+        d.deletedAt || null,
+        JSON.stringify(d.reactions || {}),
+        d.brokenOutTo || null,
+        d.originalWaveId || null
       );
 
-      // Migrate readBy array to message_read_by table
-      const readBy = m.readBy || [m.authorId];
+      // Migrate readBy array to droplet_read_by table
+      const readBy = d.readBy || [d.authorId];
       for (const userId of readBy) {
         if (userId) {
-          insertReadBy.run(m.id, userId, m.createdAt); // Use message creation time as read time
+          insertReadBy.run(d.id, userId, d.createdAt); // Use droplet creation time as read time
         }
       }
     }
-    console.log(`    Migrated ${data.messages.messages?.length || 0} messages`);
+    console.log(`    Migrated ${data.droplets.droplets?.length || 0} droplets`);
 
-    // 5.8 Migrate message history
-    console.log('  Migrating message history...');
-    const insertHistory = db.prepare(`
-      INSERT INTO message_history (id, message_id, content, version, edited_at) VALUES (?, ?, ?, ?, ?)
-    `);
-    for (const h of (data.messages.history || [])) {
-      insertHistory.run(h.id, h.messageId, h.content, h.version, h.editedAt);
+    // 5.7b Update waves with root_droplet_id (now that droplets exist)
+    if (wavesWithRootDroplet.length > 0) {
+      console.log('  Updating wave root_droplet_id references...');
+      const updateWaveRootDroplet = db.prepare(`
+        UPDATE waves SET root_droplet_id = ? WHERE id = ?
+      `);
+      for (const { waveId, rootDropletId } of wavesWithRootDroplet) {
+        updateWaveRootDroplet.run(rootDropletId, waveId);
+      }
+      console.log(`    Updated ${wavesWithRootDroplet.length} waves with root_droplet_id`);
     }
-    console.log(`    Migrated ${data.messages.history?.length || 0} history entries`);
+
+    // 5.8 Migrate droplet history
+    console.log('  Migrating droplet history...');
+    const insertHistory = db.prepare(`
+      INSERT INTO droplet_history (id, droplet_id, content, version, edited_at) VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const h of (data.droplets.history || [])) {
+      // Handle both old (messageId) and new (dropletId) field names
+      const dropletId = h.dropletId || h.messageId;
+      insertHistory.run(h.id, dropletId, h.content, h.version, h.editedAt);
+    }
+    console.log(`    Migrated ${data.droplets.history?.length || 0} history entries`);
 
     // 5.9 Migrate handle requests
     console.log('  Migrating handle requests...');
@@ -388,9 +440,9 @@ async function migrate() {
     contacts: db.prepare('SELECT COUNT(*) as count FROM contacts').get().count,
     waves: db.prepare('SELECT COUNT(*) as count FROM waves').get().count,
     waveParticipants: db.prepare('SELECT COUNT(*) as count FROM wave_participants').get().count,
-    messages: db.prepare('SELECT COUNT(*) as count FROM messages').get().count,
-    messageReadBy: db.prepare('SELECT COUNT(*) as count FROM message_read_by').get().count,
-    messageHistory: db.prepare('SELECT COUNT(*) as count FROM message_history').get().count,
+    droplets: db.prepare('SELECT COUNT(*) as count FROM droplets').get().count,
+    dropletReadBy: db.prepare('SELECT COUNT(*) as count FROM droplet_read_by').get().count,
+    dropletHistory: db.prepare('SELECT COUNT(*) as count FROM droplet_history').get().count,
     groups: db.prepare('SELECT COUNT(*) as count FROM groups').get().count,
     groupMembers: db.prepare('SELECT COUNT(*) as count FROM group_members').get().count,
     handleRequests: db.prepare('SELECT COUNT(*) as count FROM handle_requests').get().count,
@@ -413,8 +465,8 @@ async function migrate() {
     contacts: data.users.contacts?.length || 0,
     waves: data.waves.waves?.length || 0,
     waveParticipants: data.waves.participants?.length || 0,
-    messages: data.messages.messages?.length || 0,
-    messageHistory: data.messages.history?.length || 0,
+    droplets: data.droplets.droplets?.length || 0,
+    dropletHistory: data.droplets.history?.length || 0,
     groups: data.groups.groups?.length || 0,
     groupMembers: data.groups.members?.length || 0,
     handleRequests: data.handleRequests.requests?.length || 0,
@@ -449,9 +501,10 @@ async function migrate() {
 
   // Print instructions
   console.log('\nNext steps:');
-  console.log('1. Update server.js to use the new SQLite database');
-  console.log('2. Test all functionality');
-  console.log('3. Once verified, you can delete the JSON files');
+  console.log('1. Set USE_SQLITE=true in server/.env');
+  console.log('2. Restart the server');
+  console.log('3. Test all functionality (waves, droplets, ripple, focus view)');
+  console.log('4. Once verified, you can delete the JSON files');
 }
 
 // Run migration

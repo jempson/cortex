@@ -1,6 +1,6 @@
 # Cortex REST API Documentation
 
-Version: 1.8.1
+Version: 1.10.0
 
 ## Overview
 
@@ -23,6 +23,7 @@ The Cortex API is a RESTful API that powers the Cortex federated communication p
    - [Groups](#groups-endpoints)
    - [Waves](#waves-endpoints)
    - [Messages](#messages-endpoints)
+   - [Droplets](#droplets-endpoints)
    - [Search](#search-endpoint)
    - [GIFs](#gifs-endpoints)
    - [Uploads](#uploads-endpoints)
@@ -1621,6 +1622,219 @@ Mark a specific message as read.
 
 ---
 
+### Droplets Endpoints
+
+Droplets are the new name for messages (v1.10.0+). All `/api/droplets` endpoints are aliases for `/api/messages` endpoints with enhanced functionality.
+
+#### GET /api/waves/:id/droplets
+
+Get droplets for a wave (alias for `/api/waves/:id/messages`).
+
+**Authentication:** Required
+
+**Query Parameters:**
+
+- `limit` (integer): Number of droplets to return (default: 50, max: 100)
+- `before` (string): Droplet ID to load droplets before (pagination)
+
+**Response (200 OK):**
+
+```json
+{
+  "droplets": [...],
+  "hasMore": true,
+  "total": 42
+}
+```
+
+---
+
+#### POST /api/waves/:id/droplets
+
+Create a new droplet in a wave (alias for `/api/messages`).
+
+**Authentication:** Required
+
+**Request Body:**
+
+```json
+{
+  "content": "This is my droplet with <strong>rich content</strong>",
+  "parent_id": null
+}
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "id": "drop-880e8400-e29b-41d4-a716-446655440005",
+  "waveId": "wave-550e8400-e29b-41d4-a716-446655440000",
+  "authorId": "user-550e8400-e29b-41d4-a716-446655440000",
+  "sender_name": "Malcolm Reynolds",
+  "content": "This is my droplet",
+  "parent_id": null,
+  "created_at": "2025-12-09T12:05:00.000Z"
+}
+```
+
+**WebSocket Event:** `new_droplet` (and `new_message` for backward compatibility)
+
+---
+
+#### PUT /api/droplets/:id
+
+Edit an existing droplet.
+
+**Authentication:** Required
+
+**Authorization:** Must be droplet author
+
+**Request Body:**
+
+```json
+{
+  "content": "Updated droplet content"
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "id": "drop-880e8400-e29b-41d4-a716-446655440005",
+  "content": "Updated droplet content",
+  "edited_at": "2025-12-09T12:10:00.000Z",
+  "version": 2
+}
+```
+
+**WebSocket Event:** `droplet_edited` (and `message_edited` for backward compatibility)
+
+---
+
+#### DELETE /api/droplets/:id
+
+Delete a droplet.
+
+**Authentication:** Required
+
+**Authorization:** Must be droplet author
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true
+}
+```
+
+**WebSocket Event:** `droplet_deleted` (and `message_deleted` for backward compatibility)
+
+---
+
+#### POST /api/droplets/:id/read
+
+Mark a specific droplet as read.
+
+**Authentication:** Required
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true
+}
+```
+
+---
+
+#### POST /api/droplets/:id/react
+
+Add or remove a reaction (emoji) to a droplet.
+
+**Authentication:** Required
+
+**Request Body:**
+
+```json
+{
+  "emoji": "👍"
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "id": "drop-880e8400-e29b-41d4-a716-446655440005",
+  "reactions": [
+    {
+      "emoji": "👍",
+      "users": [...]
+    }
+  ]
+}
+```
+
+---
+
+#### POST /api/droplets/:id/ripple
+
+Spin off a droplet and its replies into a new wave.
+
+**Authentication:** Required
+
+**Request Body:**
+
+```json
+{
+  "title": "New Discussion",
+  "participants": [
+    "user-550e8400-e29b-41d4-a716-446655440000",
+    "user-660e8400-e29b-41d4-a716-446655440001"
+  ]
+}
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "success": true,
+  "newWave": {
+    "id": "wave-770e8400-e29b-41d4-a716-446655440002",
+    "title": "New Discussion",
+    "privacy": "private",
+    "rootDropletId": "drop-880e8400-e29b-41d4-a716-446655440005",
+    "brokenOutFrom": "wave-550e8400-e29b-41d4-a716-446655440000",
+    "createdAt": "2025-12-09T12:00:00.000Z"
+  },
+  "originalWaveId": "wave-550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**WebSocket Events:**
+
+- `droplet_rippled` - Sent to original wave participants
+- `wave_created` - Sent to new wave participants
+
+**Notes:**
+
+- Creates a new wave with the droplet as the root
+- Original droplet displays as a "Rippled to wave..." link card
+- Participants default to original wave participants
+- Inherits privacy level from original wave
+- Nested ripples build a `breakout_chain` for lineage tracking
+
+**Errors:**
+
+- `400`: Missing title or invalid participants
+- `403`: User doesn't have access to original wave
+- `404`: Droplet not found
+
+---
+
 ### Search Endpoint
 
 #### GET /api/search
@@ -2398,9 +2612,76 @@ Notify other wave participants that user is typing:
 
 ### Server-Broadcast Events
 
-#### new_message
+#### new_droplet (v1.10.0+)
 
-New message created in a wave.
+New droplet created in a wave. Legacy `new_message` event also broadcast for backward compatibility.
+
+```json
+{
+  "type": "new_droplet",
+  "data": {
+    "id": "drop-880e8400-e29b-41d4-a716-446655440005",
+    "waveId": "wave-550e8400-e29b-41d4-a716-446655440000",
+    "authorId": "user-550e8400-e29b-41d4-a716-446655440000",
+    "sender_name": "Malcolm Reynolds",
+    "content": "This is a new droplet",
+    "created_at": "2025-12-09T12:05:00.000Z"
+  }
+}
+```
+
+---
+
+#### droplet_edited (v1.10.0+)
+
+Droplet was edited. Legacy `message_edited` event also broadcast for backward compatibility.
+
+```json
+{
+  "type": "droplet_edited",
+  "data": {
+    "id": "drop-880e8400-e29b-41d4-a716-446655440005",
+    "content": "Updated droplet content",
+    "edited_at": "2025-12-09T12:10:00.000Z"
+  }
+}
+```
+
+---
+
+#### droplet_deleted (v1.10.0+)
+
+Droplet was deleted. Legacy `message_deleted` event also broadcast for backward compatibility.
+
+```json
+{
+  "type": "droplet_deleted",
+  "dropletId": "drop-880e8400-e29b-41d4-a716-446655440005",
+  "waveId": "wave-550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+---
+
+#### droplet_rippled (v1.10.0+)
+
+Droplet was rippled to create a new wave.
+
+```json
+{
+  "type": "droplet_rippled",
+  "dropletId": "drop-880e8400-e29b-41d4-a716-446655440005",
+  "newWaveId": "wave-770e8400-e29b-41d4-a716-446655440002",
+  "newWaveTitle": "New Discussion",
+  "waveId": "wave-550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+---
+
+#### new_message (legacy)
+
+New message created in a wave. (Legacy event for backward compatibility)
 
 ```json
 {
@@ -2418,9 +2699,9 @@ New message created in a wave.
 
 ---
 
-#### message_edited
+#### message_edited (legacy)
 
-Message was edited.
+Message was edited. (Legacy event for backward compatibility)
 
 ```json
 {

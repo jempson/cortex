@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cortex is a privacy-first, federated communication platform inspired by Google Wave with a Firefly aesthetic. It uses a client-server architecture with real-time WebSocket communication.
+Cortex is a federated communication platform inspired by Google Wave with a Firefly aesthetic. It uses a client-server architecture with real-time WebSocket communication.
 
 **Tech Stack:**
 - **Server:** Node.js + Express + WebSocket (ws)
 - **Client:** React (single JSX file) + Vite
-- **Storage:** JSON files (migration to SQLite planned)
+- **Storage:** SQLite (default) or JSON files
 
 ## Development Commands
 
@@ -83,15 +83,19 @@ Single-page React app with all components in one file:
 - Privacy levels: private (◉), group (◈), cross-server (◇), public (○)
 - Personal archiving: Users can archive waves without affecting others
 - Participants tracked separately in `waves.participants[]`
+- Waves can be created via "ripple" from droplets (v1.10.0+)
+- Ripple chain tracking for nested ripples (`breakout_chain` field)
 
-**Messages:**
+**Droplets (formerly "Messages"):**
 - Threaded structure with `parentId` for replies
-- Edit history tracked in `messages.history[]`
+- Edit history tracked in `droplets.history[]`
 - Content stored with version numbers
 - @mentions stored as UUIDs, rendered as current handles
-- Read tracking via `readBy[]` array containing user IDs who have read the message
-- Author automatically added to `readBy` on message creation
-- Click-to-read UI: Messages marked as read only when explicitly clicked
+- Read tracking via `readBy[]` array containing user IDs who have read the droplet
+- Author automatically added to `readBy` on droplet creation
+- Click-to-read UI: Droplets marked as read only when explicitly clicked
+- Can be "rippled" to create new waves (v1.10.0+)
+- Focus View allows viewing any droplet as its own wave-like context
 
 **Groups:**
 - Separate `groups.groups[]` and `groups.members[]` arrays
@@ -106,7 +110,8 @@ Single-page React app with all components in one file:
 4. Token validation in middleware: `authenticateToken()` function
 
 ### Real-Time Updates (WebSocket Events)
-- Server broadcasts: `new_message`, `message_edited`, `wave_created`, `wave_updated`, `wave_deleted`, `handle_request_reviewed`
+- Server broadcasts: `new_droplet`, `droplet_edited`, `droplet_deleted`, `droplet_rippled`, `wave_created`, `wave_updated`, `wave_deleted`, `handle_request_reviewed`
+- Legacy events (`new_message`, `message_edited`, `message_deleted`) still broadcast for backward compatibility
 - Client auto-reconnects and re-authenticates on disconnect
 - Connected users shown with green status indicators
 
@@ -449,13 +454,62 @@ Cleaner UI showing display names instead of @handles.
 - **Implementation**: Removed `@{handle}` lines from various components
 - **Clickable Names**: Names/avatars open UserProfileModal via `onShowProfile` prop
 
-### Message Threading
-- Messages have `parentId` (null for root messages)
+### Droplet Threading
+- Droplets have `parentId` (null for root droplets)
 - Client renders recursively with depth tracking
-- Playback mode: Shows messages in chronological order with timeline slider
-- **Deleted Messages**: Only show "[Message deleted]" placeholder if message has replies
-  - Messages deleted with no children disappear completely
+- Playback mode: Shows droplets in chronological order with timeline slider
+- **Deleted Droplets**: Only show "[Droplet deleted]" placeholder if droplet has replies
+  - Droplets deleted with no children disappear completely
   - Preserves thread context for replies while avoiding clutter
+- **Threading Depth Limit (v1.10.0+)**:
+  - Inline threading limited to 3 levels in WaveView
+  - At depth 3+, Reply button changes to "FOCUS TO REPLY"
+  - Visual depth indicator banner: "Thread depth limit reached"
+  - Focus View allows unlimited depth
+
+### Focus View (v1.10.0+)
+View any droplet with replies as its own wave-like context.
+
+- **Desktop Entry**: Click "⤢ FOCUS" button on droplets with children
+- **Mobile Entry**: Tap droplet content area (shows "Tap to focus" hint)
+- **Breadcrumb Navigation**: `Wave Name › Droplet 1 › Droplet 2 › Current`
+  - Clickable items navigate to any level
+  - Truncation at 4+ levels: `Wave › ... › Parent › Current`
+  - Mobile uses shorter truncation (3+ levels)
+- **Navigation Stack**: Push/pop model for focus depth
+  - `handleFocusDroplet()` - enter focus from wave
+  - `handleFocusDeeper()` - focus within focus
+  - `handleFocusBack()` - pop one level
+  - `handleFocusClose()` - return to wave view
+- **Compose in Focus**: Replies default to focused droplet
+- **Mobile Gestures**: Swipe right to go back (80px threshold)
+- **Components**: `FocusView` (main component, ~450 lines)
+
+### Ripple System (v1.10.0+)
+Spin off a droplet and its replies into a new wave.
+
+- **User Flow**:
+  1. Click "◈ RIPPLE" button on any droplet
+  2. RippleModal opens with title input and participant selection
+  3. New wave created with droplet tree
+  4. Original droplet shows "Rippled to wave..." link card
+  5. Click link card to navigate to new wave
+- **Database Fields**:
+  - `droplets.broken_out_to` - References new wave ID
+  - `droplets.original_wave_id` - Tracks source wave
+  - `waves.root_droplet_id` - Points to rippled droplet
+  - `waves.broken_out_from` - References parent wave
+  - `waves.breakout_chain` - JSON array of lineage for nested ripples
+- **API Endpoint**: `POST /api/droplets/:id/ripple`
+  - Body: `{ title: string, participants: string[] }`
+  - Returns: `{ success: true, newWave: {...} }`
+- **WebSocket Events**:
+  - `droplet_rippled` - Sent to original wave participants
+  - `wave_created` - Sent to new wave participants
+- **Components**:
+  - `RippleModal` - Title input, participant selection, preview
+  - `RippledLinkCard` - Visual link card for rippled droplets
+- **Nested Ripples**: Rippling a droplet in a rippled wave builds the breakout chain
 
 ### Message Pagination (v1.8.0+)
 Waves with many messages load in batches for better performance.
@@ -551,6 +605,31 @@ Automatic embedding of videos and media from popular platforms.
   - Converts `username` → `handle`
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
+
+- **v1.10.0 (December 2025)** - Droplets Architecture
+  - **Terminology Rename**: Messages → Droplets throughout codebase
+    - Database tables renamed (`messages` → `droplets`, `messages_fts` → `droplets_fts`)
+    - API endpoints support both `/droplets` and `/messages` (backward compat)
+    - WebSocket events renamed (`new_droplet`, etc.) with legacy aliases
+    - UI text updated: "No droplets yet", "[Droplet deleted]", etc.
+  - **Focus View**: View any droplet with replies as wave-like context
+    - Desktop: "⤢ FOCUS" button on droplets with children
+    - Mobile: Tap droplet content, swipe right to go back
+    - Breadcrumb navigation with clickable path items
+    - Navigation stack for nested focus levels
+  - **Threading Depth Limit**: 3-level limit in WaveView
+    - "FOCUS TO REPLY" button at depth limit
+    - Visual depth indicator banner
+    - Focus View allows unlimited depth
+  - **Ripple System**: Spin off droplet threads into new waves
+    - `POST /api/droplets/:id/ripple` endpoint
+    - RippleModal for title/participant selection
+    - RippledLinkCard shows "Rippled to wave..." in original
+    - Nested ripple tracking via `breakout_chain` field
+  - **Database Schema Updates**:
+    - `droplets.broken_out_to`, `droplets.original_wave_id`
+    - `waves.root_droplet_id`, `waves.broken_out_from`, `waves.breakout_chain`
+    - Auto-migration for existing SQLite databases
 
 - **v1.8.0 (December 2025)** - User Profiles & UX Polish
   - **Profile Images**: Upload avatar images (jpg, png, gif, webp up to 2MB)
