@@ -1,18 +1,18 @@
 # Cortex v1.10.0 - Implementation Plan
 
-## RELEASE STATUS: IN PROGRESS (1/7 Phases)
+## RELEASE STATUS: IN PROGRESS (2/7 Phases)
 
-**Target Scope:** Droplets Architecture - Phase 1 (Terminology Rename)
+**Target Scope:** Droplets Architecture - Phase 1 & 2 (Terminology + Focus View)
 **Branch:** `v1.10.0`
 
 ---
 
 ## Overview
 
-Version 1.10.0 begins the Droplets architecture implementation, starting with the terminology rename from "messages" to "droplets" throughout the codebase. This is a foundational change that prepares for Focus View and Break Out features.
+Version 1.10.0 implements the Droplets architecture including terminology rename and Focus View. Users can now click "Focus" on any droplet with replies to view it in a full wave-like presentation with breadcrumb navigation.
 
-**Release Type:** Architecture Foundation
-**Focus Areas:** Terminology rename, backward compatibility
+**Release Type:** Architecture Foundation + UX Enhancement
+**Focus Areas:** Terminology rename, Focus View, breadcrumb navigation
 
 ---
 
@@ -90,6 +90,50 @@ Version 1.10.0 begins the Droplets architecture implementation, starting with th
 
 ---
 
+## Phase 2: Focus View - Desktop
+**Status:** Complete ✓
+
+### 2.1 Focus Button on Droplets
+- [x] Added `onFocus` prop to `ThreadedMessage` component
+- [x] Focus button (`⤢ FOCUS`) appears on droplets with children
+- [x] Button styled with teal color (#3bceac) to match focus theme
+
+### 2.2 FocusView Component
+- [x] Created `FocusView` component (450+ lines)
+- [x] Displays focused droplet as root with all replies
+- [x] Full compose functionality (reply to focused droplet or any child)
+- [x] Supports editing, deleting, reactions
+- [x] Filters blocked/muted users
+- [x] Typing indicator integration
+
+### 2.3 Breadcrumb Navigation
+- [x] Shows navigation path: `Wave Name › Droplet 1 › Droplet 2 › Current`
+- [x] Clickable breadcrumb items to navigate back to any level
+- [x] Truncation for deep nesting (4+ levels): `Wave › ... › Parent › Current`
+- [x] Wave name colored with wave's privacy color
+- [x] Current droplet highlighted in teal
+
+### 2.4 Navigation Stack State Management
+- [x] `focusStack` state in MainApp - array of `{ waveId, dropletId, droplet }`
+- [x] `handleFocusDroplet(waveId, droplet)` - push to stack from WaveView
+- [x] `handleFocusBack()` - pop one level from stack
+- [x] `handleFocusClose()` - clear stack, return to wave view
+- [x] `handleFocusDeeper(droplet)` - focus on child within focus view
+
+### 2.5 Compose in Focus Context
+- [x] Default parent is the focused droplet
+- [x] Can reply to any visible droplet within focus view
+- [x] Reply indicator shows who you're replying to
+- [x] Typing indicator broadcasts to the wave
+
+### 2.6 UI Polish
+- [x] Focus indicator bar showing "⤢ FOCUS VIEW" with reply count
+- [x] Back button shows "← BACK" (to parent focus) or "← WAVE" (to wave)
+- [x] Close button (✕) returns directly to wave view
+- [x] Responsive design for mobile
+
+---
+
 ## Migration Strategy
 
 ### For SQLite Databases
@@ -158,6 +202,17 @@ if (fs.existsSync('data/messages.json') && !fs.existsSync('data/droplets.json'))
 - [ ] Read tracking works
 - [ ] Search returns droplets
 - [ ] Embeds display correctly
+
+### Focus View Tests
+- [ ] Focus button appears on droplets with replies
+- [ ] Clicking Focus enters FocusView with correct droplet
+- [ ] Breadcrumb shows correct navigation path
+- [ ] Back button navigates to previous focus level
+- [ ] Close button returns to wave view
+- [ ] Compose sends to correct parent (focused droplet by default)
+- [ ] Reply to child works correctly
+- [ ] Nested focus (Focus within FocusView) works
+- [ ] Breadcrumb truncation at 4+ levels works
 
 ### Migration Tests
 - [ ] Fresh install works with new schema

@@ -1802,7 +1802,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ THREADED MESSAGE ============
-const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onJumpToParent, onReport }) => {
+const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onJumpToParent, onReport, onFocus }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -1992,12 +1992,22 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
             color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
           }}>↵ REPLY</button>
           {hasChildren && (
-            <button onClick={() => onToggleCollapse(message.id)} style={{
-              padding: isMobile ? '8px 12px' : '4px 8px',
-              minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: '1px solid #3a4a3a',
-              color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-            }}>{isCollapsed ? `▶ ${message.children.length}` : '▼'}</button>
+            <>
+              <button onClick={() => onToggleCollapse(message.id)} style={{
+                padding: isMobile ? '8px 12px' : '4px 8px',
+                minHeight: isMobile ? '38px' : 'auto',
+                background: 'transparent', border: '1px solid #3a4a3a',
+                color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+              }}>{isCollapsed ? `▶ ${message.children.length}` : '▼'}</button>
+              {onFocus && (
+                <button onClick={() => onFocus(message)} style={{
+                  padding: isMobile ? '8px 12px' : '4px 8px',
+                  minHeight: isMobile ? '38px' : 'auto',
+                  background: 'transparent', border: '1px solid #3bceac40',
+                  color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+                }} title="Focus on this droplet and its replies">⤢ FOCUS</button>
+              )}
+            </>
           )}
           {canDelete && !isEditing && (
             <>
@@ -2161,7 +2171,8 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
               currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
               onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
-              participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport} />
+              participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport}
+              onFocus={onFocus} />
           ))}
         </div>
       )}
@@ -3252,7 +3263,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -4306,7 +4317,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={toggleThreadCollapse} isMobile={isMobile}
             onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
-            onShowProfile={onShowProfile} onJumpToParent={jumpToParent} onReport={handleReportMessage} />
+            onShowProfile={onShowProfile} onJumpToParent={jumpToParent} onReport={handleReportMessage}
+            onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined} />
         ))}
       </div>
 
@@ -5109,6 +5121,536 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
               {sending ? 'SENDING...' : 'SEND INVITES'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ FOCUS VIEW (Droplet Deep-Dive) ============
+const FocusView = ({
+  wave,
+  focusStack, // Array of { dropletId, droplet } entries
+  onBack, // Go back one level
+  onClose, // Return to wave list
+  onFocusDeeper, // Focus on a child droplet
+  fetchAPI,
+  showToast,
+  currentUser,
+  isMobile,
+  sendWSMessage,
+  typingUsers,
+  reloadTrigger,
+  onShowProfile,
+  blockedUsers,
+  mutedUsers
+}) => {
+  const currentFocus = focusStack[focusStack.length - 1];
+  const focusedDroplet = currentFocus?.droplet;
+
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [collapsed, setCollapsed] = useState({});
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editContent, setEditContent] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const messagesRef = useRef(null);
+  const textareaRef = useRef(null);
+  const lastTypingSentRef = useRef(null);
+
+  // Reload droplet data when reloadTrigger changes
+  useEffect(() => {
+    if (reloadTrigger > 0) {
+      setRefreshKey(prev => prev + 1);
+    }
+  }, [reloadTrigger]);
+
+  // Build messages array from focused droplet and its children
+  const messages = focusedDroplet ? [focusedDroplet] : [];
+  const participants = wave?.participants || [];
+
+  // Filter out messages from blocked/muted users
+  const isBlocked = (userId) => blockedUsers?.some(u => u.blockedUserId === userId) || false;
+  const isMuted = (userId) => mutedUsers?.some(u => u.mutedUserId === userId) || false;
+
+  const filterMessages = (msgs) => {
+    return msgs.filter(msg => {
+      if (isBlocked(msg.author_id) || isMuted(msg.author_id)) return false;
+      if (msg.children) {
+        msg.children = filterMessages(msg.children);
+      }
+      return true;
+    });
+  };
+
+  const filteredMessages = filterMessages([...messages]);
+
+  const config = PRIVACY_LEVELS[wave?.privacy] || PRIVACY_LEVELS.private;
+
+  // Typing indicator
+  const sendTypingIndicator = () => {
+    const now = Date.now();
+    if (!lastTypingSentRef.current || now - lastTypingSentRef.current > 3000) {
+      sendWSMessage?.({
+        type: 'typing',
+        waveId: wave?.id,
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || currentUser?.handle
+      });
+      lastTypingSentRef.current = now;
+    }
+  };
+
+  const handleSend = async () => {
+    if (!newMessage.trim() || !wave?.id) return;
+
+    try {
+      const parentId = replyingTo?.id || focusedDroplet?.id;
+      await fetchAPI(`/waves/${wave.id}/droplets`, {
+        method: 'POST',
+        body: { content: newMessage, parentId }
+      });
+      setNewMessage('');
+      setReplyingTo(null);
+      showToast('Droplet sent', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to send', 'error');
+    }
+  };
+
+  const handleReaction = async (messageId, emoji) => {
+    try {
+      await fetchAPI(`/droplets/${messageId}/react`, {
+        method: 'POST',
+        body: { emoji }
+      });
+    } catch (err) {
+      showToast('Failed to react', 'error');
+    }
+  };
+
+  const handleDeleteMessage = async (message) => {
+    if (!confirm('Delete this droplet?')) return;
+    try {
+      await fetchAPI(`/droplets/${message.id}`, { method: 'DELETE' });
+      showToast('Droplet deleted', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to delete', 'error');
+    }
+  };
+
+  const handleStartEdit = (message) => {
+    setEditingMessageId(message.id);
+    setEditContent(message.content?.replace(/<[^>]*>/g, '') || '');
+  };
+
+  const handleSaveEdit = async (messageId) => {
+    try {
+      await fetchAPI(`/droplets/${messageId}`, {
+        method: 'PUT',
+        body: { content: editContent }
+      });
+      setEditingMessageId(null);
+      setEditContent('');
+      showToast('Droplet updated', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to update', 'error');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditContent('');
+  };
+
+  const toggleThreadCollapse = (messageId) => {
+    setCollapsed(prev => ({ ...prev, [messageId]: !prev[messageId] }));
+  };
+
+  const jumpToParent = (parentId) => {
+    const el = document.querySelector(`[data-message-id="${parentId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('highlight-flash');
+      setTimeout(() => el.classList.remove('highlight-flash'), 1500);
+    }
+  };
+
+  // Build breadcrumb from focus stack
+  const buildBreadcrumb = () => {
+    const items = [
+      { label: wave?.name || 'Wave', onClick: onClose, isWave: true }
+    ];
+
+    focusStack.forEach((item, index) => {
+      const truncatedContent = item.droplet?.content?.replace(/<[^>]*>/g, '').substring(0, 30) +
+        (item.droplet?.content?.length > 30 ? '...' : '');
+
+      if (index < focusStack.length - 1) {
+        // Previous items are clickable
+        items.push({
+          label: truncatedContent || 'Droplet',
+          onClick: () => {
+            // Pop stack back to this level
+            for (let i = focusStack.length - 1; i > index; i--) {
+              onBack();
+            }
+          }
+        });
+      } else {
+        // Current item is not clickable
+        items.push({ label: truncatedContent || 'Droplet', current: true });
+      }
+    });
+
+    // Truncate middle items if more than 4 levels
+    if (items.length > 4) {
+      const first = items[0];
+      const last = items[items.length - 1];
+      const secondLast = items[items.length - 2];
+      return [first, { label: '...', ellipsis: true }, secondLast, last];
+    }
+
+    return items;
+  };
+
+  const breadcrumb = buildBreadcrumb();
+
+  if (!focusedDroplet) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6a7a6a' }}>
+        No droplet focused
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Breadcrumb Header */}
+      <div style={{
+        padding: isMobile ? '10px 12px' : '12px 16px',
+        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+        borderBottom: `2px solid ${config.color}40`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        flexWrap: 'wrap'
+      }}>
+        {/* Back button */}
+        <button
+          onClick={focusStack.length > 1 ? onBack : onClose}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent',
+            border: '1px solid #3a4a3a',
+            color: '#6a7a6a',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.85rem' : '0.75rem',
+          }}
+        >
+          ← {focusStack.length > 1 ? 'BACK' : 'WAVE'}
+        </button>
+
+        {/* Breadcrumb trail */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          flexWrap: 'wrap',
+          overflow: 'hidden'
+        }}>
+          {breadcrumb.map((item, index) => (
+            <React.Fragment key={index}>
+              {index > 0 && <span style={{ color: '#3a4a3a' }}>›</span>}
+              {item.ellipsis ? (
+                <span style={{ color: '#5a6a5a', fontSize: isMobile ? '0.8rem' : '0.75rem' }}>...</span>
+              ) : item.current ? (
+                <span style={{
+                  color: '#3bceac',
+                  fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  fontWeight: 600,
+                  maxWidth: '150px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {item.label}
+                </span>
+              ) : (
+                <button
+                  onClick={item.onClick}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: item.isWave ? config.color : '#6a7a6a',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                    padding: '2px 4px',
+                    maxWidth: '120px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title={item.label}
+                >
+                  {item.label}
+                </button>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent',
+            border: '1px solid #ff6b3540',
+            color: '#ff6b35',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.85rem' : '0.75rem',
+          }}
+          title="Return to wave"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Focus indicator */}
+      <div style={{
+        padding: '6px 16px',
+        background: '#3bceac10',
+        borderBottom: '1px solid #3bceac30',
+        fontSize: isMobile ? '0.75rem' : '0.7rem',
+        color: '#3bceac',
+        fontFamily: 'monospace',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+      }}>
+        <span>⤢</span>
+        <span>FOCUS VIEW</span>
+        <span style={{ color: '#5a6a5a' }}>•</span>
+        <span style={{ color: '#6a7a6a' }}>
+          {focusedDroplet.children?.length || 0} {focusedDroplet.children?.length === 1 ? 'reply' : 'replies'}
+        </span>
+      </div>
+
+      {/* Messages area */}
+      <div
+        ref={messagesRef}
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: isMobile ? '12px' : '16px',
+        }}
+      >
+        {filteredMessages.map(msg => (
+          <ThreadedMessage
+            key={msg.id}
+            message={msg}
+            onReply={setReplyingTo}
+            onDelete={handleDeleteMessage}
+            onEdit={handleStartEdit}
+            onSaveEdit={handleSaveEdit}
+            onCancelEdit={handleCancelEdit}
+            editingMessageId={editingMessageId}
+            editContent={editContent}
+            setEditContent={setEditContent}
+            currentUserId={currentUser?.id}
+            highlightId={replyingTo?.id}
+            playbackIndex={null}
+            collapsed={collapsed}
+            onToggleCollapse={toggleThreadCollapse}
+            isMobile={isMobile}
+            onReact={handleReaction}
+            onMessageClick={() => {}}
+            participants={participants}
+            onShowProfile={onShowProfile}
+            onJumpToParent={jumpToParent}
+            onFocus={onFocusDeeper ? (droplet) => onFocusDeeper(droplet) : undefined}
+          />
+        ))}
+      </div>
+
+      {/* Typing Indicator */}
+      {typingUsers && Object.keys(typingUsers).length > 0 && (
+        <div style={{
+          padding: isMobile ? '8px 12px' : '6px 20px',
+          color: '#6a7a6a',
+          fontSize: isMobile ? '0.85rem' : '0.75rem',
+          fontStyle: 'italic',
+          borderTop: '1px solid #1a2a1a',
+          background: '#0a100a',
+        }}>
+          {Object.values(typingUsers).map(u => u.name).join(', ')} {Object.keys(typingUsers).length === 1 ? 'is' : 'are'} typing...
+        </div>
+      )}
+
+      {/* Compose area */}
+      <div style={{
+        borderTop: '1px solid #2a3a2a',
+        background: '#0a100a',
+        padding: isMobile ? '12px' : '16px',
+      }}>
+        {replyingTo && (
+          <div style={{
+            marginBottom: '8px',
+            padding: '8px 12px',
+            background: '#1a2a1a',
+            border: '1px solid #3a4a3a',
+            borderLeft: `3px solid ${config.color}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '8px',
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: '#6a7a6a', fontSize: '0.7rem', marginBottom: '2px' }}>
+                Replying to {replyingTo.sender_name}
+              </div>
+              <div style={{
+                color: '#5a6a5a',
+                fontSize: '0.75rem',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}>
+                {replyingTo.content?.replace(/<[^>]*>/g, '').substring(0, 50)}...
+              </div>
+            </div>
+            <button
+              onClick={() => setReplyingTo(null)}
+              style={{
+                padding: '4px 8px',
+                background: 'transparent',
+                border: '1px solid #6a7a6a',
+                color: '#6a7a6a',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.7rem',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <textarea
+              ref={textareaRef}
+              value={newMessage}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                sendTypingIndicator();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}...` : 'Type a droplet... (Shift+Enter for new line)'}
+              style={{
+                width: '100%',
+                minHeight: isMobile ? '50px' : '40px',
+                maxHeight: '150px',
+                padding: '10px 12px',
+                background: '#0d150d',
+                border: `1px solid ${replyingTo ? config.color : '#2a3a2a'}`,
+                color: '#9bab9b',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.95rem' : '0.85rem',
+                resize: 'vertical',
+              }}
+            />
+          </div>
+
+          {/* Emoji button */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              style={{
+                padding: isMobile ? '12px' : '10px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: showEmojiPicker ? '#ffd23f20' : 'transparent',
+                border: `1px solid ${showEmojiPicker ? '#ffd23f' : '#3a4a3a'}`,
+                color: showEmojiPicker ? '#ffd23f' : '#6a7a6a',
+                cursor: 'pointer',
+                fontSize: isMobile ? '1.1rem' : '1rem',
+              }}
+            >
+              {showEmojiPicker ? '✕' : '😀'}
+            </button>
+
+            {showEmojiPicker && (
+              <div style={{
+                position: 'absolute',
+                bottom: '100%',
+                right: 0,
+                marginBottom: '4px',
+                background: '#0d150d',
+                border: '1px solid #2a3a2a',
+                padding: '8px',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(8, 1fr)',
+                gap: '4px',
+                zIndex: 10,
+              }}>
+                {['😀', '😂', '❤️', '👍', '👎', '🎉', '🤔', '😢', '😮', '🔥', '💯', '👏', '🙏', '💪', '✨', '🚀'].map(emoji => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      setNewMessage(prev => prev + emoji);
+                      setShowEmojiPicker(false);
+                      textareaRef.current?.focus();
+                    }}
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      background: 'transparent',
+                      border: '1px solid #2a3a2a',
+                      cursor: 'pointer',
+                      fontSize: '1.1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Send button */}
+          <button
+            onClick={handleSend}
+            disabled={!newMessage.trim()}
+            style={{
+              padding: isMobile ? '12px 20px' : '10px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: newMessage.trim() ? '#0ead6920' : 'transparent',
+              border: `1px solid ${newMessage.trim() ? '#0ead69' : '#3a4a3a'}`,
+              color: newMessage.trim() ? '#0ead69' : '#5a6a5a',
+              cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.85rem' : '0.75rem',
+              fontWeight: 600,
+            }}
+          >
+            SEND
+          </button>
         </div>
       </div>
     </div>
@@ -6493,6 +7035,7 @@ function MainApp() {
   const [contacts, setContacts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selectedWave, setSelectedWave] = useState(null);
+  const [focusStack, setFocusStack] = useState([]); // Array of { waveId, dropletId, droplet } for Focus View navigation
   const [showNewWave, setShowNewWave] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -6728,6 +7271,30 @@ function MainApp() {
       return false;
     }
   }, [fetchAPI, loadBlockedMutedUsers]);
+
+  // Focus View handlers
+  const handleFocusDroplet = useCallback((waveId, droplet) => {
+    // Push a new item onto the focus stack
+    setFocusStack(prev => [...prev, { waveId, dropletId: droplet.id, droplet }]);
+  }, []);
+
+  const handleFocusBack = useCallback(() => {
+    // Pop the last item from the focus stack
+    setFocusStack(prev => prev.slice(0, -1));
+  }, []);
+
+  const handleFocusClose = useCallback(() => {
+    // Clear the entire focus stack, return to wave view
+    setFocusStack([]);
+  }, []);
+
+  const handleFocusDeeper = useCallback((droplet) => {
+    // Focus on a child droplet within the current focus view
+    if (focusStack.length > 0) {
+      const currentWaveId = focusStack[focusStack.length - 1].waveId;
+      setFocusStack(prev => [...prev, { waveId: currentWaveId, dropletId: droplet.id, droplet }]);
+    }
+  }, [focusStack]);
 
   useEffect(() => {
     loadWaves();
@@ -6966,9 +7533,31 @@ function MainApp() {
                 isMobile={isMobile} />
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
-              {selectedWave ? (
+              {selectedWave && focusStack.length > 0 ? (
+                // Focus View - showing focused droplet and its replies
+                <ErrorBoundary key={`focus-${focusStack[focusStack.length - 1]?.dropletId}`}>
+                  <FocusView
+                    wave={selectedWave}
+                    focusStack={focusStack}
+                    onBack={handleFocusBack}
+                    onClose={handleFocusClose}
+                    onFocusDeeper={handleFocusDeeper}
+                    fetchAPI={fetchAPI}
+                    showToast={showToastMsg}
+                    currentUser={user}
+                    isMobile={isMobile}
+                    sendWSMessage={sendWSMessage}
+                    typingUsers={typingUsers[selectedWave?.id] || {}}
+                    reloadTrigger={waveReloadTrigger}
+                    onShowProfile={setProfileUserId}
+                    blockedUsers={blockedUsers}
+                    mutedUsers={mutedUsers}
+                  />
+                </ErrorBoundary>
+              ) : selectedWave ? (
+                // Normal Wave View
                 <ErrorBoundary key={selectedWave.id}>
-                  <WaveView wave={selectedWave} onBack={() => setSelectedWave(null)}
+                  <WaveView wave={selectedWave} onBack={() => { setSelectedWave(null); setFocusStack([]); }}
                     fetchAPI={fetchAPI} showToast={showToastMsg} currentUser={user}
                     groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile}
                     sendWSMessage={sendWSMessage}
@@ -6986,7 +7575,8 @@ function MainApp() {
                     onMuteUser={handleMuteUser}
                     onUnmuteUser={handleUnmuteUser}
                     onBlockedMutedChange={loadBlockedMutedUsers}
-                    onShowProfile={setProfileUserId} />
+                    onShowProfile={setProfileUserId}
+                    onFocusDroplet={handleFocusDroplet} />
                 </ErrorBoundary>
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
