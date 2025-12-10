@@ -254,11 +254,14 @@ async function migrate() {
     console.log(`    Migrated ${data.groups.members?.length || 0} group members`);
 
     // 5.5 Migrate waves (v1.10.0: includes ripple/breakout fields)
+    // Note: Insert waves without root_droplet_id first due to circular FK dependency
+    // We'll update root_droplet_id after droplets are inserted
     console.log('  Migrating waves...');
     const insertWave = db.prepare(`
-      INSERT INTO waves (id, title, privacy, group_id, created_by, created_at, updated_at, root_droplet_id, broken_out_from, breakout_chain)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO waves (id, title, privacy, group_id, created_by, created_at, updated_at, broken_out_from, breakout_chain)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    const wavesWithRootDroplet = [];
     for (const w of (data.waves.waves || [])) {
       insertWave.run(
         w.id,
@@ -268,10 +271,13 @@ async function migrate() {
         w.createdBy,
         w.createdAt,
         w.updatedAt,
-        w.rootDropletId || null,
         w.brokenOutFrom || null,
         w.breakoutChain ? JSON.stringify(w.breakoutChain) : null
       );
+      // Track waves that need root_droplet_id updated after droplets are inserted
+      if (w.rootDropletId) {
+        wavesWithRootDroplet.push({ waveId: w.id, rootDropletId: w.rootDropletId });
+      }
     }
     console.log(`    Migrated ${data.waves.waves?.length || 0} waves`);
 
@@ -322,6 +328,18 @@ async function migrate() {
       }
     }
     console.log(`    Migrated ${data.droplets.droplets?.length || 0} droplets`);
+
+    // 5.7b Update waves with root_droplet_id (now that droplets exist)
+    if (wavesWithRootDroplet.length > 0) {
+      console.log('  Updating wave root_droplet_id references...');
+      const updateWaveRootDroplet = db.prepare(`
+        UPDATE waves SET root_droplet_id = ? WHERE id = ?
+      `);
+      for (const { waveId, rootDropletId } of wavesWithRootDroplet) {
+        updateWaveRootDroplet.run(rootDropletId, waveId);
+      }
+      console.log(`    Updated ${wavesWithRootDroplet.length} waves with root_droplet_id`);
+    }
 
     // 5.8 Migrate droplet history
     console.log('  Migrating droplet history...');
