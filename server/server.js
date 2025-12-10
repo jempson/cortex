@@ -4006,9 +4006,15 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
 
   if (content.length > 10000) return res.status(400).json({ error: 'Droplet too long' });
 
+  // For rippled waves, default parent to root droplet if no parent specified
+  let parentId = req.body.parent_id ? sanitizeInput(req.body.parent_id) : null;
+  if (!parentId && wave.rootDropletId) {
+    parentId = wave.rootDropletId;
+  }
+
   const droplet = db.createMessage({
     waveId,
-    parentId: req.body.parent_id ? sanitizeInput(req.body.parent_id) : null,
+    parentId,
     authorId: req.user.userId,
     content,
     privacy: wave.privacy,
@@ -4221,9 +4227,15 @@ app.post('/api/messages', authenticateToken, (req, res) => {
 
   if (content.length > 10000) return res.status(400).json({ error: 'Message too long' });
 
+  // For rippled waves, default parent to root droplet if no parent specified
+  let parentId = req.body.parent_id ? sanitizeInput(req.body.parent_id) : null;
+  if (!parentId && wave.rootDropletId) {
+    parentId = wave.rootDropletId;
+  }
+
   const message = db.createMessage({
     waveId,
-    parentId: req.body.parent_id ? sanitizeInput(req.body.parent_id) : null,
+    parentId,
     authorId: req.user.userId,
     content,
     privacy: wave.privacy,
