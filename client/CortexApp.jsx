@@ -82,6 +82,10 @@ const FONT_SIZES = {
   xlarge: { name: 'X-Large', multiplier: 1.3 },
 };
 
+// ============ THREADING DEPTH LIMIT ============
+// Maximum nesting depth before prompting user to Focus or Break Out
+const THREAD_DEPTH_LIMIT = 3;
+
 // ============ STORAGE ============
 const storage = {
   getToken: () => localStorage.getItem('cortex_token'),
@@ -1816,6 +1820,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   const [lightboxImage, setLightboxImage] = useState(null);
   const isUnread = !isDeleted && message.is_unread && message.author_id !== currentUserId;
   const isReply = depth > 0 && message.parentId;
+  const isAtDepthLimit = depth >= THREAD_DEPTH_LIMIT;
 
   const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏'];
 
@@ -1873,14 +1878,34 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
           </div>
           <PrivacyBadge level={message.privacy} compact />
         </div>
-        {/* Breadcrumb for deep threads (depth > 3) */}
-        {depth > 3 && (
+        {/* Depth indicator for deep threads */}
+        {isAtDepthLimit && (
+          <div style={{
+            marginBottom: '8px',
+            padding: '6px 10px',
+            background: '#3bceac10',
+            border: '1px solid #3bceac40',
+            borderLeft: '3px solid #3bceac',
+            fontSize: isMobile ? '0.7rem' : '0.65rem',
+            color: '#3bceac',
+            fontFamily: 'monospace',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            <span>⬡</span>
+            <span>Thread depth limit reached</span>
+            <span style={{ color: '#6a7a6a' }}>•</span>
+            <span style={{ color: '#6a7a6a' }}>Use Focus to continue deeper</span>
+          </div>
+        )}
+        {depth > THREAD_DEPTH_LIMIT && (
           <div style={{
             marginBottom: '8px',
             padding: '4px 8px',
             background: '#0a100a',
             border: '1px solid #2a3a2a',
-            borderLeft: '2px solid #3bceac',
+            borderLeft: '2px solid #6a7a6a',
             fontSize: isMobile ? '0.65rem' : '0.6rem',
             color: '#6a7a6a',
             fontFamily: 'monospace',
@@ -1888,8 +1913,8 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
             alignItems: 'center',
             gap: '4px'
           }}>
-            <span style={{ color: '#3bceac' }}>⬡</span>
-            <span>Thread depth: {depth} levels</span>
+            <span>⬡</span>
+            <span>Depth: {depth} levels</span>
           </div>
         )}
         {isEditing ? (
@@ -2012,12 +2037,29 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }}>↑ PARENT</button>
           )}
-          <button onClick={() => onReply(message)} style={{
-            padding: isMobile ? '8px 12px' : '4px 8px',
-            minHeight: isMobile ? '38px' : 'auto',
-            background: 'transparent', border: '1px solid #3a4a3a',
-            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-          }}>↵ REPLY</button>
+          {/* At depth limit, show Focus button instead of Reply */}
+          {isAtDepthLimit && hasChildren && onFocus ? (
+            <button onClick={() => onFocus(message)} style={{
+              padding: isMobile ? '8px 12px' : '4px 8px',
+              minHeight: isMobile ? '38px' : 'auto',
+              background: '#3bceac15', border: '1px solid #3bceac',
+              color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+            }} title="Thread is deep - focus to continue">⤢ FOCUS TO REPLY</button>
+          ) : isAtDepthLimit && onFocus ? (
+            <button onClick={() => onFocus(message)} style={{
+              padding: isMobile ? '8px 12px' : '4px 8px',
+              minHeight: isMobile ? '38px' : 'auto',
+              background: '#3bceac15', border: '1px solid #3bceac',
+              color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+            }} title="Thread is deep - focus to reply">⤢ FOCUS TO REPLY</button>
+          ) : (
+            <button onClick={() => onReply(message)} style={{
+              padding: isMobile ? '8px 12px' : '4px 8px',
+              minHeight: isMobile ? '38px' : 'auto',
+              background: 'transparent', border: '1px solid #3a4a3a',
+              color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+            }}>↵ REPLY</button>
+          )}
           {hasChildren && (
             <>
               <button onClick={() => onToggleCollapse(message.id)} style={{
@@ -2026,7 +2068,8 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
                 background: 'transparent', border: '1px solid #3a4a3a',
                 color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
               }}>{isCollapsed ? `▶ ${message.children.length}` : '▼'}</button>
-              {onFocus && (
+              {/* Show separate Focus button only when not at depth limit (at limit, Focus is in reply button) */}
+              {!isAtDepthLimit && onFocus && (
                 <button onClick={() => onFocus(message)} style={{
                   padding: isMobile ? '8px 12px' : '4px 8px',
                   minHeight: isMobile ? '38px' : 'auto',
@@ -5173,7 +5216,7 @@ const FocusView = ({
   mutedUsers
 }) => {
   const currentFocus = focusStack[focusStack.length - 1];
-  const focusedDroplet = currentFocus?.droplet;
+  const initialDroplet = currentFocus?.droplet;
 
   const [replyingTo, setReplyingTo] = useState(null);
   const [newMessage, setNewMessage] = useState('');
@@ -5181,7 +5224,7 @@ const FocusView = ({
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editContent, setEditContent] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [liveDroplet, setLiveDroplet] = useState(initialDroplet); // Live data that updates
   const containerRef = useRef(null);
   const messagesRef = useRef(null);
   const textareaRef = useRef(null);
@@ -5200,12 +5243,48 @@ const FocusView = ({
     threshold: 80 // Slightly lower threshold for easier back navigation
   });
 
-  // Reload droplet data when reloadTrigger changes
+  // Update liveDroplet when focus changes
+  useEffect(() => {
+    setLiveDroplet(initialDroplet);
+  }, [initialDroplet?.id]);
+
+  // Function to fetch fresh droplet data
+  const fetchFreshData = useCallback(async () => {
+    if (!wave?.id || !initialDroplet?.id) return;
+    try {
+      // Fetch all messages for the wave and find our focused droplet with updated children
+      const data = await fetchAPI(`/waves/${wave.id}`);
+      if (data.messages) {
+        // Build tree and find our droplet
+        const findDroplet = (messages, targetId) => {
+          for (const msg of messages) {
+            if (msg.id === targetId) return msg;
+            if (msg.children) {
+              const found = findDroplet(msg.children, targetId);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const updated = findDroplet(data.messages, initialDroplet.id);
+        if (updated) {
+          setLiveDroplet(updated);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to refresh focus view:', err);
+    }
+  }, [wave?.id, initialDroplet?.id, fetchAPI]);
+
+  // Fetch fresh droplet data when reloadTrigger changes
   useEffect(() => {
     if (reloadTrigger > 0) {
-      setRefreshKey(prev => prev + 1);
+      fetchFreshData();
     }
-  }, [reloadTrigger]);
+  }, [reloadTrigger, fetchFreshData]);
+
+  // Use liveDroplet for display (falls back to initialDroplet)
+  const focusedDroplet = liveDroplet || initialDroplet;
 
   // Build messages array from focused droplet and its children
   const messages = focusedDroplet ? [focusedDroplet] : [];
@@ -5243,18 +5322,29 @@ const FocusView = ({
     }
   };
 
+  // Handle reply - set the target and focus the textarea
+  const handleReply = (message) => {
+    setReplyingTo(message);
+    // Focus the textarea after state updates
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || !wave?.id) return;
 
     try {
       const parentId = replyingTo?.id || focusedDroplet?.id;
-      await fetchAPI(`/waves/${wave.id}/droplets`, {
+      await fetchAPI('/messages', {
         method: 'POST',
-        body: { content: newMessage, parentId }
+        body: { wave_id: wave.id, parent_id: parentId, content: newMessage }
       });
       setNewMessage('');
       setReplyingTo(null);
       showToast('Droplet sent', 'success');
+      // Immediately refresh to show the new droplet
+      fetchFreshData();
     } catch (err) {
       showToast(err.message || 'Failed to send', 'error');
     }
@@ -5524,7 +5614,7 @@ const FocusView = ({
           <ThreadedMessage
             key={msg.id}
             message={msg}
-            onReply={setReplyingTo}
+            onReply={handleReply}
             onDelete={handleDeleteMessage}
             onEdit={handleStartEdit}
             onSaveEdit={handleSaveEdit}

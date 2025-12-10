@@ -1,8 +1,8 @@
 # Cortex v1.10.0 - Implementation Plan
 
-## RELEASE STATUS: IN PROGRESS (3/7 Phases)
+## RELEASE STATUS: IN PROGRESS (4/7 Phases)
 
-**Target Scope:** Droplets Architecture - Phases 1, 2 & 3 (Terminology + Focus View Desktop & Mobile)
+**Target Scope:** Droplets Architecture - Phases 1, 2, 3 & 4 (Terminology + Focus View + Threading Depth Limit)
 **Branch:** `v1.10.0`
 
 ---
@@ -164,6 +164,33 @@ Version 1.10.0 implements the Droplets architecture including terminology rename
 
 ---
 
+## Phase 4: Threading Depth Limit
+**Status:** Complete ✓
+
+### 4.1 Depth Limit Constant
+- [x] Added `THREAD_DEPTH_LIMIT = 3` constant in CortexApp.jsx
+- [x] Depth limit applies to inline replies in WaveView (not in FocusView)
+- [x] Configurable in one place for future adjustment
+
+### 4.2 Reply Button Behavior at Depth Limit
+- [x] At depth 3+, Reply button replaced with "⤢ FOCUS TO REPLY"
+- [x] For droplets with children: shows teal Focus button
+- [x] For droplets without children: shows teal Focus button (allows reply in focused context)
+- [x] Original Reply button hidden at depth limit
+
+### 4.3 Visual Depth Limit Indicator
+- [x] Banner appears when `depth >= THREAD_DEPTH_LIMIT`
+- [x] Shows "⬡ Thread depth limit reached • Use Focus to continue deeper"
+- [x] Styled with teal left border and subtle background
+- [x] Positioned above the droplet content
+
+### 4.4 Focus View Behavior
+- [x] FocusView is not affected by depth limit (replies always allowed)
+- [x] Users can focus on any droplet and continue deep threading in focus context
+- [x] Focus view provides "infinite" depth capability
+
+---
+
 ## Migration Strategy
 
 ### For SQLite Databases
@@ -253,6 +280,13 @@ if (fs.existsSync('data/messages.json') && !fs.existsSync('data/droplets.json'))
 - [ ] Compact breadcrumb fits on mobile screen
 - [ ] Deep breadcrumb truncates to "Wave … Current"
 - [ ] Image lightbox still works (not intercepted by tap-to-focus)
+
+### Threading Depth Limit Tests
+- [ ] Depth limit indicator appears at depth 3+
+- [ ] Reply button shows "FOCUS TO REPLY" at depth limit
+- [ ] Clicking "FOCUS TO REPLY" enters Focus View
+- [ ] FocusView allows replies at any depth (no limit)
+- [ ] Depth limit only applies in WaveView, not FocusView
 
 ### Migration Tests
 - [ ] Fresh install works with new schema
