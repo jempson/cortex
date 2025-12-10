@@ -1094,6 +1094,103 @@ const OfflineIndicator = () => {
   );
 };
 
+// ============ BOTTOM NAVIGATION ============
+const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendingGroups }) => {
+  const items = [
+    { id: 'waves', icon: '◈', label: 'Waves', badge: unreadCount },
+    { id: 'contacts', icon: '●', label: 'Contacts', badge: pendingContacts },
+    { id: 'groups', icon: '◆', label: 'Groups', badge: pendingGroups },
+    { id: 'search', icon: '⌕', label: 'Search' },
+    { id: 'profile', icon: '⚙', label: 'Profile' },
+  ];
+
+  const handleNavigate = (view) => {
+    // Haptic feedback if available
+    if (navigator.vibrate) {
+      navigator.vibrate(10);
+    }
+    onNavigate(view);
+  };
+
+  return (
+    <nav style={{
+      position: 'fixed',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: '60px',
+      paddingBottom: 'env(safe-area-inset-bottom)',
+      background: '#0a150a',
+      borderTop: '1px solid #2a3a2a',
+      display: 'flex',
+      justifyContent: 'space-around',
+      alignItems: 'center',
+      zIndex: 1000,
+    }}>
+      {items.map(item => {
+        const isActive = activeView === item.id;
+        const badgeColor = item.id === 'contacts' && item.badge > 0 ? '#3bceac' :
+                          item.id === 'groups' && item.badge > 0 ? '#ffd23f' : '#ff6b35';
+
+        return (
+          <button
+            key={item.id}
+            onClick={() => handleNavigate(item.id)}
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              padding: '8px 4px',
+              background: 'transparent',
+              border: 'none',
+              color: isActive ? '#ffd23f' : '#6a7a6a',
+              cursor: 'pointer',
+              position: 'relative',
+              transition: 'color 0.2s ease',
+            }}
+          >
+            <span style={{
+              fontSize: '1.2rem',
+              textShadow: isActive ? '0 0 10px #ffd23f80' : 'none',
+            }}>
+              {item.icon}
+            </span>
+            <span style={{
+              fontSize: '0.6rem',
+              fontFamily: 'monospace',
+              textTransform: 'uppercase',
+              textShadow: isActive ? '0 0 8px #ffd23f40' : 'none',
+            }}>
+              {item.label}
+            </span>
+            {item.badge > 0 && (
+              <span style={{
+                position: 'absolute',
+                top: '4px',
+                right: '10%',
+                background: badgeColor,
+                color: item.id === 'groups' ? '#000' : '#fff',
+                fontSize: '0.55rem',
+                fontWeight: 700,
+                padding: '2px 4px',
+                borderRadius: '10px',
+                minWidth: '16px',
+                textAlign: 'center',
+                boxShadow: `0 0 8px ${badgeColor}80`,
+              }}>
+                {item.badge}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </nav>
+  );
+};
+
 // ============ RESPONSIVE HOOK ============
 function useWindowSize() {
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -1109,6 +1206,105 @@ function useWindowSize() {
   const isDesktop = size.width >= 1024;   // Desktop screens
 
   return { ...size, isMobile, isTablet, isDesktop };
+}
+
+// ============ SWIPE GESTURE HOOK ============
+function useSwipeGesture(ref, { onSwipeLeft, onSwipeRight, threshold = 100 }) {
+  const touchStart = useRef({ x: 0, y: 0 });
+  const touchEnd = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const handleTouchStart = (e) => {
+      touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    };
+
+    const handleTouchEnd = (e) => {
+      touchEnd.current = { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+      const deltaX = touchEnd.current.x - touchStart.current.x;
+      const deltaY = Math.abs(touchEnd.current.y - touchStart.current.y);
+
+      // Only trigger if horizontal swipe and not too much vertical movement
+      if (Math.abs(deltaX) > threshold && deltaY < 100) {
+        if (deltaX > 0 && onSwipeRight) onSwipeRight();
+        if (deltaX < 0 && onSwipeLeft) onSwipeLeft();
+      }
+    };
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [ref, onSwipeLeft, onSwipeRight, threshold]);
+}
+
+// ============ PULL TO REFRESH HOOK ============
+function usePullToRefresh(ref, onRefresh) {
+  const [pulling, setPulling] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const startY = useRef(0);
+  const currentY = useRef(0);
+  const threshold = 60;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const handleTouchStart = (e) => {
+      // Only activate if scrolled to top
+      if (el.scrollTop === 0) {
+        startY.current = e.touches[0].clientY;
+        setPulling(true);
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      if (!pulling && el.scrollTop !== 0) return;
+
+      currentY.current = e.touches[0].clientY;
+      const distance = currentY.current - startY.current;
+
+      // Only pull down, and apply resistance
+      if (distance > 0 && el.scrollTop === 0) {
+        setPullDistance(Math.min(distance * 0.5, threshold + 20)); // Resistance effect
+        if (distance > 10) {
+          e.preventDefault(); // Prevent scroll bounce
+        }
+      }
+    };
+
+    const handleTouchEnd = async () => {
+      if (pullDistance > threshold && !refreshing) {
+        setRefreshing(true);
+        try {
+          await onRefresh();
+        } finally {
+          setRefreshing(false);
+        }
+      }
+      setPulling(false);
+      setPullDistance(0);
+      startY.current = 0;
+    };
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [ref, pulling, pullDistance, refreshing, onRefresh]);
+
+  return { pulling, pullDistance, refreshing };
 }
 
 // ============ API HOOK ============
@@ -1338,6 +1534,42 @@ const LoadingSpinner = () => (
     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
   </div>
 );
+
+const PullIndicator = ({ pulling, pullDistance, refreshing, threshold = 60 }) => {
+  const progress = Math.min(pullDistance / threshold, 1);
+  const rotation = progress * 360;
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: `${Math.max(pullDistance, 0)}px`,
+      display: 'flex',
+      alignItems: 'flex-end',
+      justifyContent: 'center',
+      paddingBottom: '10px',
+      background: 'linear-gradient(to bottom, #0a150a, transparent)',
+      transition: refreshing ? 'height 0.3s ease' : 'none',
+      pointerEvents: 'none',
+      zIndex: 100,
+    }}>
+      {(pulling || refreshing) && (
+        <div style={{
+          width: '24px',
+          height: '24px',
+          border: '2px solid #2a3a2a',
+          borderTop: '2px solid #0ead69',
+          borderRadius: '50%',
+          transform: refreshing ? 'none' : `rotate(${rotation}deg)`,
+          animation: refreshing ? 'spin 1s linear infinite' : 'none',
+          opacity: Math.max(progress, 0.3),
+        }} />
+      )}
+    </div>
+  );
+};
 
 // ============ ERROR BOUNDARY ============
 class ErrorBoundary extends React.Component {
@@ -1570,7 +1802,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ THREADED MESSAGE ============
-const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile }) => {
+const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onJumpToParent, onReport }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -1583,6 +1815,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
   const isUnread = !isDeleted && message.is_unread && message.author_id !== currentUserId;
+  const isReply = depth > 0 && message.parentId;
 
   const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏'];
 
@@ -1599,7 +1832,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   };
 
   return (
-    <div data-message-id={message.id}>
+    <div data-message-id={message.id} className={isReply ? 'thread-connector' : ''}>
       <div
         onClick={handleMessageClick}
         style={{
@@ -1640,6 +1873,25 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
           </div>
           <PrivacyBadge level={message.privacy} compact />
         </div>
+        {/* Breadcrumb for deep threads (depth > 3) */}
+        {depth > 3 && (
+          <div style={{
+            marginBottom: '8px',
+            padding: '4px 8px',
+            background: '#0a100a',
+            border: '1px solid #2a3a2a',
+            borderLeft: '2px solid #3bceac',
+            fontSize: isMobile ? '0.65rem' : '0.6rem',
+            color: '#6a7a6a',
+            fontFamily: 'monospace',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            <span style={{ color: '#3bceac' }}>⬡</span>
+            <span>Thread depth: {depth} levels</span>
+          </div>
+        )}
         {isEditing ? (
           <div style={{ marginBottom: '10px' }}>
             <textarea
@@ -1723,8 +1975,16 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
             <MessageWithEmbeds content={message.content} />
           </div>
         )}
-        {/* Actions Row: Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
+        {/* Actions Row: Parent, Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>
+          {isReply && onJumpToParent && (
+            <button onClick={() => onJumpToParent(message.parentId)} style={{
+              padding: isMobile ? '8px 12px' : '4px 8px',
+              minHeight: isMobile ? '38px' : 'auto',
+              background: 'transparent', border: '1px solid #3bceac30',
+              color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+            }}>↑ PARENT</button>
+          )}
           <button onClick={() => onReply(message)} style={{
             padding: isMobile ? '8px 12px' : '4px 8px',
             minHeight: isMobile ? '38px' : 'auto',
@@ -1754,6 +2014,16 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
                 color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
               }}>✕</button>
             </>
+          )}
+
+          {/* Report button - shown for other users' messages */}
+          {!isDeleted && message.author_id !== currentUserId && onReport && (
+            <button onClick={() => onReport(message)} style={{
+              padding: isMobile ? '8px 12px' : '4px 8px',
+              minHeight: isMobile ? '38px' : 'auto',
+              background: 'transparent', border: '1px solid #6a7a6a30',
+              color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+            }} title="Report message">⚐</button>
           )}
 
           {/* Emoji picker button - hidden for deleted messages */}
@@ -1891,7 +2161,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
               currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
               onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
-              participants={participants} onShowProfile={onShowProfile} />
+              participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport} />
           ))}
         </div>
       )}
@@ -2137,6 +2407,592 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
           <div style={{ color: '#ff6b35', textAlign: 'center', padding: '40px' }}>Profile not found</div>
         )}
       </div>
+    </div>
+  );
+};
+
+// ============ REPORT MODAL ============
+const REPORT_REASONS = [
+  { value: 'spam', label: 'Spam', desc: 'Unwanted promotional content or repetitive messages' },
+  { value: 'harassment', label: 'Harassment', desc: 'Bullying, threats, or targeted abuse' },
+  { value: 'inappropriate', label: 'Inappropriate Content', desc: 'Offensive, explicit, or harmful content' },
+  { value: 'other', label: 'Other', desc: 'Other violation of community guidelines' },
+];
+
+const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI, showToast, isMobile }) => {
+  const [reason, setReason] = useState('');
+  const [details, setDetails] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setReason('');
+      setDetails('');
+    }
+  }, [isOpen]);
+
+  const handleSubmit = async () => {
+    if (!reason) {
+      showToast('Please select a reason for the report', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetchAPI('/reports', {
+        method: 'POST',
+        body: JSON.stringify({ type, targetId, reason, details: details.trim() }),
+      });
+      if (res.ok) {
+        showToast('Report submitted successfully. Thank you for helping keep Cortex safe.', 'success');
+        onClose();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed to submit report', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to submit report', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const typeLabels = { message: 'Message', wave: 'Wave', user: 'User' };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
+    }} onClick={onClose}>
+      <div style={{
+        width: '100%', maxWidth: '500px',
+        background: 'linear-gradient(135deg, #0d150d, #1a0a0a)',
+        border: '2px solid #ff6b3580', padding: isMobile ? '20px' : '24px',
+      }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ marginBottom: '20px' }}>
+          <GlowText color="#ff6b35" size={isMobile ? '1rem' : '1.1rem'}>Report {typeLabels[type] || 'Content'}</GlowText>
+        </div>
+
+        {targetPreview && (
+          <div style={{
+            background: '#0a150a',
+            border: '1px solid #2a3a2a',
+            padding: '12px',
+            marginBottom: '16px',
+            fontSize: isMobile ? '0.85rem' : '0.9rem',
+            color: '#8a9a8a',
+            maxHeight: '80px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {targetPreview}
+          </div>
+        )}
+
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+            Reason for report
+          </div>
+          {REPORT_REASONS.map((r) => (
+            <label key={r.value} style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+              padding: '10px 12px',
+              marginBottom: '8px',
+              background: reason === r.value ? '#ffd23f15' : '#0a150a',
+              border: `1px solid ${reason === r.value ? '#ffd23f50' : '#2a3a2a'}`,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}>
+              <input
+                type="radio"
+                name="report-reason"
+                value={r.value}
+                checked={reason === r.value}
+                onChange={(e) => setReason(e.target.value)}
+                style={{ marginTop: '2px', accentColor: '#ffd23f' }}
+              />
+              <div>
+                <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '0.95rem' }}>{r.label}</div>
+                <div style={{ color: '#6a7a6a', fontSize: isMobile ? '0.8rem' : '0.85rem', marginTop: '2px' }}>{r.desc}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+            Additional details (optional)
+          </div>
+          <textarea
+            value={details}
+            onChange={(e) => setDetails(e.target.value.slice(0, 500))}
+            placeholder="Provide any additional context..."
+            maxLength={500}
+            style={{
+              width: '100%',
+              minHeight: '80px',
+              padding: '12px',
+              background: '#0a150a',
+              border: '1px solid #2a3a2a',
+              color: '#c5d5c5',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.9rem' : '0.85rem',
+              resize: 'vertical',
+            }}
+          />
+          <div style={{ color: '#6a7a6a', fontSize: '0.75rem', textAlign: 'right', marginTop: '4px' }}>
+            {details.length}/500
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button onClick={onClose} disabled={submitting} style={{
+            padding: isMobile ? '12px 20px' : '10px 20px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent',
+            border: '1px solid #3a4a3a',
+            color: '#6a7a6a',
+            cursor: submitting ? 'not-allowed' : 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.9rem' : '0.85rem',
+            opacity: submitting ? 0.5 : 1,
+          }}>CANCEL</button>
+          <button onClick={handleSubmit} disabled={submitting || !reason} style={{
+            padding: isMobile ? '12px 20px' : '10px 20px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: reason ? '#ff6b35' : '#3a4a3a',
+            border: `1px solid ${reason ? '#ff6b35' : '#3a4a3a'}`,
+            color: '#fff',
+            cursor: (submitting || !reason) ? 'not-allowed' : 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.9rem' : '0.85rem',
+            fontWeight: 600,
+            opacity: submitting ? 0.7 : 1,
+          }}>{submitting ? 'SUBMITTING...' : 'SUBMIT REPORT'}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ ADMIN REPORTS PANEL ============
+const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('pending');
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [resolveNotes, setResolveNotes] = useState('');
+  const [resolution, setResolution] = useState('');
+
+  const loadReports = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchAPI(`/admin/reports?status=${activeTab}&limit=50`);
+      if (res.ok) {
+        const data = await res.json();
+        setReports(data.reports || []);
+      }
+    } catch (err) {
+      showToast('Failed to load reports', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAPI, activeTab, showToast]);
+
+  useEffect(() => {
+    loadReports();
+  }, [loadReports]);
+
+  const handleResolve = async () => {
+    if (!selectedReport || !resolution) return;
+    try {
+      const res = await fetchAPI(`/admin/reports/${selectedReport.id}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ resolution, notes: resolveNotes }),
+      });
+      if (res.ok) {
+        showToast('Report resolved', 'success');
+        setSelectedReport(null);
+        setResolution('');
+        setResolveNotes('');
+        loadReports();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed to resolve report', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to resolve report', 'error');
+    }
+  };
+
+  const handleDismiss = async (reportId) => {
+    try {
+      const res = await fetchAPI(`/admin/reports/${reportId}/dismiss`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'No action required' }),
+      });
+      if (res.ok) {
+        showToast('Report dismissed', 'success');
+        loadReports();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed to dismiss report', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to dismiss report', 'error');
+    }
+  };
+
+  const tabs = [
+    { id: 'pending', label: 'Pending', color: '#ffd23f' },
+    { id: 'resolved', label: 'Resolved', color: '#0ead69' },
+    { id: 'dismissed', label: 'Dismissed', color: '#6a7a6a' },
+  ];
+
+  const resolutionOptions = [
+    { value: 'warning_issued', label: 'Warning Issued' },
+    { value: 'content_removed', label: 'Content Removed' },
+    { value: 'user_banned', label: 'User Banned' },
+    { value: 'no_action', label: 'No Action Needed' },
+  ];
+
+  return (
+    <div style={{ marginTop: '24px' }}>
+      <div style={{ marginBottom: '16px' }}>
+        <GlowText color="#ff6b35" size={isMobile ? '1rem' : '1.1rem'}>Reports Dashboard</GlowText>
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              padding: isMobile ? '10px 16px' : '8px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: activeTab === tab.id ? `${tab.color}20` : 'transparent',
+              border: `1px solid ${activeTab === tab.id ? tab.color : '#3a4a3a'}`,
+              color: activeTab === tab.id ? tab.color : '#6a7a6a',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.85rem' : '0.8rem',
+              textTransform: 'uppercase',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ color: '#6a7a6a', padding: '20px', textAlign: 'center' }}>Loading reports...</div>
+      ) : reports.length === 0 ? (
+        <div style={{ color: '#6a7a6a', padding: '20px', textAlign: 'center', border: '1px dashed #2a3a2a' }}>
+          No {activeTab} reports
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {reports.map((report) => (
+            <div
+              key={report.id}
+              style={{
+                background: '#0a150a',
+                border: '1px solid #2a3a2a',
+                padding: isMobile ? '14px' : '16px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <div>
+                  <span style={{
+                    display: 'inline-block',
+                    padding: '2px 8px',
+                    background: report.type === 'message' ? '#3bceac20' : report.type === 'wave' ? '#ffd23f20' : '#ff6b3520',
+                    color: report.type === 'message' ? '#3bceac' : report.type === 'wave' ? '#ffd23f' : '#ff6b35',
+                    fontSize: '0.7rem',
+                    textTransform: 'uppercase',
+                    marginRight: '8px',
+                  }}>
+                    {report.type}
+                  </span>
+                  <span style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
+                    {report.reason}
+                  </span>
+                </div>
+                <span style={{ color: '#6a7a6a', fontSize: '0.75rem' }}>
+                  {new Date(report.created_at).toLocaleDateString()}
+                </span>
+              </div>
+
+              {report.details && (
+                <div style={{
+                  color: '#8a9a8a',
+                  fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  marginBottom: '8px',
+                  padding: '8px',
+                  background: '#050805',
+                  border: '1px solid #1a2a1a',
+                }}>
+                  {report.details}
+                </div>
+              )}
+
+              {report.target_preview && (
+                <div style={{
+                  color: '#6a7a6a',
+                  fontSize: '0.75rem',
+                  marginBottom: '8px',
+                  fontStyle: 'italic',
+                }}>
+                  Target: {report.target_preview}
+                </div>
+              )}
+
+              <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '12px' }}>
+                Reported by: {report.reporter_handle || report.reporter_id}
+              </div>
+
+              {activeTab === 'pending' && (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setSelectedReport(report)}
+                    style={{
+                      padding: isMobile ? '10px 14px' : '6px 12px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: '#0ead69',
+                      border: '1px solid #0ead69',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.85rem' : '0.75rem',
+                    }}
+                  >
+                    RESOLVE
+                  </button>
+                  <button
+                    onClick={() => handleDismiss(report.id)}
+                    style={{
+                      padding: isMobile ? '10px 14px' : '6px 12px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: 'transparent',
+                      border: '1px solid #6a7a6a',
+                      color: '#6a7a6a',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.85rem' : '0.75rem',
+                    }}
+                  >
+                    DISMISS
+                  </button>
+                </div>
+              )}
+
+              {report.resolution && (
+                <div style={{ marginTop: '8px', padding: '8px', background: '#0ead6920', border: '1px solid #0ead6950' }}>
+                  <div style={{ color: '#0ead69', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                    Resolution: {report.resolution.replace(/_/g, ' ')}
+                  </div>
+                  {report.resolution_notes && (
+                    <div style={{ color: '#8a9a8a', fontSize: '0.8rem', marginTop: '4px' }}>
+                      {report.resolution_notes}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selectedReport && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 101, padding: '20px',
+        }} onClick={() => setSelectedReport(null)}>
+          <div style={{
+            width: '100%', maxWidth: '450px',
+            background: '#0d150d',
+            border: '2px solid #0ead6980',
+            padding: isMobile ? '20px' : '24px',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: '16px' }}>
+              <GlowText color="#0ead69" size="1rem">Resolve Report</GlowText>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+                Resolution Action
+              </div>
+              {resolutionOptions.map((opt) => (
+                <label key={opt.value} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 12px',
+                  marginBottom: '6px',
+                  background: resolution === opt.value ? '#0ead6920' : '#0a150a',
+                  border: `1px solid ${resolution === opt.value ? '#0ead6950' : '#2a3a2a'}`,
+                  cursor: 'pointer',
+                }}>
+                  <input
+                    type="radio"
+                    name="resolution"
+                    value={opt.value}
+                    checked={resolution === opt.value}
+                    onChange={(e) => setResolution(e.target.value)}
+                    style={{ accentColor: '#0ead69' }}
+                  />
+                  <span style={{ color: '#c5d5c5', fontSize: '0.9rem' }}>{opt.label}</span>
+                </label>
+              ))}
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+                Notes (optional)
+              </div>
+              <textarea
+                value={resolveNotes}
+                onChange={(e) => setResolveNotes(e.target.value)}
+                placeholder="Add resolution notes..."
+                style={{
+                  width: '100%',
+                  minHeight: '60px',
+                  padding: '10px',
+                  background: '#0a150a',
+                  border: '1px solid #2a3a2a',
+                  color: '#c5d5c5',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setSelectedReport(null)} style={{
+                padding: '10px 20px',
+                background: 'transparent',
+                border: '1px solid #3a4a3a',
+                color: '#6a7a6a',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+              }}>CANCEL</button>
+              <button onClick={handleResolve} disabled={!resolution} style={{
+                padding: '10px 20px',
+                background: resolution ? '#0ead69' : '#3a4a3a',
+                border: `1px solid ${resolution ? '#0ead69' : '#3a4a3a'}`,
+                color: '#fff',
+                cursor: resolution ? 'pointer' : 'not-allowed',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+              }}>RESOLVE</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============ MY REPORTS PANEL ============
+const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadMyReports = async () => {
+      try {
+        const res = await fetchAPI('/reports');
+        if (res.ok) {
+          const data = await res.json();
+          setReports(data.reports || []);
+        }
+      } catch (err) {
+        showToast('Failed to load your reports', 'error');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadMyReports();
+  }, [fetchAPI, showToast]);
+
+  const statusColors = {
+    pending: '#ffd23f',
+    resolved: '#0ead69',
+    dismissed: '#6a7a6a',
+  };
+
+  if (loading) {
+    return <div style={{ color: '#6a7a6a', padding: '20px', textAlign: 'center' }}>Loading...</div>;
+  }
+
+  return (
+    <div style={{ marginTop: '24px' }}>
+      <div style={{ marginBottom: '16px' }}>
+        <GlowText color="#3bceac" size={isMobile ? '1rem' : '1.1rem'}>My Reports</GlowText>
+      </div>
+
+      {reports.length === 0 ? (
+        <div style={{ color: '#6a7a6a', padding: '20px', textAlign: 'center', border: '1px dashed #2a3a2a' }}>
+          You haven't submitted any reports
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {reports.map((report) => (
+            <div
+              key={report.id}
+              style={{
+                background: '#0a150a',
+                border: '1px solid #2a3a2a',
+                padding: isMobile ? '12px' : '14px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    padding: '2px 8px',
+                    background: `${statusColors[report.status]}20`,
+                    color: statusColors[report.status],
+                    fontSize: '0.7rem',
+                    textTransform: 'uppercase',
+                  }}>
+                    {report.status}
+                  </span>
+                  <span style={{ color: '#8a9a8a', fontSize: '0.8rem' }}>
+                    {report.type} - {report.reason}
+                  </span>
+                </div>
+                <span style={{ color: '#6a7a6a', fontSize: '0.7rem' }}>
+                  {new Date(report.created_at).toLocaleDateString()}
+                </span>
+              </div>
+
+              {report.resolution && (
+                <div style={{
+                  marginTop: '8px',
+                  padding: '8px',
+                  background: '#0ead6915',
+                  border: '1px solid #0ead6930',
+                  fontSize: '0.8rem',
+                }}>
+                  <span style={{ color: '#0ead69' }}>Resolution: </span>
+                  <span style={{ color: '#c5d5c5' }}>{report.resolution.replace(/_/g, ' ')}</span>
+                  {report.resolution_notes && (
+                    <div style={{ color: '#8a9a8a', marginTop: '4px', fontSize: '0.75rem' }}>
+                      {report.resolution_notes}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -2401,7 +3257,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
   const [newMessage, setNewMessage] = useState('');
-  const [collapsed, setCollapsed] = useState({});
+  const [collapsed, setCollapsed] = useState(() => {
+    // Load collapsed state from localStorage per wave
+    try {
+      const saved = localStorage.getItem(`cortex_collapsed_${wave.id}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackIndex, setPlaybackIndex] = useState(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -2419,6 +3283,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [dragOver, setDragOver] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [reportTarget, setReportTarget] = useState(null); // { type, targetId, targetPreview }
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -2487,6 +3352,63 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       showToast(err.message || 'Failed to accept request', 'error');
     }
   };
+
+  // Thread collapse/expand functions with localStorage persistence
+  const toggleThreadCollapse = (messageId) => {
+    setCollapsed(prev => {
+      const next = { ...prev, [messageId]: !prev[messageId] };
+      // Persist to localStorage
+      try {
+        localStorage.setItem(`cortex_collapsed_${wave.id}`, JSON.stringify(next));
+      } catch (e) {
+        console.error('Failed to save collapse state:', e);
+      }
+      return next;
+    });
+  };
+
+  const collapseAllThreads = () => {
+    // Get all messages with children and collapse them
+    const allMessages = waveData?.all_messages || [];
+    const newCollapsed = {};
+    const countThreads = (msgs) => {
+      msgs.forEach(msg => {
+        if (msg.children && msg.children.length > 0) {
+          newCollapsed[msg.id] = true;
+          countThreads(msg.children);
+        }
+      });
+    };
+    countThreads(waveData?.messages || []);
+    setCollapsed(newCollapsed);
+    try {
+      localStorage.setItem(`cortex_collapsed_${wave.id}`, JSON.stringify(newCollapsed));
+    } catch (e) {
+      console.error('Failed to save collapse state:', e);
+    }
+    showToast('All threads collapsed', 'success');
+  };
+
+  const expandAllThreads = () => {
+    setCollapsed({});
+    try {
+      localStorage.setItem(`cortex_collapsed_${wave.id}`, JSON.stringify({}));
+    } catch (e) {
+      console.error('Failed to save collapse state:', e);
+    }
+    showToast('All threads expanded', 'success');
+  };
+
+  // Jump to parent message with highlight animation
+  const jumpToParent = (parentId) => {
+    const el = document.querySelector(`[data-message-id="${parentId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('highlight-flash');
+      setTimeout(() => el.classList.remove('highlight-flash'), 1500);
+    }
+  };
+
   const composeRef = useRef(null);
   const messagesRef = useRef(null);
   const textareaRef = useRef(null);
@@ -2912,6 +3834,16 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   };
 
+  const handleReportMessage = (message) => {
+    // Extract preview text from message content (strip HTML tags)
+    const textContent = message.content?.replace(/<[^>]*>/g, '').slice(0, 100) || '';
+    setReportTarget({
+      type: 'message',
+      targetId: message.id,
+      targetPreview: `${message.sender_name}: ${textContent}${message.content?.length > 100 ? '...' : ''}`,
+    });
+  };
+
   const confirmDeleteMessage = async () => {
     if (!messageToDelete) return;
     try {
@@ -3070,6 +4002,42 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               <span>{showPlayback ? '▼' : '▶'}</span>
               PLAYBACK
             </button>
+          )}
+
+          {/* Thread Collapse/Expand Buttons */}
+          {total > 0 && (
+            <>
+              <button
+                onClick={collapseAllThreads}
+                style={{
+                  padding: isMobile ? '8px 12px' : '6px 10px',
+                  background: 'transparent',
+                  border: '1px solid #3a4a3a',
+                  color: '#6a7a6a',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.7rem' : '0.65rem',
+                }}
+                title="Collapse all threads"
+              >
+                ▶ ALL
+              </button>
+              <button
+                onClick={expandAllThreads}
+                style={{
+                  padding: isMobile ? '8px 12px' : '6px 10px',
+                  background: 'transparent',
+                  border: '1px solid #3a4a3a',
+                  color: '#6a7a6a',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.7rem' : '0.65rem',
+                }}
+                title="Expand all threads"
+              >
+                ▼ ALL
+              </button>
+            </>
           )}
 
           {/* Mark All Read Button - always visible if unread */}
@@ -3336,9 +4304,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             onEdit={handleStartEdit} onSaveEdit={handleSaveEdit} onCancelEdit={handleCancelEdit}
             editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
-            collapsed={collapsed} onToggleCollapse={(id) => setCollapsed(p => ({ ...p, [id]: !p[id] }))} isMobile={isMobile}
+            collapsed={collapsed} onToggleCollapse={toggleThreadCollapse} isMobile={isMobile}
             onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
-            onShowProfile={onShowProfile} />
+            onShowProfile={onShowProfile} onJumpToParent={jumpToParent} onReport={handleReportMessage} />
         ))}
       </div>
 
@@ -3589,6 +4557,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             setShowGifSearch(false);
           }}
           fetchAPI={fetchAPI}
+          isMobile={isMobile}
+        />
+      )}
+
+      {reportTarget && (
+        <ReportModal
+          isOpen={!!reportTarget}
+          onClose={() => setReportTarget(null)}
+          type={reportTarget.type}
+          targetId={reportTarget.targetId}
+          targetPreview={reportTarget.targetPreview}
+          fetchAPI={fetchAPI}
+          showToast={showToast}
           isMobile={isMobile}
         />
       )}
@@ -5321,8 +6302,16 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
           </div>
 
           {showHandleRequests && <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />}
+
+          {/* Admin Reports Dashboard */}
+          <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
         </div>
       )}
+
+      {/* My Reports Section */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+        <MyReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+      </div>
 
       {/* Logout Section */}
       <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
@@ -5834,6 +6823,47 @@ function MainApp() {
           padding: 0 2px;
           border-radius: 2px;
         }
+        /* Thread navigation highlight animation */
+        @keyframes highlight-pulse {
+          0%, 100% { border-color: #ffd23f; box-shadow: 0 0 0 0 rgba(255, 210, 63, 0.7); }
+          50% { border-color: #ffed4e; box-shadow: 0 0 20px 4px rgba(255, 210, 63, 0.4); }
+        }
+        .highlight-flash > div {
+          animation: highlight-pulse 1.5s ease-out;
+          border-left-width: 4px !important;
+        }
+        /* Thread visual connectors */
+        .thread-connector {
+          position: relative;
+        }
+        .thread-connector::before {
+          content: '';
+          position: absolute;
+          left: -12px;
+          top: 0;
+          bottom: 0;
+          width: 1px;
+          border-left: 1px dashed #2a3a2a;
+        }
+        .thread-connector::after {
+          content: '';
+          position: absolute;
+          left: -12px;
+          top: 20px;
+          width: 12px;
+          height: 1px;
+          border-top: 1px dashed #2a3a2a;
+        }
+        /* Mobile thread connectors - thinner lines and smaller indent */
+        @media (max-width: 768px) {
+          .thread-connector::before {
+            left: -8px;
+          }
+          .thread-connector::after {
+            left: -8px;
+            width: 8px;
+          }
+        }
         /* Font scaling: base font size is set on root div and scales all content */
         /* Elements with explicit fontSize will maintain their relative proportions */
       `}</style>
@@ -5846,89 +6876,87 @@ function MainApp() {
         background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
         display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px',
       }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-          {isMobile ? (
-            <img
-              src="/icons/icon-72x72.png"
-              alt="Cortex"
-              style={{ width: '32px', height: '32px', borderRadius: '4px' }}
-            />
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-              <GlowText color="#ffd23f" size="1.5rem" weight={700}>CORTEX</GlowText>
-              <span style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>v1.8.0</span>
-            </div>
-          )}
+        {/* Logo and Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+            <GlowText color="#ffd23f" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
+            <span style={{ color: '#5a6a5a', fontSize: '0.55rem' }}>v1.9.0</span>
+          </div>
+          {/* Status indicators */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', fontSize: '0.55rem', fontFamily: 'monospace' }}>
+            <span style={{ color: '#5a6a5a' }}><span style={{ color: '#0ead69' }}>●</span> ENC</span>
+            <span style={{ color: '#5a6a5a' }}><span style={{ color: apiConnected ? '#0ead69' : '#ff6b35' }}>●</span> API</span>
+            <span style={{ color: '#5a6a5a' }}><span style={{ color: wsConnected ? '#0ead69' : '#ff6b35' }}>●</span> WS</span>
+          </div>
         </div>
 
-        {/* Nav Items - grows to fill space */}
-        <div style={{ display: 'flex', gap: '4px', flex: 1, justifyContent: 'center' }}>
-          {navItems.map(view => {
-            const totalUnread = view === 'waves' ? waves.reduce((sum, w) => sum + (w.unread_count || 0), 0) : 0;
-            const pendingRequests = view === 'contacts' ? contactRequests.length : 0;
-            const pendingInvitations = view === 'groups' ? groupInvitations.length : 0;
-            const badgeCount = totalUnread || pendingRequests || pendingInvitations;
-            return (
-              <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); }} style={{
-                padding: isMobile ? '10px 12px' : '8px 16px',
-                minHeight: isMobile ? '44px' : 'auto',
-                background: activeView === view ? '#ffd23f15' : 'transparent',
-                border: `1px solid ${activeView === view ? '#ffd23f50' : '#3a4a3a'}`,
-                color: activeView === view ? '#ffd23f' : '#6a7a6a',
-                cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.75rem' : '0.8rem', textTransform: 'uppercase',
-                position: 'relative',
-              }}>
-                {view === 'profile' ? '⚙' : view.slice(0, isMobile ? 3 : 10)}
-                {badgeCount > 0 && (
-                  <span style={{
-                    position: 'absolute',
-                    top: '-6px',
-                    right: '-6px',
-                    background: pendingRequests > 0 ? '#3bceac' : pendingInvitations > 0 ? '#ffd23f' : '#ff6b35',
-                    color: pendingInvitations > 0 && !pendingRequests ? '#000' : '#fff',
-                    fontSize: '0.55rem',
-                    fontWeight: 700,
-                    padding: '2px 4px',
-                    borderRadius: '10px',
-                    minWidth: '16px',
-                    textAlign: 'center',
-                    boxShadow: pendingRequests > 0 ? '0 0 8px rgba(59, 206, 172, 0.8)' : pendingInvitations > 0 ? '0 0 8px rgba(255, 210, 63, 0.8)' : '0 0 8px rgba(255, 107, 53, 0.8)',
-                  }}>{badgeCount}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        {/* Nav Items - grows to fill space - hidden on mobile (using bottom nav instead) */}
+        {!isMobile && (
+          <div style={{ display: 'flex', gap: '4px', flex: 1, justifyContent: 'center' }}>
+            {navItems.map(view => {
+              const totalUnread = view === 'waves' ? waves.reduce((sum, w) => sum + (w.unread_count || 0), 0) : 0;
+              const pendingRequests = view === 'contacts' ? contactRequests.length : 0;
+              const pendingInvitations = view === 'groups' ? groupInvitations.length : 0;
+              const badgeCount = totalUnread || pendingRequests || pendingInvitations;
+              return (
+                <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); }} style={{
+                  padding: '8px 16px',
+                  background: activeView === view ? '#ffd23f15' : 'transparent',
+                  border: `1px solid ${activeView === view ? '#ffd23f50' : '#3a4a3a'}`,
+                  color: activeView === view ? '#ffd23f' : '#6a7a6a',
+                  cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', textTransform: 'uppercase',
+                  position: 'relative',
+                }}>
+                  {view === 'profile' ? '⚙' : view.slice(0, 10)}
+                  {badgeCount > 0 && (
+                    <span style={{
+                      position: 'absolute',
+                      top: '-6px',
+                      right: '-6px',
+                      background: pendingRequests > 0 ? '#3bceac' : pendingInvitations > 0 ? '#ffd23f' : '#ff6b35',
+                      color: pendingInvitations > 0 && !pendingRequests ? '#000' : '#fff',
+                      fontSize: '0.55rem',
+                      fontWeight: 700,
+                      padding: '2px 4px',
+                      borderRadius: '10px',
+                      minWidth: '16px',
+                      textAlign: 'center',
+                      boxShadow: pendingRequests > 0 ? '0 0 8px rgba(59, 206, 172, 0.8)' : pendingInvitations > 0 ? '0 0 8px rgba(255, 210, 63, 0.8)' : '0 0 8px rgba(255, 107, 53, 0.8)',
+                    }}>{badgeCount}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {/* Search */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-          <button
-            onClick={() => setShowSearch(true)}
-            style={{
-              padding: isMobile ? '10px' : '8px 12px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: 'transparent',
-              border: '1px solid #3bceac',
-              color: '#3bceac',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: isMobile ? '0.9rem' : '0.8rem',
-            }}
-            title="Search messages"
-          >
-            🔍
-          </button>
-          {!isMobile && (
+        {/* Search and User - desktop only */}
+        {!isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              onClick={() => setShowSearch(true)}
+              style={{
+                padding: '8px 12px',
+                background: 'transparent',
+                border: '1px solid #3bceac',
+                color: '#3bceac',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.8rem',
+              }}
+              title="Search messages"
+            >
+              🔍
+            </button>
             <div style={{ textAlign: 'right' }}>
               <div style={{ color: '#ffd23f', fontSize: '0.8rem' }}>{user?.displayName}</div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </header>
 
       {/* Main */}
-      <main style={{ flex: 1, display: 'flex', overflow: 'hidden', flexDirection: isMobile && selectedWave ? 'column' : 'row' }}>
+      <main style={{ flex: 1, display: 'flex', overflow: 'hidden', flexDirection: isMobile && selectedWave ? 'column' : 'row', paddingBottom: isMobile ? '60px' : '0' }}>
         {activeView === 'waves' && (
           <>
             {(!isMobile || !selectedWave) && (
@@ -6001,19 +7029,39 @@ function MainApp() {
         )}
       </main>
 
-      {/* Footer */}
-      <footer style={{
-        padding: '8px 8px', background: '#050805', borderTop: '1px solid #2a3a2a',
-        display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
-      }}>
-        <div style={{ color: '#5a6a5a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ color: '#3a4a3a' }}>v1.8.1</span>
-          <span><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</span>
-          <span><span style={{ color: apiConnected ? '#0ead69' : '#ff6b35' }}>●</span> API</span>
-          <span><span style={{ color: wsConnected ? '#0ead69' : '#ff6b35' }}>●</span> LIVE</span>
-        </div>
-        <div style={{ color: '#5a6a5a' }}>WAVES: {waves.length} • GROUPS: {groups.length} • CONTACTS: {contacts.length}</div>
-      </footer>
+      {/* Footer - hidden on mobile (using bottom nav instead) */}
+      {!isMobile && (
+        <footer style={{
+          padding: '8px 8px', background: '#050805', borderTop: '1px solid #2a3a2a',
+          display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
+        }}>
+          <div style={{ color: '#5a6a5a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#3a4a3a' }}>v1.9.0</span>
+            <span><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</span>
+            <span><span style={{ color: apiConnected ? '#0ead69' : '#ff6b35' }}>●</span> API</span>
+            <span><span style={{ color: wsConnected ? '#0ead69' : '#ff6b35' }}>●</span> LIVE</span>
+          </div>
+          <div style={{ color: '#5a6a5a' }}>WAVES: {waves.length} • GROUPS: {groups.length} • CONTACTS: {contacts.length}</div>
+        </footer>
+      )}
+
+      {/* Bottom Navigation - mobile only */}
+      {isMobile && (
+        <BottomNav
+          activeView={activeView}
+          onNavigate={(view) => {
+            if (view === 'search') {
+              setShowSearch(true);
+            } else {
+              setActiveView(view);
+              setSelectedWave(null);
+            }
+          }}
+          unreadCount={waves.reduce((sum, w) => sum + (w.unread_count || 0), 0)}
+          pendingContacts={contactRequests.length}
+          pendingGroups={groupInvitations.length}
+        />
+      )}
 
       <NewWaveModal isOpen={showNewWave} onClose={() => setShowNewWave(false)}
         onCreate={handleCreateWave} contacts={contacts} groups={groups} />
