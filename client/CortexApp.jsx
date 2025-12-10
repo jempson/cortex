@@ -83,7 +83,7 @@ const FONT_SIZES = {
 };
 
 // ============ THREADING DEPTH LIMIT ============
-// Maximum nesting depth before prompting user to Focus or Break Out
+// Maximum nesting depth before prompting user to Focus or Ripple
 const THREAD_DEPTH_LIMIT = 3;
 
 // ============ STORAGE ============
@@ -1806,7 +1806,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ THREADED MESSAGE ============
-const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onJumpToParent, onReport, onFocus }) => {
+const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onJumpToParent, onReport, onFocus, onRipple, onNavigateToWave, currentWaveId }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -1830,11 +1830,34 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
   // Deleted messages with children show placeholder to preserve thread context
   if (isDeleted && !hasChildren) return null;
 
+  // If this droplet has been rippled out, show a link card instead
+  // But NOT when viewing from the ripple wave itself (where rippledTo === currentWaveId)
+  const isRippled = !!(message.brokenOutTo || message.rippledTo) && (message.brokenOutTo || message.rippledTo) !== currentWaveId;
+
   const handleMessageClick = () => {
     if (isUnread && onMessageClick) {
       onMessageClick(message.id);
     }
   };
+
+  // Render rippled droplet as a link card
+  if (isRippled) {
+    const rippledToId = message.brokenOutTo || message.rippledTo;
+    const rippledToTitle = message.brokenOutToTitle || message.rippledToTitle || 'New Wave';
+    return (
+      <div data-message-id={message.id} className={isReply ? 'thread-connector' : ''}>
+        <RippledLinkCard
+          droplet={message}
+          waveTitle={rippledToTitle}
+          onClick={() => onNavigateToWave && onNavigateToWave({
+            id: rippledToId,
+            title: rippledToTitle,
+          })}
+          isMobile={isMobile}
+        />
+      </div>
+    );
+  }
 
   return (
     <div data-message-id={message.id} className={isReply ? 'thread-connector' : ''}>
@@ -2077,6 +2100,15 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
                   color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
                 }} title="Focus on this droplet and its replies">⤢ FOCUS</button>
               )}
+              {/* Ripple button - create new wave from this droplet */}
+              {onRipple && (
+                <button onClick={() => onRipple(message)} style={{
+                  padding: isMobile ? '8px 12px' : '4px 8px',
+                  minHeight: isMobile ? '38px' : 'auto',
+                  background: 'transparent', border: '1px solid #3bceac30',
+                  color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+                }} title="Ripple to new wave">◈ RIPPLE</button>
+              )}
             </>
           )}
           {canDelete && !isEditing && (
@@ -2242,7 +2274,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
               onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
               participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport}
-              onFocus={onFocus} />
+              onFocus={onFocus} onRipple={onRipple} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId} />
           ))}
         </div>
       )}
@@ -2499,6 +2531,277 @@ const REPORT_REASONS = [
   { value: 'inappropriate', label: 'Inappropriate Content', desc: 'Offensive, explicit, or harmful content' },
   { value: 'other', label: 'Other', desc: 'Other violation of community guidelines' },
 ];
+
+// ============ RIPPLE MODAL ============
+const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, showToast, isMobile, onSuccess }) => {
+  const [title, setTitle] = useState('');
+  const [selectedParticipants, setSelectedParticipants] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Count children recursively
+  const countChildren = (msg) => {
+    if (!msg.children || msg.children.length === 0) return 0;
+    return msg.children.reduce((sum, child) => sum + 1 + countChildren(child), 0);
+  };
+
+  useEffect(() => {
+    if (isOpen && droplet) {
+      // Pre-fill title from droplet content (first 50 chars, strip HTML)
+      const cleanContent = (droplet.content || '').replace(/<[^>]*>/g, '').trim();
+      setTitle(cleanContent.substring(0, 50) || 'Continued Discussion');
+      // Pre-select all current wave participants
+      setSelectedParticipants(participants.map(p => p.id));
+    }
+  }, [isOpen, droplet, participants]);
+
+  const handleSubmit = async () => {
+    if (!title.trim()) {
+      showToast('Please enter a title for the new wave', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await fetchAPI(`/droplets/${droplet.id}/ripple`, {
+        method: 'POST',
+        body: { title: title.trim(), participants: selectedParticipants }
+      });
+      showToast(`Created new wave: ${result.newWave.title}`, 'success');
+      onClose();
+      if (onSuccess) {
+        onSuccess(result.newWave);
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to ripple droplet', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleParticipant = (userId) => {
+    setSelectedParticipants(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  if (!isOpen || !droplet) return null;
+
+  const childCount = countChildren(droplet);
+  const contentPreview = (droplet.content || '').replace(/<[^>]*>/g, '').substring(0, 100);
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
+    }} onClick={onClose}>
+      <div style={{
+        width: '100%', maxWidth: '550px',
+        background: 'linear-gradient(135deg, #0d150d, #0a1a1a)',
+        border: '2px solid #3bceac80', padding: isMobile ? '20px' : '24px',
+      }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ marginBottom: '20px' }}>
+          <GlowText color="#3bceac" size={isMobile ? '1rem' : '1.1rem'}>◈ Ripple to New Wave</GlowText>
+        </div>
+
+        {/* Preview of what's being rippled */}
+        <div style={{
+          background: '#0a150a',
+          border: '1px solid #2a3a2a',
+          borderLeft: '3px solid #3bceac',
+          padding: '12px',
+          marginBottom: '16px',
+        }}>
+          <div style={{ fontSize: isMobile ? '0.8rem' : '0.75rem', color: '#6a7a6a', marginBottom: '6px', textTransform: 'uppercase' }}>
+            Rippling
+          </div>
+          <div style={{
+            fontSize: isMobile ? '0.9rem' : '0.85rem',
+            color: '#9bab9b',
+            marginBottom: '8px',
+            maxHeight: '60px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            "{contentPreview}{contentPreview.length >= 100 ? '...' : ''}"
+          </div>
+          <div style={{ fontSize: isMobile ? '0.75rem' : '0.7rem', color: '#3bceac' }}>
+            1 droplet + {childCount} {childCount === 1 ? 'reply' : 'replies'} will be moved
+          </div>
+        </div>
+
+        {/* New wave title */}
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+            New Wave Title
+          </div>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value.slice(0, 200))}
+            placeholder="Enter a title for the new wave..."
+            maxLength={200}
+            style={{
+              width: '100%',
+              padding: '12px',
+              background: '#0a150a',
+              border: '1px solid #2a3a2a',
+              color: '#c5d5c5',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.95rem' : '0.9rem',
+            }}
+            autoFocus
+          />
+          <div style={{ color: '#6a7a6a', fontSize: '0.7rem', textAlign: 'right', marginTop: '4px' }}>
+            {title.length}/200
+          </div>
+        </div>
+
+        {/* Participants selection */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+            Participants ({selectedParticipants.length} selected)
+          </div>
+          <div style={{
+            maxHeight: '150px',
+            overflowY: 'auto',
+            background: '#0a150a',
+            border: '1px solid #2a3a2a',
+            padding: '8px',
+          }}>
+            {participants.map(p => (
+              <label key={p.id} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '8px',
+                marginBottom: '4px',
+                background: selectedParticipants.includes(p.id) ? '#3bceac15' : 'transparent',
+                border: `1px solid ${selectedParticipants.includes(p.id) ? '#3bceac30' : 'transparent'}`,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={selectedParticipants.includes(p.id)}
+                  onChange={() => toggleParticipant(p.id)}
+                  style={{ accentColor: '#3bceac' }}
+                />
+                <Avatar letter={p.avatar || '?'} color="#3bceac" size={24} imageUrl={p.avatarUrl} />
+                <span style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
+                  {p.display_name || p.displayName}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Origin info */}
+        <div style={{
+          padding: '10px 12px',
+          background: '#0a100a',
+          border: '1px solid #2a3a2a',
+          marginBottom: '20px',
+          fontSize: isMobile ? '0.75rem' : '0.7rem',
+          color: '#6a7a6a',
+        }}>
+          <span style={{ color: '#5a6a5a' }}>From:</span> {wave?.title || 'Unknown Wave'}
+          <span style={{ margin: '0 8px' }}>•</span>
+          <span style={{ color: '#5a6a5a' }}>Privacy:</span> {wave?.privacy || 'private'}
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button onClick={onClose} disabled={submitting} style={{
+            padding: isMobile ? '12px 20px' : '10px 20px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent',
+            border: '1px solid #3a4a3a',
+            color: '#6a7a6a',
+            cursor: submitting ? 'not-allowed' : 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.9rem' : '0.85rem',
+            opacity: submitting ? 0.5 : 1,
+          }}>CANCEL</button>
+          <button onClick={handleSubmit} disabled={submitting || !title.trim()} style={{
+            padding: isMobile ? '12px 20px' : '10px 20px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: title.trim() ? '#3bceac' : '#3a4a3a',
+            border: `1px solid ${title.trim() ? '#3bceac' : '#3a4a3a'}`,
+            color: '#050805',
+            cursor: (submitting || !title.trim()) ? 'not-allowed' : 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.9rem' : '0.85rem',
+            fontWeight: 600,
+            opacity: submitting ? 0.7 : 1,
+          }}>{submitting ? 'CREATING...' : '◈ CREATE WAVE'}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ LINK CARD FOR RIPPLED DROPLETS ============
+const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile }) => {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        padding: isMobile ? '14px 16px' : '12px 16px',
+        marginBottom: '8px',
+        background: 'linear-gradient(135deg, #0a1a1a, #0d150d)',
+        border: '2px solid #3bceac40',
+        borderLeft: '4px solid #3bceac',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = '#3bceac10';
+        e.currentTarget.style.borderColor = '#3bceac60';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'linear-gradient(135deg, #0a1a1a, #0d150d)';
+        e.currentTarget.style.borderColor = '#3bceac40';
+      }}
+    >
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        marginBottom: '8px',
+      }}>
+        <span style={{ fontSize: '1.2rem' }}>◈</span>
+        <span style={{
+          color: '#3bceac',
+          fontSize: isMobile ? '0.8rem' : '0.75rem',
+          fontFamily: 'monospace',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+        }}>
+          Rippled to wave...
+        </span>
+      </div>
+      <div style={{
+        color: '#c5d5c5',
+        fontSize: isMobile ? '1rem' : '0.95rem',
+        fontWeight: 500,
+        marginBottom: '6px',
+      }}>
+        "{waveTitle || 'Unknown Wave'}"
+      </div>
+      <div style={{
+        color: '#6a7a6a',
+        fontSize: isMobile ? '0.8rem' : '0.75rem',
+        fontFamily: 'monospace',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+      }}>
+        <span>→</span>
+        <span>Click to open</span>
+      </div>
+    </div>
+  );
+};
 
 const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI, showToast, isMobile }) => {
   const [reason, setReason] = useState('');
@@ -3333,7 +3636,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -3365,6 +3668,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [reportTarget, setReportTarget] = useState(null); // { type, targetId, targetPreview }
+  const [rippleTarget, setRippleTarget] = useState(null); // droplet to ripple
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -4388,7 +4692,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             collapsed={collapsed} onToggleCollapse={toggleThreadCollapse} isMobile={isMobile}
             onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
             onShowProfile={onShowProfile} onJumpToParent={jumpToParent} onReport={handleReportMessage}
-            onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined} />
+            onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined}
+            onRipple={(droplet) => setRippleTarget(droplet)}
+            onNavigateToWave={onNavigateToWave} currentWaveId={wave.id} />
         ))}
       </div>
 
@@ -4653,6 +4959,24 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           fetchAPI={fetchAPI}
           showToast={showToast}
           isMobile={isMobile}
+        />
+      )}
+
+      {rippleTarget && (
+        <RippleModal
+          isOpen={!!rippleTarget}
+          onClose={() => setRippleTarget(null)}
+          droplet={rippleTarget}
+          wave={wave}
+          participants={waveData?.participants || []}
+          fetchAPI={fetchAPI}
+          showToast={showToast}
+          isMobile={isMobile}
+          onSuccess={(newWave) => {
+            setRippleTarget(null);
+            // Navigate to the new wave
+            onNavigateToWave?.(newWave);
+          }}
         />
       )}
     </div>
@@ -5634,6 +5958,7 @@ const FocusView = ({
             onShowProfile={onShowProfile}
             onJumpToParent={jumpToParent}
             onFocus={onFocusDeeper ? (droplet) => onFocusDeeper(droplet) : undefined}
+            currentWaveId={wave?.id}
           />
         ))}
       </div>
@@ -7467,6 +7792,16 @@ function MainApp() {
     });
   }, []);
 
+  // Navigate to a different wave (used after breakout)
+  const handleNavigateToWave = useCallback((wave) => {
+    // Clear focus stack and navigate to the new wave
+    setFocusStack([]);
+    setSelectedWave(wave);
+    setActiveView('waves');
+    // Reload waves to include the new one
+    loadWaves();
+  }, [loadWaves]);
+
   useEffect(() => {
     loadWaves();
     loadContacts();
@@ -7747,7 +8082,8 @@ function MainApp() {
                     onUnmuteUser={handleUnmuteUser}
                     onBlockedMutedChange={loadBlockedMutedUsers}
                     onShowProfile={setProfileUserId}
-                    onFocusDroplet={handleFocusDroplet} />
+                    onFocusDroplet={handleFocusDroplet}
+                    onNavigateToWave={handleNavigateToWave} />
                 </ErrorBoundary>
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>

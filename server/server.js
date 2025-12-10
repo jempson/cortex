@@ -1880,6 +1880,89 @@ class Database {
     return { success: true, wave, participants };
   }
 
+  // Break out a droplet and its replies into a new wave
+  breakoutDroplet(dropletId, newWaveTitle, participants, userId) {
+    const now = new Date().toISOString();
+
+    // Get the original droplet
+    const droplet = this.messages.messages.find(m => m.id === dropletId);
+    if (!droplet) {
+      return { success: false, error: 'Droplet not found' };
+    }
+
+    // Check if already broken out
+    if (droplet.brokenOutTo) {
+      return { success: false, error: 'Droplet already broken out' };
+    }
+
+    const originalWaveId = droplet.waveId;
+    const originalWave = this.getWave(originalWaveId);
+
+    // Get all child droplets recursively
+    const getAllChildren = (parentId) => {
+      const children = this.messages.messages.filter(m => m.parentId === parentId);
+      let allIds = children.map(c => c.id);
+      for (const child of children) {
+        allIds = allIds.concat(getAllChildren(child.id));
+      }
+      return allIds;
+    };
+
+    const childIds = getAllChildren(dropletId);
+
+    // Build breakout chain
+    let breakoutChain = originalWave.breakoutChain || [];
+    breakoutChain = [...breakoutChain, {
+      wave_id: originalWaveId,
+      droplet_id: dropletId,
+      title: originalWave.title
+    }];
+
+    // Create the new wave
+    const newWaveId = `wave-${uuidv4()}`;
+    const newWave = {
+      id: newWaveId,
+      title: newWaveTitle.slice(0, 200),
+      privacy: originalWave.privacy || 'private',
+      groupId: originalWave.groupId || null,
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now,
+      rootDropletId: dropletId,
+      brokenOutFrom: originalWaveId,
+      breakoutChain: breakoutChain,
+    };
+    this.waves.waves.push(newWave);
+
+    // Add participants to new wave
+    const participantSet = new Set(participants);
+    participantSet.add(userId);
+    for (const participantId of participantSet) {
+      if (!this.waves.participants.some(p => p.waveId === newWaveId && p.userId === participantId)) {
+        this.waves.participants.push({ waveId: newWaveId, userId: participantId, joinedAt: now, archived: false });
+      }
+    }
+
+    // Mark the original droplet as broken out
+    droplet.brokenOutTo = newWaveId;
+
+    this.saveWaves();
+    this.saveMessages();
+
+    return {
+      success: true,
+      newWave,
+      originalWaveId,
+      dropletId,
+      childCount: childIds.length
+    };
+  }
+
+  // Alias for rippleDroplet (new terminology)
+  rippleDroplet(dropletId, newWaveTitle, participants, userId) {
+    return this.breakoutDroplet(dropletId, newWaveTitle, participants, userId);
+  }
+
   // === Message Methods ===
   getMessagesForWave(waveId, userId = null) {
     let messages = this.messages.messages.filter(m => m.waveId === waveId);
@@ -1906,6 +1989,13 @@ class Database {
         // Deleted messages are never unread (nothing to read)
         const isUnread = m.deleted ? false : (userId ? !readBy.includes(userId) && m.authorId !== userId : false);
 
+        // Get broken-out wave title if applicable
+        let brokenOutToTitle = null;
+        if (m.brokenOutTo) {
+          const brokenOutWave = this.waves.waves.find(w => w.id === m.brokenOutTo);
+          brokenOutToTitle = brokenOutWave?.title || null;
+        }
+
         return {
           ...m,
           sender_name: author?.displayName || 'Unknown',
@@ -1919,9 +2009,104 @@ class Database {
           edited_at: m.editedAt,
           deleted_at: m.deletedAt || null,
           is_unread: isUnread,
+          brokenOutToTitle,
         };
       })
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  }
+
+  getMessage(messageId) {
+    const m = this.messages.messages.find(msg => msg.id === messageId);
+    if (!m) return null;
+
+    const author = this.findUserById(m.authorId);
+
+    return {
+      ...m,
+      sender_name: author?.displayName || 'Unknown',
+      sender_avatar: author?.avatar || '?',
+      sender_avatar_url: author?.avatarUrl || null,
+      sender_handle: author?.handle || 'unknown',
+      author_id: m.authorId,
+      parent_id: m.parentId,
+      wave_id: m.waveId,
+      created_at: m.createdAt,
+      edited_at: m.editedAt,
+      deleted_at: m.deletedAt || null,
+    };
+  }
+
+  // Get droplets for a breakout wave (includes root droplet and descendants from original wave)
+  getDropletsForBreakoutWave(waveId, userId = null) {
+    const wave = this.getWave(waveId);
+    if (!wave || !wave.rootDropletId) {
+      return this.getMessagesForWave(waveId, userId);
+    }
+
+    // Get blocked/muted users
+    let blockedIds = [];
+    let mutedIds = [];
+    if (userId) {
+      blockedIds = this.moderation.blocks
+        .filter(b => b.userId === userId)
+        .map(b => b.blockedUserId);
+      mutedIds = this.moderation.mutes
+        .filter(m => m.userId === userId)
+        .map(m => m.mutedUserId);
+    }
+
+    // Recursively get droplet and all descendants
+    const getAllDescendants = (parentId, results = []) => {
+      const droplet = this.messages.messages.find(m => m.id === parentId);
+      if (!droplet) return results;
+
+      // Skip blocked/muted users
+      if (blockedIds.includes(droplet.authorId) || mutedIds.includes(droplet.authorId)) {
+        return results;
+      }
+
+      results.push(droplet);
+
+      // Get children
+      const children = this.messages.messages.filter(m => m.parentId === parentId);
+      for (const child of children) {
+        getAllDescendants(child.id, results);
+      }
+
+      return results;
+    };
+
+    const droplets = getAllDescendants(wave.rootDropletId);
+
+    return droplets.map(m => {
+      const author = this.findUserById(m.authorId);
+      const readBy = m.readBy || [m.authorId];
+      const isUnread = m.deleted ? false : (userId ? !readBy.includes(userId) && m.authorId !== userId : false);
+
+      // Get broken-out wave title if applicable
+      let brokenOutToTitle = null;
+      if (m.brokenOutTo) {
+        const brokenOutWave = this.waves.waves.find(w => w.id === m.brokenOutTo);
+        brokenOutToTitle = brokenOutWave?.title || null;
+      }
+
+      return {
+        ...m,
+        waveId: waveId, // Report as belonging to this wave for UI purposes
+        wave_id: waveId,
+        sender_name: author?.displayName || 'Unknown',
+        sender_avatar: author?.avatar || '?',
+        sender_avatar_url: author?.avatarUrl || null,
+        sender_handle: author?.handle || 'unknown',
+        author_id: m.authorId,
+        parent_id: m.parentId,
+        created_at: m.createdAt,
+        edited_at: m.editedAt,
+        deleted_at: m.deletedAt || null,
+        is_unread: isUnread,
+        brokenOutToTitle,
+      };
+    }).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   }
 
   createMessage(data) {
@@ -3535,7 +3720,12 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
 
   const creator = db.findUserById(wave.createdBy);
   const participants = db.getWaveParticipants(wave.id);
-  const allMessages = db.getMessagesForWave(wave.id, req.user.userId);
+
+  // For breakout waves, use special method that fetches from original wave's droplet tree
+  const allMessages = wave.rootDropletId && db.getDropletsForBreakoutWave
+    ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
+    : db.getMessagesForWave(wave.id, req.user.userId);
+
   const group = wave.groupId ? db.getGroup(wave.groupId) : null;
 
   // Pagination: limit initial droplets, return most recent ones
@@ -3595,7 +3785,10 @@ app.get('/api/waves/:id/droplets', authenticateToken, (req, res) => {
   const before = req.query.before; // Droplet ID to load droplets before
 
   // Get all droplets for this wave (filtered for blocked/muted)
-  let allDroplets = db.getMessagesForWave(wave.id, req.user.userId);
+  // For breakout waves, use special method that fetches from original wave's droplet tree
+  let allDroplets = wave.rootDropletId && db.getDropletsForBreakoutWave
+    ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
+    : db.getMessagesForWave(wave.id, req.user.userId);
 
   // Sort by created_at descending (newest first) for pagination
   allDroplets.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -3615,10 +3808,15 @@ app.get('/api/waves/:id/droplets', authenticateToken, (req, res) => {
   // Reverse to return oldest-first within the batch (natural reading order)
   droplets.reverse();
 
+  // Get total using same method
+  const totalDroplets = wave.rootDropletId && db.getDropletsForBreakoutWave
+    ? db.getDropletsForBreakoutWave(wave.id, req.user.userId).length
+    : db.getMessagesForWave(wave.id, req.user.userId).length;
+
   res.json({
     droplets,
     hasMore,
-    total: db.getMessagesForWave(wave.id, req.user.userId).length,
+    total: totalDroplets,
   });
 });
 
@@ -3635,7 +3833,10 @@ app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
   const before = req.query.before; // Message ID to load messages before
 
   // Get all messages for this wave (filtered for blocked/muted)
-  let allMessages = db.getMessagesForWave(wave.id, req.user.userId);
+  // For breakout waves, use special method that fetches from original wave's droplet tree
+  let allMessages = wave.rootDropletId && db.getDropletsForBreakoutWave
+    ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
+    : db.getMessagesForWave(wave.id, req.user.userId);
 
   // Sort by created_at descending (newest first) for pagination
   allMessages.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -3655,10 +3856,15 @@ app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
   // Reverse to return oldest-first within the batch (natural reading order)
   messages.reverse();
 
+  // Get total using same method
+  const totalMessages = wave.rootDropletId && db.getDropletsForBreakoutWave
+    ? db.getDropletsForBreakoutWave(wave.id, req.user.userId).length
+    : db.getMessagesForWave(wave.id, req.user.userId).length;
+
   res.json({
     messages,
     hasMore,
-    total: db.getMessagesForWave(wave.id, req.user.userId).length,
+    total: totalMessages,
   });
 });
 
@@ -3918,6 +4124,77 @@ app.post('/api/droplets/:id/read', authenticateToken, (req, res) => {
 
   console.log(`✅ Droplet ${dropletId} marked as read`);
   res.json({ success: true });
+});
+
+// Ripple a droplet into a new wave
+app.post('/api/droplets/:id/ripple', authenticateToken, (req, res) => {
+  const dropletId = sanitizeInput(req.params.id);
+  const { title, participants } = req.body;
+
+  if (!title || typeof title !== 'string' || title.trim().length === 0) {
+    return res.status(400).json({ error: 'Title is required' });
+  }
+
+  // Get the droplet to check permissions
+  const droplet = db.getMessage ? db.getMessage(dropletId) : null;
+  if (!droplet) {
+    return res.status(404).json({ error: 'Droplet not found' });
+  }
+
+  // Check if user has access to the wave containing this droplet
+  const wave = db.getWave(droplet.waveId || droplet.wave_id);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  if (!db.canAccessWave(wave.id, req.user.userId)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  // Validate participants array
+  let participantIds = [];
+  if (Array.isArray(participants)) {
+    participantIds = participants.filter(p => typeof p === 'string');
+  }
+
+  // Perform the ripple (uses existing breakoutDroplet method internally)
+  const result = db.rippleDroplet ? db.rippleDroplet(dropletId, title.trim(), participantIds, req.user.userId)
+    : db.breakoutDroplet(dropletId, title.trim(), participantIds, req.user.userId);
+
+  if (!result.success) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Broadcast to original wave that a droplet was rippled
+  broadcastToWave(result.originalWaveId, {
+    type: 'droplet_rippled',
+    dropletId: dropletId,
+    newWaveId: result.newWave.id,
+    newWaveTitle: result.newWave.title,
+    waveId: result.originalWaveId,
+  });
+
+  // Broadcast to participants of the new wave
+  broadcastToWave(result.newWave.id, {
+    type: 'wave_created',
+    wave: result.newWave,
+  });
+
+  console.log(`🌊 Droplet ${dropletId} rippled to new wave: ${result.newWave.title}`);
+
+  res.json({
+    success: true,
+    newWave: result.newWave,
+    originalWaveId: result.originalWaveId,
+    childCount: result.childCount,
+  });
+});
+
+// Legacy endpoint - backward compatibility
+app.post('/api/droplets/:id/breakout', authenticateToken, (req, res) => {
+  // Redirect to ripple endpoint
+  req.url = `/api/droplets/${req.params.id}/ripple`;
+  return app._router.handle(req, res);
 });
 
 // ============ Message Routes (Legacy - v1.9.0 backward compatibility) ============

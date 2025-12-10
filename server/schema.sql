@@ -45,7 +45,12 @@ CREATE TABLE IF NOT EXISTS waves (
     group_id TEXT REFERENCES groups(id) ON DELETE SET NULL,
     created_by TEXT NOT NULL REFERENCES users(id),
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    -- Break-out tracking fields
+    root_droplet_id TEXT REFERENCES droplets(id) ON DELETE SET NULL,
+    broken_out_from TEXT REFERENCES waves(id) ON DELETE SET NULL,
+    -- JSON array storing the lineage: [{"wave_id":"...", "droplet_id":"...", "title":"..."}]
+    breakout_chain TEXT
 );
 
 -- Wave participants
@@ -72,7 +77,10 @@ CREATE TABLE IF NOT EXISTS droplets (
     deleted INTEGER DEFAULT 0,
     deleted_at TEXT,
     -- Reactions stored as JSON: {"emoji": ["userId1", "userId2"]}
-    reactions TEXT DEFAULT '{}'
+    reactions TEXT DEFAULT '{}',
+    -- Break-out tracking fields
+    broken_out_to TEXT REFERENCES waves(id) ON DELETE SET NULL,
+    original_wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL
 );
 
 -- Droplet read tracking (many-to-many)
@@ -225,6 +233,8 @@ CREATE INDEX IF NOT EXISTS idx_waves_created_by ON waves(created_by);
 CREATE INDEX IF NOT EXISTS idx_waves_privacy ON waves(privacy);
 CREATE INDEX IF NOT EXISTS idx_waves_group ON waves(group_id);
 CREATE INDEX IF NOT EXISTS idx_waves_updated ON waves(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_waves_root_droplet ON waves(root_droplet_id);
+CREATE INDEX IF NOT EXISTS idx_waves_broken_out_from ON waves(broken_out_from);
 
 -- Wave participant lookups
 CREATE INDEX IF NOT EXISTS idx_wave_participants_user ON wave_participants(user_id);
@@ -237,6 +247,8 @@ CREATE INDEX IF NOT EXISTS idx_droplets_author ON droplets(author_id);
 CREATE INDEX IF NOT EXISTS idx_droplets_parent ON droplets(parent_id);
 CREATE INDEX IF NOT EXISTS idx_droplets_created ON droplets(wave_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_droplets_deleted ON droplets(deleted);
+CREATE INDEX IF NOT EXISTS idx_droplets_broken_out ON droplets(broken_out_to);
+CREATE INDEX IF NOT EXISTS idx_droplets_original_wave ON droplets(original_wave_id);
 
 -- Droplet read tracking
 CREATE INDEX IF NOT EXISTS idx_droplet_read_user ON droplet_read_by(user_id);

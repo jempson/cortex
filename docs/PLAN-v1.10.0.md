@@ -1,8 +1,8 @@
 # Cortex v1.10.0 - Implementation Plan
 
-## RELEASE STATUS: IN PROGRESS (4/7 Phases)
+## RELEASE STATUS: IN PROGRESS (6/7 Phases)
 
-**Target Scope:** Droplets Architecture - Phases 1, 2, 3 & 4 (Terminology + Focus View + Threading Depth Limit)
+**Target Scope:** Droplets Architecture - Phases 1-6 (Terminology + Focus View + Threading Depth Limit + Break Out Core + Break Out UI)
 **Branch:** `v1.10.0`
 
 ---
@@ -191,6 +191,74 @@ Version 1.10.0 implements the Droplets architecture including terminology rename
 
 ---
 
+## Phase 5: Ripple - Core
+**Status:** Complete ✓
+
+### 5.1 Database Schema Updates
+- [x] Added `broken_out_to` field to droplets table (references new wave)
+- [x] Added `original_wave_id` field to droplets table
+- [x] Added `root_droplet_id` field to waves table (points to rippled droplet)
+- [x] Added `broken_out_from` field to waves table (references original wave)
+- [x] Added `breakout_chain` field to waves table (JSON lineage array for nested ripples)
+- [x] Auto-migration for existing SQLite databases
+- [x] Indexes for all new fields
+
+### 5.2 API Endpoint
+- [x] `POST /api/droplets/:id/ripple` endpoint
+- [x] Request body: `{ title: string, participants: string[] }`
+- [x] Permission check (user must have wave access)
+- [x] Returns new wave with ripple metadata
+- [x] Legacy `/breakout` endpoint redirects to `/ripple`
+
+### 5.3 Backend Logic
+- [x] `rippleDroplet()` method in SQLite database class
+- [x] `rippleDroplet()` method in JSON database class
+- [x] Creates new wave with ripple metadata
+- [x] Sets `broken_out_to` on original droplet (becomes link card)
+- [x] Builds ripple chain for nested ripples
+- [x] Inherits privacy level from original wave
+
+### 5.4 WebSocket Notifications
+- [x] `droplet_rippled` event to original wave participants
+- [x] `wave_created` event to new wave participants
+
+---
+
+## Phase 6: Ripple - UI
+**Status:** Complete ✓
+
+### 6.1 RippleModal Component
+- [x] Modal for initiating ripple with title input
+- [x] Participant selection (checkbox list from current wave)
+- [x] Preview showing original droplet content
+- [x] Submit calls `POST /api/droplets/:id/ripple`
+- [x] Success callback navigates to new wave
+
+### 6.2 RippledLinkCard Component
+- [x] Visual link card for rippled droplets ("Rippled to wave...")
+- [x] Shows new wave title with arrow indicator
+- [x] Clickable to navigate to the new wave
+- [x] Styled with teal ripple theme colors
+
+### 6.3 Ripple Button Integration
+- [x] Added `onRipple` prop to ThreadedMessage
+- [x] Ripple button (◈ RIPPLE) appears on droplets
+- [x] Button triggers RippleModal with selected droplet
+- [x] Hidden on already rippled droplets
+
+### 6.4 Navigation Handler
+- [x] `handleNavigateToWave` in MainApp
+- [x] Clears focus stack and selects new wave
+- [x] `onNavigateToWave` prop passed through WaveView
+- [x] RippledLinkCard click navigates to new wave
+
+### 6.5 API Enhancements
+- [x] `brokenOutToTitle` field added to droplet response
+- [x] SQLite query joins waves table for title lookup
+- [x] JSON database method looks up wave title
+
+---
+
 ## Migration Strategy
 
 ### For SQLite Databases
@@ -287,6 +355,16 @@ if (fs.existsSync('data/messages.json') && !fs.existsSync('data/droplets.json'))
 - [ ] Clicking "FOCUS TO REPLY" enters Focus View
 - [ ] FocusView allows replies at any depth (no limit)
 - [ ] Depth limit only applies in WaveView, not FocusView
+
+### Ripple Tests
+- [x] Ripple button appears on droplets
+- [x] RippleModal opens with droplet preview and participant list
+- [x] Title input is required before submission
+- [x] Ripple creates new wave with selected participants
+- [x] Original droplet shows RippledLinkCard after ripple
+- [x] Clicking link card navigates to new wave
+- [x] New wave shows original droplet as root
+- [x] Nested ripples build correct ripple chain
 
 ### Migration Tests
 - [ ] Fresh install works with new schema
