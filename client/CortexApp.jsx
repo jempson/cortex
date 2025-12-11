@@ -107,6 +107,18 @@ async function subscribeToPush(token) {
   }
 
   try {
+    // First check/request notification permission
+    let permission = Notification.permission;
+    if (permission === 'default') {
+      console.log('[Push] Requesting notification permission...');
+      permission = await Notification.requestPermission();
+    }
+
+    if (permission !== 'granted') {
+      console.log('[Push] Notification permission denied');
+      return false;
+    }
+
     // Get VAPID public key from server
     const response = await fetch(`${API_URL}/push/vapid-key`, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -125,8 +137,9 @@ async function subscribeToPush(token) {
     // Check existing subscription
     let subscription = await registration.pushManager.getSubscription();
 
-    // If no subscription or VAPID key changed, create new subscription
+    // If no subscription, create new subscription
     if (!subscription) {
+      console.log('[Push] Creating new push subscription...');
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey)
@@ -135,7 +148,7 @@ async function subscribeToPush(token) {
     }
 
     // Send subscription to server
-    await fetch(`${API_URL}/push/subscribe`, {
+    const subscribeResponse = await fetch(`${API_URL}/push/subscribe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -143,6 +156,11 @@ async function subscribeToPush(token) {
       },
       body: JSON.stringify({ subscription })
     });
+
+    if (!subscribeResponse.ok) {
+      console.error('[Push] Server rejected subscription:', await subscribeResponse.text());
+      return false;
+    }
 
     console.log('[Push] Push subscription registered with server');
     return true;
