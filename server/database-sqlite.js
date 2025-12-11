@@ -2537,6 +2537,16 @@ export class DatabaseSQLite {
     return result.changes > 0;
   }
 
+  // Mark all notifications for a specific droplet as read for a user
+  markNotificationsReadByDroplet(dropletId, userId) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE notifications SET read = 1, read_at = ?
+      WHERE droplet_id = ? AND user_id = ? AND read = 0
+    `).run(now, dropletId, userId);
+    return result.changes;
+  }
+
   markAllNotificationsRead(userId) {
     const now = new Date().toISOString();
     const result = this.db.prepare(`

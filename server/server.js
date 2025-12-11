@@ -1345,6 +1345,25 @@ class Database {
     return true;
   }
 
+  // Mark all notifications for a specific droplet as read for a user
+  markNotificationsReadByDroplet(dropletId, userId) {
+    const now = new Date().toISOString();
+    let count = 0;
+
+    for (const n of this.notifications.notifications) {
+      if (n.dropletId === dropletId && n.userId === userId && !n.read) {
+        n.read = true;
+        n.readAt = now;
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      this.saveNotifications();
+    }
+    return count;
+  }
+
   markAllNotificationsRead(userId) {
     const now = new Date().toISOString();
     let count = 0;
@@ -4522,12 +4541,21 @@ app.post('/api/droplets/:id/react', authenticateToken, (req, res) => {
 // Mark individual droplet as read
 app.post('/api/droplets/:id/read', authenticateToken, (req, res) => {
   const dropletId = sanitizeInput(req.params.id);
+  const userId = req.user.userId;
 
-  console.log(`📖 Marking droplet ${dropletId} as read for user ${req.user.userId}`);
+  console.log(`📖 Marking droplet ${dropletId} as read for user ${userId}`);
 
-  if (!db.markMessageAsRead(dropletId, req.user.userId)) {
+  if (!db.markMessageAsRead(dropletId, userId)) {
     console.log(`❌ Failed to mark droplet ${dropletId} as read`);
     return res.status(404).json({ error: 'Droplet not found' });
+  }
+
+  // Also mark any notifications for this droplet as read
+  const notificationsMarked = db.markNotificationsReadByDroplet(dropletId, userId);
+  if (notificationsMarked > 0) {
+    console.log(`🔔 Marked ${notificationsMarked} notification(s) as read for droplet ${dropletId}`);
+    // Broadcast notification count update to user
+    broadcast({ type: 'unread_count_update', userId });
   }
 
   console.log(`✅ Droplet ${dropletId} marked as read`);
@@ -4738,15 +4766,23 @@ app.post('/api/messages/:id/react', authenticateToken, deprecatedEndpoint, (req,
   res.json({ success: true, reactions: result.reactions });
 });
 
-// Mark individual message as read
+// Mark individual message as read (legacy endpoint)
 app.post('/api/messages/:id/read', authenticateToken, deprecatedEndpoint, (req, res) => {
   const messageId = sanitizeInput(req.params.id);
+  const userId = req.user.userId;
 
-  console.log(`📖 Marking message ${messageId} as read for user ${req.user.userId}`);
+  console.log(`📖 Marking message ${messageId} as read for user ${userId}`);
 
-  if (!db.markMessageAsRead(messageId, req.user.userId)) {
+  if (!db.markMessageAsRead(messageId, userId)) {
     console.log(`❌ Failed to mark message ${messageId} as read`);
     return res.status(404).json({ error: 'Message not found' });
+  }
+
+  // Also mark any notifications for this droplet as read
+  const notificationsMarked = db.markNotificationsReadByDroplet(messageId, userId);
+  if (notificationsMarked > 0) {
+    console.log(`🔔 Marked ${notificationsMarked} notification(s) as read for message ${messageId}`);
+    broadcast({ type: 'unread_count_update', userId });
   }
 
   console.log(`✅ Message ${messageId} marked as read`);
