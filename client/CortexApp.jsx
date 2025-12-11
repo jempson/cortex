@@ -622,8 +622,8 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
   );
 };
 
-// Component to render message content with embeds
-const MessageWithEmbeds = ({ content, autoLoadEmbeds = false }) => {
+// Component to render droplet content with embeds (formerly MessageWithEmbeds)
+const DropletWithEmbeds = ({ content, autoLoadEmbeds = false }) => {
   const embeds = useMemo(() => detectEmbedUrls(content), [content]);
 
   // Get the plain text URLs that have embeds (to potentially hide them)
@@ -1755,7 +1755,7 @@ const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, o
   );
 };
 
-const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile }) => {
+const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -1781,6 +1781,13 @@ const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile }) => {
     const interval = setInterval(loadNotifications, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [loadNotifications]);
+
+  // Refresh when trigger changes (WebSocket notification received)
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      loadNotifications();
+    }
+  }, [refreshTrigger, loadNotifications]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -2163,8 +2170,8 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
   </div>
 );
 
-// ============ THREADED MESSAGE ============
-const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onJumpToParent, onReport, onFocus, onRipple, onNavigateToWave, currentWaveId }) => {
+// ============ DROPLET (formerly ThreadedMessage) ============
+const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onJumpToParent, onReport, onFocus, onRipple, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -2196,6 +2203,10 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
     if (isUnread && onMessageClick) {
       onMessageClick(message.id);
     }
+    // Auto-focus if preference enabled and droplet has children (replies)
+    if (autoFocusDroplets && hasChildren && onFocus && !isDeleted) {
+      onFocus(message);
+    }
   };
 
   // Render rippled droplet as a link card
@@ -2212,6 +2223,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
             title: rippledToTitle,
           })}
           isMobile={isMobile}
+          unreadCount={unreadCountsByWave[rippledToId] || 0}
         />
       </div>
     );
@@ -2226,7 +2238,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
           background: isDeleted ? '#0a0f0a' : isHighlighted ? `${config.color}20` : isUnread ? '#ffd23f10' : 'linear-gradient(135deg, #0d150d, #1a2a1a)',
           border: `1px solid ${isDeleted ? '#1a1f1a' : isHighlighted ? config.color : isUnread ? '#ffd23f' : '#2a3a2a'}`,
           borderLeft: `3px solid ${isDeleted ? '#3a3a3a' : isUnread ? '#ffd23f' : config.color}`,
-          cursor: isUnread ? 'pointer' : 'default',
+          cursor: (isUnread || (autoFocusDroplets && hasChildren && !isDeleted)) ? 'pointer' : 'default',
           transition: 'all 0.2s ease',
           opacity: isDeleted ? 0.6 : 1,
         }}
@@ -2386,7 +2398,7 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
               cursor: (isMobile && hasChildren && onFocus) ? 'pointer' : 'default',
             }}
           >
-            <MessageWithEmbeds content={message.content} />
+            <DropletWithEmbeds content={message.content} />
             {/* Mobile tap-to-focus hint */}
             {isMobile && hasChildren && onFocus && (
               <div style={{
@@ -2626,13 +2638,14 @@ const ThreadedMessage = ({ message, depth = 0, onReply, onDelete, onEdit, onSave
       {hasChildren && !isCollapsed && (
         <div style={{ borderLeft: '1px solid #3a4a3a', marginLeft: `${indentSize}px` }}>
           {message.children.map(child => (
-            <ThreadedMessage key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
+            <Droplet key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
               onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
               editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
               currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
               onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
               participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport}
-              onFocus={onFocus} onRipple={onRipple} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId} />
+              onFocus={onFocus} onRipple={onRipple} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
+              unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} />
           ))}
         </div>
       )}
@@ -3099,7 +3112,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
 };
 
 // ============ LINK CARD FOR RIPPLED DROPLETS ============
-const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile }) => {
+const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile, unreadCount = 0 }) => {
   return (
     <div
       onClick={onClick}
@@ -3107,18 +3120,18 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile }) => {
         padding: isMobile ? '14px 16px' : '12px 16px',
         marginBottom: '8px',
         background: 'linear-gradient(135deg, #0a1a1a, #0d150d)',
-        border: '2px solid #3bceac40',
-        borderLeft: '4px solid #3bceac',
+        border: `2px solid ${unreadCount > 0 ? '#9b59b660' : '#3bceac40'}`,
+        borderLeft: `4px solid ${unreadCount > 0 ? '#9b59b6' : '#3bceac'}`,
         cursor: 'pointer',
         transition: 'all 0.2s ease',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = '#3bceac10';
-        e.currentTarget.style.borderColor = '#3bceac60';
+        e.currentTarget.style.background = unreadCount > 0 ? '#9b59b610' : '#3bceac10';
+        e.currentTarget.style.borderColor = unreadCount > 0 ? '#9b59b680' : '#3bceac60';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = 'linear-gradient(135deg, #0a1a1a, #0d150d)';
-        e.currentTarget.style.borderColor = '#3bceac40';
+        e.currentTarget.style.borderColor = unreadCount > 0 ? '#9b59b660' : '#3bceac40';
       }}
     >
       <div style={{
@@ -3127,9 +3140,9 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile }) => {
         gap: '10px',
         marginBottom: '8px',
       }}>
-        <span style={{ fontSize: '1.2rem' }}>◈</span>
+        <span style={{ fontSize: '1.2rem', color: unreadCount > 0 ? '#9b59b6' : undefined }}>◈</span>
         <span style={{
-          color: '#3bceac',
+          color: unreadCount > 0 ? '#9b59b6' : '#3bceac',
           fontSize: isMobile ? '0.8rem' : '0.75rem',
           fontFamily: 'monospace',
           textTransform: 'uppercase',
@@ -3137,6 +3150,19 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile }) => {
         }}>
           Rippled to wave...
         </span>
+        {unreadCount > 0 && (
+          <span style={{
+            background: '#9b59b6',
+            color: '#fff',
+            fontSize: '0.65rem',
+            fontWeight: 700,
+            padding: '2px 6px',
+            borderRadius: '10px',
+            marginLeft: 'auto',
+          }}>
+            {unreadCount} new
+          </span>
+        )}
       </div>
       <div style={{
         color: '#c5d5c5',
@@ -4027,6 +4053,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [loadingMore, setLoadingMore] = useState(false);
   const [reportTarget, setReportTarget] = useState(null); // { type, targetId, targetPreview }
   const [rippleTarget, setRippleTarget] = useState(null); // droplet to ripple
+  const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For ripple activity badges
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -4111,8 +4138,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   };
 
   const collapseAllThreads = () => {
-    // Get all messages with children and collapse them
-    const allMessages = waveData?.all_messages || [];
+    // Get all droplets with children and collapse them
     const newCollapsed = {};
     const countThreads = (msgs) => {
       msgs.forEach(msg => {
@@ -4164,7 +4190,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     loadWave();
     hasMarkedAsReadRef.current = false; // Reset when switching waves
     hasScrolledToUnreadRef.current = false; // Reset scroll-to-unread for new wave
-  }, [wave.id]);
+
+    // Notify server that user is viewing this wave (for notification suppression)
+    if (sendWSMessage) {
+      sendWSMessage({ type: 'viewing_wave', waveId: wave.id });
+    }
+
+    // Cleanup: notify server when leaving wave
+    return () => {
+      if (sendWSMessage) {
+        sendWSMessage({ type: 'viewing_wave', waveId: null });
+      }
+    };
+  }, [wave.id, sendWSMessage]);
 
   // Reload wave when reloadTrigger changes (from WebSocket events)
   useEffect(() => {
@@ -4198,10 +4236,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     // Only run once per wave
     hasScrolledToUnreadRef.current = true;
 
-    const allMessages = waveData.all_messages || [];
+    const allDroplets = waveData.all_messages || [];
 
-    // Find first unread message (not authored by current user)
-    const firstUnreadMessage = allMessages.find(m =>
+    // Find first unread droplet (not authored by current user)
+    const firstUnreadDroplet = allDroplets.find(m =>
       m.is_unread && m.author_id !== currentUser?.id
     );
 
@@ -4209,16 +4247,16 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       const container = messagesRef.current;
       if (!container) return;
 
-      if (firstUnreadMessage) {
-        // Scroll to first unread message
-        const messageElement = container.querySelector(`[data-message-id="${firstUnreadMessage.id}"]`);
-        if (messageElement) {
-          messageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (firstUnreadDroplet) {
+        // Scroll to first unread droplet
+        const dropletElement = container.querySelector(`[data-message-id="${firstUnreadDroplet.id}"]`);
+        if (dropletElement) {
+          dropletElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
           return;
         }
       }
 
-      // No unread messages or element not found - scroll to bottom
+      // No unread droplets or element not found - scroll to bottom
       container.scrollTop = container.scrollHeight;
     }, 100);
   }, [waveData, loading, currentUser?.id]);
@@ -4343,6 +4381,14 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       });
       setWaveData(data);
       setHasMoreMessages(data.hasMoreMessages || false);
+
+      // Load unread counts by wave for ripple activity badges
+      try {
+        const countsData = await fetchAPI('/notifications/by-wave');
+        setUnreadCountsByWave(countsData.countsByWave || {});
+      } catch (e) {
+        console.error('Failed to load unread counts by wave:', e);
+      }
     } catch (err) {
       console.error('Failed to load wave:', err);
       showToast('Failed to load wave', 'error');
@@ -4636,10 +4682,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   if (!waveData) return <div style={{ padding: '20px', color: '#6a7a6a' }}>Wave not found</div>;
 
   // Safe access with fallbacks for pagination fields
-  const allMessages = waveData.all_messages || [];
+  // Note: API returns `messages` and `all_messages` but we use `droplets` internally (v1.11.0)
+  const allDroplets = waveData.all_messages || [];
   const participants = waveData.participants || [];
-  const messages = waveData.messages || [];
-  const total = allMessages.length;
+  const droplets = waveData.messages || [];
+  const total = allDroplets.length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -4659,7 +4706,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             {waveData.group_name && <span style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>({waveData.group_name})</span>}
           </div>
           <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>
-            {participants.length} participants • {total} messages
+            {participants.length} participants • {total} droplets
           </div>
         </div>
         <PrivacyBadge level={wave.privacy} compact={isMobile} />
@@ -4784,17 +4831,17 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           )}
 
           {/* Mark All Read Button - always visible if unread */}
-          {allMessages.some(m => m.is_unread && m.author_id !== currentUser.id) && (
+          {allDroplets.some(m => m.is_unread && m.author_id !== currentUser.id) && (
             <button
               onClick={async () => {
                 try {
-                  const unreadMessages = allMessages
+                  const unreadDroplets = allDroplets
                     .filter(m => (m.readBy || [m.author_id]).includes(currentUser.id) === false && m.author_id !== currentUser.id);
-                  if (unreadMessages.length === 0) return;
-                  await Promise.all(unreadMessages.map(m => fetchAPI(`/messages/${m.id}/read`, { method: 'POST' })));
+                  if (unreadDroplets.length === 0) return;
+                  await Promise.all(unreadDroplets.map(m => fetchAPI(`/droplets/${m.id}/read`, { method: 'POST' })));
                   await loadWave();
                   onWaveUpdate?.();
-                  showToast(`Marked ${unreadMessages.length} message${unreadMessages.length !== 1 ? 's' : ''} as read`, 'success');
+                  showToast(`Marked ${unreadDroplets.length} droplet${unreadDroplets.length !== 1 ? 's' : ''} as read`, 'success');
                 } catch (err) {
                   showToast('Failed to mark droplets as read', 'error');
                 }
@@ -4828,8 +4875,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           flexShrink: 0
         }}>
           {participants.map(p => {
-            const latestMessage = allMessages.length > 0 ? allMessages[allMessages.length - 1] : null;
-            const hasReadLatest = latestMessage ? (latestMessage.readBy || [latestMessage.author_id]).includes(p.id) : true;
+            const latestDroplet = allDroplets.length > 0 ? allDroplets[allDroplets.length - 1] : null;
+            const hasReadLatest = latestDroplet ? (latestDroplet.readBy || [latestDroplet.author_id]).includes(p.id) : true;
             const isCurrentUser = p.id === currentUser?.id;
             const isAlreadyContact = isContact(p.id);
             const hasSentRequest = hasSentRequestTo(p.id);
@@ -5038,12 +5085,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 fontSize: isMobile ? '0.85rem' : '0.75rem',
               }}
             >
-              {loadingMore ? 'Loading...' : `↑ Load older messages (${(waveData.total_messages || 0) - allMessages.length} more)`}
+              {loadingMore ? 'Loading...' : `↑ Load older droplets (${(waveData.total_messages || 0) - allDroplets.length} more)`}
             </button>
           </div>
         )}
-        {messages.map(msg => (
-          <ThreadedMessage key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
+        {droplets.map(msg => (
+          <Droplet key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
             onEdit={handleStartEdit} onSaveEdit={handleSaveEdit} onCancelEdit={handleCancelEdit}
             editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
@@ -5052,7 +5099,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             onShowProfile={onShowProfile} onJumpToParent={jumpToParent} onReport={handleReportMessage}
             onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined}
             onRipple={(droplet) => setRippleTarget(droplet)}
-            onNavigateToWave={onNavigateToWave} currentWaveId={wave.id} />
+            onNavigateToWave={onNavigateToWave} currentWaveId={wave.id}
+            unreadCountsByWave={unreadCountsByWave}
+            autoFocusDroplets={currentUser?.preferences?.autoFocusDroplets === true} />
         ))}
       </div>
 
@@ -5968,25 +6017,25 @@ const FocusView = ({
   // Use liveDroplet for display (falls back to initialDroplet)
   const focusedDroplet = liveDroplet || initialDroplet;
 
-  // Build messages array from focused droplet and its children
-  const messages = focusedDroplet ? [focusedDroplet] : [];
+  // Build droplets array from focused droplet and its children
+  const focusDroplets = focusedDroplet ? [focusedDroplet] : [];
   const participants = wave?.participants || [];
 
-  // Filter out messages from blocked/muted users
+  // Filter out droplets from blocked/muted users
   const isBlocked = (userId) => blockedUsers?.some(u => u.blockedUserId === userId) || false;
   const isMuted = (userId) => mutedUsers?.some(u => u.mutedUserId === userId) || false;
 
-  const filterMessages = (msgs) => {
+  const filterDroplets = (msgs) => {
     return msgs.filter(msg => {
       if (isBlocked(msg.author_id) || isMuted(msg.author_id)) return false;
       if (msg.children) {
-        msg.children = filterMessages(msg.children);
+        msg.children = filterDroplets(msg.children);
       }
       return true;
     });
   };
 
-  const filteredMessages = filterMessages([...messages]);
+  const filteredDroplets = filterDroplets([...focusDroplets]);
 
   const config = PRIVACY_LEVELS[wave?.privacy] || PRIVACY_LEVELS.private;
 
@@ -6292,8 +6341,8 @@ const FocusView = ({
           padding: isMobile ? '12px' : '16px',
         }}
       >
-        {filteredMessages.map(msg => (
-          <ThreadedMessage
+        {filteredDroplets.map(msg => (
+          <Droplet
             key={msg.id}
             message={msg}
             onReply={handleReply}
@@ -7128,6 +7177,8 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
   const [newHandle, setNewHandle] = useState('');
   const [showHandleRequests, setShowHandleRequests] = useState(false);
   const [showBlockedMuted, setShowBlockedMuted] = useState(false);
+  const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
+  const [notificationPrefs, setNotificationPrefs] = useState(null);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [mutedUsers, setMutedUsers] = useState([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -7148,6 +7199,25 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
       });
     }
   }, [showBlockedMuted, fetchAPI]);
+
+  // Load notification preferences when section is expanded
+  useEffect(() => {
+    if (showNotificationPrefs && !notificationPrefs) {
+      fetchAPI('/notifications/preferences')
+        .then(data => setNotificationPrefs(data.preferences))
+        .catch(err => console.error('Failed to load notification preferences:', err));
+    }
+  }, [showNotificationPrefs, notificationPrefs, fetchAPI]);
+
+  const handleUpdateNotificationPrefs = async (updates) => {
+    try {
+      const data = await fetchAPI('/notifications/preferences', { method: 'PUT', body: updates });
+      setNotificationPrefs(data.preferences);
+      showToast('Notification preferences updated', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to update notification preferences', 'error');
+    }
+  };
 
   const handleUnblock = async (userId, name) => {
     try {
@@ -7494,6 +7564,28 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
         </div>
 
         <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>AUTO-FOCUS DROPLETS</label>
+          <button
+            onClick={() => handleUpdatePreferences({ autoFocusDroplets: !(user?.preferences?.autoFocusDroplets === true) })}
+            style={{
+              padding: isMobile ? '10px 16px' : '8px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: (user?.preferences?.autoFocusDroplets === true) ? '#3bceac20' : 'transparent',
+              border: `1px solid ${(user?.preferences?.autoFocusDroplets === true) ? '#3bceac' : '#2a3a2a'}`,
+              color: (user?.preferences?.autoFocusDroplets === true) ? '#3bceac' : '#6a7a6a',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.9rem' : '0.85rem',
+            }}
+          >
+            {(user?.preferences?.autoFocusDroplets === true) ? '⤢ ENABLED' : '⤢ DISABLED'}
+          </button>
+          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+            Automatically enter Focus View when clicking droplets with replies
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>PUSH NOTIFICATIONS</label>
           <button
             onClick={async () => {
@@ -7545,6 +7637,136 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
         <div style={{ color: '#5a6a5a', fontSize: '0.7rem', padding: '10px', background: '#0a100a', border: '1px solid #2a3a2a' }}>
           ℹ️ Theme customization will change colors throughout the app (coming soon). Other changes take effect immediately.
         </div>
+      </div>
+
+      {/* Notification Preferences */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div style={{ color: '#6a7a6a', fontSize: '0.8rem' }}>NOTIFICATION PREFERENCES</div>
+          <button
+            onClick={() => setShowNotificationPrefs(!showNotificationPrefs)}
+            style={{
+              padding: isMobile ? '8px 12px' : '6px 10px',
+              background: showNotificationPrefs ? '#ffd23f20' : 'transparent',
+              border: `1px solid ${showNotificationPrefs ? '#ffd23f' : '#3a4a3a'}`,
+              color: showNotificationPrefs ? '#ffd23f' : '#6a7a6a',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '0.7rem',
+            }}
+          >
+            {showNotificationPrefs ? '▼ HIDE' : '▶ SHOW'}
+          </button>
+        </div>
+
+        {showNotificationPrefs && notificationPrefs && (
+          <div>
+            {/* Global Enable */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
+                NOTIFICATIONS
+              </label>
+              <button
+                onClick={() => handleUpdateNotificationPrefs({ enabled: !notificationPrefs.enabled })}
+                style={{
+                  padding: isMobile ? '10px 16px' : '8px 16px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: notificationPrefs.enabled ? '#0ead6920' : 'transparent',
+                  border: `1px solid ${notificationPrefs.enabled ? '#0ead69' : '#2a3a2a'}`,
+                  color: notificationPrefs.enabled ? '#0ead69' : '#6a7a6a',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
+                }}
+              >
+                {notificationPrefs.enabled ? '🔔 ENABLED' : '🔕 DISABLED'}
+              </button>
+              <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+                Master switch for all in-app notifications
+              </div>
+            </div>
+
+            {notificationPrefs.enabled && (
+              <>
+                {/* Notification Type Preferences */}
+                {[
+                  { key: 'directMentions', label: '@MENTIONS', icon: '@', desc: 'When someone @mentions you' },
+                  { key: 'replies', label: 'REPLIES', icon: '↩', desc: 'When someone replies to your droplet' },
+                  { key: 'waveActivity', label: 'WAVE ACTIVITY', icon: '◎', desc: 'New droplets in your waves' },
+                  { key: 'rippleEvents', label: 'RIPPLE EVENTS', icon: '◈', desc: 'When droplets are rippled to new waves' },
+                ].map(({ key, label, icon, desc }) => (
+                  <div key={key} style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
+                      {icon} {label}
+                    </label>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {[
+                        { value: 'always', label: 'Always' },
+                        { value: 'app_closed', label: 'App Closed' },
+                        { value: 'never', label: 'Never' },
+                      ].map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => handleUpdateNotificationPrefs({ [key]: opt.value })}
+                          style={{
+                            padding: isMobile ? '8px 12px' : '6px 12px',
+                            minHeight: isMobile ? '40px' : 'auto',
+                            background: notificationPrefs[key] === opt.value ? '#ffd23f20' : 'transparent',
+                            border: `1px solid ${notificationPrefs[key] === opt.value ? '#ffd23f' : '#2a3a2a'}`,
+                            color: notificationPrefs[key] === opt.value ? '#ffd23f' : '#6a7a6a',
+                            cursor: 'pointer',
+                            fontFamily: 'monospace',
+                            fontSize: '0.75rem',
+                          }}
+                        >
+                          {opt.label.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ color: '#5a6a5a', fontSize: '0.6rem', marginTop: '4px' }}>
+                      {desc}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Suppress While Focused */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
+                    SUPPRESS WHILE VIEWING
+                  </label>
+                  <button
+                    onClick={() => handleUpdateNotificationPrefs({ suppressWhileFocused: !notificationPrefs.suppressWhileFocused })}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 16px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: notificationPrefs.suppressWhileFocused ? '#ffd23f20' : 'transparent',
+                      border: `1px solid ${notificationPrefs.suppressWhileFocused ? '#ffd23f' : '#2a3a2a'}`,
+                      color: notificationPrefs.suppressWhileFocused ? '#ffd23f' : '#6a7a6a',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                    }}
+                  >
+                    {notificationPrefs.suppressWhileFocused ? '▣ ENABLED' : '▢ DISABLED'}
+                  </button>
+                  <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+                    Don't show wave activity notifications when you're viewing that wave
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div style={{ color: '#5a6a5a', fontSize: '0.7rem', padding: '10px', background: '#0a100a', border: '1px solid #2a3a2a', marginTop: '12px' }}>
+              ℹ️ "Always" shows notifications even when viewing the app. "App Closed" only notifies when the app is in background. "Never" disables that notification type.
+            </div>
+          </div>
+        )}
+
+        {showNotificationPrefs && !notificationPrefs && (
+          <div style={{ color: '#6a7a6a', fontSize: '0.8rem', padding: '20px', textAlign: 'center' }}>
+            Loading preferences...
+          </div>
+        )}
       </div>
 
       {/* Blocked & Muted Users */}
@@ -7887,6 +8109,7 @@ function MainApp() {
   const [blockedUsers, setBlockedUsers] = useState([]); // Users blocked by current user
   const [mutedUsers, setMutedUsers] = useState([]); // Users muted by current user
   const [profileUserId, setProfileUserId] = useState(null); // User ID for profile modal
+  const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0); // Increment to refresh notifications
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -8026,6 +8249,14 @@ function MainApp() {
     } else if (data.type === 'group_invitation_cancelled') {
       // Invitation to us was cancelled
       setGroupInvitations(prev => prev.filter(i => i.id !== data.invitationId));
+    } else if (data.type === 'notification') {
+      // New notification received - trigger immediate refresh
+      console.log('🔔 New notification:', data.notification?.type);
+      setNotificationRefreshTrigger(prev => prev + 1);
+    } else if (data.type === 'unread_count_update') {
+      // Notification count changed - trigger refresh
+      console.log('🔔 Notification count updated');
+      setNotificationRefreshTrigger(prev => prev + 1);
     }
   }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView, fetchAPI]);
 
@@ -8387,6 +8618,7 @@ function MainApp() {
               fetchAPI={fetchAPI}
               onNavigateToWave={handleNavigateToWaveById}
               isMobile={false}
+              refreshTrigger={notificationRefreshTrigger}
             />
             <button
               onClick={() => setShowSearch(true)}

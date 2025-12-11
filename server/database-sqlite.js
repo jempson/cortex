@@ -2501,6 +2501,23 @@ export class DatabaseSQLite {
     return { total, byType };
   }
 
+  // Get unread notification counts grouped by wave (for ripple badges)
+  getUnreadCountsByWave(userId) {
+    const rows = this.db.prepare(`
+      SELECT wave_id, COUNT(*) as count
+      FROM notifications
+      WHERE user_id = ? AND read = 0 AND dismissed = 0 AND wave_id IS NOT NULL
+      GROUP BY wave_id
+    `).all(userId);
+
+    const byWave = {};
+    for (const r of rows) {
+      byWave[r.wave_id] = r.count;
+    }
+
+    return byWave;
+  }
+
   markNotificationRead(notificationId) {
     const now = new Date().toISOString();
     const result = this.db.prepare(`

@@ -1,6 +1,6 @@
 # Cortex v1.11.0 - Implementation Plan
 
-## RELEASE STATUS: IN PROGRESS (2/6 Phases)
+## RELEASE STATUS: COMPLETE (6/6 Phases)
 
 **Target Scope:** Notification System + Deferred v1.10.0 Items
 **Branch:** `v1.11.0`
@@ -66,16 +66,16 @@ Version 1.11.0 implements a comprehensive notification system with smart routing
 **Status:** Complete
 
 - [x] Create `createNotification()` method in both database classes
-- [ ] Trigger notifications on:
-  - [ ] Direct @mention in droplet content (Phase 3)
-  - [ ] Reply to user's droplet (Phase 3)
-  - [ ] New droplet in wave (Phase 3)
-- [x] Notification deduplication by group_key (field ready, logic in Phase 3)
+- [x] Trigger notifications on:
+  - [x] Direct @mention in droplet content
+  - [x] Reply to user's droplet
+  - [x] New droplet in wave (wave_activity)
+- [x] Notification deduplication by group_key
 
 ### 1.4 WebSocket Events
 **Status:** Complete
 
-- [ ] `notification` - New notification created (Phase 3)
+- [x] `notification` - New notification created
 - [x] `notification_read` - Notification marked as read
 - [x] `unread_count_update` - Count changed
 
@@ -123,138 +123,139 @@ Version 1.11.0 implements a comprehensive notification system with smart routing
 ## Phase 3: Smart Notification Routing
 
 ### 3.1 Focus Context Awareness
-**Status:** Pending
+**Status:** Complete
 
-- [ ] Track user's current focus chain via WebSocket
-- [ ] `viewing_droplet` message from client when focused
-- [ ] Suppress notifications for visible content
+- [x] Track user's current wave via WebSocket (`viewing_wave` message)
+- [x] Server tracks `userViewingState` Map for viewing context
+- [x] Suppress wave_activity notifications for users viewing the source wave
 
 ### 3.2 Notification Decision Logic
-**Status:** Pending
+**Status:** Complete
 
-```javascript
-function shouldNotify(notification, userContext) {
-  // Always notify for direct mentions
-  if (notification.type === 'direct_mention') return true;
-
-  // Don't notify if user is viewing the droplet
-  if (userContext.focusChain?.includes(notification.dropletId)) {
-    return false;
-  }
-
-  // Don't notify if droplet is visible in current wave view
-  if (userContext.currentWaveId === notification.waveId &&
-      userContext.visibleDropletIds?.includes(notification.dropletId)) {
-    return false;
-  }
-
-  return true;
-}
-```
+- [x] `createDropletNotifications()` creates notifications on droplet creation
+- [x] Priority-based routing: mentions > replies > wave_activity
+- [x] No duplicate notifications (mentioned users don't get reply/activity)
+- [x] Focus awareness check skips wave_activity for users viewing the wave
 
 ### 3.3 Real-time Viewing State
-**Status:** Pending
+**Status:** Complete
 
-- [ ] Client sends `viewing_wave` when wave selected
-- [ ] Client sends `viewing_droplet` when in focus view
-- [ ] Server tracks user viewing state per connection
-- [ ] Auto-mark notifications as read when viewing source
+- [x] Client sends `viewing_wave` when wave selected (WaveView mount)
+- [x] Client sends `viewing_wave: null` when leaving wave (cleanup)
+- [x] Server tracks user viewing state per connection
+- [x] WebSocket `notification` event triggers immediate UI refresh
 
 ---
 
 ## Phase 4: Ripple Notifications
 
 ### 4.1 Ripple Event Notifications
-**Status:** Pending
+**Status:** Complete
 
-- [ ] Notify original wave participants when droplet rippled
-- [ ] Notification includes link to new wave
-- [ ] Type: `ripple_created`
+- [x] Notify original wave participants when droplet rippled
+- [x] Notification includes link to new wave
+- [x] Type: `ripple` (icon: ◈, color: purple)
+- [x] `createRippleNotifications()` helper function
 
 ### 4.2 Link Card Activity Badge
-**Status:** Pending
+**Status:** Complete
 
-- [ ] Track unread count for rippled waves
-- [ ] Show badge on RippledLinkCard: "◈ New Wave (3 new)"
-- [ ] Badge clears when user visits the rippled wave
+- [x] `GET /api/notifications/by-wave` returns unread counts per wave
+- [x] `getUnreadCountsByWave()` method in both database classes
+- [x] RippledLinkCard displays unread badge when count > 0
+- [x] Purple highlight when wave has new activity
+- [x] Badge shows "N new" count
 
 ### 4.3 Ripple Chain Subscriptions
-**Status:** Pending
+**Status:** Deferred to Phase 5
 
 - [ ] User preference: `followRipples` (all | participated | none)
 - [ ] Participants who contributed to original thread auto-follow
 - [ ] Option to unfollow rippled wave
+- Note: Moved to Phase 5 (Notification Preferences) for better organization
 
 ---
 
 ## Phase 5: Notification Preferences
 
 ### 5.1 User Preferences Schema
-**Status:** Pending
+**Status:** Complete
 
-Add to user preferences:
+Added `notificationPreferences` to user object:
 ```javascript
-notifications: {
+notificationPreferences: {
   enabled: true,
   directMentions: 'always',      // always | app_closed | never
   replies: 'always',
   waveActivity: 'app_closed',
   rippleEvents: 'app_closed',
-  soundEnabled: true,
-  suppressWhileFocused: true,
-  followRipples: 'participated'  // all | participated | none
+  soundEnabled: false,
+  suppressWhileFocused: true
 }
 ```
 
-### 5.2 Preferences API
-**Status:** Pending
+- [x] `DEFAULT_NOTIFICATION_PREFS` constant in server.js
+- [x] `shouldCreateNotification()` helper checks preferences before creating notifications
+- [x] Preferences integrated into `createDropletNotifications()` and `createRippleNotifications()`
 
-- [ ] `PUT /api/notifications/preferences` - Update preferences
-- [ ] `GET /api/notifications/preferences` - Get current preferences
+### 5.2 Preferences API
+**Status:** Complete
+
+- [x] `GET /api/notifications/preferences` - Get current preferences
+- [x] `PUT /api/notifications/preferences` - Update preferences with validation
 
 ### 5.3 Preferences UI
-**Status:** Pending
+**Status:** Complete
 
-- [ ] Section in Profile Settings: "Notification Preferences"
-- [ ] Toggles for each notification type
-- [ ] Sound on/off toggle
-- [ ] "Suppress while focused" toggle
-- [ ] Ripple following preference dropdown
+- [x] Section in Profile Settings: "Notification Preferences" (expandable)
+- [x] Global enable/disable toggle
+- [x] Per-type preference selectors (Always/App Closed/Never):
+  - Direct @mentions
+  - Replies to your droplets
+  - Wave activity
+  - Ripple events
+- [x] "Suppress while focused" toggle
 
 ---
 
 ## Phase 6: Deferred v1.10.0 Cleanup
 
 ### 6.1 Deprecation Headers
-**Status:** Pending
+**Status:** Complete
 
-- [ ] Add `X-Deprecated` header to `/api/messages/*` endpoints
-- [ ] Log usage of deprecated endpoints (warn level)
-- [ ] Add deprecation notice to API.md
+- [x] Add `X-Deprecated` header to `/api/messages/*` endpoints
+- [x] `X-Deprecated-Message` header with migration guidance
+- [x] `Sunset` header (March 1, 2026)
+- [x] Log usage of deprecated endpoints (warn level)
+- [x] Add deprecation notice to API.md with migration guide
 
 ### 6.2 Component Renaming (Internal)
-**Status:** Pending
+**Status:** Complete
 
 Note: These are internal code changes, no user-facing impact.
 
-- [ ] Rename `ThreadedMessage` → `Droplet`
-- [ ] Rename `MessageInput` → `DropletComposer`
-- [ ] Rename `MessageWithEmbeds` → `DropletWithEmbeds`
-- [ ] Update all references throughout codebase
+- [x] Rename `ThreadedMessage` → `Droplet`
+- [x] Rename `MessageWithEmbeds` → `DropletWithEmbeds`
+- [x] Update all references throughout codebase
+- Note: `MessageInput` → `DropletComposer` deferred (not a discrete component)
 
 ### 6.3 State Variable Renaming
-**Status:** Pending
+**Status:** Complete
 
-- [ ] Rename `messages` state → `droplets` in WaveView
-- [ ] Update all message-related props and handlers
-- [ ] Ensure no regressions
+- [x] Rename `allMessages` → `allDroplets` in WaveView
+- [x] Rename `messages` (tree) → `droplets` in WaveView
+- [x] Update FocusView to use `focusDroplets` and `filteredDroplets`
+- [x] Update UI text ("droplets" instead of "messages")
+- [x] Ensure no regressions (build passes)
 
 ### 6.4 Auto-Focus User Preference
-**Status:** Pending
+**Status:** Complete
 
-- [ ] Add `preferences.autoFocusDroplets` (boolean, default: false)
-- [ ] When true, clicking any droplet with replies enters focus view
-- [ ] UI toggle in Profile Settings
+- [x] Add `preferences.autoFocusDroplets` (boolean, default: false)
+- [x] Server: `PUT /api/profile/preferences` accepts `autoFocusDroplets`
+- [x] When true, clicking any droplet with replies enters focus view
+- [x] UI toggle in Profile Settings (teal color, ⤢ icon)
+- [x] Cursor indicates clickability when enabled
 
 ---
 

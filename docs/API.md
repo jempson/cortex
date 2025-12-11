@@ -1436,7 +1436,23 @@ Delete a wave and all its messages.
 
 ### Messages Endpoints
 
+> **⚠️ DEPRECATED (v1.10.0):** These endpoints are deprecated. Use the `/api/droplets/*` endpoints instead.
+>
+> **Response Headers:**
+> - `X-Deprecated: true`
+> - `X-Deprecated-Message: This endpoint is deprecated. Use /api/droplets/* instead.`
+> - `Sunset: Sat, 01 Mar 2026 00:00:00 GMT`
+>
+> **Migration Guide:**
+> - `POST /api/messages` → `POST /api/waves/:id/droplets`
+> - `PUT /api/messages/:id` → `PUT /api/droplets/:id`
+> - `DELETE /api/messages/:id` → `DELETE /api/droplets/:id`
+> - `POST /api/messages/:id/react` → `POST /api/droplets/:id/react`
+> - `POST /api/messages/:id/read` → `POST /api/droplets/:id/read`
+
 #### POST /api/messages
+
+> ⚠️ **DEPRECATED** - Use `POST /api/waves/:id/droplets` instead.
 
 Create a new message in a wave.
 
@@ -1492,6 +1508,8 @@ Create a new message in a wave.
 
 #### PUT /api/messages/:id
 
+> ⚠️ **DEPRECATED** - Use `PUT /api/droplets/:id` instead.
+
 Edit an existing message.
 
 **Authentication:** Required
@@ -1535,6 +1553,8 @@ Edit an existing message.
 
 #### DELETE /api/messages/:id
 
+> ⚠️ **DEPRECATED** - Use `DELETE /api/droplets/:id` instead.
+
 Delete a message.
 
 **Authentication:** Required
@@ -1559,6 +1579,8 @@ Delete a message.
 ---
 
 #### POST /api/messages/:id/react
+
+> ⚠️ **DEPRECATED** - Use `POST /api/droplets/:id/react` instead.
 
 Add or remove a reaction (emoji) to a message.
 
@@ -1602,6 +1624,8 @@ Add or remove a reaction (emoji) to a message.
 ---
 
 #### POST /api/messages/:id/read
+
+> ⚠️ **DEPRECATED** - Use `POST /api/droplets/:id/read` instead.
 
 Mark a specific message as read.
 
