@@ -4465,9 +4465,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         scrollPositionToRestore.current = messagesRef.current.scrollTop;
       }
 
-      await fetchAPI('/messages', {
+      await fetchAPI(`/waves/${wave.id}/droplets`, {
         method: 'POST',
-        body: { wave_id: wave.id, parent_id: replyingTo?.id || null, content: newMessage },
+        body: { parent_id: replyingTo?.id || null, content: newMessage },
       });
       setNewMessage('');
       setReplyingTo(null);
@@ -4586,7 +4586,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       return;
     }
     try {
-      await fetchAPI(`/messages/${messageId}`, {
+      await fetchAPI(`/droplets/${messageId}`, {
         method: 'PUT',
         body: { content: editContent },
       });
@@ -4611,7 +4611,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         scrollPositionToRestore.current = messagesRef.current.scrollTop;
       }
 
-      await fetchAPI(`/messages/${messageId}/react`, {
+      await fetchAPI(`/droplets/${messageId}/react`, {
         method: 'POST',
         body: { emoji },
       });
@@ -4636,7 +4636,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const confirmDeleteMessage = async () => {
     if (!messageToDelete) return;
     try {
-      await fetchAPI(`/messages/${messageToDelete.id}`, { method: 'DELETE' });
+      await fetchAPI(`/droplets/${messageToDelete.id}`, { method: 'DELETE' });
       showToast('Droplet deleted', 'success');
       loadWave();
     } catch (err) {
@@ -4646,19 +4646,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   const handleMessageClick = async (messageId) => {
     try {
-      console.log(`📖 Marking message ${messageId} as read...`);
+      console.log(`📖 Marking droplet ${messageId} as read...`);
       // Save current scroll position before reloading
       if (messagesRef.current) {
         scrollPositionToRestore.current = messagesRef.current.scrollTop;
       }
-      await fetchAPI(`/messages/${messageId}/read`, { method: 'POST' });
-      console.log(`✅ Message ${messageId} marked as read, refreshing wave`);
+      await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
+      console.log(`✅ Droplet ${messageId} marked as read, refreshing wave`);
       // Reload wave to update unread status
       await loadWave();
       // Also refresh wave list to update unread counts
       onWaveUpdate?.();
     } catch (err) {
-      console.error(`❌ Failed to mark message ${messageId} as read:`, err);
+      console.error(`❌ Failed to mark droplet ${messageId} as read:`, err);
       showToast('Failed to mark droplet as read', 'error');
       scrollPositionToRestore.current = null; // Clear on error
     }
@@ -6067,9 +6067,9 @@ const FocusView = ({
 
     try {
       const parentId = replyingTo?.id || focusedDroplet?.id;
-      await fetchAPI('/messages', {
+      await fetchAPI(`/waves/${wave.id}/droplets`, {
         method: 'POST',
-        body: { wave_id: wave.id, parent_id: parentId, content: newMessage }
+        body: { parent_id: parentId, content: newMessage }
       });
       setNewMessage('');
       setReplyingTo(null);
