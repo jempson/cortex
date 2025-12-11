@@ -106,8 +106,8 @@ SEED_DEMO_DATA=true                # Create demo accounts
 GIPHY_API_KEY=your-key             # For GIF search
 ALLOWED_ORIGINS=https://your-domain.com
 
-# Push Notifications (optional)
-VAPID_PUBLIC_KEY=your-public-key   # npx web-push generate-vapid-keys
+# Push Notifications (optional) - see "Enabling Push Notifications" below
+VAPID_PUBLIC_KEY=your-public-key
 VAPID_PRIVATE_KEY=your-private-key
 VAPID_EMAIL=mailto:admin@example.com
 
@@ -156,6 +156,53 @@ RATE_LIMIT_OEMBED_MAX=30           # Per minute
 | POST | `/api/users/:id/mute` | Mute user |
 
 See `CLAUDE.md` for complete API documentation.
+
+---
+
+## Enabling Push Notifications
+
+Push notifications require VAPID (Voluntary Application Server Identification) keys. Without these, users will see "Failed to enable push notifications" when trying to enable them.
+
+### Step 1: Generate VAPID Keys
+
+Run one of these commands in the `server/` directory:
+
+```bash
+# Option A: Using npx (no install needed)
+npx web-push generate-vapid-keys
+
+# Option B: Using node directly (if web-push is installed)
+node -e "const wp = require('web-push'); const k = wp.generateVAPIDKeys(); console.log('VAPID_PUBLIC_KEY=' + k.publicKey); console.log('VAPID_PRIVATE_KEY=' + k.privateKey);"
+```
+
+This outputs something like:
+```
+VAPID_PUBLIC_KEY=BLJ71vohV-asH9cGFHa9d0EbMFW78y9OsA8crl25u0cwRX6i1n2CZBsREvcXqjTKsiDtTWIWuEc63Zv_AxDs8DU
+VAPID_PRIVATE_KEY=9OnEq6IyA4Q-B9UX7stt-QMizElvfvZxAOe1miE8Lik
+```
+
+### Step 2: Add to .env
+
+Add these lines to your `server/.env` file:
+
+```bash
+VAPID_PUBLIC_KEY=your-generated-public-key
+VAPID_PRIVATE_KEY=your-generated-private-key
+VAPID_EMAIL=mailto:admin@yourdomain.com
+```
+
+### Step 3: Restart Server
+
+Restart your server. You should see this in the logs:
+```
+🔔 Web Push notifications enabled
+```
+
+### Important Notes
+
+- **Generate keys ONCE** - Changing keys invalidates all existing push subscriptions
+- **Keep private key secret** - Never commit `VAPID_PRIVATE_KEY` to version control
+- **iOS limitation** - Push notifications are not supported on iOS/Safari PWAs (Apple platform limitation)
 
 ---
 
