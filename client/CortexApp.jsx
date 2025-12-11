@@ -101,53 +101,73 @@ const storage = {
 // ============ PUSH NOTIFICATION HELPERS ============
 // Subscribe to push notifications
 async function subscribeToPush(token) {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    console.log('[Push] Push notifications not supported');
+  console.log('[Push] subscribeToPush called');
+
+  if (!('serviceWorker' in navigator)) {
+    console.log('[Push] Service Worker not supported');
+    return false;
+  }
+
+  if (!('PushManager' in window)) {
+    console.log('[Push] PushManager not supported');
     return false;
   }
 
   try {
     // First check/request notification permission
+    console.log('[Push] Current permission:', Notification.permission);
     let permission = Notification.permission;
     if (permission === 'default') {
       console.log('[Push] Requesting notification permission...');
       permission = await Notification.requestPermission();
+      console.log('[Push] Permission result:', permission);
     }
 
     if (permission !== 'granted') {
-      console.log('[Push] Notification permission denied');
+      console.log('[Push] Notification permission not granted:', permission);
       return false;
     }
 
     // Get VAPID public key from server
+    console.log('[Push] Fetching VAPID key...');
     const response = await fetch(`${API_URL}/push/vapid-key`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
 
     if (!response.ok) {
-      console.log('[Push] Push notifications not configured on server');
+      console.log('[Push] VAPID key fetch failed:', response.status);
       return false;
     }
 
     const { publicKey } = await response.json();
+    console.log('[Push] Got VAPID key');
 
     // Get service worker registration
+    console.log('[Push] Waiting for service worker...');
     const registration = await navigator.serviceWorker.ready;
+    console.log('[Push] Service worker ready');
 
     // Check existing subscription
     let subscription = await registration.pushManager.getSubscription();
+    console.log('[Push] Existing subscription:', subscription ? 'yes' : 'no');
 
     // If no subscription, create new subscription
     if (!subscription) {
       console.log('[Push] Creating new push subscription...');
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey)
-      });
-      console.log('[Push] New push subscription created');
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey)
+        });
+        console.log('[Push] New push subscription created');
+      } catch (subError) {
+        console.error('[Push] Failed to create subscription:', subError.name, subError.message);
+        return false;
+      }
     }
 
     // Send subscription to server
+    console.log('[Push] Sending subscription to server...');
     const subscribeResponse = await fetch(`${API_URL}/push/subscribe`, {
       method: 'POST',
       headers: {
@@ -158,14 +178,15 @@ async function subscribeToPush(token) {
     });
 
     if (!subscribeResponse.ok) {
-      console.error('[Push] Server rejected subscription:', await subscribeResponse.text());
+      const errorText = await subscribeResponse.text();
+      console.error('[Push] Server rejected subscription:', subscribeResponse.status, errorText);
       return false;
     }
 
     console.log('[Push] Push subscription registered with server');
     return true;
   } catch (error) {
-    console.error('[Push] Failed to subscribe:', error);
+    console.error('[Push] Failed to subscribe:', error.name, error.message, error);
     return false;
   }
 }
