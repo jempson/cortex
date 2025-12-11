@@ -1099,12 +1099,12 @@ const OfflineIndicator = () => {
 };
 
 // ============ BOTTOM NAVIGATION ============
-const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendingGroups }) => {
+const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendingGroups, pendingNotifications }) => {
   const items = [
     { id: 'waves', icon: '◈', label: 'Waves', badge: unreadCount },
+    { id: 'notifications', icon: '🔔', label: 'Alerts', badge: pendingNotifications, badgeColor: '#ffd23f' },
     { id: 'contacts', icon: '●', label: 'Contacts', badge: pendingContacts },
     { id: 'groups', icon: '◆', label: 'Groups', badge: pendingGroups },
-    { id: 'search', icon: '⌕', label: 'Search' },
     { id: 'profile', icon: '⚙', label: 'Profile' },
   ];
 
@@ -1133,7 +1133,8 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
     }}>
       {items.map(item => {
         const isActive = activeView === item.id;
-        const badgeColor = item.id === 'contacts' && item.badge > 0 ? '#3bceac' :
+        const badgeColor = item.badgeColor ? item.badgeColor :
+                          item.id === 'contacts' && item.badge > 0 ? '#3bceac' :
                           item.id === 'groups' && item.badge > 0 ? '#ffd23f' : '#ff6b35';
 
         return (
@@ -1900,6 +1901,138 @@ const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger
           isMobile={isMobile}
         />
       )}
+    </div>
+  );
+};
+
+// ============ MOBILE NOTIFICATIONS VIEW ============
+const MobileNotificationsView = ({ fetchAPI, onNavigateToWave, showToast, refreshTrigger, onCountChange }) => {
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await fetchAPI('/notifications?limit=50');
+      setNotifications(data.notifications || []);
+    } catch (err) {
+      console.error('Failed to load notifications:', err);
+      showToast('Failed to load notifications', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAPI, showToast]);
+
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications, refreshTrigger]);
+
+  const handleMarkRead = async (notificationId) => {
+    try {
+      await fetchAPI(`/notifications/${notificationId}/read`, { method: 'POST' });
+      setNotifications(prev => prev.map(n =>
+        n.id === notificationId ? { ...n, read: true } : n
+      ));
+      onCountChange?.();
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await fetchAPI('/notifications/read-all', { method: 'POST' });
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      onCountChange?.();
+      showToast('All notifications marked as read', 'success');
+    } catch (err) {
+      showToast('Failed to mark all as read', 'error');
+    }
+  };
+
+  const handleDismiss = async (notificationId) => {
+    try {
+      await fetchAPI(`/notifications/${notificationId}`, { method: 'DELETE' });
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      onCountChange?.();
+    } catch (err) {
+      console.error('Failed to dismiss notification:', err);
+    }
+  };
+
+  const handleNotificationClick = (notification) => {
+    if (!notification.read) {
+      handleMarkRead(notification.id);
+    }
+    if (notification.waveId) {
+      onNavigateToWave(notification.waveId, notification.dropletId);
+    }
+  };
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{
+        padding: '16px',
+        borderBottom: '1px solid #2a3a2a',
+        background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div>
+          <h2 style={{ margin: 0, color: '#ffd23f', fontSize: '1.1rem' }}>🔔 Notifications</h2>
+          <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginTop: '4px' }}>
+            {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+          </div>
+        </div>
+        {unreadCount > 0 && (
+          <button
+            onClick={handleMarkAllRead}
+            style={{
+              padding: '8px 12px',
+              background: 'transparent',
+              border: '1px solid #0ead69',
+              color: '#0ead69',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '0.7rem',
+            }}
+          >
+            MARK ALL READ
+          </button>
+        )}
+      </div>
+
+      {/* Notification List */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+        {notifications.length === 0 ? (
+          <div style={{
+            textAlign: 'center',
+            padding: '40px 20px',
+            color: '#5a6a5a',
+          }}>
+            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🔔</div>
+            <div>No notifications yet</div>
+          </div>
+        ) : (
+          notifications.map(notification => (
+            <NotificationItem
+              key={notification.id}
+              notification={notification}
+              onClick={() => handleNotificationClick(notification)}
+              onDismiss={() => handleDismiss(notification.id)}
+              isMobile={true}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 };
@@ -8110,6 +8243,7 @@ function MainApp() {
   const [mutedUsers, setMutedUsers] = useState([]); // Users muted by current user
   const [profileUserId, setProfileUserId] = useState(null); // User ID for profile modal
   const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0); // Increment to refresh notifications
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0); // For mobile bottom nav badge
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -8253,10 +8387,16 @@ function MainApp() {
       // New notification received - trigger immediate refresh
       console.log('🔔 New notification:', data.notification?.type);
       setNotificationRefreshTrigger(prev => prev + 1);
+      // Update the count for mobile nav badge
+      setUnreadNotificationCount(prev => prev + 1);
     } else if (data.type === 'unread_count_update') {
       // Notification count changed - trigger refresh
       console.log('🔔 Notification count updated');
       setNotificationRefreshTrigger(prev => prev + 1);
+      // Reload accurate count from server
+      fetchAPI('/notifications/count').then(data => {
+        setUnreadNotificationCount(data.total || 0);
+      }).catch(e => console.error('Failed to update notification count:', e));
     }
   }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView, fetchAPI]);
 
@@ -8286,6 +8426,13 @@ function MainApp() {
       const invitations = await fetchAPI('/groups/invitations');
       setGroupInvitations(invitations);
     } catch (e) { console.error('Failed to load group invitations:', e); }
+  }, [fetchAPI]);
+
+  const loadNotificationCount = useCallback(async () => {
+    try {
+      const data = await fetchAPI('/notifications/count');
+      setUnreadNotificationCount(data.total || 0);
+    } catch (e) { console.error('Failed to load notification count:', e); }
   }, [fetchAPI]);
 
   const loadBlockedMutedUsers = useCallback(async () => {
@@ -8417,7 +8564,8 @@ function MainApp() {
     loadContactRequests();
     loadGroupInvitations();
     loadBlockedMutedUsers();
-  }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers]);
+    loadNotificationCount();
+  }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadNotificationCount]);
 
   // Request notification permission and set up push on first load
   useEffect(() => {
@@ -8735,6 +8883,19 @@ function MainApp() {
           />
         )}
 
+        {activeView === 'notifications' && (
+          <MobileNotificationsView
+            fetchAPI={fetchAPI}
+            onNavigateToWave={(waveId, dropletId) => {
+              handleNavigateToWaveById(waveId, dropletId);
+              setActiveView('waves');
+            }}
+            showToast={showToastMsg}
+            refreshTrigger={notificationRefreshTrigger}
+            onCountChange={loadNotificationCount}
+          />
+        )}
+
         {activeView === 'profile' && (
           <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} onLogout={logout} />
         )}
@@ -8771,6 +8932,7 @@ function MainApp() {
           unreadCount={waves.reduce((sum, w) => sum + (w.unread_count || 0), 0)}
           pendingContacts={contactRequests.length}
           pendingGroups={groupInvitations.length}
+          pendingNotifications={unreadNotificationCount}
         />
       )}
 
