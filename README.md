@@ -356,6 +356,28 @@ server {
 
 ## Changelog
 
+### v1.11.0 (December 2025)
+- **Notification System**: Comprehensive in-app notifications
+  - Notifications for @mentions, replies, wave activity, and ripples
+  - Smart routing: notifications suppressed when viewing source wave
+  - Real-time WebSocket updates
+- **Enhanced Wave List Badges**: Color-coded notification indicators
+  - Amber (@) for direct mentions
+  - Green (↩) for replies to your droplets
+  - Purple (◈) for ripple activity
+  - Orange for general wave activity
+- **Notification Preferences**: Per-type control in Profile Settings
+  - Configure: always, app closed only, or never
+  - "Suppress while focused" option
+- **API Deprecation**: Legacy `/api/messages/*` endpoints now return deprecation headers
+  - Migration guide in docs/API.md
+  - Sunset date: March 1, 2026
+- **Component Cleanup**: Internal terminology alignment (ThreadedMessage → Droplet)
+- **Auto-Focus Preference**: Optional auto-enter Focus View on droplet click
+- **Bug Fixes**:
+  - Notification badges now clear when droplets are read
+  - Push notification re-enable after disabling
+
 ### v1.10.0 (December 2025)
 - **Droplets Architecture**: Messages renamed to Droplets throughout
 - **Focus View**: View any droplet with replies as its own wave-like context

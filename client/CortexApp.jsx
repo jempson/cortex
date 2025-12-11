@@ -8836,7 +8836,7 @@ function MainApp() {
           display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
         }}>
           <div style={{ color: '#5a6a5a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ color: '#3a4a3a' }}>v1.10.0</span>
+            <span style={{ color: '#3a4a3a' }}>v1.11.0</span>
             <span><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</span>
             <span><span style={{ color: apiConnected ? '#0ead69' : '#ff6b35' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? '#0ead69' : '#ff6b35' }}>●</span> LIVE</span>
