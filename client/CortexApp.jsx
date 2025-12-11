@@ -4465,9 +4465,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         scrollPositionToRestore.current = messagesRef.current.scrollTop;
       }
 
-      await fetchAPI(`/waves/${wave.id}/droplets`, {
+      await fetchAPI('/droplets', {
         method: 'POST',
-        body: { parent_id: replyingTo?.id || null, content: newMessage },
+        body: { wave_id: wave.id, parent_id: replyingTo?.id || null, content: newMessage },
       });
       setNewMessage('');
       setReplyingTo(null);
@@ -6067,9 +6067,9 @@ const FocusView = ({
 
     try {
       const parentId = replyingTo?.id || focusedDroplet?.id;
-      await fetchAPI(`/waves/${wave.id}/droplets`, {
+      await fetchAPI('/droplets', {
         method: 'POST',
-        body: { parent_id: parentId, content: newMessage }
+        body: { wave_id: wave.id, parent_id: parentId, content: newMessage }
       });
       setNewMessage('');
       setReplyingTo(null);
