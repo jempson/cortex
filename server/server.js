@@ -60,6 +60,8 @@ const DATA_FILES = {
   contactRequests: path.join(DATA_DIR, 'contact-requests.json'),
   groupInvitations: path.join(DATA_DIR, 'group-invitations.json'),
   pushSubscriptions: path.join(DATA_DIR, 'push-subscriptions.json'),
+  notifications: path.join(DATA_DIR, 'notifications.json'),
+  waveNotificationSettings: path.join(DATA_DIR, 'wave-notification-settings.json'),
 };
 
 // Uploads directory for avatars
@@ -485,6 +487,8 @@ class Database {
     this.contactRequests = { requests: [] };
     this.groupInvitations = { invitations: [] };
     this.pushSubscriptions = { subscriptions: [] };
+    this.notifications = { notifications: [] };
+    this.waveNotificationSettings = { settings: [] };
     this.load();
   }
 
@@ -553,6 +557,8 @@ class Database {
       this.contactRequests = this.loadFile(DATA_FILES.contactRequests, { requests: [] });
       this.groupInvitations = this.loadFile(DATA_FILES.groupInvitations, { invitations: [] });
       this.pushSubscriptions = this.loadFile(DATA_FILES.pushSubscriptions, { subscriptions: [] });
+      this.notifications = this.loadFile(DATA_FILES.notifications, { notifications: [] });
+      this.waveNotificationSettings = this.loadFile(DATA_FILES.waveNotificationSettings, { settings: [] });
       console.log('📂 Loaded data from separated files');
     } else {
       if (process.env.SEED_DEMO_DATA === 'true') {
@@ -586,6 +592,8 @@ class Database {
   saveGroupInvitations() { this.saveFile(DATA_FILES.groupInvitations, this.groupInvitations); }
   saveModeration() { this.saveFile(DATA_FILES.moderation, this.moderation); }
   savePushSubscriptions() { this.saveFile(DATA_FILES.pushSubscriptions, this.pushSubscriptions); }
+  saveNotifications() { this.saveFile(DATA_FILES.notifications, this.notifications); }
+  saveWaveNotificationSettings() { this.saveFile(DATA_FILES.waveNotificationSettings, this.waveNotificationSettings); }
 
   initEmpty() {
     console.log('📝 Initializing empty database');
@@ -1231,6 +1239,198 @@ class Database {
       s => s.endpoint !== endpoint
     );
     this.savePushSubscriptions();
+  }
+
+  // === Notification Methods ===
+  createNotification({ userId, type, waveId, dropletId, actorId, title, body, preview, groupKey }) {
+    const notification = {
+      id: uuidv4(),
+      userId,
+      type,
+      waveId: waveId || null,
+      dropletId: dropletId || null,
+      actorId: actorId || null,
+      title,
+      body: body || null,
+      preview: preview || null,
+      read: false,
+      dismissed: false,
+      pushSent: false,
+      createdAt: new Date().toISOString(),
+      readAt: null,
+      groupKey: groupKey || null
+    };
+
+    this.notifications.notifications.push(notification);
+    this.saveNotifications();
+    return notification;
+  }
+
+  getNotifications(userId, { unread = false, type = null, limit = 50, offset = 0 } = {}) {
+    let notifications = this.notifications.notifications
+      .filter(n => n.userId === userId && !n.dismissed);
+
+    if (unread) {
+      notifications = notifications.filter(n => !n.read);
+    }
+    if (type) {
+      notifications = notifications.filter(n => n.type === type);
+    }
+
+    // Sort by createdAt descending
+    notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Apply pagination
+    notifications = notifications.slice(offset, offset + limit);
+
+    // Enrich with actor and wave info
+    return notifications.map(n => {
+      const actor = n.actorId ? this.findUserById(n.actorId) : null;
+      const wave = n.waveId ? this.waves.waves.find(w => w.id === n.waveId) : null;
+
+      return {
+        ...n,
+        actorHandle: actor?.handle,
+        actorDisplayName: actor?.displayName,
+        actorAvatar: actor?.avatar,
+        actorAvatarUrl: actor?.avatarUrl,
+        waveTitle: wave?.title
+      };
+    });
+  }
+
+  getNotificationCounts(userId) {
+    const unread = this.notifications.notifications
+      .filter(n => n.userId === userId && !n.read && !n.dismissed);
+
+    const byType = {};
+    for (const n of unread) {
+      byType[n.type] = (byType[n.type] || 0) + 1;
+    }
+
+    return { total: unread.length, byType };
+  }
+
+  markNotificationRead(notificationId) {
+    const notification = this.notifications.notifications.find(n => n.id === notificationId);
+    if (!notification) return false;
+
+    notification.read = true;
+    notification.readAt = new Date().toISOString();
+    this.saveNotifications();
+    return true;
+  }
+
+  markAllNotificationsRead(userId) {
+    const now = new Date().toISOString();
+    let count = 0;
+
+    for (const n of this.notifications.notifications) {
+      if (n.userId === userId && !n.read) {
+        n.read = true;
+        n.readAt = now;
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      this.saveNotifications();
+    }
+    return count;
+  }
+
+  dismissNotification(notificationId) {
+    const notification = this.notifications.notifications.find(n => n.id === notificationId);
+    if (!notification) return false;
+
+    notification.dismissed = true;
+    this.saveNotifications();
+    return true;
+  }
+
+  markNotificationPushSent(notificationId) {
+    const notification = this.notifications.notifications.find(n => n.id === notificationId);
+    if (notification) {
+      notification.pushSent = true;
+      this.saveNotifications();
+    }
+  }
+
+  deleteOldNotifications(daysOld = 30) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysOld);
+
+    const initialLength = this.notifications.notifications.length;
+    this.notifications.notifications = this.notifications.notifications.filter(n => {
+      const notificationDate = new Date(n.createdAt);
+      // Keep if: recent OR (unread AND not dismissed)
+      return notificationDate >= cutoff || (!n.read && !n.dismissed);
+    });
+
+    const deleted = initialLength - this.notifications.notifications.length;
+    if (deleted > 0) {
+      this.saveNotifications();
+    }
+    return deleted;
+  }
+
+  // Wave notification settings
+  getWaveNotificationSettings(userId, waveId) {
+    const settings = this.waveNotificationSettings.settings.find(
+      s => s.userId === userId && s.waveId === waveId
+    );
+
+    if (!settings) {
+      return { enabled: true, level: 'all', sound: true, push: true };
+    }
+
+    return {
+      enabled: settings.enabled !== false,
+      level: settings.level || 'all',
+      sound: settings.sound !== false,
+      push: settings.push !== false
+    };
+  }
+
+  setWaveNotificationSettings(userId, waveId, settings) {
+    const existing = this.waveNotificationSettings.settings.find(
+      s => s.userId === userId && s.waveId === waveId
+    );
+
+    if (existing) {
+      existing.enabled = settings.enabled !== false;
+      existing.level = settings.level || 'all';
+      existing.sound = settings.sound !== false;
+      existing.push = settings.push !== false;
+    } else {
+      this.waveNotificationSettings.settings.push({
+        userId,
+        waveId,
+        enabled: settings.enabled !== false,
+        level: settings.level || 'all',
+        sound: settings.sound !== false,
+        push: settings.push !== false
+      });
+    }
+
+    this.saveWaveNotificationSettings();
+  }
+
+  // Check if user should receive notification for a wave
+  shouldNotifyForWave(userId, waveId, notificationType) {
+    const settings = this.getWaveNotificationSettings(userId, waveId);
+
+    if (!settings.enabled) return false;
+
+    switch (settings.level) {
+      case 'none':
+        return false;
+      case 'mentions':
+        return notificationType === 'direct_mention';
+      case 'all':
+      default:
+        return true;
+    }
   }
 
   // === Moderation Methods ===
@@ -2719,6 +2919,106 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   db.saveUsers();
 
   res.json({ success: true, preferences: user.preferences });
+});
+
+// ============ Notification Routes ============
+
+// Get notifications for current user
+app.get('/api/notifications', authenticateToken, (req, res) => {
+  const { unread, type, limit = 50, offset = 0 } = req.query;
+
+  const notifications = db.getNotifications(req.user.userId, {
+    unread: unread === 'true',
+    type: type || null,
+    limit: parseInt(limit, 10),
+    offset: parseInt(offset, 10)
+  });
+
+  res.json({ notifications });
+});
+
+// Get notification counts
+app.get('/api/notifications/count', authenticateToken, (req, res) => {
+  const counts = db.getNotificationCounts(req.user.userId);
+  res.json(counts);
+});
+
+// Mark notification as read
+app.post('/api/notifications/:id/read', authenticateToken, (req, res) => {
+  const success = db.markNotificationRead(req.params.id);
+  if (!success) {
+    return res.status(404).json({ error: 'Notification not found' });
+  }
+
+  // Broadcast updated count to user
+  broadcastToUser(req.user.userId, {
+    type: 'notification_read',
+    notificationId: req.params.id
+  });
+
+  res.json({ success: true });
+});
+
+// Mark all notifications as read
+app.post('/api/notifications/read-all', authenticateToken, (req, res) => {
+  const count = db.markAllNotificationsRead(req.user.userId);
+
+  // Broadcast updated count to user
+  broadcastToUser(req.user.userId, {
+    type: 'unread_count_update',
+    count: 0
+  });
+
+  res.json({ success: true, count });
+});
+
+// Dismiss notification
+app.delete('/api/notifications/:id', authenticateToken, (req, res) => {
+  const success = db.dismissNotification(req.params.id);
+  if (!success) {
+    return res.status(404).json({ error: 'Notification not found' });
+  }
+
+  res.json({ success: true });
+});
+
+// Get wave notification settings
+app.get('/api/waves/:id/notifications', authenticateToken, (req, res) => {
+  const wave = db.getWave(req.params.id);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Verify user is a participant
+  if (!db.isWaveParticipant(req.params.id, req.user.userId)) {
+    return res.status(403).json({ error: 'Not a participant in this wave' });
+  }
+
+  const settings = db.getWaveNotificationSettings(req.user.userId, req.params.id);
+  res.json(settings);
+});
+
+// Update wave notification settings
+app.put('/api/waves/:id/notifications', authenticateToken, (req, res) => {
+  const wave = db.getWave(req.params.id);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Verify user is a participant
+  if (!db.isWaveParticipant(req.params.id, req.user.userId)) {
+    return res.status(403).json({ error: 'Not a participant in this wave' });
+  }
+
+  const { enabled, level, sound, push } = req.body;
+  db.setWaveNotificationSettings(req.user.userId, req.params.id, {
+    enabled,
+    level,
+    sound,
+    push
+  });
+
+  res.json({ success: true });
 });
 
 // ============ Push Notification Routes ============
@@ -4487,6 +4787,10 @@ function broadcast(message, userIds = []) {
       }
     }
   }
+}
+
+function broadcastToUser(userId, message) {
+  broadcast(message, [userId]);
 }
 
 function broadcastToWave(waveId, message, excludeWs = null) {

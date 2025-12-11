@@ -1,5 +1,5 @@
 -- Cortex SQLite Database Schema
--- Version 1.10.0
+-- Version 1.11.0
 
 -- ============ Users ============
 CREATE TABLE IF NOT EXISTS users (
@@ -300,6 +300,38 @@ CREATE INDEX IF NOT EXISTS idx_moderation_log_admin ON moderation_log(admin_id);
 CREATE INDEX IF NOT EXISTS idx_moderation_log_target ON moderation_log(target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_moderation_log_created ON moderation_log(created_at DESC);
 
+-- ============ Notifications ============
+
+-- User notifications
+CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,  -- direct_mention, reply, wave_activity, ripple, system
+    wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL,
+    droplet_id TEXT REFERENCES droplets(id) ON DELETE SET NULL,
+    actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    preview TEXT,  -- Truncated content preview
+    read INTEGER DEFAULT 0,
+    dismissed INTEGER DEFAULT 0,
+    push_sent INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    read_at TEXT,
+    group_key TEXT  -- For collapsing similar notifications
+);
+
+-- Notification preferences per wave
+CREATE TABLE IF NOT EXISTS wave_notification_settings (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+    enabled INTEGER DEFAULT 1,
+    level TEXT DEFAULT 'all',  -- all, mentions, none
+    sound INTEGER DEFAULT 1,
+    push INTEGER DEFAULT 1,
+    PRIMARY KEY (user_id, wave_id)
+);
+
 -- ============ Push Subscriptions ============
 
 -- Web Push API subscriptions
@@ -316,6 +348,19 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 -- Push subscription lookups
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON push_subscriptions(endpoint);
+
+-- Notification lookups
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, read) WHERE read = 0;
+CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
+CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_wave ON notifications(wave_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_droplet ON notifications(droplet_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_group_key ON notifications(group_key);
+
+-- Wave notification settings lookups
+CREATE INDEX IF NOT EXISTS idx_wave_notification_settings_user ON wave_notification_settings(user_id);
+CREATE INDEX IF NOT EXISTS idx_wave_notification_settings_wave ON wave_notification_settings(wave_id);
 
 -- ============ Full-Text Search ============
 
