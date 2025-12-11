@@ -294,6 +294,54 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Breakout columns added to waves');
     }
+
+    // Check if notifications table exists (v1.11.0)
+    const notificationsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='notifications'
+    `).get();
+
+    if (!notificationsExists) {
+      console.log('📝 Creating notifications tables (v1.11.0)...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          type TEXT NOT NULL,
+          wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL,
+          droplet_id TEXT REFERENCES droplets(id) ON DELETE SET NULL,
+          actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+          title TEXT NOT NULL,
+          body TEXT,
+          preview TEXT,
+          read INTEGER DEFAULT 0,
+          dismissed INTEGER DEFAULT 0,
+          push_sent INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL,
+          read_at TEXT,
+          group_key TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, read) WHERE read = 0;
+        CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
+        CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_notifications_wave ON notifications(wave_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_droplet ON notifications(droplet_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_group_key ON notifications(group_key);
+
+        CREATE TABLE IF NOT EXISTS wave_notification_settings (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+          enabled INTEGER DEFAULT 1,
+          level TEXT DEFAULT 'all',
+          sound INTEGER DEFAULT 1,
+          push INTEGER DEFAULT 1,
+          PRIMARY KEY (user_id, wave_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_wave_notification_settings_user ON wave_notification_settings(user_id);
+        CREATE INDEX IF NOT EXISTS idx_wave_notification_settings_wave ON wave_notification_settings(wave_id);
+      `);
+      console.log('✅ Notifications tables created');
+    }
   }
 
   prepareStatements() {
@@ -2351,6 +2399,233 @@ export class DatabaseSQLite {
     this.db.prepare(`
       DELETE FROM push_subscriptions WHERE endpoint = ?
     `).run(endpoint);
+  }
+
+  // ============ Notification Methods ============
+
+  createNotification({ userId, type, waveId, dropletId, actorId, title, body, preview, groupKey }) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO notifications (id, user_id, type, wave_id, droplet_id, actor_id, title, body, preview, read, dismissed, push_sent, created_at, group_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
+    `).run(id, userId, type, waveId || null, dropletId || null, actorId || null, title, body || null, preview || null, now, groupKey || null);
+
+    return {
+      id,
+      userId,
+      type,
+      waveId,
+      dropletId,
+      actorId,
+      title,
+      body,
+      preview,
+      read: false,
+      dismissed: false,
+      pushSent: false,
+      createdAt: now,
+      groupKey
+    };
+  }
+
+  getNotifications(userId, { unread = false, type = null, limit = 50, offset = 0 } = {}) {
+    let query = `
+      SELECT n.*,
+             u.handle as actor_handle,
+             u.display_name as actor_display_name,
+             u.avatar as actor_avatar,
+             u.avatar_url as actor_avatar_url,
+             w.title as wave_title
+      FROM notifications n
+      LEFT JOIN users u ON n.actor_id = u.id
+      LEFT JOIN waves w ON n.wave_id = w.id
+      WHERE n.user_id = ? AND n.dismissed = 0
+    `;
+    const params = [userId];
+
+    if (unread) {
+      query += ' AND n.read = 0';
+    }
+    if (type) {
+      query += ' AND n.type = ?';
+      params.push(type);
+    }
+
+    query += ' ORDER BY n.created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const rows = this.db.prepare(query).all(...params);
+
+    return rows.map(r => ({
+      id: r.id,
+      userId: r.user_id,
+      type: r.type,
+      waveId: r.wave_id,
+      dropletId: r.droplet_id,
+      actorId: r.actor_id,
+      title: r.title,
+      body: r.body,
+      preview: r.preview,
+      read: !!r.read,
+      dismissed: !!r.dismissed,
+      pushSent: !!r.push_sent,
+      createdAt: r.created_at,
+      readAt: r.read_at,
+      groupKey: r.group_key,
+      // Actor info
+      actorHandle: r.actor_handle,
+      actorDisplayName: r.actor_display_name,
+      actorAvatar: r.actor_avatar,
+      actorAvatarUrl: r.actor_avatar_url,
+      waveTitle: r.wave_title
+    }));
+  }
+
+  getNotificationCounts(userId) {
+    const rows = this.db.prepare(`
+      SELECT type, COUNT(*) as count
+      FROM notifications
+      WHERE user_id = ? AND read = 0 AND dismissed = 0
+      GROUP BY type
+    `).all(userId);
+
+    const byType = {};
+    let total = 0;
+    for (const r of rows) {
+      byType[r.type] = r.count;
+      total += r.count;
+    }
+
+    return { total, byType };
+  }
+
+  // Get unread notification counts grouped by wave with priority types
+  getUnreadCountsByWave(userId) {
+    const rows = this.db.prepare(`
+      SELECT wave_id, type, COUNT(*) as count
+      FROM notifications
+      WHERE user_id = ? AND read = 0 AND dismissed = 0 AND wave_id IS NOT NULL
+      GROUP BY wave_id, type
+    `).all(userId);
+
+    const byWave = {};
+    // Priority: direct_mention > reply > ripple > wave_activity
+    const typePriority = { direct_mention: 4, reply: 3, ripple: 2, wave_activity: 1 };
+
+    for (const r of rows) {
+      if (!byWave[r.wave_id]) {
+        byWave[r.wave_id] = { count: 0, highestType: null, highestPriority: 0 };
+      }
+      byWave[r.wave_id].count += r.count;
+      const priority = typePriority[r.type] || 0;
+      if (priority > byWave[r.wave_id].highestPriority) {
+        byWave[r.wave_id].highestPriority = priority;
+        byWave[r.wave_id].highestType = r.type;
+      }
+    }
+
+    return byWave;
+  }
+
+  markNotificationRead(notificationId) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE notifications SET read = 1, read_at = ? WHERE id = ?
+    `).run(now, notificationId);
+    return result.changes > 0;
+  }
+
+  // Mark all notifications for a specific droplet as read for a user
+  markNotificationsReadByDroplet(dropletId, userId) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE notifications SET read = 1, read_at = ?
+      WHERE droplet_id = ? AND user_id = ? AND read = 0
+    `).run(now, dropletId, userId);
+    return result.changes;
+  }
+
+  markAllNotificationsRead(userId) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE notifications SET read = 1, read_at = ? WHERE user_id = ? AND read = 0
+    `).run(now, userId);
+    return result.changes;
+  }
+
+  dismissNotification(notificationId) {
+    const result = this.db.prepare(`
+      UPDATE notifications SET dismissed = 1 WHERE id = ?
+    `).run(notificationId);
+    return result.changes > 0;
+  }
+
+  markNotificationPushSent(notificationId) {
+    this.db.prepare(`
+      UPDATE notifications SET push_sent = 1 WHERE id = ?
+    `).run(notificationId);
+  }
+
+  deleteOldNotifications(daysOld = 30) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysOld);
+    const cutoffStr = cutoff.toISOString();
+
+    const result = this.db.prepare(`
+      DELETE FROM notifications WHERE created_at < ? AND (read = 1 OR dismissed = 1)
+    `).run(cutoffStr);
+    return result.changes;
+  }
+
+  // Wave notification settings
+  getWaveNotificationSettings(userId, waveId) {
+    const row = this.db.prepare(`
+      SELECT * FROM wave_notification_settings WHERE user_id = ? AND wave_id = ?
+    `).get(userId, waveId);
+
+    if (!row) {
+      return { enabled: true, level: 'all', sound: true, push: true };
+    }
+
+    return {
+      enabled: !!row.enabled,
+      level: row.level,
+      sound: !!row.sound,
+      push: !!row.push
+    };
+  }
+
+  setWaveNotificationSettings(userId, waveId, settings) {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO wave_notification_settings (user_id, wave_id, enabled, level, sound, push)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      userId,
+      waveId,
+      settings.enabled !== false ? 1 : 0,
+      settings.level || 'all',
+      settings.sound !== false ? 1 : 0,
+      settings.push !== false ? 1 : 0
+    );
+  }
+
+  // Check if user should receive notification for a wave
+  shouldNotifyForWave(userId, waveId, notificationType) {
+    const settings = this.getWaveNotificationSettings(userId, waveId);
+
+    if (!settings.enabled) return false;
+
+    switch (settings.level) {
+      case 'none':
+        return false;
+      case 'mentions':
+        return notificationType === 'direct_mention';
+      case 'all':
+      default:
+        return true;
+    }
   }
 
   // Placeholder for JSON compatibility - not needed with SQLite

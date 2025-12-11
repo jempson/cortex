@@ -60,6 +60,8 @@ const DATA_FILES = {
   contactRequests: path.join(DATA_DIR, 'contact-requests.json'),
   groupInvitations: path.join(DATA_DIR, 'group-invitations.json'),
   pushSubscriptions: path.join(DATA_DIR, 'push-subscriptions.json'),
+  notifications: path.join(DATA_DIR, 'notifications.json'),
+  waveNotificationSettings: path.join(DATA_DIR, 'wave-notification-settings.json'),
 };
 
 // Uploads directory for avatars
@@ -485,6 +487,8 @@ class Database {
     this.contactRequests = { requests: [] };
     this.groupInvitations = { invitations: [] };
     this.pushSubscriptions = { subscriptions: [] };
+    this.notifications = { notifications: [] };
+    this.waveNotificationSettings = { settings: [] };
     this.load();
   }
 
@@ -553,6 +557,8 @@ class Database {
       this.contactRequests = this.loadFile(DATA_FILES.contactRequests, { requests: [] });
       this.groupInvitations = this.loadFile(DATA_FILES.groupInvitations, { invitations: [] });
       this.pushSubscriptions = this.loadFile(DATA_FILES.pushSubscriptions, { subscriptions: [] });
+      this.notifications = this.loadFile(DATA_FILES.notifications, { notifications: [] });
+      this.waveNotificationSettings = this.loadFile(DATA_FILES.waveNotificationSettings, { settings: [] });
       console.log('📂 Loaded data from separated files');
     } else {
       if (process.env.SEED_DEMO_DATA === 'true') {
@@ -586,6 +592,8 @@ class Database {
   saveGroupInvitations() { this.saveFile(DATA_FILES.groupInvitations, this.groupInvitations); }
   saveModeration() { this.saveFile(DATA_FILES.moderation, this.moderation); }
   savePushSubscriptions() { this.saveFile(DATA_FILES.pushSubscriptions, this.pushSubscriptions); }
+  saveNotifications() { this.saveFile(DATA_FILES.notifications, this.notifications); }
+  saveWaveNotificationSettings() { this.saveFile(DATA_FILES.waveNotificationSettings, this.waveNotificationSettings); }
 
   initEmpty() {
     console.log('📝 Initializing empty database');
@@ -1231,6 +1239,241 @@ class Database {
       s => s.endpoint !== endpoint
     );
     this.savePushSubscriptions();
+  }
+
+  // === Notification Methods ===
+  createNotification({ userId, type, waveId, dropletId, actorId, title, body, preview, groupKey }) {
+    const notification = {
+      id: uuidv4(),
+      userId,
+      type,
+      waveId: waveId || null,
+      dropletId: dropletId || null,
+      actorId: actorId || null,
+      title,
+      body: body || null,
+      preview: preview || null,
+      read: false,
+      dismissed: false,
+      pushSent: false,
+      createdAt: new Date().toISOString(),
+      readAt: null,
+      groupKey: groupKey || null
+    };
+
+    this.notifications.notifications.push(notification);
+    this.saveNotifications();
+    return notification;
+  }
+
+  getNotifications(userId, { unread = false, type = null, limit = 50, offset = 0 } = {}) {
+    let notifications = this.notifications.notifications
+      .filter(n => n.userId === userId && !n.dismissed);
+
+    if (unread) {
+      notifications = notifications.filter(n => !n.read);
+    }
+    if (type) {
+      notifications = notifications.filter(n => n.type === type);
+    }
+
+    // Sort by createdAt descending
+    notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Apply pagination
+    notifications = notifications.slice(offset, offset + limit);
+
+    // Enrich with actor and wave info
+    return notifications.map(n => {
+      const actor = n.actorId ? this.findUserById(n.actorId) : null;
+      const wave = n.waveId ? this.waves.waves.find(w => w.id === n.waveId) : null;
+
+      return {
+        ...n,
+        actorHandle: actor?.handle,
+        actorDisplayName: actor?.displayName,
+        actorAvatar: actor?.avatar,
+        actorAvatarUrl: actor?.avatarUrl,
+        waveTitle: wave?.title
+      };
+    });
+  }
+
+  getNotificationCounts(userId) {
+    const unread = this.notifications.notifications
+      .filter(n => n.userId === userId && !n.read && !n.dismissed);
+
+    const byType = {};
+    for (const n of unread) {
+      byType[n.type] = (byType[n.type] || 0) + 1;
+    }
+
+    return { total: unread.length, byType };
+  }
+
+  // Get unread notification counts grouped by wave with priority types
+  getUnreadCountsByWave(userId) {
+    const unread = this.notifications.notifications
+      .filter(n => n.userId === userId && !n.read && !n.dismissed && n.waveId);
+
+    const byWave = {};
+    // Priority: direct_mention > reply > ripple > wave_activity
+    const typePriority = { direct_mention: 4, reply: 3, ripple: 2, wave_activity: 1 };
+
+    for (const n of unread) {
+      if (!byWave[n.waveId]) {
+        byWave[n.waveId] = { count: 0, highestType: null, highestPriority: 0 };
+      }
+      byWave[n.waveId].count++;
+      const priority = typePriority[n.type] || 0;
+      if (priority > byWave[n.waveId].highestPriority) {
+        byWave[n.waveId].highestPriority = priority;
+        byWave[n.waveId].highestType = n.type;
+      }
+    }
+
+    return byWave;
+  }
+
+  markNotificationRead(notificationId) {
+    const notification = this.notifications.notifications.find(n => n.id === notificationId);
+    if (!notification) return false;
+
+    notification.read = true;
+    notification.readAt = new Date().toISOString();
+    this.saveNotifications();
+    return true;
+  }
+
+  // Mark all notifications for a specific droplet as read for a user
+  markNotificationsReadByDroplet(dropletId, userId) {
+    const now = new Date().toISOString();
+    let count = 0;
+
+    for (const n of this.notifications.notifications) {
+      if (n.dropletId === dropletId && n.userId === userId && !n.read) {
+        n.read = true;
+        n.readAt = now;
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      this.saveNotifications();
+    }
+    return count;
+  }
+
+  markAllNotificationsRead(userId) {
+    const now = new Date().toISOString();
+    let count = 0;
+
+    for (const n of this.notifications.notifications) {
+      if (n.userId === userId && !n.read) {
+        n.read = true;
+        n.readAt = now;
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      this.saveNotifications();
+    }
+    return count;
+  }
+
+  dismissNotification(notificationId) {
+    const notification = this.notifications.notifications.find(n => n.id === notificationId);
+    if (!notification) return false;
+
+    notification.dismissed = true;
+    this.saveNotifications();
+    return true;
+  }
+
+  markNotificationPushSent(notificationId) {
+    const notification = this.notifications.notifications.find(n => n.id === notificationId);
+    if (notification) {
+      notification.pushSent = true;
+      this.saveNotifications();
+    }
+  }
+
+  deleteOldNotifications(daysOld = 30) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysOld);
+
+    const initialLength = this.notifications.notifications.length;
+    this.notifications.notifications = this.notifications.notifications.filter(n => {
+      const notificationDate = new Date(n.createdAt);
+      // Keep if: recent OR (unread AND not dismissed)
+      return notificationDate >= cutoff || (!n.read && !n.dismissed);
+    });
+
+    const deleted = initialLength - this.notifications.notifications.length;
+    if (deleted > 0) {
+      this.saveNotifications();
+    }
+    return deleted;
+  }
+
+  // Wave notification settings
+  getWaveNotificationSettings(userId, waveId) {
+    const settings = this.waveNotificationSettings.settings.find(
+      s => s.userId === userId && s.waveId === waveId
+    );
+
+    if (!settings) {
+      return { enabled: true, level: 'all', sound: true, push: true };
+    }
+
+    return {
+      enabled: settings.enabled !== false,
+      level: settings.level || 'all',
+      sound: settings.sound !== false,
+      push: settings.push !== false
+    };
+  }
+
+  setWaveNotificationSettings(userId, waveId, settings) {
+    const existing = this.waveNotificationSettings.settings.find(
+      s => s.userId === userId && s.waveId === waveId
+    );
+
+    if (existing) {
+      existing.enabled = settings.enabled !== false;
+      existing.level = settings.level || 'all';
+      existing.sound = settings.sound !== false;
+      existing.push = settings.push !== false;
+    } else {
+      this.waveNotificationSettings.settings.push({
+        userId,
+        waveId,
+        enabled: settings.enabled !== false,
+        level: settings.level || 'all',
+        sound: settings.sound !== false,
+        push: settings.push !== false
+      });
+    }
+
+    this.saveWaveNotificationSettings();
+  }
+
+  // Check if user should receive notification for a wave
+  shouldNotifyForWave(userId, waveId, notificationType) {
+    const settings = this.getWaveNotificationSettings(userId, waveId);
+
+    if (!settings.enabled) return false;
+
+    switch (settings.level) {
+      case 'none':
+        return false;
+      case 'mentions':
+        return notificationType === 'direct_mention';
+      case 'all':
+      default:
+        return true;
+    }
   }
 
   // === Moderation Methods ===
@@ -2710,15 +2953,183 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   if (typeof req.body.scanLines === 'boolean') {
     updates.scanLines = req.body.scanLines;
   }
+  if (typeof req.body.autoFocusDroplets === 'boolean') {
+    updates.autoFocusDroplets = req.body.autoFocusDroplets;
+  }
 
   if (!user.preferences) {
-    user.preferences = { theme: 'firefly', fontSize: 'medium', scanLines: true };
+    user.preferences = { theme: 'firefly', fontSize: 'medium', scanLines: true, autoFocusDroplets: false };
   }
 
   user.preferences = { ...user.preferences, ...updates };
   db.saveUsers();
 
   res.json({ success: true, preferences: user.preferences });
+});
+
+// Default notification preferences
+const DEFAULT_NOTIFICATION_PREFS = {
+  enabled: true,
+  directMentions: 'always',      // always | app_closed | never
+  replies: 'always',
+  waveActivity: 'app_closed',
+  rippleEvents: 'app_closed',
+  soundEnabled: false,
+  suppressWhileFocused: true,
+};
+
+// Get notification preferences
+app.get('/api/notifications/preferences', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const notificationPrefs = user.notificationPreferences || DEFAULT_NOTIFICATION_PREFS;
+  res.json({ preferences: notificationPrefs });
+});
+
+// Update notification preferences
+app.put('/api/notifications/preferences', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const validLevels = ['always', 'app_closed', 'never'];
+  const updates = {};
+
+  // Validate and apply updates
+  if (typeof req.body.enabled === 'boolean') {
+    updates.enabled = req.body.enabled;
+  }
+  if (req.body.directMentions && validLevels.includes(req.body.directMentions)) {
+    updates.directMentions = req.body.directMentions;
+  }
+  if (req.body.replies && validLevels.includes(req.body.replies)) {
+    updates.replies = req.body.replies;
+  }
+  if (req.body.waveActivity && validLevels.includes(req.body.waveActivity)) {
+    updates.waveActivity = req.body.waveActivity;
+  }
+  if (req.body.rippleEvents && validLevels.includes(req.body.rippleEvents)) {
+    updates.rippleEvents = req.body.rippleEvents;
+  }
+  if (typeof req.body.soundEnabled === 'boolean') {
+    updates.soundEnabled = req.body.soundEnabled;
+  }
+  if (typeof req.body.suppressWhileFocused === 'boolean') {
+    updates.suppressWhileFocused = req.body.suppressWhileFocused;
+  }
+
+  // Merge with existing preferences
+  const currentPrefs = user.notificationPreferences || DEFAULT_NOTIFICATION_PREFS;
+  user.notificationPreferences = { ...currentPrefs, ...updates };
+  db.saveUsers();
+
+  res.json({ success: true, preferences: user.notificationPreferences });
+});
+
+// ============ Notification Routes ============
+
+// Get notifications for current user
+app.get('/api/notifications', authenticateToken, (req, res) => {
+  const { unread, type, limit = 50, offset = 0 } = req.query;
+
+  const notifications = db.getNotifications(req.user.userId, {
+    unread: unread === 'true',
+    type: type || null,
+    limit: parseInt(limit, 10),
+    offset: parseInt(offset, 10)
+  });
+
+  res.json({ notifications });
+});
+
+// Get notification counts
+app.get('/api/notifications/count', authenticateToken, (req, res) => {
+  const counts = db.getNotificationCounts(req.user.userId);
+  res.json(counts);
+});
+
+// Get unread notification counts by wave (for ripple activity badges)
+app.get('/api/notifications/by-wave', authenticateToken, (req, res) => {
+  const countsByWave = db.getUnreadCountsByWave(req.user.userId);
+  res.json({ countsByWave });
+});
+
+// Mark notification as read
+app.post('/api/notifications/:id/read', authenticateToken, (req, res) => {
+  const success = db.markNotificationRead(req.params.id);
+  if (!success) {
+    return res.status(404).json({ error: 'Notification not found' });
+  }
+
+  // Broadcast updated count to user
+  broadcastToUser(req.user.userId, {
+    type: 'notification_read',
+    notificationId: req.params.id
+  });
+
+  res.json({ success: true });
+});
+
+// Mark all notifications as read
+app.post('/api/notifications/read-all', authenticateToken, (req, res) => {
+  const count = db.markAllNotificationsRead(req.user.userId);
+
+  // Broadcast updated count to user
+  broadcastToUser(req.user.userId, {
+    type: 'unread_count_update',
+    count: 0
+  });
+
+  res.json({ success: true, count });
+});
+
+// Dismiss notification
+app.delete('/api/notifications/:id', authenticateToken, (req, res) => {
+  const success = db.dismissNotification(req.params.id);
+  if (!success) {
+    return res.status(404).json({ error: 'Notification not found' });
+  }
+
+  res.json({ success: true });
+});
+
+// Get wave notification settings
+app.get('/api/waves/:id/notifications', authenticateToken, (req, res) => {
+  const wave = db.getWave(req.params.id);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Verify user is a participant
+  if (!db.isWaveParticipant(req.params.id, req.user.userId)) {
+    return res.status(403).json({ error: 'Not a participant in this wave' });
+  }
+
+  const settings = db.getWaveNotificationSettings(req.user.userId, req.params.id);
+  res.json(settings);
+});
+
+// Update wave notification settings
+app.put('/api/waves/:id/notifications', authenticateToken, (req, res) => {
+  const wave = db.getWave(req.params.id);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Verify user is a participant
+  if (!db.isWaveParticipant(req.params.id, req.user.userId)) {
+    return res.status(403).json({ error: 'Not a participant in this wave' });
+  }
+
+  const { enabled, level, sound, push } = req.body;
+  db.setWaveNotificationSettings(req.user.userId, req.params.id, {
+    enabled,
+    level,
+    sound,
+    push
+  });
+
+  res.json({ success: true });
 });
 
 // ============ Push Notification Routes ============
@@ -4020,6 +4431,12 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
     privacy: wave.privacy,
   });
 
+  // Create in-app notifications for mentions, replies, and wave activity
+  const author = db.findUserById(req.user.userId);
+  if (author) {
+    createDropletNotifications(droplet, wave, author);
+  }
+
   // Create push notification payload
   const senderName = droplet.sender_name || db.findUserById(req.user.userId)?.displayName || 'Someone';
   const contentPreview = content.replace(/<[^>]*>/g, '').substring(0, 100);
@@ -4124,12 +4541,21 @@ app.post('/api/droplets/:id/react', authenticateToken, (req, res) => {
 // Mark individual droplet as read
 app.post('/api/droplets/:id/read', authenticateToken, (req, res) => {
   const dropletId = sanitizeInput(req.params.id);
+  const userId = req.user.userId;
 
-  console.log(`📖 Marking droplet ${dropletId} as read for user ${req.user.userId}`);
+  console.log(`📖 Marking droplet ${dropletId} as read for user ${userId}`);
 
-  if (!db.markMessageAsRead(dropletId, req.user.userId)) {
+  if (!db.markMessageAsRead(dropletId, userId)) {
     console.log(`❌ Failed to mark droplet ${dropletId} as read`);
     return res.status(404).json({ error: 'Droplet not found' });
+  }
+
+  // Also mark any notifications for this droplet as read
+  const notificationsMarked = db.markNotificationsReadByDroplet(dropletId, userId);
+  if (notificationsMarked > 0) {
+    console.log(`🔔 Marked ${notificationsMarked} notification(s) as read for droplet ${dropletId}`);
+    // Broadcast notification count update to user
+    broadcast({ type: 'unread_count_update', userId });
   }
 
   console.log(`✅ Droplet ${dropletId} marked as read`);
@@ -4190,6 +4616,12 @@ app.post('/api/droplets/:id/ripple', authenticateToken, (req, res) => {
     wave: result.newWave,
   });
 
+  // Create ripple notifications for original wave participants
+  const actor = db.findUserById(req.user.userId);
+  if (actor) {
+    createRippleNotifications(wave, result.newWave, droplet, actor);
+  }
+
   console.log(`🌊 Droplet ${dropletId} rippled to new wave: ${result.newWave.title}`);
 
   res.json({
@@ -4208,7 +4640,19 @@ app.post('/api/droplets/:id/breakout', authenticateToken, (req, res) => {
 });
 
 // ============ Message Routes (Legacy - v1.9.0 backward compatibility) ============
-app.post('/api/messages', authenticateToken, (req, res) => {
+// DEPRECATED: These endpoints are deprecated as of v1.10.0. Use /api/droplets/* instead.
+// They will be removed in a future version.
+
+// Middleware to add deprecation headers and log usage
+const deprecatedEndpoint = (req, res, next) => {
+  res.set('X-Deprecated', 'true');
+  res.set('X-Deprecated-Message', 'This endpoint is deprecated. Use /api/droplets/* instead.');
+  res.set('Sunset', 'Sat, 01 Mar 2026 00:00:00 GMT');
+  console.warn(`⚠️ DEPRECATED: ${req.method} ${req.originalUrl} called by user ${req.user?.userId || 'unknown'}`);
+  next();
+};
+
+app.post('/api/messages', authenticateToken, deprecatedEndpoint, (req, res) => {
   const waveId = sanitizeInput(req.body.wave_id || req.body.thread_id);
   const content = req.body.content;
   if (!waveId || !content) return res.status(400).json({ error: 'Wave ID and content required' });
@@ -4263,7 +4707,7 @@ app.post('/api/messages', authenticateToken, (req, res) => {
   res.status(201).json(message);
 });
 
-app.put('/api/messages/:id', authenticateToken, (req, res) => {
+app.put('/api/messages/:id', authenticateToken, deprecatedEndpoint, (req, res) => {
   const messageId = sanitizeInput(req.params.id);
   const message = db.getMessage(messageId);
   if (!message) return res.status(404).json({ error: 'Message not found' });
@@ -4277,7 +4721,7 @@ app.put('/api/messages/:id', authenticateToken, (req, res) => {
   res.json(updated);
 });
 
-app.delete('/api/messages/:id', authenticateToken, (req, res) => {
+app.delete('/api/messages/:id', authenticateToken, deprecatedEndpoint, (req, res) => {
   const messageId = sanitizeInput(req.params.id);
   const message = db.getMessage(messageId);
 
@@ -4300,7 +4744,7 @@ app.delete('/api/messages/:id', authenticateToken, (req, res) => {
 });
 
 // Toggle emoji reaction on message
-app.post('/api/messages/:id/react', authenticateToken, (req, res) => {
+app.post('/api/messages/:id/react', authenticateToken, deprecatedEndpoint, (req, res) => {
   const messageId = sanitizeInput(req.params.id);
   const emoji = req.body.emoji;
 
@@ -4322,15 +4766,23 @@ app.post('/api/messages/:id/react', authenticateToken, (req, res) => {
   res.json({ success: true, reactions: result.reactions });
 });
 
-// Mark individual message as read
-app.post('/api/messages/:id/read', authenticateToken, (req, res) => {
+// Mark individual message as read (legacy endpoint)
+app.post('/api/messages/:id/read', authenticateToken, deprecatedEndpoint, (req, res) => {
   const messageId = sanitizeInput(req.params.id);
+  const userId = req.user.userId;
 
-  console.log(`📖 Marking message ${messageId} as read for user ${req.user.userId}`);
+  console.log(`📖 Marking message ${messageId} as read for user ${userId}`);
 
-  if (!db.markMessageAsRead(messageId, req.user.userId)) {
+  if (!db.markMessageAsRead(messageId, userId)) {
     console.log(`❌ Failed to mark message ${messageId} as read`);
     return res.status(404).json({ error: 'Message not found' });
+  }
+
+  // Also mark any notifications for this droplet as read
+  const notificationsMarked = db.markNotificationsReadByDroplet(messageId, userId);
+  if (notificationsMarked > 0) {
+    console.log(`🔔 Marked ${notificationsMarked} notification(s) as read for message ${messageId}`);
+    broadcast({ type: 'unread_count_update', userId });
   }
 
   console.log(`✅ Message ${messageId} marked as read`);
@@ -4376,6 +4828,7 @@ app.get('/api/health', (req, res) => {
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 const clients = new Map();
+const userViewingState = new Map(); // Track which wave each user is viewing { userId: { waveId, timestamp } }
 
 const wsConnectionAttempts = new Map();
 const WS_RATE_LIMIT = 10;
@@ -4440,6 +4893,19 @@ wss.on('connection', (ws, req) => {
           userName: ws.userName,
           timestamp: Date.now()
         }, ws); // Exclude sender
+      } else if (message.type === 'viewing_wave') {
+        // Track which wave the user is viewing (for notification suppression)
+        if (!userId) return; // Must be authenticated
+
+        const waveId = message.waveId ? sanitizeInput(message.waveId) : null;
+        ws.viewingWaveId = waveId;
+
+        // Also track at user level for multiple connections
+        if (waveId) {
+          userViewingState.set(userId, { waveId, timestamp: Date.now() });
+        } else {
+          userViewingState.delete(userId);
+        }
       }
     } catch (err) {
       console.error('WebSocket error:', err);
@@ -4452,6 +4918,7 @@ wss.on('connection', (ws, req) => {
       if (clients.get(userId).size === 0) {
         clients.delete(userId);
         db.updateUserStatus(userId, 'offline');
+        userViewingState.delete(userId); // Clean up viewing state
       }
     }
   });
@@ -4478,6 +4945,202 @@ wss.on('close', () => {
   clearInterval(heartbeatInterval);
 });
 
+// ============ Notification Creation Helpers ============
+
+// Default notification preferences (must match server endpoint defaults)
+const DEFAULT_NOTIF_PREFS = {
+  enabled: true,
+  directMentions: 'always',
+  replies: 'always',
+  waveActivity: 'app_closed',
+  rippleEvents: 'app_closed',
+  soundEnabled: false,
+  suppressWhileFocused: true,
+};
+
+// Check if a user should receive a notification based on their preferences
+function shouldCreateNotification(userId, notificationType) {
+  const user = db.findUserById(userId);
+  if (!user) return false;
+
+  const prefs = user.notificationPreferences || DEFAULT_NOTIF_PREFS;
+
+  // Global kill switch
+  if (!prefs.enabled) return false;
+
+  // Map notification type to preference key
+  const prefKeyMap = {
+    direct_mention: 'directMentions',
+    reply: 'replies',
+    wave_activity: 'waveActivity',
+    ripple: 'rippleEvents',
+  };
+
+  const prefKey = prefKeyMap[notificationType];
+  if (!prefKey) return true; // Unknown type, allow by default
+
+  const level = prefs[prefKey] || 'always';
+
+  // 'never' = don't create notification at all
+  if (level === 'never') return false;
+
+  // 'always' or 'app_closed' = create notification
+  // (app_closed just affects push behavior, not in-app notifications)
+  return true;
+}
+
+// Extract @mentions from content - matches @handle patterns
+function extractMentions(content) {
+  // Match @handle patterns (alphanumeric and underscores)
+  const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+  const mentions = [];
+  let match;
+  while ((match = mentionRegex.exec(content)) !== null) {
+    mentions.push(match[1].toLowerCase());
+  }
+  return [...new Set(mentions)]; // Remove duplicates
+}
+
+// Create notifications for a new droplet
+function createDropletNotifications(droplet, wave, author) {
+  const notificationsToSend = [];
+  const contentPreview = droplet.content.replace(/<[^>]*>/g, '').substring(0, 100);
+
+  // Get wave participants
+  const participants = db.getWaveParticipants(wave.id);
+  const participantIds = new Set(participants.map(p => p.id));
+
+  // 1. Check for @mentions
+  const mentionedHandles = extractMentions(droplet.content);
+  const mentionedUsers = new Set();
+
+  for (const handle of mentionedHandles) {
+    const mentionedUser = db.findUserByHandle(handle);
+    if (mentionedUser && mentionedUser.id !== author.id && participantIds.has(mentionedUser.id)) {
+      mentionedUsers.add(mentionedUser.id);
+
+      // Check user's notification preferences
+      if (!shouldCreateNotification(mentionedUser.id, 'direct_mention')) continue;
+
+      // Create direct mention notification
+      const notification = db.createNotification({
+        userId: mentionedUser.id,
+        type: 'direct_mention',
+        waveId: wave.id,
+        dropletId: droplet.id,
+        actorId: author.id,
+        title: `${author.displayName} mentioned you`,
+        body: `in ${wave.title}`,
+        preview: contentPreview,
+        groupKey: `mention:${wave.id}:${droplet.id}`
+      });
+
+      notificationsToSend.push({ userId: mentionedUser.id, notification });
+    }
+  }
+
+  // 2. Check if this is a reply - notify the parent author
+  if (droplet.parentId) {
+    const parentDroplet = db.getMessage(droplet.parentId);
+    if (parentDroplet && parentDroplet.authorId !== author.id && !mentionedUsers.has(parentDroplet.authorId)) {
+      // Check user's notification preferences
+      if (shouldCreateNotification(parentDroplet.authorId, 'reply')) {
+        const notification = db.createNotification({
+          userId: parentDroplet.authorId,
+          type: 'reply',
+          waveId: wave.id,
+          dropletId: droplet.id,
+          actorId: author.id,
+          title: `${author.displayName} replied to you`,
+          body: `in ${wave.title}`,
+          preview: contentPreview,
+          groupKey: `reply:${wave.id}:${parentDroplet.id}`
+        });
+
+        notificationsToSend.push({ userId: parentDroplet.authorId, notification });
+      }
+      mentionedUsers.add(parentDroplet.authorId); // Don't send wave_activity to them
+    }
+  }
+
+  // 3. Wave activity notifications for other participants (not author, not mentioned, not replied-to)
+  for (const participant of participants) {
+    if (participant.id === author.id) continue;
+    if (mentionedUsers.has(participant.id)) continue;
+
+    // Check user's notification preferences
+    if (!shouldCreateNotification(participant.id, 'wave_activity')) continue;
+
+    // Check wave notification settings
+    if (!db.shouldNotifyForWave(participant.id, wave.id, 'wave_activity')) continue;
+
+    // Skip wave_activity if user is currently viewing this wave (focus awareness)
+    const viewingState = userViewingState.get(participant.id);
+    if (viewingState && viewingState.waveId === wave.id) {
+      // User is actively viewing this wave - suppress wave_activity notification
+      continue;
+    }
+
+    const notification = db.createNotification({
+      userId: participant.id,
+      type: 'wave_activity',
+      waveId: wave.id,
+      dropletId: droplet.id,
+      actorId: author.id,
+      title: `New droplet in ${wave.title}`,
+      body: `from ${author.displayName}`,
+      preview: contentPreview,
+      groupKey: `wave:${wave.id}`
+    });
+
+    notificationsToSend.push({ userId: participant.id, notification });
+  }
+
+  // Broadcast notifications via WebSocket
+  for (const { userId, notification } of notificationsToSend) {
+    broadcastToUser(userId, { type: 'notification', notification });
+  }
+
+  return notificationsToSend.length;
+}
+
+// Create notifications when a droplet is rippled to a new wave
+function createRippleNotifications(originalWave, newWave, rippledDroplet, actor) {
+  const notificationsToSend = [];
+
+  // Get participants of the original wave (excluding the actor who rippled)
+  const originalParticipants = db.getWaveParticipants(originalWave.id);
+
+  for (const participant of originalParticipants) {
+    if (participant.id === actor.id) continue;
+
+    // Check user's notification preferences
+    if (!shouldCreateNotification(participant.id, 'ripple')) continue;
+
+    // Create ripple notification
+    const notification = db.createNotification({
+      userId: participant.id,
+      type: 'ripple',
+      waveId: newWave.id,
+      dropletId: rippledDroplet.id,
+      actorId: actor.id,
+      title: `${actor.displayName} created a ripple`,
+      body: `"${newWave.title}" from ${originalWave.title}`,
+      preview: rippledDroplet.content?.replace(/<[^>]*>/g, '').substring(0, 100) || '',
+      groupKey: `ripple:${newWave.id}`
+    });
+
+    notificationsToSend.push({ userId: participant.id, notification });
+  }
+
+  // Broadcast notifications via WebSocket
+  for (const { userId, notification } of notificationsToSend) {
+    broadcastToUser(userId, { type: 'notification', notification });
+  }
+
+  return notificationsToSend.length;
+}
+
 // Broadcast to specific users by their IDs
 function broadcast(message, userIds = []) {
   for (const userId of userIds) {
@@ -4487,6 +5150,10 @@ function broadcast(message, userIds = []) {
       }
     }
   }
+}
+
+function broadcastToUser(userId, message) {
+  broadcast(message, [userId]);
 }
 
 function broadcastToWave(waveId, message, excludeWs = null) {
