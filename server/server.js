@@ -1311,14 +1311,25 @@ class Database {
     return { total: unread.length, byType };
   }
 
-  // Get unread notification counts grouped by wave (for ripple badges)
+  // Get unread notification counts grouped by wave with priority types
   getUnreadCountsByWave(userId) {
     const unread = this.notifications.notifications
       .filter(n => n.userId === userId && !n.read && !n.dismissed && n.waveId);
 
     const byWave = {};
+    // Priority: direct_mention > reply > ripple > wave_activity
+    const typePriority = { direct_mention: 4, reply: 3, ripple: 2, wave_activity: 1 };
+
     for (const n of unread) {
-      byWave[n.waveId] = (byWave[n.waveId] || 0) + 1;
+      if (!byWave[n.waveId]) {
+        byWave[n.waveId] = { count: 0, highestType: null, highestPriority: 0 };
+      }
+      byWave[n.waveId].count++;
+      const priority = typePriority[n.type] || 0;
+      if (priority > byWave[n.waveId].highestPriority) {
+        byWave[n.waveId].highestPriority = priority;
+        byWave[n.waveId].highestType = n.type;
+      }
     }
 
     return byWave;

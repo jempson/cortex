@@ -1099,10 +1099,9 @@ const OfflineIndicator = () => {
 };
 
 // ============ BOTTOM NAVIGATION ============
-const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendingGroups, pendingNotifications }) => {
+const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendingGroups }) => {
   const items = [
     { id: 'waves', icon: '◈', label: 'Waves', badge: unreadCount },
-    { id: 'notifications', icon: '🔔', label: 'Alerts', badge: pendingNotifications, badgeColor: '#ffd23f' },
     { id: 'contacts', icon: '●', label: 'Contacts', badge: pendingContacts },
     { id: 'groups', icon: '◆', label: 'Groups', badge: pendingGroups },
     { id: 'profile', icon: '⚙', label: 'Profile' },
@@ -1905,138 +1904,6 @@ const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger
   );
 };
 
-// ============ MOBILE NOTIFICATIONS VIEW ============
-const MobileNotificationsView = ({ fetchAPI, onNavigateToWave, showToast, refreshTrigger, onCountChange }) => {
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const loadNotifications = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await fetchAPI('/notifications?limit=50');
-      setNotifications(data.notifications || []);
-    } catch (err) {
-      console.error('Failed to load notifications:', err);
-      showToast('Failed to load notifications', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchAPI, showToast]);
-
-  useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications, refreshTrigger]);
-
-  const handleMarkRead = async (notificationId) => {
-    try {
-      await fetchAPI(`/notifications/${notificationId}/read`, { method: 'POST' });
-      setNotifications(prev => prev.map(n =>
-        n.id === notificationId ? { ...n, read: true } : n
-      ));
-      onCountChange?.();
-    } catch (err) {
-      console.error('Failed to mark notification as read:', err);
-    }
-  };
-
-  const handleMarkAllRead = async () => {
-    try {
-      await fetchAPI('/notifications/read-all', { method: 'POST' });
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-      onCountChange?.();
-      showToast('All notifications marked as read', 'success');
-    } catch (err) {
-      showToast('Failed to mark all as read', 'error');
-    }
-  };
-
-  const handleDismiss = async (notificationId) => {
-    try {
-      await fetchAPI(`/notifications/${notificationId}`, { method: 'DELETE' });
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      onCountChange?.();
-    } catch (err) {
-      console.error('Failed to dismiss notification:', err);
-    }
-  };
-
-  const handleNotificationClick = (notification) => {
-    if (!notification.read) {
-      handleMarkRead(notification.id);
-    }
-    if (notification.waveId) {
-      onNavigateToWave(notification.waveId, notification.dropletId);
-    }
-  };
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  if (loading) {
-    return <LoadingSpinner />;
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{
-        padding: '16px',
-        borderBottom: '1px solid #2a3a2a',
-        background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-      }}>
-        <div>
-          <h2 style={{ margin: 0, color: '#ffd23f', fontSize: '1.1rem' }}>🔔 Notifications</h2>
-          <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginTop: '4px' }}>
-            {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
-          </div>
-        </div>
-        {unreadCount > 0 && (
-          <button
-            onClick={handleMarkAllRead}
-            style={{
-              padding: '8px 12px',
-              background: 'transparent',
-              border: '1px solid #0ead69',
-              color: '#0ead69',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: '0.7rem',
-            }}
-          >
-            MARK ALL READ
-          </button>
-        )}
-      </div>
-
-      {/* Notification List */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
-        {notifications.length === 0 ? (
-          <div style={{
-            textAlign: 'center',
-            padding: '40px 20px',
-            color: '#5a6a5a',
-          }}>
-            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🔔</div>
-            <div>No notifications yet</div>
-          </div>
-        ) : (
-          notifications.map(notification => (
-            <NotificationItem
-              key={notification.id}
-              notification={notification}
-              onClick={() => handleNotificationClick(notification)}
-              onDismiss={() => handleDismiss(notification.id)}
-              isMobile={true}
-            />
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
-
 const PullIndicator = ({ pulling, pullDistance, refreshing, threshold = 60 }) => {
   const progress = Math.min(pullDistance / threshold, 1);
   const rotation = progress * 360;
@@ -2219,11 +2086,19 @@ const LoginScreen = () => {
 };
 
 // ============ WAVE LIST (Mobile Responsive) ============
-const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile }) => (
-  <div style={{ 
-    width: isMobile ? '100%' : '300px', 
+// Badge colors by notification type (priority order: mention > reply > ripple > activity)
+const NOTIFICATION_BADGE_COLORS = {
+  direct_mention: { bg: '#ffd23f', shadow: 'rgba(255, 210, 63, 0.6)', icon: '@' },  // Amber - someone mentioned you
+  reply: { bg: '#0ead69', shadow: 'rgba(14, 173, 105, 0.6)', icon: '↩' },           // Green - reply to your droplet
+  ripple: { bg: '#a855f7', shadow: 'rgba(168, 85, 247, 0.6)', icon: '◈' },          // Purple - ripple activity
+  wave_activity: { bg: '#ff6b35', shadow: 'rgba(255, 107, 53, 0.6)', icon: null },  // Orange - general activity
+};
+
+const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile, waveNotifications = {} }) => (
+  <div style={{
+    width: isMobile ? '100%' : '300px',
     minWidth: isMobile ? 'auto' : '280px',
-    borderRight: isMobile ? 'none' : '1px solid #2a3a2a', 
+    borderRight: isMobile ? 'none' : '1px solid #2a3a2a',
     display: 'flex', flexDirection: 'column', height: '100%',
     borderBottom: isMobile ? '1px solid #2a3a2a' : 'none',
   }}>
@@ -2254,6 +2129,14 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
       ) : waves.map(wave => {
         const config = PRIVACY_LEVELS[wave.privacy] || PRIVACY_LEVELS.private;
         const isSelected = selectedWave?.id === wave.id;
+        // Get notification info for this wave (priority-based type from server)
+        const notifInfo = waveNotifications[wave.id];
+        const notifCount = notifInfo?.count || 0;
+        const notifType = notifInfo?.highestType || 'wave_activity';
+        const badgeStyle = NOTIFICATION_BADGE_COLORS[notifType] || NOTIFICATION_BADGE_COLORS.wave_activity;
+        // Show notification badge OR unread count (notification badge takes priority)
+        const showNotificationBadge = notifCount > 0;
+        const showUnreadBadge = !showNotificationBadge && wave.unread_count > 0;
         return (
           <div key={wave.id} onClick={() => onSelectWave(wave)}
             onMouseEnter={(e) => {
@@ -2268,9 +2151,9 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
             }}
             style={{
             padding: '12px 16px', cursor: 'pointer',
-            background: isSelected ? '#ffd23f10' : 'transparent',
+            background: isSelected ? '#ffd23f10' : (showNotificationBadge ? `${badgeStyle.bg}08` : 'transparent'),
             borderBottom: '1px solid #1a2a1a',
-            borderLeft: `3px solid ${isSelected ? config.color : 'transparent'}`,
+            borderLeft: `3px solid ${showNotificationBadge ? badgeStyle.bg : (isSelected ? config.color : 'transparent')}`,
             transition: 'background 0.2s ease',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', alignItems: 'center' }}>
@@ -2278,7 +2161,24 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
                 {wave.is_archived && '📦 '}{wave.title}
               </div>
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                {wave.unread_count > 0 && (
+                {showNotificationBadge && (
+                  <span style={{
+                    background: badgeStyle.bg,
+                    color: '#000',
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: '10px',
+                    boxShadow: `0 0 8px ${badgeStyle.shadow}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '2px',
+                  }}>
+                    {badgeStyle.icon && <span style={{ fontSize: '0.7rem' }}>{badgeStyle.icon}</span>}
+                    {notifCount}
+                  </span>
+                )}
+                {showUnreadBadge && (
                   <span style={{
                     background: '#ff6b35',
                     color: '#fff',
@@ -8243,7 +8143,7 @@ function MainApp() {
   const [mutedUsers, setMutedUsers] = useState([]); // Users muted by current user
   const [profileUserId, setProfileUserId] = useState(null); // User ID for profile modal
   const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0); // Increment to refresh notifications
-  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0); // For mobile bottom nav badge
+  const [waveNotifications, setWaveNotifications] = useState({}); // Notification counts/types by wave ID
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -8384,19 +8284,21 @@ function MainApp() {
       // Invitation to us was cancelled
       setGroupInvitations(prev => prev.filter(i => i.id !== data.invitationId));
     } else if (data.type === 'notification') {
-      // New notification received - trigger immediate refresh
+      // New notification received - refresh wave notification badges
       console.log('🔔 New notification:', data.notification?.type);
       setNotificationRefreshTrigger(prev => prev + 1);
-      // Update the count for mobile nav badge
-      setUnreadNotificationCount(prev => prev + 1);
+      // Reload wave notifications for updated badges
+      fetchAPI('/notifications/by-wave').then(result => {
+        setWaveNotifications(result.countsByWave || {});
+      }).catch(e => console.error('Failed to update wave notifications:', e));
     } else if (data.type === 'unread_count_update') {
-      // Notification count changed - trigger refresh
+      // Notification count changed - refresh wave notification badges
       console.log('🔔 Notification count updated');
       setNotificationRefreshTrigger(prev => prev + 1);
-      // Reload accurate count from server
-      fetchAPI('/notifications/count').then(data => {
-        setUnreadNotificationCount(data.total || 0);
-      }).catch(e => console.error('Failed to update notification count:', e));
+      // Reload wave notifications for updated badges
+      fetchAPI('/notifications/by-wave').then(result => {
+        setWaveNotifications(result.countsByWave || {});
+      }).catch(e => console.error('Failed to update wave notifications:', e));
     }
   }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView, fetchAPI]);
 
@@ -8428,11 +8330,11 @@ function MainApp() {
     } catch (e) { console.error('Failed to load group invitations:', e); }
   }, [fetchAPI]);
 
-  const loadNotificationCount = useCallback(async () => {
+  const loadWaveNotifications = useCallback(async () => {
     try {
-      const data = await fetchAPI('/notifications/count');
-      setUnreadNotificationCount(data.total || 0);
-    } catch (e) { console.error('Failed to load notification count:', e); }
+      const data = await fetchAPI('/notifications/by-wave');
+      setWaveNotifications(data.countsByWave || {});
+    } catch (e) { console.error('Failed to load wave notifications:', e); }
   }, [fetchAPI]);
 
   const loadBlockedMutedUsers = useCallback(async () => {
@@ -8564,8 +8466,8 @@ function MainApp() {
     loadContactRequests();
     loadGroupInvitations();
     loadBlockedMutedUsers();
-    loadNotificationCount();
-  }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadNotificationCount]);
+    loadWaveNotifications();
+  }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications]);
 
   // Request notification permission and set up push on first load
   useEffect(() => {
@@ -8798,7 +8700,7 @@ function MainApp() {
               <WaveList waves={waves} selectedWave={selectedWave}
                 onSelectWave={setSelectedWave} onNewWave={() => setShowNewWave(true)}
                 showArchived={showArchived} onToggleArchived={() => { setShowArchived(!showArchived); loadWaves(); }}
-                isMobile={isMobile} />
+                isMobile={isMobile} waveNotifications={waveNotifications} />
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
               {selectedWave && focusStack.length > 0 ? (
@@ -8883,19 +8785,6 @@ function MainApp() {
           />
         )}
 
-        {activeView === 'notifications' && (
-          <MobileNotificationsView
-            fetchAPI={fetchAPI}
-            onNavigateToWave={(waveId, dropletId) => {
-              handleNavigateToWaveById(waveId, dropletId);
-              setActiveView('waves');
-            }}
-            showToast={showToastMsg}
-            refreshTrigger={notificationRefreshTrigger}
-            onCountChange={loadNotificationCount}
-          />
-        )}
-
         {activeView === 'profile' && (
           <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} onLogout={logout} />
         )}
@@ -8932,7 +8821,6 @@ function MainApp() {
           unreadCount={waves.reduce((sum, w) => sum + (w.unread_count || 0), 0)}
           pendingContacts={contactRequests.length}
           pendingGroups={groupInvitations.length}
-          pendingNotifications={unreadNotificationCount}
         />
       )}
 

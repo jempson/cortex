@@ -2501,18 +2501,29 @@ export class DatabaseSQLite {
     return { total, byType };
   }
 
-  // Get unread notification counts grouped by wave (for ripple badges)
+  // Get unread notification counts grouped by wave with priority types
   getUnreadCountsByWave(userId) {
     const rows = this.db.prepare(`
-      SELECT wave_id, COUNT(*) as count
+      SELECT wave_id, type, COUNT(*) as count
       FROM notifications
       WHERE user_id = ? AND read = 0 AND dismissed = 0 AND wave_id IS NOT NULL
-      GROUP BY wave_id
+      GROUP BY wave_id, type
     `).all(userId);
 
     const byWave = {};
+    // Priority: direct_mention > reply > ripple > wave_activity
+    const typePriority = { direct_mention: 4, reply: 3, ripple: 2, wave_activity: 1 };
+
     for (const r of rows) {
-      byWave[r.wave_id] = r.count;
+      if (!byWave[r.wave_id]) {
+        byWave[r.wave_id] = { count: 0, highestType: null, highestPriority: 0 };
+      }
+      byWave[r.wave_id].count += r.count;
+      const priority = typePriority[r.type] || 0;
+      if (priority > byWave[r.wave_id].highestPriority) {
+        byWave[r.wave_id].highestPriority = priority;
+        byWave[r.wave_id].highestType = r.type;
+      }
     }
 
     return byWave;
