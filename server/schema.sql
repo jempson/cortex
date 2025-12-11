@@ -1,5 +1,5 @@
 -- Cortex SQLite Database Schema
--- Version 1.11.0
+-- Version 1.12.0
 
 -- ============ Users ============
 CREATE TABLE IF NOT EXISTS users (

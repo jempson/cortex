@@ -22,6 +22,137 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
 
     <style>
+      /* ============ CSS THEME VARIABLES ============ */
+      :root {
+        /* Backgrounds */
+        --bg-base: #050805;
+        --bg-elevated: #0a100a;
+        --bg-surface: #0d150d;
+        --bg-hover: #1a2a1a;
+        --bg-active: #243424;
+
+        /* Text - Enhanced brightness for mobile readability */
+        --text-primary: #d5e5d5;
+        --text-secondary: #a5b5a5;
+        --text-dim: #7a8a7a;
+        --text-muted: #5a6a5a;
+
+        /* Borders - Increased visibility */
+        --border-primary: #3a4a3a;
+        --border-secondary: #4a5a4a;
+        --border-subtle: #2a3a2a;
+
+        /* Accent Colors */
+        --accent-amber: #ffd23f;
+        --accent-teal: #3bceac;
+        --accent-green: #0ead69;
+        --accent-orange: #ff6b35;
+        --accent-purple: #a855f7;
+
+        /* Status Colors */
+        --status-success: #0ead69;
+        --status-warning: #ffd23f;
+        --status-error: #ff6b35;
+        --status-info: #3bceac;
+
+        /* Glow/Shadow Colors */
+        --glow-amber: rgba(255, 210, 63, 0.6);
+        --glow-teal: rgba(59, 206, 172, 0.6);
+        --glow-green: rgba(14, 173, 105, 0.6);
+        --glow-orange: rgba(255, 107, 53, 0.6);
+        --glow-purple: rgba(168, 85, 247, 0.6);
+
+        /* Transparent Overlays */
+        --overlay-amber: rgba(255, 210, 63, 0.15);
+        --overlay-teal: rgba(59, 206, 172, 0.15);
+        --overlay-green: rgba(14, 173, 105, 0.15);
+        --overlay-orange: rgba(255, 107, 53, 0.15);
+        --overlay-purple: rgba(168, 85, 247, 0.15);
+      }
+
+      /* High Contrast Dark Theme */
+      [data-theme="highContrast"] {
+        --bg-base: #000000;
+        --bg-elevated: #0a0a0a;
+        --bg-surface: #141414;
+        --bg-hover: #1e1e1e;
+        --bg-active: #282828;
+        --text-primary: #ffffff;
+        --text-secondary: #d0d0d0;
+        --text-dim: #a0a0a0;
+        --text-muted: #707070;
+        --border-primary: #505050;
+        --border-secondary: #606060;
+        --border-subtle: #303030;
+      }
+
+      /* AMOLED Black Theme */
+      [data-theme="amoled"] {
+        --bg-base: #000000;
+        --bg-elevated: #000000;
+        --bg-surface: #0a0a0a;
+        --bg-hover: #141414;
+        --bg-active: #1e1e1e;
+        --text-primary: #ffffff;
+        --text-secondary: #c0c0c0;
+        --text-dim: #909090;
+        --text-muted: #606060;
+        --border-primary: #2a2a2a;
+        --border-secondary: #3a3a3a;
+        --border-subtle: #1a1a1a;
+      }
+
+      /* Light Mode Theme */
+      [data-theme="light"] {
+        --bg-base: #f0f2f0;
+        --bg-elevated: #ffffff;
+        --bg-surface: #e8eae8;
+        --bg-hover: #d8dad8;
+        --bg-active: #c8cac8;
+        --text-primary: #1a1a1a;
+        --text-secondary: #3a3a3a;
+        --text-dim: #5a5a5a;
+        --text-muted: #7a7a7a;
+        --border-primary: #c0c0c0;
+        --border-secondary: #d0d0d0;
+        --border-subtle: #e0e0e0;
+        --accent-amber: #c9a000;
+        --accent-green: #0a8a52;
+        --status-success: #0a8a52;
+        --status-warning: #c9a000;
+        --glow-amber: rgba(201, 160, 0, 0.4);
+        --glow-green: rgba(10, 138, 82, 0.4);
+        --overlay-amber: rgba(201, 160, 0, 0.12);
+        --overlay-green: rgba(10, 138, 82, 0.12);
+      }
+
+      /* Ocean Blue Theme */
+      [data-theme="ocean"] {
+        --bg-base: #0a1420;
+        --bg-elevated: #0f1a28;
+        --bg-surface: #142230;
+        --bg-hover: #1a2a3a;
+        --bg-active: #203444;
+        --text-primary: #e0eef8;
+        --text-secondary: #a0c0d8;
+        --text-dim: #6090b0;
+        --text-muted: #406080;
+        --border-primary: #2a4050;
+        --border-secondary: #3a5060;
+        --border-subtle: #1a3040;
+        --accent-amber: #ffc107;
+        --accent-teal: #00bcd4;
+        --accent-green: #4caf50;
+        --accent-orange: #ff7043;
+        --accent-purple: #7c4dff;
+        --status-success: #4caf50;
+        --status-info: #00bcd4;
+        --glow-amber: rgba(255, 193, 7, 0.6);
+        --glow-teal: rgba(0, 188, 212, 0.6);
+        --glow-green: rgba(76, 175, 80, 0.6);
+      }
+
+      /* ============ BASE STYLES ============ */
       * {
         margin: 0;
         padding: 0;
@@ -29,18 +160,19 @@
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
+
       body {
         font-family: 'Courier New', Monaco, 'Lucida Console', monospace;
-        background: #050805;
-        color: #c5d5c5;
+        background: var(--bg-base);
+        color: var(--text-primary);
         text-rendering: optimizeLegibility;
-        -webkit-tap-highlight-color: rgba(255, 210, 63, 0.2);
+        -webkit-tap-highlight-color: var(--overlay-amber);
       }
 
-      /* Custom scrollbar styling for better visibility on mobile */
+      /* Custom scrollbar styling */
       * {
         scrollbar-width: thin;
-        scrollbar-color: #2a3a2a #0a100a;
+        scrollbar-color: var(--border-primary) var(--bg-elevated);
       }
 
       *::-webkit-scrollbar {
@@ -49,16 +181,16 @@
       }
 
       *::-webkit-scrollbar-track {
-        background: #0a100a;
+        background: var(--bg-elevated);
       }
 
       *::-webkit-scrollbar-thumb {
-        background: #2a3a2a;
+        background: var(--border-primary);
         border-radius: 4px;
       }
 
       *::-webkit-scrollbar-thumb:hover {
-        background: #3a4a3a;
+        background: var(--border-secondary);
       }
 
       /* Make scrollbars always visible on mobile */

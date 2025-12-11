@@ -53,25 +53,33 @@ const useAuth = () => useContext(AuthContext);
 
 // ============ PRIVACY LEVELS ============
 const PRIVACY_LEVELS = {
-  private: { name: 'Private', color: '#ff6b35', bgColor: 'rgba(255, 107, 53, 0.15)', icon: '◉', desc: 'Only invited participants' },
-  group: { name: 'Group', color: '#ffd23f', bgColor: 'rgba(255, 210, 63, 0.15)', icon: '◈', desc: 'All group members' },
-  crossServer: { name: 'Cross-Server', color: '#3bceac', bgColor: 'rgba(59, 206, 172, 0.15)', icon: '◇', desc: 'Federated servers' },
-  public: { name: 'Public', color: '#0ead69', bgColor: 'rgba(14, 173, 105, 0.15)', icon: '○', desc: 'Visible to everyone' },
+  private: { name: 'Private', color: 'var(--accent-orange)', bgColor: 'var(--overlay-orange)', icon: '◉', desc: 'Only invited participants' },
+  group: { name: 'Group', color: 'var(--accent-amber)', bgColor: 'var(--overlay-amber)', icon: '◈', desc: 'All group members' },
+  crossServer: { name: 'Cross-Server', color: 'var(--accent-teal)', bgColor: 'var(--overlay-teal)', icon: '◇', desc: 'Federated servers' },
+  public: { name: 'Public', color: 'var(--accent-green)', bgColor: 'var(--overlay-green)', icon: '○', desc: 'Visible to everyone' },
 };
 
 // ============ THEMES ============
 const THEMES = {
   firefly: {
-    name: 'Firefly (Default)',
-    baseFontSize: '16px',
+    name: 'Firefly',
+    description: 'Classic green terminal aesthetic',
   },
   highContrast: {
     name: 'High Contrast',
-    baseFontSize: '16px',
+    description: 'Maximum readability',
+  },
+  amoled: {
+    name: 'AMOLED Black',
+    description: 'True black for OLED screens',
   },
   light: {
     name: 'Light Mode',
-    baseFontSize: '16px',
+    description: 'Light background for daytime',
+  },
+  ocean: {
+    name: 'Ocean Blue',
+    description: 'Blue-tinted dark theme',
   },
 };
 
@@ -277,7 +285,7 @@ const ImageLightbox = ({ src, onClose }) => {
           top: '20px',
           right: '20px',
           background: 'rgba(0, 0, 0, 0.5)',
-          border: '1px solid #4a5a4a',
+          border: '1px solid var(--border-secondary)',
           color: '#fff',
           fontSize: '1.5rem',
           width: '44px',
@@ -473,7 +481,7 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
           alignItems: 'center',
           gap: '12px',
           padding: '12px 16px',
-          background: 'linear-gradient(135deg, #0a100a, #1a0a1a)',
+          background: 'linear-gradient(135deg, var(--bg-elevated), var(--bg-base))',
           border: '1px solid #ff0050',
           borderRadius: '8px',
           color: '#e5e5e5',
@@ -515,10 +523,10 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
         style={{
           display: 'block',
           padding: '12px',
-          background: '#0a100a',
-          border: '1px solid #2a3a2a',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-subtle)',
           borderRadius: '4px',
-          color: '#8a9a8a',
+          color: 'var(--text-secondary)',
           textDecoration: 'none',
           marginTop: '8px',
         }}
@@ -539,8 +547,8 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
           maxWidth: '560px',
           aspectRatio: embed.platform === 'spotify' ? 'auto' : '16/9',
           height: embed.platform === 'spotify' ? dimensions.height : 'auto',
-          background: '#0a100a',
-          border: '1px solid #2a3a2a',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-subtle)',
           borderRadius: '4px',
           cursor: 'pointer',
           marginTop: '8px',
@@ -591,7 +599,7 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
           }}>
             {platform.icon}
           </div>
-          <span style={{ color: '#c5d5c5', fontSize: '0.85rem', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+          <span style={{ color: 'var(--text-primary)', fontSize: '0.85rem', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
             Click to load {platform.name}
           </span>
         </div>
@@ -606,12 +614,12 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
         width: '100%',
         maxWidth: '560px',
         padding: '20px',
-        background: '#0a100a',
-        border: '1px solid #2a3a2a',
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '4px',
         marginTop: '8px',
         textAlign: 'center',
-        color: '#8a9a8a',
+        color: 'var(--text-secondary)',
       }}>
         Loading {platform.name}...
       </div>
@@ -646,7 +654,7 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
         width={dimensions.width}
         height={dimensions.height}
         style={{
-          border: '1px solid #2a3a2a',
+          border: '1px solid var(--border-subtle)',
           borderRadius: '4px',
           display: 'block',
         }}
@@ -695,7 +703,7 @@ const EmojiPicker = ({ onSelect, isMobile }) => {
   return (
     <div style={{
       position: 'absolute', bottom: '100%', left: 0, marginBottom: '8px',
-      background: '#0d150d', border: '1px solid #2a3a2a',
+      background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
       padding: isMobile ? '10px' : '6px', display: 'grid',
       gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(8, 1fr)',
       gap: isMobile ? '6px' : '2px',
@@ -706,7 +714,7 @@ const EmojiPicker = ({ onSelect, isMobile }) => {
           width: isMobile ? '44px' : '32px',
           height: isMobile ? '44px' : '32px',
           padding: 0,
-          background: 'transparent', border: '1px solid #2a3a2a',
+          background: 'transparent', border: '1px solid var(--border-subtle)',
           cursor: 'pointer', fontSize: isMobile ? '1.3rem' : '1.1rem',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           lineHeight: 1,
@@ -794,8 +802,8 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
         width: '100%',
         maxWidth: isMobile ? '100%' : '600px',
         maxHeight: isMobile ? '90vh' : '80vh',
-        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-        border: '2px solid #3bceac40',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '2px solid var(--accent-teal)40',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -803,17 +811,17 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
         {/* Header */}
         <div style={{
           padding: isMobile ? '14px 16px' : '12px 16px',
-          borderBottom: '1px solid #2a3a2a',
+          borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: '12px',
         }}>
-          <GlowText color="#3bceac" size={isMobile ? '1rem' : '0.9rem'}>GIF SEARCH</GlowText>
+          <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '0.9rem'}>GIF SEARCH</GlowText>
           <button onClick={onClose} style={{
             background: 'transparent',
-            border: '1px solid #3a4a3a',
-            color: '#6a7a6a',
+            border: '1px solid var(--border-primary)',
+            color: 'var(--text-dim)',
             cursor: 'pointer',
             padding: isMobile ? '10px 14px' : '6px 12px',
             minHeight: isMobile ? '44px' : 'auto',
@@ -823,7 +831,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
         </div>
 
         {/* Search Input */}
-        <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid #2a3a2a' }}>
+        <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
           <input
             type="text"
             value={searchQuery}
@@ -833,16 +841,16 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
             style={{
               width: '100%',
               padding: isMobile ? '14px 16px' : '10px 14px',
-              background: '#0a100a',
-              border: '1px solid #3bceac50',
-              color: '#c5d5c5',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--accent-teal)50',
+              color: 'var(--text-primary)',
               fontSize: isMobile ? '1rem' : '0.9rem',
               fontFamily: 'inherit',
               boxSizing: 'border-box',
             }}
           />
           <div style={{
-            color: '#5a6a5a',
+            color: 'var(--text-muted)',
             fontSize: '0.65rem',
             marginTop: '6px',
             textAlign: 'center',
@@ -858,7 +866,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
           padding: isMobile ? '12px' : '12px 16px',
         }}>
           {loading && (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#6a7a6a' }}>
+            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
               Loading GIFs...
             </div>
           )}
@@ -867,9 +875,9 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
             <div style={{
               textAlign: 'center',
               padding: '20px',
-              color: '#ff6b35',
-              background: '#ff6b3510',
-              border: '1px solid #ff6b3530',
+              color: 'var(--accent-orange)',
+              background: 'var(--accent-orange)10',
+              border: '1px solid var(--accent-orange)30',
               marginBottom: '12px',
             }}>
               {error}
@@ -877,7 +885,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
           )}
 
           {!loading && !error && gifs.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#6a7a6a' }}>
+            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
               {searchQuery ? 'No GIFs found' : 'Search for GIFs above'}
             </div>
           )}
@@ -893,8 +901,8 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
                   key={gif.id}
                   onClick={() => onSelect(gif.url)}
                   style={{
-                    background: '#0a100a',
-                    border: '1px solid #2a3a2a',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-subtle)',
                     padding: 0,
                     cursor: 'pointer',
                     aspectRatio: '1',
@@ -924,9 +932,9 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
         {/* Footer - GIPHY Attribution */}
         <div style={{
           padding: '8px 16px',
-          borderTop: '1px solid #2a3a2a',
+          borderTop: '1px solid var(--border-subtle)',
           textAlign: 'center',
-          color: '#5a6a5a',
+          color: 'var(--text-muted)',
           fontSize: '0.6rem',
         }}>
           Powered by GIPHY
@@ -1019,8 +1027,8 @@ const InstallPrompt = ({ isMobile }) => {
       bottom: isMobile ? '70px' : '20px',
       left: '50%',
       transform: 'translateX(-50%)',
-      background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-      border: '2px solid #0ead69',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '2px solid var(--accent-green)',
       padding: isMobile ? '16px' : '20px',
       zIndex: 1000,
       maxWidth: '400px',
@@ -1033,7 +1041,7 @@ const InstallPrompt = ({ isMobile }) => {
         alignItems: 'flex-start',
         marginBottom: '12px'
       }}>
-        <div style={{ color: '#0ead69', fontWeight: 'bold', fontSize: '1rem', fontFamily: 'monospace' }}>
+        <div style={{ color: 'var(--accent-green)', fontWeight: 'bold', fontSize: '1rem', fontFamily: 'monospace' }}>
           Install Cortex
         </div>
         <button
@@ -1041,7 +1049,7 @@ const InstallPrompt = ({ isMobile }) => {
           style={{
             background: 'none',
             border: 'none',
-            color: '#6a7a6a',
+            color: 'var(--text-dim)',
             cursor: 'pointer',
             fontSize: '1.2rem',
             padding: 0,
@@ -1053,7 +1061,7 @@ const InstallPrompt = ({ isMobile }) => {
       </div>
 
       <p style={{
-        color: '#c5d5c5',
+        color: 'var(--text-primary)',
         fontSize: '0.85rem',
         marginBottom: '16px',
         lineHeight: 1.4,
@@ -1068,9 +1076,9 @@ const InstallPrompt = ({ isMobile }) => {
           style={{
             flex: 1,
             padding: '12px 20px',
-            background: '#0ead69',
+            background: 'var(--accent-green)',
             border: 'none',
-            color: '#050805',
+            color: 'var(--bg-base)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontWeight: 'bold',
@@ -1084,8 +1092,8 @@ const InstallPrompt = ({ isMobile }) => {
           style={{
             padding: '12px 20px',
             background: 'transparent',
-            border: '1px solid #3a4a3a',
-            color: '#6a7a6a',
+            border: '1px solid var(--border-primary)',
+            color: 'var(--text-dim)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontSize: '0.9rem'
@@ -1123,8 +1131,8 @@ const OfflineIndicator = () => {
       top: 0,
       left: 0,
       right: 0,
-      background: '#ff6b35',
-      color: '#050805',
+      background: 'var(--accent-orange)',
+      color: 'var(--bg-base)',
       padding: '8px',
       textAlign: 'center',
       fontFamily: 'monospace',
@@ -1162,8 +1170,8 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
       right: 0,
       height: '60px',
       paddingBottom: 'env(safe-area-inset-bottom)',
-      background: '#0a150a',
-      borderTop: '1px solid #2a3a2a',
+      background: 'var(--bg-surface)',
+      borderTop: '1px solid var(--border-subtle)',
       display: 'flex',
       justifyContent: 'space-around',
       alignItems: 'center',
@@ -1172,8 +1180,8 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
       {items.map(item => {
         const isActive = activeView === item.id;
         const badgeColor = item.badgeColor ? item.badgeColor :
-                          item.id === 'contacts' && item.badge > 0 ? '#3bceac' :
-                          item.id === 'groups' && item.badge > 0 ? '#ffd23f' : '#ff6b35';
+                          item.id === 'contacts' && item.badge > 0 ? 'var(--accent-teal)' :
+                          item.id === 'groups' && item.badge > 0 ? 'var(--accent-amber)' : 'var(--accent-orange)';
 
         return (
           <button
@@ -1189,7 +1197,7 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
               padding: '8px 4px',
               background: 'transparent',
               border: 'none',
-              color: isActive ? '#ffd23f' : '#6a7a6a',
+              color: isActive ? 'var(--accent-amber)' : 'var(--text-dim)',
               cursor: 'pointer',
               position: 'relative',
               transition: 'color 0.2s ease',
@@ -1197,7 +1205,7 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
           >
             <span style={{
               fontSize: '1.2rem',
-              textShadow: isActive ? '0 0 10px #ffd23f80' : 'none',
+              textShadow: isActive ? '0 0 10px var(--accent-amber)80' : 'none',
             }}>
               {item.icon}
             </span>
@@ -1205,7 +1213,7 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
               fontSize: '0.6rem',
               fontFamily: 'monospace',
               textTransform: 'uppercase',
-              textShadow: isActive ? '0 0 8px #ffd23f40' : 'none',
+              textShadow: isActive ? '0 0 8px var(--accent-amber)40' : 'none',
             }}>
               {item.label}
             </span>
@@ -1483,13 +1491,13 @@ const ScanLines = ({ enabled = true }) => {
   );
 };
 
-const GlowText = ({ children, color = '#ffd23f', size = '1rem', weight = 400 }) => (
+const GlowText = ({ children, color = 'var(--accent-amber)', size = '1rem', weight = 400 }) => (
   <span style={{ color, fontSize: size, fontWeight: weight, textShadow: `0 0 10px ${color}80, 0 0 20px ${color}40` }}>
     {children}
   </span>
 );
 
-const Avatar = ({ letter, color = '#ffd23f', size = 40, status, imageUrl }) => {
+const Avatar = ({ letter, color = 'var(--accent-amber)', size = 40, status, imageUrl }) => {
   const [imgError, setImgError] = useState(false);
 
   // Reset error state when imageUrl changes
@@ -1525,8 +1533,8 @@ const Avatar = ({ letter, color = '#ffd23f', size = 40, status, imageUrl }) => {
         <div style={{
           position: 'absolute', bottom: -2, right: -2,
           width: '8px', height: '8px', borderRadius: '50%',
-          background: status === 'online' ? '#0ead69' : status === 'away' ? '#ffd23f' : '#5a6a5a',
-          boxShadow: status === 'online' ? '0 0 6px #0ead69' : 'none',
+          background: status === 'online' ? 'var(--accent-green)' : status === 'away' ? 'var(--accent-amber)' : 'var(--text-muted)',
+          boxShadow: status === 'online' ? '0 0 6px var(--accent-green)' : 'none',
         }} />
       )}
     </div>
@@ -1552,12 +1560,12 @@ const PrivacyBadge = ({ level, compact = false }) => {
 };
 
 const Toast = ({ message, type = 'info', onClose }) => {
-  const colors = { success: '#0ead69', error: '#ff6b35', info: '#ffd23f' };
+  const colors = { success: 'var(--accent-green)', error: 'var(--accent-orange)', info: 'var(--accent-amber)' };
   useEffect(() => { const t = setTimeout(onClose, 4000); return () => clearTimeout(t); }, [onClose]);
   return (
     <div style={{
       position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)',
-      padding: '12px 24px', background: '#0d150d',
+      padding: '12px 24px', background: 'var(--bg-surface)',
       border: `1px solid ${colors[type]}`, color: colors[type],
       fontFamily: 'monospace', fontSize: '0.85rem', zIndex: 200,
       maxWidth: '90vw', textAlign: 'center',
@@ -1570,8 +1578,8 @@ const Toast = ({ message, type = 'info', onClose }) => {
 const LoadingSpinner = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>
     <div style={{
-      width: '40px', height: '40px', border: '3px solid #2a3a2a',
-      borderTop: '3px solid #ffd23f', borderRadius: '50%',
+      width: '40px', height: '40px', border: '3px solid var(--border-subtle)',
+      borderTop: '3px solid var(--accent-amber)', borderRadius: '50%',
       animation: 'spin 1s linear infinite',
     }} />
     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -1580,11 +1588,11 @@ const LoadingSpinner = () => (
 
 // Notification type styling
 const NOTIFICATION_TYPES = {
-  direct_mention: { icon: '@', color: '#ffd23f', label: 'Mentioned you' },
-  reply: { icon: '↩', color: '#3bceac', label: 'Replied to you' },
-  wave_activity: { icon: '◎', color: '#0ead69', label: 'Wave activity' },
-  ripple: { icon: '◈', color: '#9b59b6', label: 'Rippled' },
-  system: { icon: '⚡', color: '#ff6b35', label: 'System' },
+  direct_mention: { icon: '@', color: 'var(--accent-amber)', label: 'Mentioned you' },
+  reply: { icon: '↩', color: 'var(--accent-teal)', label: 'Replied to you' },
+  wave_activity: { icon: '◎', color: 'var(--accent-green)', label: 'Wave activity' },
+  ripple: { icon: '◈', color: 'var(--accent-purple)', label: 'Rippled' },
+  system: { icon: '⚡', color: 'var(--accent-orange)', label: 'System' },
 };
 
 const NotificationItem = ({ notification, onRead, onDismiss, onClick }) => {
@@ -1605,9 +1613,9 @@ const NotificationItem = ({ notification, onRead, onDismiss, onClick }) => {
       onClick={() => onClick(notification)}
       style={{
         padding: '12px',
-        borderBottom: '1px solid #2a3a2a',
+        borderBottom: '1px solid var(--border-subtle)',
         cursor: 'pointer',
-        background: notification.read ? 'transparent' : '#ffd23f08',
+        background: notification.read ? 'transparent' : 'var(--accent-amber)08',
         display: 'flex',
         gap: '10px',
         alignItems: 'flex-start',
@@ -1649,17 +1657,17 @@ const NotificationItem = ({ notification, onRead, onDismiss, onClick }) => {
       {/* Content */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-          <span style={{ color: '#ffd23f', fontSize: '0.8rem', fontWeight: 500 }}>
+          <span style={{ color: 'var(--accent-amber)', fontSize: '0.8rem', fontWeight: 500 }}>
             {notification.actorDisplayName || notification.title}
           </span>
-          <span style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>{timeAgo(notification.createdAt)}</span>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{timeAgo(notification.createdAt)}</span>
         </div>
-        <div style={{ color: '#9a9a9a', fontSize: '0.75rem', marginBottom: '4px' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>
           {notification.body || typeConfig.label}
         </div>
         {notification.preview && (
           <div style={{
-            color: '#6a7a6a',
+            color: 'var(--text-dim)',
             fontSize: '0.7rem',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
@@ -1669,7 +1677,7 @@ const NotificationItem = ({ notification, onRead, onDismiss, onClick }) => {
           </div>
         )}
         {notification.waveTitle && (
-          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '4px' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '4px' }}>
             in {notification.waveTitle}
           </div>
         )}
@@ -1681,7 +1689,7 @@ const NotificationItem = ({ notification, onRead, onDismiss, onClick }) => {
         style={{
           background: 'transparent',
           border: 'none',
-          color: '#5a6a5a',
+          color: 'var(--text-muted)',
           cursor: 'pointer',
           fontSize: '0.8rem',
           padding: '4px',
@@ -1705,8 +1713,8 @@ const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, o
       bottom: isMobile ? '0' : 'auto',
       width: isMobile ? '100%' : '360px',
       maxHeight: isMobile ? '100%' : '480px',
-      background: '#0d150d',
-      border: isMobile ? 'none' : '1px solid #3a4a3a',
+      background: 'var(--bg-surface)',
+      border: isMobile ? 'none' : '1px solid var(--border-primary)',
       zIndex: 300,
       display: 'flex',
       flexDirection: 'column',
@@ -1716,17 +1724,17 @@ const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, o
       <div style={{
         padding: '12px 16px',
         paddingTop: isMobile ? 'calc(12px + env(safe-area-inset-top, 0px))' : '12px',
-        borderBottom: '1px solid #3a4a3a',
+        borderBottom: '1px solid var(--border-primary)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        background: '#1a2a1a',
+        background: 'var(--bg-hover)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ color: '#ffd23f', fontSize: '0.9rem', fontWeight: 600 }}>Notifications</span>
+          <span style={{ color: 'var(--accent-amber)', fontSize: '0.9rem', fontWeight: 600 }}>Notifications</span>
           {unreadCount > 0 && (
             <span style={{
-              background: '#ff6b35',
+              background: 'var(--accent-orange)',
               color: '#fff',
               fontSize: '0.65rem',
               fontWeight: 700,
@@ -1742,7 +1750,7 @@ const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, o
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: '#3bceac',
+                color: 'var(--accent-teal)',
                 cursor: 'pointer',
                 fontSize: '0.7rem',
                 fontFamily: 'monospace',
@@ -1756,7 +1764,7 @@ const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, o
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#6a7a6a',
+              color: 'var(--text-dim)',
               cursor: 'pointer',
               fontSize: '1rem',
               padding: '4px',
@@ -1773,7 +1781,7 @@ const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, o
           <div style={{
             padding: '40px 20px',
             textAlign: 'center',
-            color: '#5a6a5a',
+            color: 'var(--text-muted)',
             fontSize: '0.85rem',
           }}>
             No notifications
@@ -1896,9 +1904,9 @@ const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger
         onClick={() => setShowDropdown(!showDropdown)}
         style={{
           padding: '8px 12px',
-          background: showDropdown ? '#ffd23f15' : 'transparent',
-          border: `1px solid ${showDropdown ? '#ffd23f' : '#3a4a3a'}`,
-          color: showDropdown ? '#ffd23f' : '#6a7a6a',
+          background: showDropdown ? 'var(--accent-amber)15' : 'transparent',
+          border: `1px solid ${showDropdown ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+          color: showDropdown ? 'var(--accent-amber)' : 'var(--text-dim)',
           cursor: 'pointer',
           fontFamily: 'monospace',
           fontSize: '0.9rem',
@@ -1912,7 +1920,7 @@ const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger
             position: 'absolute',
             top: '-6px',
             right: '-6px',
-            background: '#ff6b35',
+            background: 'var(--accent-orange)',
             color: '#fff',
             fontSize: '0.55rem',
             fontWeight: 700,
@@ -1958,7 +1966,7 @@ const PullIndicator = ({ pulling, pullDistance, refreshing, threshold = 60 }) =>
       alignItems: 'flex-end',
       justifyContent: 'center',
       paddingBottom: '10px',
-      background: 'linear-gradient(to bottom, #0a150a, transparent)',
+      background: 'linear-gradient(to bottom, var(--bg-surface), transparent)',
       transition: refreshing ? 'height 0.3s ease' : 'none',
       pointerEvents: 'none',
       zIndex: 100,
@@ -1967,8 +1975,8 @@ const PullIndicator = ({ pulling, pullDistance, refreshing, threshold = 60 }) =>
         <div style={{
           width: '24px',
           height: '24px',
-          border: '2px solid #2a3a2a',
-          borderTop: '2px solid #0ead69',
+          border: '2px solid var(--border-subtle)',
+          borderTop: '2px solid var(--accent-green)',
           borderRadius: '50%',
           transform: refreshing ? 'none' : `rotate(${rotation}deg)`,
           animation: refreshing ? 'spin 1s linear infinite' : 'none',
@@ -1998,18 +2006,18 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '20px', color: '#ff6b35', background: '#1a0a0a', border: '1px solid #ff6b35', margin: '10px' }}>
+        <div style={{ padding: '20px', color: 'var(--accent-orange)', background: 'var(--bg-base)', border: '1px solid var(--accent-orange)', margin: '10px' }}>
           <h3 style={{ margin: '0 0 10px 0' }}>⚠️ Something went wrong</h3>
-          <pre style={{ fontSize: '0.8rem', whiteSpace: 'pre-wrap', color: '#ffd23f' }}>
+          <pre style={{ fontSize: '0.8rem', whiteSpace: 'pre-wrap', color: 'var(--accent-amber)' }}>
             {this.state.error?.toString()}
           </pre>
-          <details style={{ marginTop: '10px', fontSize: '0.75rem', color: '#6a7a6a' }}>
+          <details style={{ marginTop: '10px', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
             <summary>Stack trace</summary>
             <pre style={{ whiteSpace: 'pre-wrap' }}>{this.state.errorInfo?.componentStack}</pre>
           </details>
           <button
             onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
-            style={{ marginTop: '10px', padding: '8px 16px', background: '#0ead69', border: 'none', color: '#050805', cursor: 'pointer' }}
+            style={{ marginTop: '10px', padding: '8px 16px', background: 'var(--accent-green)', border: 'none', color: 'var(--bg-base)', cursor: 'pointer' }}
           >
             Try Again
           </button>
@@ -2048,30 +2056,30 @@ const LoginScreen = () => {
 
   const inputStyle = {
     width: '100%', padding: '12px 16px', boxSizing: 'border-box',
-    background: '#0a100a', border: '1px solid #2a3a2a',
-    color: '#c5d5c5', fontSize: '0.9rem', fontFamily: 'inherit',
+    background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+    color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'inherit',
   };
 
   return (
     <div style={{
-      minHeight: '100vh', background: 'linear-gradient(180deg, #0d150d, #050805)',
+      minHeight: '100vh', background: 'linear-gradient(180deg, var(--bg-surface), var(--bg-base))',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: "'Courier New', monospace", padding: isMobile ? '20px' : '0',
     }}>
       <ScanLines />
       <div style={{
         width: '100%', maxWidth: '400px', padding: isMobile ? '24px' : '40px',
-        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-        border: '2px solid #ffd23f40',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '2px solid var(--accent-amber)40',
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <GlowText color="#ffd23f" size={isMobile ? '2rem' : '2.5rem'} weight={700}>CORTEX</GlowText>
-          <div style={{ color: '#5a6a5a', fontSize: '0.8rem', marginTop: '8px' }}>SECURE COMMUNICATIONS</div>
+          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>CORTEX</GlowText>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '8px' }}>SECURE COMMUNICATIONS</div>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
+            <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
               {isRegistering ? 'HANDLE' : 'HANDLE / EMAIL'}
             </label>
             <input type="text" value={handle} onChange={(e) => setHandle(e.target.value)}
@@ -2081,12 +2089,12 @@ const LoginScreen = () => {
           {isRegistering && (
             <>
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>EMAIL</label>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>EMAIL</label>
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com" style={inputStyle} />
               </div>
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>DISPLAY NAME</label>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>DISPLAY NAME</label>
                 <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="How others see you" style={inputStyle} />
               </div>
@@ -2094,18 +2102,18 @@ const LoginScreen = () => {
           )}
 
           <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>PASSWORD</label>
+            <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PASSWORD</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder={isRegistering ? 'Min 8 chars, upper, lower, number' : 'Enter password'} style={inputStyle} />
           </div>
 
-          {error && <div style={{ color: '#ff6b35', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: '#ff6b3510', border: '1px solid #ff6b3530' }}>{error}</div>}
+          {error && <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>{error}</div>}
 
           <button type="submit" disabled={loading} style={{
             width: '100%', padding: '14px',
-            background: loading ? '#2a3a2a' : '#ffd23f20',
-            border: `1px solid ${loading ? '#3a4a3a' : '#ffd23f'}`,
-            color: loading ? '#5a6a5a' : '#ffd23f',
+            background: loading ? 'var(--border-subtle)' : 'var(--accent-amber)20',
+            border: `1px solid ${loading ? 'var(--border-primary)' : 'var(--accent-amber)'}`,
+            color: loading ? 'var(--text-muted)' : 'var(--accent-amber)',
             cursor: loading ? 'not-allowed' : 'pointer',
             fontFamily: 'monospace', fontSize: '0.9rem',
           }}>
@@ -2115,7 +2123,7 @@ const LoginScreen = () => {
 
         <div style={{ textAlign: 'center', marginTop: '24px' }}>
           <button onClick={() => { setIsRegistering(!isRegistering); setError(''); }}
-            style={{ background: 'none', border: 'none', color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+            style={{ background: 'none', border: 'none', color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem' }}>
             {isRegistering ? '← BACK TO LOGIN' : 'NEW USER? CREATE ACCOUNT →'}
           </button>
         </div>
@@ -2127,42 +2135,42 @@ const LoginScreen = () => {
 // ============ WAVE LIST (Mobile Responsive) ============
 // Badge colors by notification type (priority order: mention > reply > ripple > activity)
 const NOTIFICATION_BADGE_COLORS = {
-  direct_mention: { bg: '#ffd23f', shadow: 'rgba(255, 210, 63, 0.6)', icon: '@' },  // Amber - someone mentioned you
-  reply: { bg: '#0ead69', shadow: 'rgba(14, 173, 105, 0.6)', icon: '↩' },           // Green - reply to your droplet
-  ripple: { bg: '#a855f7', shadow: 'rgba(168, 85, 247, 0.6)', icon: '◈' },          // Purple - ripple activity
-  wave_activity: { bg: '#ff6b35', shadow: 'rgba(255, 107, 53, 0.6)', icon: null },  // Orange - general activity
+  direct_mention: { bg: 'var(--accent-amber)', shadow: 'var(--glow-amber)', icon: '@' },  // Amber - someone mentioned you
+  reply: { bg: 'var(--accent-green)', shadow: 'var(--glow-green)', icon: '↩' },           // Green - reply to your droplet
+  ripple: { bg: 'var(--accent-purple)', shadow: 'var(--glow-purple)', icon: '◈' },          // Purple - ripple activity
+  wave_activity: { bg: 'var(--accent-orange)', shadow: 'var(--glow-orange)', icon: null },  // Orange - general activity
 };
 
 const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile, waveNotifications = {} }) => (
   <div style={{
     width: isMobile ? '100%' : '300px',
     minWidth: isMobile ? 'auto' : '280px',
-    borderRight: isMobile ? 'none' : '1px solid #2a3a2a',
+    borderRight: isMobile ? 'none' : '1px solid var(--border-subtle)',
     display: 'flex', flexDirection: 'column', height: '100%',
-    borderBottom: isMobile ? '1px solid #2a3a2a' : 'none',
+    borderBottom: isMobile ? '1px solid var(--border-subtle)' : 'none',
   }}>
-    <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid #2a3a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-      <GlowText color="#ffd23f" size={isMobile ? '1rem' : '0.9rem'}>WAVES</GlowText>
+    <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+      <GlowText color="var(--accent-amber)" size={isMobile ? '1rem' : '0.9rem'}>WAVES</GlowText>
       <div style={{ display: 'flex', gap: '8px' }}>
         <button onClick={onToggleArchived} style={{
           padding: isMobile ? '12px 14px' : '6px 10px',
           minHeight: isMobile ? '44px' : 'auto',
           minWidth: isMobile ? '44px' : 'auto',
-          background: showArchived ? '#3bceac20' : 'transparent',
-          border: `1px solid ${showArchived ? '#3bceac' : '#3a4a3a'}`,
-          color: showArchived ? '#3bceac' : '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+          background: showArchived ? 'var(--accent-teal)20' : 'transparent',
+          border: `1px solid ${showArchived ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+          color: showArchived ? 'var(--accent-teal)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
         }}>{showArchived ? '📦' : '📬'}</button>
         <button onClick={onNewWave} style={{
           padding: isMobile ? '12px 16px' : '6px 12px',
           minHeight: isMobile ? '44px' : 'auto',
-          background: '#ffd23f20', border: '1px solid #ffd23f50',
-          color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.75rem',
+          background: 'var(--accent-amber)20', border: '1px solid var(--accent-amber)50',
+          color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.75rem',
         }}>+ NEW</button>
       </div>
     </div>
     <div style={{ flex: 1, overflowY: 'auto' }}>
       {waves.length === 0 ? (
-        <div style={{ padding: '20px', textAlign: 'center', color: '#5a6a5a', fontSize: '0.85rem' }}>
+        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
           {showArchived ? 'No archived waves' : 'No waves yet. Create one!'}
         </div>
       ) : waves.map(wave => {
@@ -2180,7 +2188,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
           <div key={wave.id} onClick={() => onSelectWave(wave)}
             onMouseEnter={(e) => {
               if (!isSelected) {
-                e.currentTarget.style.background = '#1a2a1a';
+                e.currentTarget.style.background = 'var(--bg-hover)';
               }
             }}
             onMouseLeave={(e) => {
@@ -2190,13 +2198,13 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
             }}
             style={{
             padding: '12px 16px', cursor: 'pointer',
-            background: isSelected ? '#ffd23f10' : (showNotificationBadge ? `${badgeStyle.bg}08` : 'transparent'),
-            borderBottom: '1px solid #1a2a1a',
+            background: isSelected ? 'var(--accent-amber)10' : (showNotificationBadge ? `${badgeStyle.bg}08` : 'transparent'),
+            borderBottom: '1px solid var(--bg-hover)',
             borderLeft: `3px solid ${showNotificationBadge ? badgeStyle.bg : (isSelected ? config.color : 'transparent')}`,
             transition: 'background 0.2s ease',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', alignItems: 'center' }}>
-              <div style={{ color: '#c5d5c5', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: '8px' }}>
+              <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: '8px' }}>
                 {wave.is_archived && '📦 '}{wave.title}
               </div>
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
@@ -2219,19 +2227,19 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
                 )}
                 {showUnreadBadge && (
                   <span style={{
-                    background: '#ff6b35',
+                    background: 'var(--accent-orange)',
                     color: '#fff',
                     fontSize: '0.65rem',
                     fontWeight: 700,
                     padding: '2px 6px',
                     borderRadius: '10px',
-                    boxShadow: '0 0 8px rgba(255, 107, 53, 0.6)',
+                    boxShadow: '0 0 8px var(--glow-orange)',
                   }}>{wave.unread_count}</span>
                 )}
                 <span style={{ color: config.color }}>{config.icon}</span>
               </div>
             </div>
-            <div style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.7rem' }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.85rem' : '0.7rem' }}>
               {wave.creator_name || 'Unknown'} • {wave.message_count} msgs
               {wave.group_name && <span> • {wave.group_name}</span>}
             </div>
@@ -2307,23 +2315,23 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
         onClick={handleMessageClick}
         style={{
           padding: isMobile ? '10px 12px' : '12px 16px', marginBottom: '8px',
-          background: isDeleted ? '#0a0f0a' : isHighlighted ? `${config.color}20` : isUnread ? '#ffd23f10' : 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-          border: `1px solid ${isDeleted ? '#1a1f1a' : isHighlighted ? config.color : isUnread ? '#ffd23f' : '#2a3a2a'}`,
-          borderLeft: `3px solid ${isDeleted ? '#3a3a3a' : isUnread ? '#ffd23f' : config.color}`,
+          background: isDeleted ? 'var(--bg-base)' : isHighlighted ? `${config.color}20` : isUnread ? 'var(--accent-amber)10' : 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+          border: `1px solid ${isDeleted ? 'var(--border-subtle)' : isHighlighted ? config.color : isUnread ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
+          borderLeft: `3px solid ${isDeleted ? 'var(--text-muted)' : isUnread ? 'var(--accent-amber)' : config.color}`,
           cursor: (isUnread || (autoFocusDroplets && hasChildren && !isDeleted)) ? 'pointer' : 'default',
           transition: 'all 0.2s ease',
           opacity: isDeleted ? 0.6 : 1,
         }}
         onMouseEnter={(e) => {
           if (isUnread) {
-            e.currentTarget.style.background = '#ffd23f20';
-            e.currentTarget.style.borderColor = '#ffd23f';
+            e.currentTarget.style.background = 'var(--accent-amber)20';
+            e.currentTarget.style.borderColor = 'var(--accent-amber)';
           }
         }}
         onMouseLeave={(e) => {
           if (isUnread) {
-            e.currentTarget.style.background = '#ffd23f10';
-            e.currentTarget.style.borderColor = isHighlighted ? config.color : '#ffd23f';
+            e.currentTarget.style.background = 'var(--accent-amber)10';
+            e.currentTarget.style.borderColor = isHighlighted ? config.color : 'var(--accent-amber)';
           }
         }}
       >
@@ -2335,8 +2343,8 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
           >
             <Avatar letter={message.sender_avatar || '?'} color={config.color} size={isMobile ? 32 : 28} imageUrl={message.sender_avatar_url} />
             <div style={{ minWidth: 0 }}>
-              <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.sender_name}</div>
-              <div style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.65rem', fontFamily: 'monospace' }}>
+              <div style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.9rem' : '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.sender_name}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.85rem' : '0.65rem', fontFamily: 'monospace' }}>
                 {new Date(message.created_at).toLocaleString()}
               </div>
             </div>
@@ -2348,11 +2356,11 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
           <div style={{
             marginBottom: '8px',
             padding: '6px 10px',
-            background: '#3bceac10',
-            border: '1px solid #3bceac40',
-            borderLeft: '3px solid #3bceac',
+            background: 'var(--accent-teal)10',
+            border: '1px solid var(--accent-teal)40',
+            borderLeft: '3px solid var(--accent-teal)',
             fontSize: isMobile ? '0.7rem' : '0.65rem',
-            color: '#3bceac',
+            color: 'var(--accent-teal)',
             fontFamily: 'monospace',
             display: 'flex',
             alignItems: 'center',
@@ -2360,19 +2368,19 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
           }}>
             <span>⬡</span>
             <span>Thread depth limit reached</span>
-            <span style={{ color: '#6a7a6a' }}>•</span>
-            <span style={{ color: '#6a7a6a' }}>Use Focus to continue deeper</span>
+            <span style={{ color: 'var(--text-dim)' }}>•</span>
+            <span style={{ color: 'var(--text-dim)' }}>Use Focus to continue deeper</span>
           </div>
         )}
         {depth > THREAD_DEPTH_LIMIT && (
           <div style={{
             marginBottom: '8px',
             padding: '4px 8px',
-            background: '#0a100a',
-            border: '1px solid #2a3a2a',
-            borderLeft: '2px solid #6a7a6a',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-subtle)',
+            borderLeft: '2px solid var(--text-dim)',
             fontSize: isMobile ? '0.65rem' : '0.6rem',
-            color: '#6a7a6a',
+            color: 'var(--text-dim)',
             fontFamily: 'monospace',
             display: 'flex',
             alignItems: 'center',
@@ -2398,9 +2406,9 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 width: '100%',
                 minHeight: '80px',
                 padding: '8px',
-                background: '#0a100a',
-                border: '1px solid #ffd23f',
-                color: '#9bab9b',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--accent-amber)',
+                color: 'var(--text-secondary)',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.95rem' : '0.85rem',
                 resize: 'vertical',
@@ -2412,9 +2420,9 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               <button onClick={() => onSaveEdit(message.id)} style={{
                 padding: isMobile ? '10px 14px' : '6px 12px',
                 minHeight: isMobile ? '44px' : 'auto',
-                background: '#0ead6920',
-                border: '1px solid #0ead69',
-                color: '#0ead69',
+                background: 'var(--accent-green)20',
+                border: '1px solid var(--accent-green)',
+                color: 'var(--accent-green)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.85rem' : '0.75rem',
@@ -2423,8 +2431,8 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 padding: isMobile ? '10px 14px' : '6px 12px',
                 minHeight: isMobile ? '44px' : 'auto',
                 background: 'transparent',
-                border: '1px solid #6a7a6a',
-                color: '#6a7a6a',
+                border: '1px solid var(--text-dim)',
+                color: 'var(--text-dim)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.85rem' : '0.75rem',
@@ -2434,7 +2442,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
         ) : isDeleted ? (
           <div
             style={{
-              color: '#5a5a5a',
+              color: 'var(--text-muted)',
               fontSize: isMobile ? '0.95rem' : '0.85rem',
               lineHeight: 1.6,
               marginBottom: '10px',
@@ -2459,7 +2467,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               }
             }}
             style={{
-              color: '#9bab9b',
+              color: 'var(--text-secondary)',
               fontSize: isMobile ? '0.95rem' : '0.85rem',
               lineHeight: 1.6,
               marginBottom: '10px',
@@ -2476,11 +2484,11 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               <div style={{
                 marginTop: '6px',
                 padding: '4px 8px',
-                background: '#3bceac10',
-                border: '1px dashed #3bceac30',
+                background: 'var(--accent-teal)10',
+                border: '1px dashed var(--accent-teal)30',
                 borderRadius: '4px',
                 fontSize: '0.65rem',
-                color: '#3bceac',
+                color: 'var(--accent-teal)',
                 fontFamily: 'monospace',
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -2498,8 +2506,8 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <button onClick={() => onJumpToParent(message.parentId)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: '1px solid #3bceac30',
-              color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+              background: 'transparent', border: '1px solid var(--accent-teal)30',
+              color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }}>↑ PARENT</button>
           )}
           {/* At depth limit, show Focus button instead of Reply */}
@@ -2507,22 +2515,22 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <button onClick={() => onFocus(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: '#3bceac15', border: '1px solid #3bceac',
-              color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+              background: 'var(--accent-teal)15', border: '1px solid var(--accent-teal)',
+              color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }} title="Thread is deep - focus to continue">⤢ FOCUS TO REPLY</button>
           ) : isAtDepthLimit && onFocus ? (
             <button onClick={() => onFocus(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: '#3bceac15', border: '1px solid #3bceac',
-              color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+              background: 'var(--accent-teal)15', border: '1px solid var(--accent-teal)',
+              color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }} title="Thread is deep - focus to reply">⤢ FOCUS TO REPLY</button>
           ) : (
             <button onClick={() => onReply(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: '1px solid #3a4a3a',
-              color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+              background: 'transparent', border: '1px solid var(--border-primary)',
+              color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }}>↵ REPLY</button>
           )}
           {hasChildren && (
@@ -2530,16 +2538,16 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               <button onClick={() => onToggleCollapse(message.id)} style={{
                 padding: isMobile ? '8px 12px' : '4px 8px',
                 minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: '1px solid #3a4a3a',
-                color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+                background: 'transparent', border: '1px solid var(--border-primary)',
+                color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
               }}>{isCollapsed ? `▶ ${message.children.length}` : '▼'}</button>
               {/* Show separate Focus button only when not at depth limit (at limit, Focus is in reply button) */}
               {!isAtDepthLimit && onFocus && (
                 <button onClick={() => onFocus(message)} style={{
                   padding: isMobile ? '8px 12px' : '4px 8px',
                   minHeight: isMobile ? '38px' : 'auto',
-                  background: 'transparent', border: '1px solid #3bceac40',
-                  color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+                  background: 'transparent', border: '1px solid var(--accent-teal)40',
+                  color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
                 }} title="Focus on this droplet and its replies">⤢ FOCUS</button>
               )}
               {/* Ripple button - create new wave from this droplet */}
@@ -2547,8 +2555,8 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 <button onClick={() => onRipple(message)} style={{
                   padding: isMobile ? '8px 12px' : '4px 8px',
                   minHeight: isMobile ? '38px' : 'auto',
-                  background: 'transparent', border: '1px solid #3bceac30',
-                  color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+                  background: 'transparent', border: '1px solid var(--accent-teal)30',
+                  color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
                 }} title="Ripple to new wave">◈ RIPPLE</button>
               )}
             </>
@@ -2558,14 +2566,14 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               <button onClick={() => onEdit(message)} style={{
                 padding: isMobile ? '8px 12px' : '4px 8px',
                 minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: '1px solid #ffd23f30',
-                color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+                background: 'transparent', border: '1px solid var(--accent-amber)30',
+                color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
               }}>✏️</button>
               <button onClick={() => onDelete(message)} style={{
                 padding: isMobile ? '8px 12px' : '4px 8px',
                 minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: '1px solid #ff6b3530',
-                color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+                background: 'transparent', border: '1px solid var(--accent-orange)30',
+                color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
               }}>✕</button>
             </>
           )}
@@ -2575,8 +2583,8 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <button onClick={() => onReport(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: '1px solid #6a7a6a30',
-              color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+              background: 'transparent', border: '1px solid var(--text-dim)30',
+              color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }} title="Report droplet">⚐</button>
           )}
 
@@ -2588,9 +2596,9 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 style={{
                   padding: isMobile ? '8px 10px' : '4px 8px',
                   minHeight: isMobile ? '38px' : 'auto',
-                  background: showReactionPicker ? '#3a4a3a' : 'transparent',
-                  border: '1px solid #3a4a3a',
-                  color: '#6a7a6a',
+                  background: showReactionPicker ? 'var(--border-primary)' : 'transparent',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-dim)',
                   cursor: 'pointer',
                   fontSize: isMobile ? '0.9rem' : '0.85rem',
                 }}
@@ -2605,8 +2613,8 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                   left: isMobile ? '0' : 'auto',
                   right: isMobile ? 'auto' : '0',
                   marginTop: '4px',
-                  background: '#0d150d',
-                  border: '1px solid #2a3a2a',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)',
                   padding: '8px',
                   display: 'flex',
                   gap: '4px',
@@ -2626,7 +2634,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                         minHeight: isMobile ? '38px' : 'auto',
                         minWidth: isMobile ? '38px' : 'auto',
                         background: 'transparent',
-                        border: '1px solid #2a3a2a',
+                        border: '1px solid var(--border-subtle)',
                         cursor: 'pointer',
                         fontSize: isMobile ? '1.3rem' : '1.1rem',
                       }}
@@ -2641,7 +2649,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
 
           {/* Separator before reactions */}
           {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
-            <span style={{ color: '#2a3a2a', margin: '0 2px' }}>│</span>
+            <span style={{ color: 'var(--border-subtle)', margin: '0 2px' }}>│</span>
           )}
 
           {/* Inline Reactions Display */}
@@ -2655,9 +2663,9 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                   style={{
                     padding: isMobile ? '6px 8px' : '3px 6px',
                     minHeight: isMobile ? '38px' : 'auto',
-                    background: hasReacted ? '#ffd23f20' : 'transparent',
-                    border: `1px solid ${hasReacted ? '#ffd23f' : '#3a4a3a'}`,
-                    color: hasReacted ? '#ffd23f' : '#6a7a6a',
+                    background: hasReacted ? 'var(--accent-amber)20' : 'transparent',
+                    border: `1px solid ${hasReacted ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                    color: hasReacted ? 'var(--accent-amber)' : 'var(--text-dim)',
                     cursor: 'pointer',
                     fontSize: isMobile ? '0.95rem' : '0.85rem',
                     display: 'flex',
@@ -2679,7 +2687,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
         {!isDeleted && message.readBy && message.readBy.length > 0 && (
           <details style={{ marginTop: '6px', cursor: 'pointer' }}>
             <summary style={{
-              color: '#5a6a5a',
+              color: 'var(--text-muted)',
               fontSize: isMobile ? '0.65rem' : '0.6rem',
               userSelect: 'none',
               fontFamily: 'monospace',
@@ -2688,7 +2696,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               alignItems: 'center',
               gap: '3px'
             }}>
-              <span style={{ color: '#0ead69' }}>✓</span>
+              <span style={{ color: 'var(--accent-green)' }}>✓</span>
               {message.readBy.length}
             </summary>
             <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
@@ -2696,8 +2704,8 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 const participant = participants.find(p => p.id === userId);
                 return (
                   <span key={userId} title={participant?.handle || ''} style={{
-                    padding: '1px 4px', background: '#0ead6915', border: '1px solid #0ead6940',
-                    color: '#0ead69', fontSize: isMobile ? '0.6rem' : '0.55rem', fontFamily: 'monospace'
+                    padding: '1px 4px', background: 'var(--accent-green)15', border: '1px solid var(--accent-green)40',
+                    color: 'var(--accent-green)', fontSize: isMobile ? '0.6rem' : '0.55rem', fontFamily: 'monospace'
                   }}>
                     {participant ? participant.name : userId}
                   </span>
@@ -2708,7 +2716,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
         )}
       </div>
       {hasChildren && !isCollapsed && (
-        <div style={{ borderLeft: '1px solid #3a4a3a', marginLeft: `${indentSize}px` }}>
+        <div style={{ borderLeft: '1px solid var(--border-primary)', marginLeft: `${indentSize}px` }}>
           {message.children.map(child => (
             <Droplet key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
               onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
@@ -2732,22 +2740,22 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
 const PlaybackControls = ({ isPlaying, onTogglePlay, currentIndex, totalMessages, onSeek, onReset, playbackSpeed, onSpeedChange, isMobile }) => (
   <div style={{
     flexShrink: 0,
-    padding: isMobile ? '8px 12px' : '12px 16px', background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
-    borderBottom: '1px solid #2a3a2a', display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '16px', flexWrap: 'wrap',
+    padding: isMobile ? '8px 12px' : '12px 16px', background: 'linear-gradient(90deg, var(--bg-surface), var(--bg-hover), var(--bg-surface))',
+    borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '16px', flexWrap: 'wrap',
   }}>
-    <GlowText color="#3bceac" size="0.8rem">PLAYBACK</GlowText>
+    <GlowText color="var(--accent-teal)" size="0.8rem">PLAYBACK</GlowText>
     <div style={{ display: 'flex', gap: '4px' }}>
-      <button onClick={onReset} style={{ padding: '4px 8px', background: 'transparent', border: '1px solid #3a4a3a', color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem' }}>⟲</button>
+      <button onClick={onReset} style={{ padding: '4px 8px', background: 'transparent', border: '1px solid var(--border-primary)', color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem' }}>⟲</button>
       <button onClick={onTogglePlay} style={{
-        padding: '4px 12px', background: isPlaying ? '#ff6b3520' : '#0ead6920',
-        border: `1px solid ${isPlaying ? '#ff6b35' : '#0ead69'}`,
-        color: isPlaying ? '#ff6b35' : '#0ead69', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
+        padding: '4px 12px', background: isPlaying ? 'var(--accent-orange)20' : 'var(--accent-green)20',
+        border: `1px solid ${isPlaying ? 'var(--accent-orange)' : 'var(--accent-green)'}`,
+        color: isPlaying ? 'var(--accent-orange)' : 'var(--accent-green)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
       }}>{isPlaying ? '⏸' : '▶'}</button>
     </div>
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', minWidth: '100px' }}>
       <input type="range" min={0} max={totalMessages - 1} value={currentIndex ?? totalMessages - 1}
-        onChange={(e) => onSeek(parseInt(e.target.value))} style={{ flex: 1, accentColor: '#3bceac', minWidth: '60px' }} />
-      <span style={{ color: '#6a7a6a', fontSize: '0.7rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+        onChange={(e) => onSeek(parseInt(e.target.value))} style={{ flex: 1, accentColor: 'var(--accent-teal)', minWidth: '60px' }} />
+      <span style={{ color: 'var(--text-dim)', fontSize: '0.7rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
         {(currentIndex ?? totalMessages - 1) + 1}/{totalMessages}
       </span>
     </div>
@@ -2755,9 +2763,9 @@ const PlaybackControls = ({ isPlaying, onTogglePlay, currentIndex, totalMessages
       <div style={{ display: 'flex', gap: '4px' }}>
         {[0.5, 1, 2, 4].map(speed => (
           <button key={speed} onClick={() => onSpeedChange(speed)} style={{
-            padding: '4px 6px', background: playbackSpeed === speed ? '#3bceac20' : 'transparent',
-            border: `1px solid ${playbackSpeed === speed ? '#3bceac' : '#3a4a3a'}`,
-            color: playbackSpeed === speed ? '#3bceac' : '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.65rem',
+            padding: '4px 6px', background: playbackSpeed === speed ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${playbackSpeed === speed ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: playbackSpeed === speed ? 'var(--accent-teal)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.65rem',
           }}>{speed}x</button>
         ))}
       </div>
@@ -2776,29 +2784,29 @@ const DeleteConfirmModal = ({ isOpen, onClose, waveTitle, onConfirm, isMobile })
     }} onClick={onClose}>
       <div style={{
         width: '100%', maxWidth: '450px',
-        background: 'linear-gradient(135deg, #1a0a0a, #0d150d)',
-        border: '2px solid #ff6b3580', padding: isMobile ? '20px' : '24px',
+        background: 'linear-gradient(135deg, var(--bg-base), var(--bg-surface))',
+        border: '2px solid var(--accent-orange)80', padding: isMobile ? '20px' : '24px',
       }} onClick={(e) => e.stopPropagation()}>
         <div style={{ marginBottom: '20px' }}>
-          <GlowText color="#ff6b35" size={isMobile ? '1rem' : '1.1rem'}>Delete Wave</GlowText>
+          <GlowText color="var(--accent-orange)" size={isMobile ? '1rem' : '1.1rem'}>Delete Wave</GlowText>
         </div>
 
         <div style={{ marginBottom: '24px' }}>
           <div style={{
-            color: '#c5d5c5',
+            color: 'var(--text-primary)',
             fontSize: isMobile ? '0.9rem' : '0.95rem',
             lineHeight: 1.6,
             marginBottom: '12px'
           }}>
-            Are you sure you want to delete <span style={{ color: '#ffd23f', fontWeight: 600 }}>"{waveTitle}"</span>?
+            Are you sure you want to delete <span style={{ color: 'var(--accent-amber)', fontWeight: 600 }}>"{waveTitle}"</span>?
           </div>
           <div style={{
-            color: '#ff6b35',
+            color: 'var(--accent-orange)',
             fontSize: isMobile ? '0.85rem' : '0.9rem',
             lineHeight: 1.5,
-            background: '#ff6b3515',
+            background: 'var(--accent-orange)15',
             padding: '12px',
-            border: '1px solid #ff6b3530',
+            border: '1px solid var(--accent-orange)30',
           }}>
             ⚠ This action cannot be undone. All messages will be permanently deleted and all participants will be notified.
           </div>
@@ -2809,8 +2817,8 @@ const DeleteConfirmModal = ({ isOpen, onClose, waveTitle, onConfirm, isMobile })
             padding: isMobile ? '12px 20px' : '10px 20px',
             minHeight: isMobile ? '44px' : 'auto',
             background: 'transparent',
-            border: '1px solid #3a4a3a',
-            color: '#6a7a6a',
+            border: '1px solid var(--border-primary)',
+            color: 'var(--text-dim)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -2818,8 +2826,8 @@ const DeleteConfirmModal = ({ isOpen, onClose, waveTitle, onConfirm, isMobile })
           <button onClick={() => { onConfirm(); onClose(); }} style={{
             padding: isMobile ? '12px 20px' : '10px 20px',
             minHeight: isMobile ? '44px' : 'auto',
-            background: '#ff6b35',
-            border: '1px solid #ff6b35',
+            background: 'var(--accent-orange)',
+            border: '1px solid var(--accent-orange)',
             color: '#fff',
             cursor: 'pointer',
             fontFamily: 'monospace',
@@ -2870,29 +2878,29 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
     }} onClick={onClose}>
       <div style={{
         width: '100%', maxWidth: '400px',
-        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-        border: '1px solid #2a3a2a', padding: isMobile ? '20px' : '24px',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '1px solid var(--border-subtle)', padding: isMobile ? '20px' : '24px',
       }} onClick={(e) => e.stopPropagation()}>
         {loading ? (
-          <div style={{ color: '#5a6a5a', textAlign: 'center', padding: '40px' }}>Loading...</div>
+          <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>Loading...</div>
         ) : profile ? (
           <>
             {/* Header with close button */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <GlowText color="#ffd23f" size={isMobile ? '1rem' : '1.1rem'}>User Profile</GlowText>
+              <GlowText color="var(--accent-amber)" size={isMobile ? '1rem' : '1.1rem'}>User Profile</GlowText>
               <button onClick={onClose} style={{
-                background: 'transparent', border: 'none', color: '#5a6a5a',
+                background: 'transparent', border: 'none', color: 'var(--text-muted)',
                 cursor: 'pointer', fontSize: '1.2rem', padding: '4px',
               }}>✕</button>
             </div>
 
             {/* Avatar and basic info */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <Avatar letter={profile.avatar || profile.displayName?.[0] || '?'} color="#ffd23f" size={80} imageUrl={profile.avatarUrl} />
+              <Avatar letter={profile.avatar || profile.displayName?.[0] || '?'} color="var(--accent-amber)" size={80} imageUrl={profile.avatarUrl} />
               <div>
-                <div style={{ color: '#c5d5c5', fontSize: '1.2rem', fontWeight: 600 }}>{profile.displayName}</div>
-                <div style={{ color: '#5a6a5a', fontSize: '0.85rem' }}>@{profile.handle}</div>
-                <div style={{ color: '#4a5a4a', fontSize: '0.75rem', marginTop: '4px' }}>
+                <div style={{ color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 600 }}>{profile.displayName}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>@{profile.handle}</div>
+                <div style={{ color: 'var(--border-secondary)', fontSize: '0.75rem', marginTop: '4px' }}>
                   Joined {formatDate(profile.createdAt)}
                 </div>
               </div>
@@ -2902,10 +2910,10 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
             {profile.bio && (
               <div style={{
                 marginBottom: '20px', padding: '16px',
-                background: '#0a100a', border: '1px solid #1a2a1a',
+                background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)',
               }}>
-                <div style={{ color: '#6a7a6a', fontSize: '0.7rem', marginBottom: '8px' }}>ABOUT</div>
-                <div style={{ color: '#a5b5a5', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '8px' }}>ABOUT</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                   {profile.bio}
                 </div>
               </div>
@@ -2918,13 +2926,13 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
                   <button onClick={() => { onAddContact(userId, profile.displayName); onClose(); }} style={{
                     padding: isMobile ? '10px 16px' : '8px 14px',
                     minHeight: isMobile ? '44px' : 'auto',
-                    background: '#0ead6920', border: '1px solid #0ead69',
-                    color: '#0ead69', cursor: 'pointer', fontFamily: 'monospace',
+                    background: 'var(--accent-green)20', border: '1px solid var(--accent-green)',
+                    color: 'var(--accent-green)', cursor: 'pointer', fontFamily: 'monospace',
                     fontSize: isMobile ? '0.85rem' : '0.8rem',
                   }}>+ ADD CONTACT</button>
                 )}
                 {isContact && (
-                  <div style={{ color: '#0ead69', fontSize: '0.8rem', padding: '8px 14px', background: '#0ead6910', border: '1px solid #0ead6940' }}>
+                  <div style={{ color: 'var(--accent-green)', fontSize: '0.8rem', padding: '8px 14px', background: 'var(--accent-green)10', border: '1px solid var(--accent-green)40' }}>
                     ✓ Contact
                   </div>
                 )}
@@ -2932,13 +2940,13 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
                   <button onClick={() => { onBlock(userId, profile.displayName); onClose(); }} style={{
                     padding: isMobile ? '10px 16px' : '8px 14px',
                     minHeight: isMobile ? '44px' : 'auto',
-                    background: 'transparent', border: '1px solid #ff6b35',
-                    color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace',
+                    background: 'transparent', border: '1px solid var(--accent-orange)',
+                    color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace',
                     fontSize: isMobile ? '0.85rem' : '0.8rem',
                   }}>BLOCK</button>
                 )}
                 {isBlocked && (
-                  <div style={{ color: '#ff6b35', fontSize: '0.8rem', padding: '8px 14px', background: '#ff6b3510', border: '1px solid #ff6b3540' }}>
+                  <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', padding: '8px 14px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)40' }}>
                     Blocked
                   </div>
                 )}
@@ -2946,13 +2954,13 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
                   <button onClick={() => { onMute(userId, profile.displayName); onClose(); }} style={{
                     padding: isMobile ? '10px 16px' : '8px 14px',
                     minHeight: isMobile ? '44px' : 'auto',
-                    background: 'transparent', border: '1px solid #ffd23f',
-                    color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace',
+                    background: 'transparent', border: '1px solid var(--accent-amber)',
+                    color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace',
                     fontSize: isMobile ? '0.85rem' : '0.8rem',
                   }}>MUTE</button>
                 )}
                 {isMuted && (
-                  <div style={{ color: '#ffd23f', fontSize: '0.8rem', padding: '8px 14px', background: '#ffd23f10', border: '1px solid #ffd23f40' }}>
+                  <div style={{ color: 'var(--accent-amber)', fontSize: '0.8rem', padding: '8px 14px', background: 'var(--accent-amber)10', border: '1px solid var(--accent-amber)40' }}>
                     Muted
                   </div>
                 )}
@@ -2960,7 +2968,7 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
             )}
           </>
         ) : (
-          <div style={{ color: '#ff6b35', textAlign: 'center', padding: '40px' }}>Profile not found</div>
+          <div style={{ color: 'var(--accent-orange)', textAlign: 'center', padding: '40px' }}>Profile not found</div>
         )}
       </div>
     </div>
@@ -3040,27 +3048,27 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
     }} onClick={onClose}>
       <div style={{
         width: '100%', maxWidth: '550px',
-        background: 'linear-gradient(135deg, #0d150d, #0a1a1a)',
-        border: '2px solid #3bceac80', padding: isMobile ? '20px' : '24px',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-elevated))',
+        border: '2px solid var(--accent-teal)80', padding: isMobile ? '20px' : '24px',
       }} onClick={(e) => e.stopPropagation()}>
         <div style={{ marginBottom: '20px' }}>
-          <GlowText color="#3bceac" size={isMobile ? '1rem' : '1.1rem'}>◈ Ripple to New Wave</GlowText>
+          <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>◈ Ripple to New Wave</GlowText>
         </div>
 
         {/* Preview of what's being rippled */}
         <div style={{
-          background: '#0a150a',
-          border: '1px solid #2a3a2a',
-          borderLeft: '3px solid #3bceac',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-subtle)',
+          borderLeft: '3px solid var(--accent-teal)',
           padding: '12px',
           marginBottom: '16px',
         }}>
-          <div style={{ fontSize: isMobile ? '0.8rem' : '0.75rem', color: '#6a7a6a', marginBottom: '6px', textTransform: 'uppercase' }}>
+          <div style={{ fontSize: isMobile ? '0.8rem' : '0.75rem', color: 'var(--text-dim)', marginBottom: '6px', textTransform: 'uppercase' }}>
             Rippling
           </div>
           <div style={{
             fontSize: isMobile ? '0.9rem' : '0.85rem',
-            color: '#9bab9b',
+            color: 'var(--text-secondary)',
             marginBottom: '8px',
             maxHeight: '60px',
             overflow: 'hidden',
@@ -3068,14 +3076,14 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
           }}>
             "{contentPreview}{contentPreview.length >= 100 ? '...' : ''}"
           </div>
-          <div style={{ fontSize: isMobile ? '0.75rem' : '0.7rem', color: '#3bceac' }}>
+          <div style={{ fontSize: isMobile ? '0.75rem' : '0.7rem', color: 'var(--accent-teal)' }}>
             1 droplet + {childCount} {childCount === 1 ? 'reply' : 'replies'} will be moved
           </div>
         </div>
 
         {/* New wave title */}
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
             New Wave Title
           </div>
           <input
@@ -3087,29 +3095,29 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
             style={{
               width: '100%',
               padding: '12px',
-              background: '#0a150a',
-              border: '1px solid #2a3a2a',
-              color: '#c5d5c5',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.95rem' : '0.9rem',
             }}
             autoFocus
           />
-          <div style={{ color: '#6a7a6a', fontSize: '0.7rem', textAlign: 'right', marginTop: '4px' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', textAlign: 'right', marginTop: '4px' }}>
             {title.length}/200
           </div>
         </div>
 
         {/* Participants selection */}
         <div style={{ marginBottom: '20px' }}>
-          <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
             Participants ({selectedParticipants.length} selected)
           </div>
           <div style={{
             maxHeight: '150px',
             overflowY: 'auto',
-            background: '#0a150a',
-            border: '1px solid #2a3a2a',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-subtle)',
             padding: '8px',
           }}>
             {participants.map(p => (
@@ -3119,8 +3127,8 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
                 gap: '10px',
                 padding: '8px',
                 marginBottom: '4px',
-                background: selectedParticipants.includes(p.id) ? '#3bceac15' : 'transparent',
-                border: `1px solid ${selectedParticipants.includes(p.id) ? '#3bceac30' : 'transparent'}`,
+                background: selectedParticipants.includes(p.id) ? 'var(--accent-teal)15' : 'transparent',
+                border: `1px solid ${selectedParticipants.includes(p.id) ? 'var(--accent-teal)30' : 'transparent'}`,
                 cursor: 'pointer',
                 transition: 'all 0.2s',
               }}>
@@ -3128,10 +3136,10 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
                   type="checkbox"
                   checked={selectedParticipants.includes(p.id)}
                   onChange={() => toggleParticipant(p.id)}
-                  style={{ accentColor: '#3bceac' }}
+                  style={{ accentColor: 'var(--accent-teal)' }}
                 />
-                <Avatar letter={p.avatar || '?'} color="#3bceac" size={24} imageUrl={p.avatarUrl} />
-                <span style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
+                <Avatar letter={p.avatar || '?'} color="var(--accent-teal)" size={24} imageUrl={p.avatarUrl} />
+                <span style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
                   {p.display_name || p.displayName}
                 </span>
               </label>
@@ -3142,15 +3150,15 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
         {/* Origin info */}
         <div style={{
           padding: '10px 12px',
-          background: '#0a100a',
-          border: '1px solid #2a3a2a',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-subtle)',
           marginBottom: '20px',
           fontSize: isMobile ? '0.75rem' : '0.7rem',
-          color: '#6a7a6a',
+          color: 'var(--text-dim)',
         }}>
-          <span style={{ color: '#5a6a5a' }}>From:</span> {wave?.title || 'Unknown Wave'}
+          <span style={{ color: 'var(--text-muted)' }}>From:</span> {wave?.title || 'Unknown Wave'}
           <span style={{ margin: '0 8px' }}>•</span>
-          <span style={{ color: '#5a6a5a' }}>Privacy:</span> {wave?.privacy || 'private'}
+          <span style={{ color: 'var(--text-muted)' }}>Privacy:</span> {wave?.privacy || 'private'}
         </div>
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
@@ -3158,8 +3166,8 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
             padding: isMobile ? '12px 20px' : '10px 20px',
             minHeight: isMobile ? '44px' : 'auto',
             background: 'transparent',
-            border: '1px solid #3a4a3a',
-            color: '#6a7a6a',
+            border: '1px solid var(--border-primary)',
+            color: 'var(--text-dim)',
             cursor: submitting ? 'not-allowed' : 'pointer',
             fontFamily: 'monospace',
             fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -3168,9 +3176,9 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
           <button onClick={handleSubmit} disabled={submitting || !title.trim()} style={{
             padding: isMobile ? '12px 20px' : '10px 20px',
             minHeight: isMobile ? '44px' : 'auto',
-            background: title.trim() ? '#3bceac' : '#3a4a3a',
-            border: `1px solid ${title.trim() ? '#3bceac' : '#3a4a3a'}`,
-            color: '#050805',
+            background: title.trim() ? 'var(--accent-teal)' : 'var(--border-primary)',
+            border: `1px solid ${title.trim() ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: 'var(--bg-base)',
             cursor: (submitting || !title.trim()) ? 'not-allowed' : 'pointer',
             fontFamily: 'monospace',
             fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -3191,19 +3199,19 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile, unreadCount = 
       style={{
         padding: isMobile ? '14px 16px' : '12px 16px',
         marginBottom: '8px',
-        background: 'linear-gradient(135deg, #0a1a1a, #0d150d)',
-        border: `2px solid ${unreadCount > 0 ? '#9b59b660' : '#3bceac40'}`,
-        borderLeft: `4px solid ${unreadCount > 0 ? '#9b59b6' : '#3bceac'}`,
+        background: 'linear-gradient(135deg, var(--bg-elevated), var(--bg-surface))',
+        border: `2px solid ${unreadCount > 0 ? 'var(--accent-purple)60' : 'var(--accent-teal)40'}`,
+        borderLeft: `4px solid ${unreadCount > 0 ? 'var(--accent-purple)' : 'var(--accent-teal)'}`,
         cursor: 'pointer',
         transition: 'all 0.2s ease',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = unreadCount > 0 ? '#9b59b610' : '#3bceac10';
-        e.currentTarget.style.borderColor = unreadCount > 0 ? '#9b59b680' : '#3bceac60';
+        e.currentTarget.style.background = unreadCount > 0 ? 'var(--accent-purple)10' : 'var(--accent-teal)10';
+        e.currentTarget.style.borderColor = unreadCount > 0 ? 'var(--accent-purple)80' : 'var(--accent-teal)60';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'linear-gradient(135deg, #0a1a1a, #0d150d)';
-        e.currentTarget.style.borderColor = unreadCount > 0 ? '#9b59b660' : '#3bceac40';
+        e.currentTarget.style.background = 'linear-gradient(135deg, var(--bg-elevated), var(--bg-surface))';
+        e.currentTarget.style.borderColor = unreadCount > 0 ? 'var(--accent-purple)60' : 'var(--accent-teal)40';
       }}
     >
       <div style={{
@@ -3212,9 +3220,9 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile, unreadCount = 
         gap: '10px',
         marginBottom: '8px',
       }}>
-        <span style={{ fontSize: '1.2rem', color: unreadCount > 0 ? '#9b59b6' : undefined }}>◈</span>
+        <span style={{ fontSize: '1.2rem', color: unreadCount > 0 ? 'var(--accent-purple)' : undefined }}>◈</span>
         <span style={{
-          color: unreadCount > 0 ? '#9b59b6' : '#3bceac',
+          color: unreadCount > 0 ? 'var(--accent-purple)' : 'var(--accent-teal)',
           fontSize: isMobile ? '0.8rem' : '0.75rem',
           fontFamily: 'monospace',
           textTransform: 'uppercase',
@@ -3224,7 +3232,7 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile, unreadCount = 
         </span>
         {unreadCount > 0 && (
           <span style={{
-            background: '#9b59b6',
+            background: 'var(--accent-purple)',
             color: '#fff',
             fontSize: '0.65rem',
             fontWeight: 700,
@@ -3237,7 +3245,7 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile, unreadCount = 
         )}
       </div>
       <div style={{
-        color: '#c5d5c5',
+        color: 'var(--text-primary)',
         fontSize: isMobile ? '1rem' : '0.95rem',
         fontWeight: 500,
         marginBottom: '6px',
@@ -3245,7 +3253,7 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile, unreadCount = 
         "{waveTitle || 'Unknown Wave'}"
       </div>
       <div style={{
-        color: '#6a7a6a',
+        color: 'var(--text-dim)',
         fontSize: isMobile ? '0.8rem' : '0.75rem',
         fontFamily: 'monospace',
         display: 'flex',
@@ -3307,21 +3315,21 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
     }} onClick={onClose}>
       <div style={{
         width: '100%', maxWidth: '500px',
-        background: 'linear-gradient(135deg, #0d150d, #1a0a0a)',
-        border: '2px solid #ff6b3580', padding: isMobile ? '20px' : '24px',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-base))',
+        border: '2px solid var(--accent-orange)80', padding: isMobile ? '20px' : '24px',
       }} onClick={(e) => e.stopPropagation()}>
         <div style={{ marginBottom: '20px' }}>
-          <GlowText color="#ff6b35" size={isMobile ? '1rem' : '1.1rem'}>Report {typeLabels[type] || 'Content'}</GlowText>
+          <GlowText color="var(--accent-orange)" size={isMobile ? '1rem' : '1.1rem'}>Report {typeLabels[type] || 'Content'}</GlowText>
         </div>
 
         {targetPreview && (
           <div style={{
-            background: '#0a150a',
-            border: '1px solid #2a3a2a',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-subtle)',
             padding: '12px',
             marginBottom: '16px',
             fontSize: isMobile ? '0.85rem' : '0.9rem',
-            color: '#8a9a8a',
+            color: 'var(--text-secondary)',
             maxHeight: '80px',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -3331,7 +3339,7 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
         )}
 
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
             Reason for report
           </div>
           {REPORT_REASONS.map((r) => (
@@ -3341,8 +3349,8 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
               gap: '10px',
               padding: '10px 12px',
               marginBottom: '8px',
-              background: reason === r.value ? '#ffd23f15' : '#0a150a',
-              border: `1px solid ${reason === r.value ? '#ffd23f50' : '#2a3a2a'}`,
+              background: reason === r.value ? 'var(--accent-amber)15' : 'var(--bg-surface)',
+              border: `1px solid ${reason === r.value ? 'var(--accent-amber)50' : 'var(--border-subtle)'}`,
               cursor: 'pointer',
               transition: 'all 0.2s',
             }}>
@@ -3352,18 +3360,18 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
                 value={r.value}
                 checked={reason === r.value}
                 onChange={(e) => setReason(e.target.value)}
-                style={{ marginTop: '2px', accentColor: '#ffd23f' }}
+                style={{ marginTop: '2px', accentColor: 'var(--accent-amber)' }}
               />
               <div>
-                <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '0.95rem' }}>{r.label}</div>
-                <div style={{ color: '#6a7a6a', fontSize: isMobile ? '0.8rem' : '0.85rem', marginTop: '2px' }}>{r.desc}</div>
+                <div style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.9rem' : '0.95rem' }}>{r.label}</div>
+                <div style={{ color: 'var(--text-dim)', fontSize: isMobile ? '0.8rem' : '0.85rem', marginTop: '2px' }}>{r.desc}</div>
               </div>
             </label>
           ))}
         </div>
 
         <div style={{ marginBottom: '20px' }}>
-          <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
             Additional details (optional)
           </div>
           <textarea
@@ -3375,15 +3383,15 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
               width: '100%',
               minHeight: '80px',
               padding: '12px',
-              background: '#0a150a',
-              border: '1px solid #2a3a2a',
-              color: '#c5d5c5',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.9rem' : '0.85rem',
               resize: 'vertical',
             }}
           />
-          <div style={{ color: '#6a7a6a', fontSize: '0.75rem', textAlign: 'right', marginTop: '4px' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textAlign: 'right', marginTop: '4px' }}>
             {details.length}/500
           </div>
         </div>
@@ -3393,8 +3401,8 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
             padding: isMobile ? '12px 20px' : '10px 20px',
             minHeight: isMobile ? '44px' : 'auto',
             background: 'transparent',
-            border: '1px solid #3a4a3a',
-            color: '#6a7a6a',
+            border: '1px solid var(--border-primary)',
+            color: 'var(--text-dim)',
             cursor: submitting ? 'not-allowed' : 'pointer',
             fontFamily: 'monospace',
             fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -3403,8 +3411,8 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
           <button onClick={handleSubmit} disabled={submitting || !reason} style={{
             padding: isMobile ? '12px 20px' : '10px 20px',
             minHeight: isMobile ? '44px' : 'auto',
-            background: reason ? '#ff6b35' : '#3a4a3a',
-            border: `1px solid ${reason ? '#ff6b35' : '#3a4a3a'}`,
+            background: reason ? 'var(--accent-orange)' : 'var(--border-primary)',
+            border: `1px solid ${reason ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
             color: '#fff',
             cursor: (submitting || !reason) ? 'not-allowed' : 'pointer',
             fontFamily: 'monospace',
@@ -3487,9 +3495,9 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
   };
 
   const tabs = [
-    { id: 'pending', label: 'Pending', color: '#ffd23f' },
-    { id: 'resolved', label: 'Resolved', color: '#0ead69' },
-    { id: 'dismissed', label: 'Dismissed', color: '#6a7a6a' },
+    { id: 'pending', label: 'Pending', color: 'var(--accent-amber)' },
+    { id: 'resolved', label: 'Resolved', color: 'var(--accent-green)' },
+    { id: 'dismissed', label: 'Dismissed', color: 'var(--text-dim)' },
   ];
 
   const resolutionOptions = [
@@ -3502,7 +3510,7 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
   return (
     <div style={{ marginTop: '24px' }}>
       <div style={{ marginBottom: '16px' }}>
-        <GlowText color="#ff6b35" size={isMobile ? '1rem' : '1.1rem'}>Reports Dashboard</GlowText>
+        <GlowText color="var(--accent-orange)" size={isMobile ? '1rem' : '1.1rem'}>Reports Dashboard</GlowText>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -3514,8 +3522,8 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
               padding: isMobile ? '10px 16px' : '8px 16px',
               minHeight: isMobile ? '44px' : 'auto',
               background: activeTab === tab.id ? `${tab.color}20` : 'transparent',
-              border: `1px solid ${activeTab === tab.id ? tab.color : '#3a4a3a'}`,
-              color: activeTab === tab.id ? tab.color : '#6a7a6a',
+              border: `1px solid ${activeTab === tab.id ? tab.color : 'var(--border-primary)'}`,
+              color: activeTab === tab.id ? tab.color : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.85rem' : '0.8rem',
@@ -3528,9 +3536,9 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
       </div>
 
       {loading ? (
-        <div style={{ color: '#6a7a6a', padding: '20px', textAlign: 'center' }}>Loading reports...</div>
+        <div style={{ color: 'var(--text-dim)', padding: '20px', textAlign: 'center' }}>Loading reports...</div>
       ) : reports.length === 0 ? (
-        <div style={{ color: '#6a7a6a', padding: '20px', textAlign: 'center', border: '1px dashed #2a3a2a' }}>
+        <div style={{ color: 'var(--text-dim)', padding: '20px', textAlign: 'center', border: '1px dashed var(--border-subtle)' }}>
           No {activeTab} reports
         </div>
       ) : (
@@ -3539,8 +3547,8 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
             <div
               key={report.id}
               style={{
-                background: '#0a150a',
-                border: '1px solid #2a3a2a',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
                 padding: isMobile ? '14px' : '16px',
               }}
             >
@@ -3549,31 +3557,31 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
                   <span style={{
                     display: 'inline-block',
                     padding: '2px 8px',
-                    background: report.type === 'message' ? '#3bceac20' : report.type === 'wave' ? '#ffd23f20' : '#ff6b3520',
-                    color: report.type === 'message' ? '#3bceac' : report.type === 'wave' ? '#ffd23f' : '#ff6b35',
+                    background: report.type === 'message' ? 'var(--accent-teal)20' : report.type === 'wave' ? 'var(--accent-amber)20' : 'var(--accent-orange)20',
+                    color: report.type === 'message' ? 'var(--accent-teal)' : report.type === 'wave' ? 'var(--accent-amber)' : 'var(--accent-orange)',
                     fontSize: '0.7rem',
                     textTransform: 'uppercase',
                     marginRight: '8px',
                   }}>
                     {report.type}
                   </span>
-                  <span style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
+                  <span style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
                     {report.reason}
                   </span>
                 </div>
-                <span style={{ color: '#6a7a6a', fontSize: '0.75rem' }}>
+                <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>
                   {new Date(report.created_at).toLocaleDateString()}
                 </span>
               </div>
 
               {report.details && (
                 <div style={{
-                  color: '#8a9a8a',
+                  color: 'var(--text-secondary)',
                   fontSize: isMobile ? '0.85rem' : '0.8rem',
                   marginBottom: '8px',
                   padding: '8px',
-                  background: '#050805',
-                  border: '1px solid #1a2a1a',
+                  background: 'var(--bg-base)',
+                  border: '1px solid var(--bg-hover)',
                 }}>
                   {report.details}
                 </div>
@@ -3581,7 +3589,7 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
 
               {report.target_preview && (
                 <div style={{
-                  color: '#6a7a6a',
+                  color: 'var(--text-dim)',
                   fontSize: '0.75rem',
                   marginBottom: '8px',
                   fontStyle: 'italic',
@@ -3590,7 +3598,7 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
                 </div>
               )}
 
-              <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '12px' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '12px' }}>
                 Reported by: {report.reporter_handle || report.reporter_id}
               </div>
 
@@ -3601,8 +3609,8 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
                     style={{
                       padding: isMobile ? '10px 14px' : '6px 12px',
                       minHeight: isMobile ? '44px' : 'auto',
-                      background: '#0ead69',
-                      border: '1px solid #0ead69',
+                      background: 'var(--accent-green)',
+                      border: '1px solid var(--accent-green)',
                       color: '#fff',
                       cursor: 'pointer',
                       fontFamily: 'monospace',
@@ -3617,8 +3625,8 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
                       padding: isMobile ? '10px 14px' : '6px 12px',
                       minHeight: isMobile ? '44px' : 'auto',
                       background: 'transparent',
-                      border: '1px solid #6a7a6a',
-                      color: '#6a7a6a',
+                      border: '1px solid var(--text-dim)',
+                      color: 'var(--text-dim)',
                       cursor: 'pointer',
                       fontFamily: 'monospace',
                       fontSize: isMobile ? '0.85rem' : '0.75rem',
@@ -3630,12 +3638,12 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
               )}
 
               {report.resolution && (
-                <div style={{ marginTop: '8px', padding: '8px', background: '#0ead6920', border: '1px solid #0ead6950' }}>
-                  <div style={{ color: '#0ead69', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                <div style={{ marginTop: '8px', padding: '8px', background: 'var(--accent-green)20', border: '1px solid var(--accent-green)50' }}>
+                  <div style={{ color: 'var(--accent-green)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
                     Resolution: {report.resolution.replace(/_/g, ' ')}
                   </div>
                   {report.resolution_notes && (
-                    <div style={{ color: '#8a9a8a', fontSize: '0.8rem', marginTop: '4px' }}>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '4px' }}>
                       {report.resolution_notes}
                     </div>
                   )}
@@ -3653,16 +3661,16 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
         }} onClick={() => setSelectedReport(null)}>
           <div style={{
             width: '100%', maxWidth: '450px',
-            background: '#0d150d',
-            border: '2px solid #0ead6980',
+            background: 'var(--bg-surface)',
+            border: '2px solid var(--accent-green)80',
             padding: isMobile ? '20px' : '24px',
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ marginBottom: '16px' }}>
-              <GlowText color="#0ead69" size="1rem">Resolve Report</GlowText>
+              <GlowText color="var(--accent-green)" size="1rem">Resolve Report</GlowText>
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
                 Resolution Action
               </div>
               {resolutionOptions.map((opt) => (
@@ -3672,8 +3680,8 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
                   gap: '10px',
                   padding: '8px 12px',
                   marginBottom: '6px',
-                  background: resolution === opt.value ? '#0ead6920' : '#0a150a',
-                  border: `1px solid ${resolution === opt.value ? '#0ead6950' : '#2a3a2a'}`,
+                  background: resolution === opt.value ? 'var(--accent-green)20' : 'var(--bg-surface)',
+                  border: `1px solid ${resolution === opt.value ? 'var(--accent-green)50' : 'var(--border-subtle)'}`,
                   cursor: 'pointer',
                 }}>
                   <input
@@ -3682,15 +3690,15 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
                     value={opt.value}
                     checked={resolution === opt.value}
                     onChange={(e) => setResolution(e.target.value)}
-                    style={{ accentColor: '#0ead69' }}
+                    style={{ accentColor: 'var(--accent-green)' }}
                   />
-                  <span style={{ color: '#c5d5c5', fontSize: '0.9rem' }}>{opt.label}</span>
+                  <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{opt.label}</span>
                 </label>
               ))}
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase' }}>
                 Notes (optional)
               </div>
               <textarea
@@ -3701,9 +3709,9 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
                   width: '100%',
                   minHeight: '60px',
                   padding: '10px',
-                  background: '#0a150a',
-                  border: '1px solid #2a3a2a',
-                  color: '#c5d5c5',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-primary)',
                   fontFamily: 'monospace',
                   fontSize: '0.85rem',
                   resize: 'vertical',
@@ -3715,16 +3723,16 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
               <button onClick={() => setSelectedReport(null)} style={{
                 padding: '10px 20px',
                 background: 'transparent',
-                border: '1px solid #3a4a3a',
-                color: '#6a7a6a',
+                border: '1px solid var(--border-primary)',
+                color: 'var(--text-dim)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: '0.85rem',
               }}>CANCEL</button>
               <button onClick={handleResolve} disabled={!resolution} style={{
                 padding: '10px 20px',
-                background: resolution ? '#0ead69' : '#3a4a3a',
-                border: `1px solid ${resolution ? '#0ead69' : '#3a4a3a'}`,
+                background: resolution ? 'var(--accent-green)' : 'var(--border-primary)',
+                border: `1px solid ${resolution ? 'var(--accent-green)' : 'var(--border-primary)'}`,
                 color: '#fff',
                 cursor: resolution ? 'pointer' : 'not-allowed',
                 fontFamily: 'monospace',
@@ -3762,23 +3770,23 @@ const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
   }, [fetchAPI, showToast]);
 
   const statusColors = {
-    pending: '#ffd23f',
-    resolved: '#0ead69',
-    dismissed: '#6a7a6a',
+    pending: 'var(--accent-amber)',
+    resolved: 'var(--accent-green)',
+    dismissed: 'var(--text-dim)',
   };
 
   if (loading) {
-    return <div style={{ color: '#6a7a6a', padding: '20px', textAlign: 'center' }}>Loading...</div>;
+    return <div style={{ color: 'var(--text-dim)', padding: '20px', textAlign: 'center' }}>Loading...</div>;
   }
 
   return (
     <div style={{ marginTop: '24px' }}>
       <div style={{ marginBottom: '16px' }}>
-        <GlowText color="#3bceac" size={isMobile ? '1rem' : '1.1rem'}>My Reports</GlowText>
+        <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>My Reports</GlowText>
       </div>
 
       {reports.length === 0 ? (
-        <div style={{ color: '#6a7a6a', padding: '20px', textAlign: 'center', border: '1px dashed #2a3a2a' }}>
+        <div style={{ color: 'var(--text-dim)', padding: '20px', textAlign: 'center', border: '1px dashed var(--border-subtle)' }}>
           You haven't submitted any reports
         </div>
       ) : (
@@ -3787,8 +3795,8 @@ const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
             <div
               key={report.id}
               style={{
-                background: '#0a150a',
-                border: '1px solid #2a3a2a',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
                 padding: isMobile ? '12px' : '14px',
               }}
             >
@@ -3803,11 +3811,11 @@ const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
                   }}>
                     {report.status}
                   </span>
-                  <span style={{ color: '#8a9a8a', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
                     {report.type} - {report.reason}
                   </span>
                 </div>
-                <span style={{ color: '#6a7a6a', fontSize: '0.7rem' }}>
+                <span style={{ color: 'var(--text-dim)', fontSize: '0.7rem' }}>
                   {new Date(report.created_at).toLocaleDateString()}
                 </span>
               </div>
@@ -3816,14 +3824,14 @@ const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
                 <div style={{
                   marginTop: '8px',
                   padding: '8px',
-                  background: '#0ead6915',
-                  border: '1px solid #0ead6930',
+                  background: 'var(--accent-green)15',
+                  border: '1px solid var(--accent-green)30',
                   fontSize: '0.8rem',
                 }}>
-                  <span style={{ color: '#0ead69' }}>Resolution: </span>
-                  <span style={{ color: '#c5d5c5' }}>{report.resolution.replace(/_/g, ' ')}</span>
+                  <span style={{ color: 'var(--accent-green)' }}>Resolution: </span>
+                  <span style={{ color: 'var(--text-primary)' }}>{report.resolution.replace(/_/g, ' ')}</span>
                   {report.resolution_notes && (
-                    <div style={{ color: '#8a9a8a', marginTop: '4px', fontSize: '0.75rem' }}>
+                    <div style={{ color: 'var(--text-secondary)', marginTop: '4px', fontSize: '0.75rem' }}>
                       {report.resolution_notes}
                     </div>
                   )}
@@ -3874,37 +3882,37 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
     }}>
       <div style={{
         width: '100%', maxWidth: '450px', maxHeight: '80vh', overflowY: 'auto',
-        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-        border: '2px solid #3bceac40', padding: '24px',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '2px solid var(--accent-teal)40', padding: '24px',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <GlowText color="#3bceac" size="1.1rem">Wave Settings</GlowText>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+          <GlowText color="var(--accent-teal)" size="1.1rem">Wave Settings</GlowText>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>TITLE</div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>TITLE</div>
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} style={{
             width: '100%', padding: '10px 12px', boxSizing: 'border-box',
-            background: '#0a100a', border: '1px solid #2a3a2a',
-            color: '#c5d5c5', fontSize: '0.9rem', fontFamily: 'inherit',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+            color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'inherit',
           }} />
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>PRIVACY LEVEL</div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PRIVACY LEVEL</div>
           {Object.entries(PRIVACY_LEVELS).map(([key, config]) => (
             <button key={key} onClick={() => { setPrivacy(key); if (key !== 'group') setSelectedGroup(null); }}
               style={{
                 width: '100%', padding: '12px', marginBottom: '8px', textAlign: 'left',
-                background: privacy === key ? config.bgColor : '#0a100a',
-                border: `1px solid ${privacy === key ? config.color : '#2a3a2a'}`, cursor: 'pointer',
+                background: privacy === key ? config.bgColor : 'var(--bg-elevated)',
+                border: `1px solid ${privacy === key ? config.color : 'var(--border-subtle)'}`, cursor: 'pointer',
               }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ color: config.color, fontSize: '1.1rem' }}>{config.icon}</span>
                 <div>
                   <div style={{ color: config.color }}>{config.name}</div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>{config.desc}</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{config.desc}</div>
                 </div>
               </div>
             </button>
@@ -3913,17 +3921,17 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
 
         {privacy === 'group' && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT GROUP</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT GROUP</div>
             {groups.length === 0 ? (
-              <div style={{ color: '#5a6a5a', padding: '10px', background: '#0a100a' }}>No groups available</div>
+              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>No groups available</div>
             ) : groups.map(g => (
               <button key={g.id} onClick={() => setSelectedGroup(g.id)} style={{
                 width: '100%', padding: '10px', marginBottom: '4px', textAlign: 'left',
-                background: selectedGroup === g.id ? '#ffd23f15' : '#0a100a',
-                border: `1px solid ${selectedGroup === g.id ? '#ffd23f' : '#2a3a2a'}`, cursor: 'pointer',
+                background: selectedGroup === g.id ? 'var(--accent-amber)15' : 'var(--bg-elevated)',
+                border: `1px solid ${selectedGroup === g.id ? 'var(--accent-amber)' : 'var(--border-subtle)'}`, cursor: 'pointer',
               }}>
-                <div style={{ color: '#c5d5c5' }}>{g.name}</div>
-                <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>{g.memberCount} members</div>
+                <div style={{ color: 'var(--text-primary)' }}>{g.name}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{g.memberCount} members</div>
               </button>
             ))}
           </div>
@@ -3932,11 +3940,11 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
         <div style={{ display: 'flex', gap: '12px' }}>
           <button onClick={onClose} style={{
             flex: 1, padding: '12px', background: 'transparent',
-            border: '1px solid #3a4a3a', color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace',
+            border: '1px solid var(--border-primary)', color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace',
           }}>CANCEL</button>
           <button onClick={handleSave} style={{
-            flex: 1, padding: '12px', background: '#3bceac20',
-            border: '1px solid #3bceac', color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace',
+            flex: 1, padding: '12px', background: 'var(--accent-teal)20',
+            border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace',
           }}>SAVE</button>
         </div>
       </div>
@@ -3973,7 +3981,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
     const parts = text.split(new RegExp(`(${query})`, 'gi'));
     return parts.map((part, i) =>
       part.toLowerCase() === query.toLowerCase()
-        ? <span key={i} style={{ background: '#ffd23f40', color: '#ffd23f', fontWeight: 'bold' }}>{part}</span>
+        ? <span key={i} style={{ background: 'var(--accent-amber)40', color: 'var(--accent-amber)', fontWeight: 'bold' }}>{part}</span>
         : part
     );
   };
@@ -3985,8 +3993,8 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
       overflowY: 'auto',
     }}>
       <div style={{
-        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-        border: '2px solid #3bceac',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '2px solid var(--accent-teal)',
         padding: isMobile ? '20px' : '24px',
         width: '100%',
         maxWidth: '700px',
@@ -3994,9 +4002,9 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
         overflowY: 'auto',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ color: '#3bceac', margin: 0, fontSize: isMobile ? '1.2rem' : '1.5rem' }}>SEARCH MESSAGES</h2>
+          <h2 style={{ color: 'var(--accent-teal)', margin: 0, fontSize: isMobile ? '1.2rem' : '1.5rem' }}>SEARCH MESSAGES</h2>
           <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer', fontSize: '1.5rem',
+            background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '1.5rem',
             minHeight: isMobile ? '44px' : 'auto', minWidth: isMobile ? '44px' : 'auto',
           }}>✕</button>
         </div>
@@ -4012,9 +4020,9 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
               flex: 1,
               padding: isMobile ? '14px' : '12px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: '#0a100a',
-              border: '1px solid #2a3a2a',
-              color: '#c5d5c5',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)',
               fontSize: isMobile ? '1rem' : '0.9rem',
               fontFamily: 'inherit',
             }}
@@ -4025,9 +4033,9 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
             style={{
               padding: isMobile ? '14px 20px' : '12px 24px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: '#3bceac20',
-              border: '1px solid #3bceac',
-              color: '#3bceac',
+              background: 'var(--accent-teal)20',
+              border: '1px solid var(--accent-teal)',
+              color: 'var(--accent-teal)',
               cursor: searching ? 'wait' : 'pointer',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -4038,7 +4046,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
         </div>
 
         {hasSearched && (
-          <div style={{ color: '#6a7a6a', fontSize: '0.85rem', marginBottom: '16px' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: '16px' }}>
             Found {results.length} result{results.length !== 1 ? 's' : ''}
           </div>
         )}
@@ -4050,30 +4058,30 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
               onClick={() => onSelectMessage(result)}
               style={{
                 padding: isMobile ? '14px' : '12px',
-                background: '#0a100a',
-                border: '1px solid #2a3a2a',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-subtle)',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.borderColor = '#3bceac'}
-              onMouseLeave={(e) => e.currentTarget.style.borderColor = '#2a3a2a'}
+              onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent-teal)'}
+              onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.75rem' }}>
-                <span style={{ color: '#3bceac' }}>{result.waveName}</span>
-                <span style={{ color: '#6a7a6a' }}>
+                <span style={{ color: 'var(--accent-teal)' }}>{result.waveName}</span>
+                <span style={{ color: 'var(--text-dim)' }}>
                   {new Date(result.createdAt).toLocaleString()}
                 </span>
               </div>
-              <div style={{ color: '#8a9a8a', fontSize: '0.8rem', marginBottom: '4px' }}>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '4px' }}>
                 {result.authorName}
               </div>
               {result.snippet ? (
                 <div
-                  style={{ color: '#c5d5c5', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}
+                  style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}
                   dangerouslySetInnerHTML={{ __html: result.snippet }}
                 />
               ) : (
-                <div style={{ color: '#c5d5c5', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}>
+                <div style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.95rem' : '0.9rem', lineHeight: '1.5' }}>
                   {highlightMatch(result.content, searchQuery)}
                 </div>
               )}
@@ -4082,7 +4090,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
         </div>
 
         {hasSearched && results.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#6a7a6a', padding: '40px 20px' }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '40px 20px' }}>
             No droplets found matching "{searchQuery}"
           </div>
         )}
@@ -4751,7 +4759,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   const config = PRIVACY_LEVELS[wave.privacy] || PRIVACY_LEVELS.private;
   if (loading) return <LoadingSpinner />;
-  if (!waveData) return <div style={{ padding: '20px', color: '#6a7a6a' }}>Wave not found</div>;
+  if (!waveData) return <div style={{ padding: '20px', color: 'var(--text-dim)' }}>Wave not found</div>;
 
   // Safe access with fallbacks for pagination fields
   // Note: API returns `messages` and `all_messages` but we use `droplets` internally (v1.11.0)
@@ -4764,20 +4772,20 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {/* Header */}
       <div style={{
-        padding: isMobile ? '12px' : '16px 20px', background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
-        borderBottom: '1px solid #2a3a2a', display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '16px', flexWrap: 'wrap',
+        padding: isMobile ? '12px' : '16px 20px', background: 'linear-gradient(90deg, var(--bg-surface), var(--bg-hover), var(--bg-surface))',
+        borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '16px', flexWrap: 'wrap',
         flexShrink: 0,
       }}>
         <button onClick={onBack} style={{
-          padding: '6px 10px', background: 'transparent', border: '1px solid #3a4a3a',
-          color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+          padding: '6px 10px', background: 'transparent', border: '1px solid var(--border-primary)',
+          color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
         }}>←</button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <span style={{ color: '#c5d5c5', fontSize: isMobile ? '0.9rem' : '1.1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{waveData.title}</span>
-            {waveData.group_name && <span style={{ color: '#5a6a5a', fontSize: '0.75rem' }}>({waveData.group_name})</span>}
+            <span style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.9rem' : '1.1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{waveData.title}</span>
+            {waveData.group_name && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({waveData.group_name})</span>}
           </div>
-          <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
             {participants.length} participants • {total} droplets
           </div>
         </div>
@@ -4786,8 +4794,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           <button onClick={handleArchive} style={{
             padding: isMobile ? '10px 12px' : '6px 10px',
             minHeight: isMobile ? '44px' : 'auto',
-            background: 'transparent', border: '1px solid #3a4a3a',
-            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+            background: 'transparent', border: '1px solid var(--border-primary)',
+            color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
           }}>{waveData.is_archived ? '📬' : '📦'}</button>
           {/* Settings and Delete buttons only show for wave creator (all privacy levels) */}
           {waveData.can_edit && (
@@ -4795,15 +4803,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               <button onClick={() => setShowSettings(true)} style={{
                 padding: isMobile ? '10px 12px' : '6px 10px',
                 minHeight: isMobile ? '44px' : 'auto',
-                background: 'transparent', border: '1px solid #3bceac50',
-                color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+                background: 'transparent', border: '1px solid var(--accent-teal)50',
+                color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
               }}>⚙</button>
               <button onClick={handleDeleteWave} style={{
                 padding: isMobile ? '10px 14px' : '6px 12px',
                 minHeight: isMobile ? '44px' : 'auto',
-                background: '#ff6b3520',
-                border: '1px solid #ff6b35',
-                color: '#ff6b35', cursor: 'pointer',
+                background: 'var(--accent-orange)20',
+                border: '1px solid var(--accent-orange)',
+                color: 'var(--accent-orange)', cursor: 'pointer',
                 fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.75rem',
               }}>DELETE</button>
             </>
@@ -4815,8 +4823,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       {(participants.length > 0 || total > 0) && (
         <div style={{
           padding: isMobile ? '6px 12px' : '6px 20px',
-          borderBottom: '1px solid #2a3a2a',
-          background: '#0a100a',
+          borderBottom: '1px solid var(--border-subtle)',
+          background: 'var(--bg-elevated)',
           display: 'flex',
           alignItems: 'center',
           gap: isMobile ? '8px' : '12px',
@@ -4828,9 +4836,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               onClick={() => setShowParticipants(!showParticipants)}
               style={{
                 padding: isMobile ? '8px 12px' : '6px 10px',
-                background: showParticipants ? '#0ead6920' : 'transparent',
-                border: `1px solid ${showParticipants ? '#0ead69' : '#3a4a3a'}`,
-                color: showParticipants ? '#0ead69' : '#6a7a6a',
+                background: showParticipants ? 'var(--accent-green)20' : 'transparent',
+                border: `1px solid ${showParticipants ? 'var(--accent-green)' : 'var(--border-primary)'}`,
+                color: showParticipants ? 'var(--accent-green)' : 'var(--text-dim)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.7rem' : '0.65rem',
@@ -4851,8 +4859,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               style={{
                 padding: isMobile ? '8px 12px' : '6px 10px',
                 background: showPlayback ? `${config.color}20` : 'transparent',
-                border: `1px solid ${showPlayback ? config.color : '#3a4a3a'}`,
-                color: showPlayback ? config.color : '#6a7a6a',
+                border: `1px solid ${showPlayback ? config.color : 'var(--border-primary)'}`,
+                color: showPlayback ? config.color : 'var(--text-dim)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.7rem' : '0.65rem',
@@ -4874,8 +4882,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 style={{
                   padding: isMobile ? '8px 12px' : '6px 10px',
                   background: 'transparent',
-                  border: '1px solid #3a4a3a',
-                  color: '#6a7a6a',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-dim)',
                   cursor: 'pointer',
                   fontFamily: 'monospace',
                   fontSize: isMobile ? '0.7rem' : '0.65rem',
@@ -4889,8 +4897,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 style={{
                   padding: isMobile ? '8px 12px' : '6px 10px',
                   background: 'transparent',
-                  border: '1px solid #3a4a3a',
-                  color: '#6a7a6a',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-dim)',
                   cursor: 'pointer',
                   fontFamily: 'monospace',
                   fontSize: isMobile ? '0.7rem' : '0.65rem',
@@ -4922,8 +4930,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 padding: isMobile ? '8px 12px' : '6px 10px',
                 marginLeft: 'auto',
                 background: 'transparent',
-                border: '1px solid #ffd23f',
-                color: '#ffd23f',
+                border: '1px solid var(--accent-amber)',
+                color: 'var(--accent-amber)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.7rem' : '0.65rem',
@@ -4939,8 +4947,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       {showParticipants && participants.length > 0 && (
         <div style={{
           padding: isMobile ? '12px' : '12px 20px',
-          borderBottom: '1px solid #2a3a2a',
-          background: '#0d150d',
+          borderBottom: '1px solid var(--border-subtle)',
+          background: 'var(--bg-surface)',
           display: 'flex',
           flexDirection: 'column',
           gap: '8px',
@@ -4965,8 +4973,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                   justifyContent: 'space-between',
                   gap: '8px',
                   padding: '8px 12px',
-                  background: userBlocked ? '#ff6b3510' : '#0a100a',
-                  border: `1px solid ${userBlocked ? '#ff6b3540' : '#2a3a2a'}`,
+                  background: userBlocked ? 'var(--accent-orange)10' : 'var(--bg-elevated)',
+                  border: `1px solid ${userBlocked ? 'var(--accent-orange)40' : 'var(--border-subtle)'}`,
                 }}
               >
                 {/* Participant Info */}
@@ -4975,19 +4983,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                   onClick={onShowProfile ? () => onShowProfile(p.id) : undefined}
                   title={onShowProfile ? 'View profile' : undefined}
                 >
-                  <Avatar letter={p.avatar || p.name?.[0] || '?'} color={isCurrentUser ? '#ffd23f' : '#3bceac'} size={isMobile ? 32 : 28} />
+                  <Avatar letter={p.avatar || p.name?.[0] || '?'} color={isCurrentUser ? 'var(--accent-amber)' : 'var(--accent-teal)'} size={isMobile ? 32 : 28} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{
-                      color: userBlocked ? '#ff6b35' : userMuted ? '#6a7a6a' : '#c5d5c5',
+                      color: userBlocked ? 'var(--accent-orange)' : userMuted ? 'var(--text-dim)' : 'var(--text-primary)',
                       fontSize: isMobile ? '0.85rem' : '0.8rem',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
                     }}>
                       {p.name}
-                      {isCurrentUser && <span style={{ color: '#ffd23f', marginLeft: '4px' }}>(you)</span>}
-                      {userBlocked && <span style={{ color: '#ff6b35', marginLeft: '4px', fontSize: '0.65rem' }}>⊘ BLOCKED</span>}
-                      {userMuted && !userBlocked && <span style={{ color: '#6a7a6a', marginLeft: '4px', fontSize: '0.65rem' }}>🔇 MUTED</span>}
+                      {isCurrentUser && <span style={{ color: 'var(--accent-amber)', marginLeft: '4px' }}>(you)</span>}
+                      {userBlocked && <span style={{ color: 'var(--accent-orange)', marginLeft: '4px', fontSize: '0.65rem' }}>⊘ BLOCKED</span>}
+                      {userMuted && !userBlocked && <span style={{ color: 'var(--text-dim)', marginLeft: '4px', fontSize: '0.65rem' }}>🔇 MUTED</span>}
                     </div>
                   </div>
                 </div>
@@ -4995,10 +5003,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 {/* Read Status */}
                 <div style={{
                   padding: '2px 6px',
-                  background: hasReadLatest ? '#0ead6920' : '#2a3a2a',
-                  border: `1px solid ${hasReadLatest ? '#0ead6950' : '#3a4a3a'}`,
+                  background: hasReadLatest ? 'var(--accent-green)20' : 'var(--border-subtle)',
+                  border: `1px solid ${hasReadLatest ? 'var(--accent-green)50' : 'var(--border-primary)'}`,
                   fontSize: '0.6rem',
-                  color: hasReadLatest ? '#0ead69' : '#6a7a6a',
+                  color: hasReadLatest ? 'var(--accent-green)' : 'var(--text-dim)',
                   fontFamily: 'monospace',
                 }}>
                   {hasReadLatest ? '✓ READ' : '○ UNREAD'}
@@ -5010,19 +5018,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                     {isAlreadyContact ? (
                       <span style={{
                         padding: '2px 8px',
-                        background: '#0ead6920',
-                        border: '1px solid #0ead6950',
+                        background: 'var(--accent-green)20',
+                        border: '1px solid var(--accent-green)50',
                         fontSize: '0.6rem',
-                        color: '#0ead69',
+                        color: 'var(--accent-green)',
                         fontFamily: 'monospace',
                       }}>✓ CONTACT</span>
                     ) : hasSentRequest ? (
                       <span style={{
                         padding: '2px 8px',
-                        background: '#ffd23f20',
-                        border: '1px solid #ffd23f50',
+                        background: 'var(--accent-amber)20',
+                        border: '1px solid var(--accent-amber)50',
                         fontSize: '0.6rem',
-                        color: '#ffd23f',
+                        color: 'var(--accent-amber)',
                         fontFamily: 'monospace',
                       }}>PENDING</span>
                     ) : hasReceivedRequest ? (
@@ -5031,9 +5039,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                         style={{
                           padding: isMobile ? '6px 10px' : '4px 8px',
                           minHeight: isMobile ? '36px' : 'auto',
-                          background: '#3bceac20',
-                          border: '1px solid #3bceac',
-                          color: '#3bceac',
+                          background: 'var(--accent-teal)20',
+                          border: '1px solid var(--accent-teal)',
+                          color: 'var(--accent-teal)',
                           cursor: 'pointer',
                           fontFamily: 'monospace',
                           fontSize: '0.6rem',
@@ -5046,8 +5054,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                           padding: isMobile ? '6px 10px' : '4px 8px',
                           minHeight: isMobile ? '36px' : 'auto',
                           background: 'transparent',
-                          border: '1px solid #3bceac50',
-                          color: '#3bceac',
+                          border: '1px solid var(--accent-teal)50',
+                          color: 'var(--accent-teal)',
                           cursor: 'pointer',
                           fontFamily: 'monospace',
                           fontSize: '0.6rem',
@@ -5066,9 +5074,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                         padding: isMobile ? '6px 8px' : '4px 6px',
                         minHeight: isMobile ? '36px' : 'auto',
                         minWidth: isMobile ? '36px' : 'auto',
-                        background: showModMenu === p.id ? '#2a3a2a' : 'transparent',
-                        border: '1px solid #3a4a3a',
-                        color: '#6a7a6a',
+                        background: showModMenu === p.id ? 'var(--border-subtle)' : 'transparent',
+                        border: '1px solid var(--border-primary)',
+                        color: 'var(--text-dim)',
                         cursor: 'pointer',
                         fontFamily: 'monospace',
                         fontSize: '0.8rem',
@@ -5083,8 +5091,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                         top: '100%',
                         right: 0,
                         marginTop: '4px',
-                        background: '#0d150d',
-                        border: '1px solid #3a4a3a',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--border-primary)',
                         zIndex: 100,
                         minWidth: '120px',
                       }}>
@@ -5095,8 +5103,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                             padding: isMobile ? '12px' : '8px 12px',
                             background: 'transparent',
                             border: 'none',
-                            borderBottom: '1px solid #2a3a2a',
-                            color: userMuted ? '#0ead69' : '#6a7a6a',
+                            borderBottom: '1px solid var(--border-subtle)',
+                            color: userMuted ? 'var(--accent-green)' : 'var(--text-dim)',
                             cursor: 'pointer',
                             fontFamily: 'monospace',
                             fontSize: '0.7rem',
@@ -5112,7 +5120,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                             padding: isMobile ? '12px' : '8px 12px',
                             background: 'transparent',
                             border: 'none',
-                            color: userBlocked ? '#0ead69' : '#ff6b35',
+                            color: userBlocked ? 'var(--accent-green)' : 'var(--accent-orange)',
                             cursor: 'pointer',
                             fontFamily: 'monospace',
                             fontSize: '0.7rem',
@@ -5150,8 +5158,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               style={{
                 padding: isMobile ? '10px 20px' : '8px 16px',
                 background: 'transparent',
-                border: '1px solid #3a4a3a',
-                color: loadingMore ? '#5a6a5a' : '#0ead69',
+                border: '1px solid var(--border-primary)',
+                color: loadingMore ? 'var(--text-muted)' : 'var(--accent-green)',
                 cursor: loadingMore ? 'wait' : 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.85rem' : '0.75rem',
@@ -5181,11 +5189,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       {typingUsers && Object.keys(typingUsers).length > 0 && (
         <div style={{
           padding: isMobile ? '8px 12px' : '6px 20px',
-          color: '#6a7a6a',
+          color: 'var(--text-dim)',
           fontSize: isMobile ? '0.85rem' : '0.75rem',
           fontStyle: 'italic',
-          borderTop: '1px solid #1a2a1a',
-          background: '#0a100a',
+          borderTop: '1px solid var(--bg-hover)',
+          background: 'var(--bg-elevated)',
         }}>
           {Object.values(typingUsers).map(u => u.name).join(', ')} {Object.keys(typingUsers).length === 1 ? 'is' : 'are'} typing...
         </div>
@@ -5214,22 +5222,22 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           flexShrink: 0,
           padding: isMobile ? '12px' : '16px 20px',
           paddingBottom: isMobile ? 'calc(12px + env(safe-area-inset-bottom, 0px))' : '16px',
-          background: dragOver ? 'linear-gradient(0deg, #1a2a1a, #2a3a2a)' : 'linear-gradient(0deg, #0d150d, #1a2a1a)',
-          borderTop: dragOver ? '2px dashed #f9844a' : '1px solid #2a3a2a',
+          background: dragOver ? 'linear-gradient(0deg, var(--bg-hover), var(--border-subtle))' : 'linear-gradient(0deg, var(--bg-surface), var(--bg-hover))',
+          borderTop: dragOver ? '2px dashed var(--accent-orange)' : '1px solid var(--border-subtle)',
           transition: 'all 0.2s ease',
         }}>
         {replyingTo && (
           <div style={{
             padding: isMobile ? '10px 14px' : '8px 12px',
-            marginBottom: '10px', background: '#0a100a',
+            marginBottom: '10px', background: 'var(--bg-elevated)',
             border: `1px solid ${config.color}40`, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
             <div>
-              <span style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.7rem' }}>REPLYING TO </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.85rem' : '0.7rem' }}>REPLYING TO </span>
               <span style={{ color: config.color, fontSize: isMobile ? '0.9rem' : '0.75rem' }}>{replyingTo.sender_name}</span>
             </div>
             <button onClick={() => setReplyingTo(null)} style={{
-              background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer',
+              background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer',
               minHeight: isMobile ? '44px' : 'auto',
               minWidth: isMobile ? '44px' : 'auto',
               padding: isMobile ? '12px' : '4px',
@@ -5241,10 +5249,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           <div style={{
             padding: '12px',
             marginBottom: '10px',
-            background: '#f9844a15',
-            border: '2px dashed #f9844a',
+            background: 'var(--accent-orange)15',
+            border: '2px dashed var(--accent-orange)',
             textAlign: 'center',
-            color: '#f9844a',
+            color: 'var(--accent-orange)',
             fontSize: '0.85rem',
             fontFamily: 'monospace',
           }}>
@@ -5284,9 +5292,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             padding: isMobile ? '14px 16px' : '12px 16px',
             minHeight: isMobile ? '44px' : 'auto',
             maxHeight: '200px',
-            background: '#0a100a',
-            border: '1px solid #2a3a2a',
-            color: '#c5d5c5',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-subtle)',
+            color: 'var(--text-primary)',
             fontSize: isMobile ? '1rem' : '0.9rem',
             fontFamily: 'inherit',
             resize: 'none',
@@ -5303,9 +5311,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               style={{
                 padding: isMobile ? '8px 10px' : '8px 10px',
                 minHeight: isMobile ? '38px' : '32px',
-                background: showEmojiPicker ? '#ffd23f20' : 'transparent',
-                border: `1px solid ${showEmojiPicker ? '#ffd23f' : '#2a3a2a'}`,
-                color: '#ffd23f',
+                background: showEmojiPicker ? 'var(--accent-amber)20' : 'transparent',
+                border: `1px solid ${showEmojiPicker ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
+                color: 'var(--accent-amber)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.7rem' : '0.65rem',
@@ -5320,9 +5328,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               style={{
                 padding: isMobile ? '8px 10px' : '8px 10px',
                 minHeight: isMobile ? '38px' : '32px',
-                background: showGifSearch ? '#3bceac20' : 'transparent',
-                border: `1px solid ${showGifSearch ? '#3bceac' : '#2a3a2a'}`,
-                color: '#3bceac',
+                background: showGifSearch ? 'var(--accent-teal)20' : 'transparent',
+                border: `1px solid ${showGifSearch ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+                color: 'var(--accent-teal)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.7rem' : '0.65rem',
@@ -5348,9 +5356,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               style={{
                 padding: isMobile ? '8px 10px' : '8px 10px',
                 minHeight: isMobile ? '38px' : '32px',
-                background: uploading ? '#f9844a20' : 'transparent',
-                border: `1px solid ${uploading ? '#f9844a' : '#2a3a2a'}`,
-                color: '#f9844a',
+                background: uploading ? 'var(--accent-orange)20' : 'transparent',
+                border: `1px solid ${uploading ? 'var(--accent-orange)' : 'var(--border-subtle)'}`,
+                color: 'var(--accent-orange)',
                 cursor: uploading ? 'wait' : 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.7rem' : '0.65rem',
@@ -5371,9 +5379,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             style={{
               padding: isMobile ? '10px 20px' : '8px 20px',
               minHeight: isMobile ? '38px' : '32px',
-              background: newMessage.trim() ? '#ffd23f20' : 'transparent',
-              border: `1px solid ${newMessage.trim() ? '#ffd23f' : '#3a4a3a'}`,
-              color: newMessage.trim() ? '#ffd23f' : '#5a6a5a',
+              background: newMessage.trim() ? 'var(--accent-amber)20' : 'transparent',
+              border: `1px solid ${newMessage.trim() ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+              color: newMessage.trim() ? 'var(--accent-amber)' : 'var(--text-muted)',
               cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.85rem' : '0.75rem',
@@ -5496,30 +5504,30 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
   return (
     <div style={{
       marginBottom: '24px', padding: '16px',
-      background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-      border: '1px solid #3bceac40',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-teal)40',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-        <span style={{ color: '#3bceac', fontSize: '1rem' }}>INCOMING REQUESTS</span>
+        <span style={{ color: 'var(--accent-teal)', fontSize: '1rem' }}>INCOMING REQUESTS</span>
         <span style={{
-          background: '#3bceac', color: '#000', fontSize: '0.65rem',
+          background: 'var(--accent-teal)', color: '#000', fontSize: '0.65rem',
           padding: '2px 6px', borderRadius: '10px', fontWeight: 700,
         }}>{requests.length}</span>
       </div>
       {requests.map(request => (
         <div key={request.id} style={{
-          padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
+          padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
           marginBottom: '8px', display: 'flex', justifyContent: 'space-between',
           alignItems: 'center', flexWrap: 'wrap', gap: '12px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-            <Avatar letter={request.from_user?.avatar || request.from_user?.displayName?.[0] || '?'} color="#3bceac" size={isMobile ? 40 : 36} />
+            <Avatar letter={request.from_user?.avatar || request.from_user?.displayName?.[0] || '?'} color="var(--accent-teal)" size={isMobile ? 40 : 36} />
             <div style={{ minWidth: 0 }}>
-              <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {request.from_user?.displayName || 'Unknown'}
               </div>
               {request.message && (
-                <div style={{ color: '#7a8a7a', fontSize: '0.8rem', marginTop: '4px', fontStyle: 'italic' }}>
+                <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginTop: '4px', fontStyle: 'italic' }}>
                   "{request.message}"
                 </div>
               )}
@@ -5532,8 +5540,8 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
               style={{
                 padding: isMobile ? '10px 14px' : '6px 12px',
                 minHeight: isMobile ? '44px' : 'auto',
-                background: '#0ead6920', border: '1px solid #0ead69',
-                color: '#0ead69', cursor: processing[request.id] ? 'wait' : 'pointer',
+                background: 'var(--accent-green)20', border: '1px solid var(--accent-green)',
+                color: 'var(--accent-green)', cursor: processing[request.id] ? 'wait' : 'pointer',
                 fontFamily: 'monospace', fontSize: '0.75rem',
                 opacity: processing[request.id] ? 0.6 : 1,
               }}>
@@ -5545,8 +5553,8 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
               style={{
                 padding: isMobile ? '10px 14px' : '6px 12px',
                 minHeight: isMobile ? '44px' : 'auto',
-                background: 'transparent', border: '1px solid #ff6b3550',
-                color: '#ff6b35', cursor: processing[request.id] ? 'wait' : 'pointer',
+                background: 'transparent', border: '1px solid var(--accent-orange)50',
+                color: 'var(--accent-orange)', cursor: processing[request.id] ? 'wait' : 'pointer',
                 fontFamily: 'monospace', fontSize: '0.75rem',
                 opacity: processing[request.id] ? 0.6 : 1,
               }}>
@@ -5580,8 +5588,8 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
   return (
     <div style={{
       marginBottom: '24px', padding: '16px',
-      background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-      border: '1px solid #ffd23f30',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-amber)30',
     }}>
       <button
         onClick={() => setExpanded(!expanded)}
@@ -5590,11 +5598,11 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
           background: 'transparent', border: 'none', cursor: 'pointer',
           padding: 0, fontFamily: 'monospace',
         }}>
-        <span style={{ color: '#ffd23f', fontSize: '0.85rem' }}>
+        <span style={{ color: 'var(--accent-amber)', fontSize: '0.85rem' }}>
           {expanded ? '▼' : '▶'} PENDING SENT REQUESTS
         </span>
         <span style={{
-          background: '#ffd23f', color: '#000', fontSize: '0.65rem',
+          background: 'var(--accent-amber)', color: '#000', fontSize: '0.65rem',
           padding: '2px 6px', borderRadius: '10px', fontWeight: 700,
         }}>{requests.length}</span>
       </button>
@@ -5602,14 +5610,14 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
         <div style={{ marginTop: '12px' }}>
           {requests.map(request => (
             <div key={request.id} style={{
-              padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
+              padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
               marginBottom: '8px', display: 'flex', justifyContent: 'space-between',
               alignItems: 'center', flexWrap: 'wrap', gap: '8px',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-                <Avatar letter={request.to_user?.avatar || request.to_user?.displayName?.[0] || '?'} color="#ffd23f" size={isMobile ? 40 : 36} />
+                <Avatar letter={request.to_user?.avatar || request.to_user?.displayName?.[0] || '?'} color="var(--accent-amber)" size={isMobile ? 40 : 36} />
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {request.to_user?.displayName || 'Unknown'}
                   </div>
                 </div>
@@ -5620,8 +5628,8 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
                 style={{
                   padding: isMobile ? '10px 14px' : '6px 10px',
                   minHeight: isMobile ? '44px' : 'auto',
-                  background: 'transparent', border: '1px solid #ff6b3550',
-                  color: '#ff6b35', cursor: cancelling[request.id] ? 'wait' : 'pointer',
+                  background: 'transparent', border: '1px solid var(--accent-orange)50',
+                  color: 'var(--accent-orange)', cursor: cancelling[request.id] ? 'wait' : 'pointer',
                   fontFamily: 'monospace', fontSize: '0.7rem',
                   opacity: cancelling[request.id] ? 0.6 : 1,
                 }}>
@@ -5666,30 +5674,30 @@ const SendContactRequestModal = ({ isOpen, onClose, toUser, fetchAPI, showToast,
       padding: isMobile ? '16px' : '0',
     }} onClick={onClose}>
       <div style={{
-        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-        border: '1px solid #3bceac', padding: isMobile ? '20px' : '24px',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '1px solid var(--accent-teal)', padding: isMobile ? '20px' : '24px',
         width: '100%', maxWidth: '400px',
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <GlowText color="#3bceac" size="1rem">SEND CONTACT REQUEST</GlowText>
+          <GlowText color="var(--accent-teal)" size="1rem">SEND CONTACT REQUEST</GlowText>
           <button onClick={onClose} style={{
-            background: 'transparent', border: 'none', color: '#5a6a5a',
+            background: 'transparent', border: 'none', color: 'var(--text-muted)',
             cursor: 'pointer', fontSize: '1.2rem', padding: '4px',
           }}>×</button>
         </div>
 
         <div style={{
-          padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
+          padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
           marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px',
         }}>
-          <Avatar letter={toUser.avatar || toUser.displayName?.[0] || '?'} color="#3bceac" size={44} />
+          <Avatar letter={toUser.avatar || toUser.displayName?.[0] || '?'} color="var(--accent-teal)" size={44} />
           <div>
-            <div style={{ color: '#c5d5c5' }}>{toUser.displayName}</div>
+            <div style={{ color: 'var(--text-primary)' }}>{toUser.displayName}</div>
           </div>
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ color: '#7a8a7a', fontSize: '0.75rem', display: 'block', marginBottom: '6px' }}>
+          <label style={{ color: 'var(--text-dim)', fontSize: '0.75rem', display: 'block', marginBottom: '6px' }}>
             Message (optional)
           </label>
           <textarea
@@ -5699,12 +5707,12 @@ const SendContactRequestModal = ({ isOpen, onClose, toUser, fetchAPI, showToast,
             maxLength={200}
             style={{
               width: '100%', padding: '12px', boxSizing: 'border-box',
-              background: '#0a100a', border: '1px solid #2a3a2a',
-              color: '#c5d5c5', fontFamily: 'inherit', resize: 'vertical',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)', fontFamily: 'inherit', resize: 'vertical',
               minHeight: '80px',
             }}
           />
-          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', textAlign: 'right', marginTop: '4px' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', textAlign: 'right', marginTop: '4px' }}>
             {message.length}/200
           </div>
         </div>
@@ -5713,14 +5721,14 @@ const SendContactRequestModal = ({ isOpen, onClose, toUser, fetchAPI, showToast,
           <button onClick={onClose} style={{
             padding: isMobile ? '12px 20px' : '10px 16px',
             minHeight: isMobile ? '44px' : 'auto',
-            background: 'transparent', border: '1px solid #3a4a3a',
-            color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace',
+            background: 'transparent', border: '1px solid var(--border-primary)',
+            color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace',
           }}>CANCEL</button>
           <button onClick={handleSend} disabled={sending} style={{
             padding: isMobile ? '12px 20px' : '10px 16px',
             minHeight: isMobile ? '44px' : 'auto',
-            background: '#3bceac20', border: '1px solid #3bceac',
-            color: '#3bceac', cursor: sending ? 'wait' : 'pointer',
+            background: 'var(--accent-teal)20', border: '1px solid var(--accent-teal)',
+            color: 'var(--accent-teal)', cursor: sending ? 'wait' : 'pointer',
             fontFamily: 'monospace', opacity: sending ? 0.6 : 1,
           }}>{sending ? 'SENDING...' : 'SEND REQUEST'}</button>
         </div>
@@ -5763,31 +5771,31 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
   return (
     <div style={{
       marginBottom: '16px', padding: '16px',
-      background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-      border: '1px solid #ffd23f40',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-amber)40',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-        <span style={{ color: '#ffd23f', fontSize: '0.9rem' }}>GROUP INVITATIONS</span>
+        <span style={{ color: 'var(--accent-amber)', fontSize: '0.9rem' }}>GROUP INVITATIONS</span>
         <span style={{
-          background: '#ffd23f', color: '#000', fontSize: '0.65rem',
+          background: 'var(--accent-amber)', color: '#000', fontSize: '0.65rem',
           padding: '2px 6px', borderRadius: '10px', fontWeight: 700,
         }}>{invitations.length}</span>
       </div>
       {invitations.map(invitation => (
         <div key={invitation.id} style={{
-          padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
+          padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
           marginBottom: '8px',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: '#ffd23f', fontSize: '0.95rem', marginBottom: '4px' }}>
+              <div style={{ color: 'var(--accent-amber)', fontSize: '0.95rem', marginBottom: '4px' }}>
                 {invitation.group?.name || 'Unknown Group'}
               </div>
-              <div style={{ color: '#6a7a6a', fontSize: '0.75rem' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>
                 Invited by {invitation.invited_by_user?.displayName || 'Someone'}
               </div>
               {invitation.message && (
-                <div style={{ color: '#7a8a7a', fontSize: '0.8rem', marginTop: '6px', fontStyle: 'italic' }}>
+                <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginTop: '6px', fontStyle: 'italic' }}>
                   "{invitation.message}"
                 </div>
               )}
@@ -5799,8 +5807,8 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
                 style={{
                   padding: isMobile ? '10px 14px' : '6px 12px',
                   minHeight: isMobile ? '44px' : 'auto',
-                  background: '#0ead6920', border: '1px solid #0ead69',
-                  color: '#0ead69', cursor: processing[invitation.id] ? 'wait' : 'pointer',
+                  background: 'var(--accent-green)20', border: '1px solid var(--accent-green)',
+                  color: 'var(--accent-green)', cursor: processing[invitation.id] ? 'wait' : 'pointer',
                   fontFamily: 'monospace', fontSize: '0.75rem',
                   opacity: processing[invitation.id] ? 0.6 : 1,
                 }}>
@@ -5812,8 +5820,8 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
                 style={{
                   padding: isMobile ? '10px 14px' : '6px 12px',
                   minHeight: isMobile ? '44px' : 'auto',
-                  background: 'transparent', border: '1px solid #ff6b3550',
-                  color: '#ff6b35', cursor: processing[invitation.id] ? 'wait' : 'pointer',
+                  background: 'transparent', border: '1px solid var(--accent-orange)50',
+                  color: 'var(--accent-orange)', cursor: processing[invitation.id] ? 'wait' : 'pointer',
                   fontFamily: 'monospace', fontSize: '0.75rem',
                   opacity: processing[invitation.id] ? 0.6 : 1,
                 }}>
@@ -5887,14 +5895,14 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
       padding: isMobile ? '16px' : '0',
     }} onClick={onClose}>
       <div style={{
-        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-        border: '2px solid #ffd23f40', padding: isMobile ? '20px' : '24px',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '2px solid var(--accent-amber)40', padding: isMobile ? '20px' : '24px',
         width: '100%', maxWidth: '450px', maxHeight: '80vh', display: 'flex', flexDirection: 'column',
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <GlowText color="#ffd23f" size="1rem">INVITE TO {group.name?.toUpperCase()}</GlowText>
+          <GlowText color="var(--accent-amber)" size="1rem">INVITE TO {group.name?.toUpperCase()}</GlowText>
           <button onClick={onClose} style={{
-            background: 'transparent', border: 'none', color: '#5a6a5a',
+            background: 'transparent', border: 'none', color: 'var(--text-muted)',
             cursor: 'pointer', fontSize: '1.2rem', padding: '4px',
           }}>×</button>
         </div>
@@ -5906,17 +5914,17 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
           placeholder="Search contacts..."
           style={{
             width: '100%', padding: '10px', boxSizing: 'border-box', marginBottom: '12px',
-            background: '#0a100a', border: '1px solid #2a3a2a', color: '#c5d5c5', fontFamily: 'inherit',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
           }}
         />
 
         <div style={{
           flex: 1, overflowY: 'auto', marginBottom: '16px',
-          border: '1px solid #2a3a2a', background: '#0a100a',
+          border: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)',
           maxHeight: '250px', minHeight: '150px',
         }}>
           {availableContacts.length === 0 ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#5a6a5a' }}>
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
               {contacts.length === 0 ? 'No contacts to invite' : 'No matching contacts'}
             </div>
           ) : availableContacts.map(contact => {
@@ -5927,21 +5935,21 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
                 onClick={() => toggleContact(contact.id)}
                 style={{
                   padding: '10px 12px', cursor: 'pointer',
-                  background: isSelected ? '#ffd23f15' : 'transparent',
-                  borderBottom: '1px solid #1a2a1a',
+                  background: isSelected ? 'var(--accent-amber)15' : 'transparent',
+                  borderBottom: '1px solid var(--bg-hover)',
                   display: 'flex', alignItems: 'center', gap: '12px',
                 }}>
                 <div style={{
-                  width: '20px', height: '20px', border: `2px solid ${isSelected ? '#ffd23f' : '#3a4a3a'}`,
-                  background: isSelected ? '#ffd23f' : 'transparent',
+                  width: '20px', height: '20px', border: `2px solid ${isSelected ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                  background: isSelected ? 'var(--accent-amber)' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: '#000', fontSize: '0.8rem', fontWeight: 'bold',
                 }}>
                   {isSelected && '✓'}
                 </div>
-                <Avatar letter={contact.avatar || contact.name?.[0] || '?'} color={isSelected ? '#ffd23f' : '#6a7a6a'} size={32} />
+                <Avatar letter={contact.avatar || contact.name?.[0] || '?'} color={isSelected ? 'var(--accent-amber)' : 'var(--text-dim)'} size={32} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {contact.name}
                   </div>
                 </div>
@@ -5951,7 +5959,7 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ color: '#7a8a7a', fontSize: '0.75rem', display: 'block', marginBottom: '6px' }}>
+          <label style={{ color: 'var(--text-dim)', fontSize: '0.75rem', display: 'block', marginBottom: '6px' }}>
             Message (optional)
           </label>
           <input
@@ -5962,22 +5970,22 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
             maxLength={200}
             style={{
               width: '100%', padding: '10px', boxSizing: 'border-box',
-              background: '#0a100a', border: '1px solid #2a3a2a',
-              color: '#c5d5c5', fontFamily: 'inherit',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)', fontFamily: 'inherit',
             }}
           />
         </div>
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: '#6a7a6a', fontSize: '0.75rem' }}>
+          <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>
             {selectedContacts.length} selected
           </span>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button onClick={onClose} style={{
               padding: isMobile ? '12px 20px' : '10px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: 'transparent', border: '1px solid #3a4a3a',
-              color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace',
+              background: 'transparent', border: '1px solid var(--border-primary)',
+              color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace',
             }}>CANCEL</button>
             <button
               onClick={handleSendInvites}
@@ -5985,9 +5993,9 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
               style={{
                 padding: isMobile ? '12px 20px' : '10px 16px',
                 minHeight: isMobile ? '44px' : 'auto',
-                background: selectedContacts.length > 0 ? '#ffd23f20' : 'transparent',
-                border: `1px solid ${selectedContacts.length > 0 ? '#ffd23f' : '#3a4a3a'}`,
-                color: selectedContacts.length > 0 ? '#ffd23f' : '#5a6a5a',
+                background: selectedContacts.length > 0 ? 'var(--accent-amber)20' : 'transparent',
+                border: `1px solid ${selectedContacts.length > 0 ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                color: selectedContacts.length > 0 ? 'var(--accent-amber)' : 'var(--text-muted)',
                 cursor: sending || selectedContacts.length === 0 ? 'not-allowed' : 'pointer',
                 fontFamily: 'monospace', opacity: sending ? 0.6 : 1,
               }}>
@@ -6264,7 +6272,7 @@ const FocusView = ({
 
   if (!focusedDroplet) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6a7a6a' }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
         No droplet focused
       </div>
     );
@@ -6276,10 +6284,10 @@ const FocusView = ({
       {isMobile && (
         <div style={{
           padding: '4px 12px',
-          background: '#3bceac10',
-          borderBottom: '1px solid #3bceac20',
+          background: 'var(--accent-teal)10',
+          borderBottom: '1px solid var(--accent-teal)20',
           fontSize: '0.65rem',
-          color: '#5a6a5a',
+          color: 'var(--text-muted)',
           textAlign: 'center',
           fontFamily: 'monospace'
         }}>
@@ -6289,7 +6297,7 @@ const FocusView = ({
       {/* Breadcrumb Header */}
       <div style={{
         padding: isMobile ? '8px 12px' : '12px 16px',
-        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
         borderBottom: `2px solid ${config.color}40`,
         display: 'flex',
         alignItems: 'center',
@@ -6304,8 +6312,8 @@ const FocusView = ({
             padding: isMobile ? '8px 12px' : '6px 10px',
             minHeight: isMobile ? '44px' : 'auto',
             background: 'transparent',
-            border: '1px solid #3a4a3a',
-            color: '#6a7a6a',
+            border: '1px solid var(--border-primary)',
+            color: 'var(--text-dim)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontSize: isMobile ? '0.85rem' : '0.75rem',
@@ -6325,12 +6333,12 @@ const FocusView = ({
         }}>
           {breadcrumb.map((item, index) => (
             <React.Fragment key={index}>
-              {index > 0 && <span style={{ color: '#3a4a3a' }}>›</span>}
+              {index > 0 && <span style={{ color: 'var(--border-primary)' }}>›</span>}
               {item.ellipsis ? (
-                <span style={{ color: '#5a6a5a', fontSize: isMobile ? '0.8rem' : '0.75rem' }}>...</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.8rem' : '0.75rem' }}>...</span>
               ) : item.current ? (
                 <span style={{
-                  color: '#3bceac',
+                  color: 'var(--accent-teal)',
                   fontSize: isMobile ? '0.85rem' : '0.8rem',
                   fontWeight: 600,
                   maxWidth: '150px',
@@ -6346,7 +6354,7 @@ const FocusView = ({
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: item.isWave ? config.color : '#6a7a6a',
+                    color: item.isWave ? config.color : 'var(--text-dim)',
                     cursor: 'pointer',
                     fontFamily: 'monospace',
                     fontSize: isMobile ? '0.85rem' : '0.8rem',
@@ -6372,8 +6380,8 @@ const FocusView = ({
             padding: isMobile ? '8px 12px' : '6px 10px',
             minHeight: isMobile ? '44px' : 'auto',
             background: 'transparent',
-            border: '1px solid #ff6b3540',
-            color: '#ff6b35',
+            border: '1px solid var(--accent-orange)40',
+            color: 'var(--accent-orange)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontSize: isMobile ? '0.85rem' : '0.75rem',
@@ -6387,10 +6395,10 @@ const FocusView = ({
       {/* Focus indicator */}
       <div style={{
         padding: '6px 16px',
-        background: '#3bceac10',
-        borderBottom: '1px solid #3bceac30',
+        background: 'var(--accent-teal)10',
+        borderBottom: '1px solid var(--accent-teal)30',
         fontSize: isMobile ? '0.75rem' : '0.7rem',
-        color: '#3bceac',
+        color: 'var(--accent-teal)',
         fontFamily: 'monospace',
         display: 'flex',
         alignItems: 'center',
@@ -6398,8 +6406,8 @@ const FocusView = ({
       }}>
         <span>⤢</span>
         <span>FOCUS VIEW</span>
-        <span style={{ color: '#5a6a5a' }}>•</span>
-        <span style={{ color: '#6a7a6a' }}>
+        <span style={{ color: 'var(--text-muted)' }}>•</span>
+        <span style={{ color: 'var(--text-dim)' }}>
           {focusedDroplet.children?.length || 0} {focusedDroplet.children?.length === 1 ? 'reply' : 'replies'}
         </span>
       </div>
@@ -6446,11 +6454,11 @@ const FocusView = ({
       {typingUsers && Object.keys(typingUsers).length > 0 && (
         <div style={{
           padding: isMobile ? '8px 12px' : '6px 20px',
-          color: '#6a7a6a',
+          color: 'var(--text-dim)',
           fontSize: isMobile ? '0.85rem' : '0.75rem',
           fontStyle: 'italic',
-          borderTop: '1px solid #1a2a1a',
-          background: '#0a100a',
+          borderTop: '1px solid var(--bg-hover)',
+          background: 'var(--bg-elevated)',
         }}>
           {Object.values(typingUsers).map(u => u.name).join(', ')} {Object.keys(typingUsers).length === 1 ? 'is' : 'are'} typing...
         </div>
@@ -6458,16 +6466,16 @@ const FocusView = ({
 
       {/* Compose area */}
       <div style={{
-        borderTop: '1px solid #2a3a2a',
-        background: '#0a100a',
+        borderTop: '1px solid var(--border-subtle)',
+        background: 'var(--bg-elevated)',
         padding: isMobile ? '12px' : '16px',
       }}>
         {replyingTo && (
           <div style={{
             marginBottom: '8px',
             padding: '8px 12px',
-            background: '#1a2a1a',
-            border: '1px solid #3a4a3a',
+            background: 'var(--bg-hover)',
+            border: '1px solid var(--border-primary)',
             borderLeft: `3px solid ${config.color}`,
             display: 'flex',
             justifyContent: 'space-between',
@@ -6475,11 +6483,11 @@ const FocusView = ({
             gap: '8px',
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: '#6a7a6a', fontSize: '0.7rem', marginBottom: '2px' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '2px' }}>
                 Replying to {replyingTo.sender_name}
               </div>
               <div style={{
-                color: '#5a6a5a',
+                color: 'var(--text-muted)',
                 fontSize: '0.75rem',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -6493,8 +6501,8 @@ const FocusView = ({
               style={{
                 padding: '4px 8px',
                 background: 'transparent',
-                border: '1px solid #6a7a6a',
-                color: '#6a7a6a',
+                border: '1px solid var(--text-dim)',
+                color: 'var(--text-dim)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: '0.7rem',
@@ -6526,9 +6534,9 @@ const FocusView = ({
                 minHeight: isMobile ? '50px' : '40px',
                 maxHeight: '150px',
                 padding: '10px 12px',
-                background: '#0d150d',
-                border: `1px solid ${replyingTo ? config.color : '#2a3a2a'}`,
-                color: '#9bab9b',
+                background: 'var(--bg-surface)',
+                border: `1px solid ${replyingTo ? config.color : 'var(--border-subtle)'}`,
+                color: 'var(--text-secondary)',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.95rem' : '0.85rem',
                 resize: 'vertical',
@@ -6543,9 +6551,9 @@ const FocusView = ({
               style={{
                 padding: isMobile ? '12px' : '10px',
                 minHeight: isMobile ? '44px' : 'auto',
-                background: showEmojiPicker ? '#ffd23f20' : 'transparent',
-                border: `1px solid ${showEmojiPicker ? '#ffd23f' : '#3a4a3a'}`,
-                color: showEmojiPicker ? '#ffd23f' : '#6a7a6a',
+                background: showEmojiPicker ? 'var(--accent-amber)20' : 'transparent',
+                border: `1px solid ${showEmojiPicker ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                color: showEmojiPicker ? 'var(--accent-amber)' : 'var(--text-dim)',
                 cursor: 'pointer',
                 fontSize: isMobile ? '1.1rem' : '1rem',
               }}
@@ -6559,8 +6567,8 @@ const FocusView = ({
                 bottom: '100%',
                 right: 0,
                 marginBottom: '4px',
-                background: '#0d150d',
-                border: '1px solid #2a3a2a',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
                 padding: '8px',
                 display: 'grid',
                 gridTemplateColumns: 'repeat(8, 1fr)',
@@ -6579,7 +6587,7 @@ const FocusView = ({
                       width: '32px',
                       height: '32px',
                       background: 'transparent',
-                      border: '1px solid #2a3a2a',
+                      border: '1px solid var(--border-subtle)',
                       cursor: 'pointer',
                       fontSize: '1.1rem',
                       display: 'flex',
@@ -6601,9 +6609,9 @@ const FocusView = ({
             style={{
               padding: isMobile ? '12px 20px' : '10px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: newMessage.trim() ? '#0ead6920' : 'transparent',
-              border: `1px solid ${newMessage.trim() ? '#0ead69' : '#3a4a3a'}`,
-              color: newMessage.trim() ? '#0ead69' : '#5a6a5a',
+              background: newMessage.trim() ? 'var(--accent-green)20' : 'transparent',
+              border: `1px solid ${newMessage.trim() ? 'var(--accent-green)' : 'var(--border-primary)'}`,
+              color: newMessage.trim() ? 'var(--accent-green)' : 'var(--text-muted)',
               cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.85rem' : '0.75rem',
@@ -6661,13 +6669,13 @@ const ContactsView = ({
   return (
     <div style={{ flex: 1, padding: isMobile ? '16px' : '20px', overflowY: 'auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-        <GlowText color="#ffd23f" size="1.1rem">CONTACTS</GlowText>
+        <GlowText color="var(--accent-amber)" size="1.1rem">CONTACTS</GlowText>
         <button onClick={() => setShowSearch(!showSearch)} style={{
           padding: isMobile ? '10px 16px' : '8px 16px',
           minHeight: isMobile ? '44px' : 'auto',
-          background: showSearch ? '#3bceac20' : '#ffd23f20',
-          border: `1px solid ${showSearch ? '#3bceac' : '#ffd23f50'}`,
-          color: showSearch ? '#3bceac' : '#ffd23f', cursor: 'pointer', fontFamily: 'monospace',
+          background: showSearch ? 'var(--accent-teal)20' : 'var(--accent-amber)20',
+          border: `1px solid ${showSearch ? 'var(--accent-teal)' : 'var(--accent-amber)50'}`,
+          color: showSearch ? 'var(--accent-teal)' : 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace',
         }}>{showSearch ? '✕ CLOSE' : '+ FIND PEOPLE'}</button>
       </div>
 
@@ -6691,43 +6699,43 @@ const ContactsView = ({
       />
 
       {showSearch && (
-        <div style={{ marginBottom: '24px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #3bceac40' }}>
+        <div style={{ marginBottom: '24px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-teal)40' }}>
           <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by handle or name..."
             style={{
               width: '100%', padding: '12px', boxSizing: 'border-box', marginBottom: '16px',
-              background: '#0a100a', border: '1px solid #2a3a2a', color: '#c5d5c5', fontFamily: 'inherit',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
             }} />
-          {searching && <div style={{ color: '#5a6a5a' }}>Searching...</div>}
+          {searching && <div style={{ color: 'var(--text-muted)' }}>Searching...</div>}
           {!searching && searchQuery.length >= 2 && searchResults.length === 0 && (
-            <div style={{ color: '#5a6a5a' }}>No users found</div>
+            <div style={{ color: 'var(--text-muted)' }}>No users found</div>
           )}
           {searchResults.map(user => {
             const sentRequest = hasSentRequestTo(user.id);
             const receivedRequest = hasReceivedRequestFrom(user.id);
             return (
               <div key={user.id} style={{
-                padding: '12px', background: '#0a100a', border: '1px solid #2a3a2a',
+                padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
                 marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <Avatar letter={user.avatar || user.displayName[0]} color="#ffd23f" size={isMobile ? 40 : 36} status={user.status} />
+                  <Avatar letter={user.avatar || user.displayName[0]} color="var(--accent-amber)" size={isMobile ? 40 : 36} status={user.status} />
                   <div>
-                    <div style={{ color: '#c5d5c5' }}>{user.displayName}</div>
+                    <div style={{ color: 'var(--text-primary)' }}>{user.displayName}</div>
                   </div>
                 </div>
                 {user.isContact ? (
-                  <span style={{ color: '#0ead69', fontSize: '0.75rem' }}>✓ CONTACT</span>
+                  <span style={{ color: 'var(--accent-green)', fontSize: '0.75rem' }}>✓ CONTACT</span>
                 ) : sentRequest ? (
-                  <span style={{ color: '#ffd23f', fontSize: '0.75rem' }}>REQUEST SENT</span>
+                  <span style={{ color: 'var(--accent-amber)', fontSize: '0.75rem' }}>REQUEST SENT</span>
                 ) : receivedRequest ? (
-                  <span style={{ color: '#3bceac', fontSize: '0.75rem' }}>RESPOND ABOVE</span>
+                  <span style={{ color: 'var(--accent-teal)', fontSize: '0.75rem' }}>RESPOND ABOVE</span>
                 ) : (
                   <button onClick={() => setRequestModalUser(user)} style={{
                     padding: isMobile ? '10px 14px' : '6px 12px',
                     minHeight: isMobile ? '44px' : 'auto',
-                    background: '#3bceac20', border: '1px solid #3bceac',
-                    color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace',
+                    background: 'var(--accent-teal)20', border: '1px solid var(--accent-teal)',
+                    color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace',
                   }}>SEND REQUEST</button>
                 )}
               </div>
@@ -6737,33 +6745,33 @@ const ContactsView = ({
       )}
 
       {contacts.length === 0 && contactRequests.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px', color: '#5a6a5a' }}>
+        <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
           <div style={{ fontSize: '3rem', marginBottom: '16px' }}>◎</div>
           <div>No contacts yet</div>
           <div style={{ fontSize: '0.8rem', marginTop: '8px' }}>Use "Find People" to send contact requests</div>
         </div>
       ) : contacts.length > 0 && (
         <>
-          <div style={{ color: '#7a8a7a', fontSize: '0.8rem', marginBottom: '12px', marginTop: '8px' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '12px', marginTop: '8px' }}>
             YOUR CONTACTS ({contacts.length})
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? '100%' : '280px'}, 1fr))`, gap: '12px' }}>
             {contacts.map(contact => (
               <div key={contact.id} style={{
-                padding: '16px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-                border: '1px solid #2a3a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '16px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+                border: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                  <Avatar letter={contact.avatar || contact.name[0]} color="#ffd23f" size={44} status={contact.status} />
+                  <Avatar letter={contact.avatar || contact.name[0]} color="var(--accent-amber)" size={44} status={contact.status} />
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ color: '#c5d5c5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</div>
+                    <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</div>
                   </div>
                 </div>
                 <button onClick={() => handleRemoveContact(contact.id)} style={{
                   padding: isMobile ? '10px' : '6px 10px',
                   minHeight: isMobile ? '44px' : 'auto',
-                  background: 'transparent', border: '1px solid #ff6b3550',
-                  color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem', flexShrink: 0,
+                  background: 'transparent', border: '1px solid var(--accent-orange)50',
+                  color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem', flexShrink: 0,
                 }}>✕</button>
               </div>
             ))}
@@ -6911,15 +6919,15 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
       {/* Group list */}
       <div style={{
         width: isMobile ? '100%' : '300px',
-        borderRight: isMobile ? 'none' : '1px solid #2a3a2a',
-        borderBottom: isMobile ? '1px solid #2a3a2a' : 'none',
+        borderRight: isMobile ? 'none' : '1px solid var(--border-subtle)',
+        borderBottom: isMobile ? '1px solid var(--border-subtle)' : 'none',
         display: 'flex', flexDirection: 'column',
         maxHeight: isMobile ? '300px' : 'none',
       }}>
-        <div style={{ padding: '16px', borderBottom: '1px solid #2a3a2a' }}>
+        <div style={{ padding: '16px', borderBottom: '1px solid var(--border-subtle)' }}>
           <button onClick={() => setShowNewGroup(true)} style={{
-            width: '100%', padding: '10px', background: '#ffd23f15', border: '1px solid #ffd23f50',
-            color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace',
+            width: '100%', padding: '10px', background: 'var(--accent-amber)15', border: '1px solid var(--accent-amber)50',
+            color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace',
           }}>+ NEW GROUP</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: groupInvitations?.length > 0 ? '12px' : '0' }}>
@@ -6933,15 +6941,15 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
             isMobile={isMobile}
           />
           {groups.length === 0 && (!groupInvitations || groupInvitations.length === 0) ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#5a6a5a' }}>No groups yet</div>
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>No groups yet</div>
           ) : groups.map(g => (
             <div key={g.id} onClick={() => setSelectedGroup(g.id)} style={{ padding: '14px 16px', cursor: 'pointer',
-              background: selectedGroup === g.id ? '#ffd23f10' : 'transparent',
-              borderBottom: '1px solid #1a2a1a',
-              borderLeft: `3px solid ${selectedGroup === g.id ? '#ffd23f' : 'transparent'}`,
+              background: selectedGroup === g.id ? 'var(--accent-amber)10' : 'transparent',
+              borderBottom: '1px solid var(--bg-hover)',
+              borderLeft: `3px solid ${selectedGroup === g.id ? 'var(--accent-amber)' : 'transparent'}`,
             }}>
-              <div style={{ color: '#c5d5c5', fontSize: '0.9rem' }}>{g.name}</div>
-              <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>{g.memberCount} members • {g.role}</div>
+              <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{g.name}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{g.memberCount} members • {g.role}</div>
             </div>
           ))}
         </div>
@@ -6950,7 +6958,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
       {/* Group details */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!selectedGroup ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--border-primary)' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '3rem', marginBottom: '16px' }}>◈</div>
               <div>Select a group or create a new one</div>
@@ -6961,67 +6969,67 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
         ) : (
           <>
             <div style={{
-              padding: '20px', borderBottom: '1px solid #2a3a2a',
-              background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
+              padding: '20px', borderBottom: '1px solid var(--border-subtle)',
+              background: 'linear-gradient(90deg, var(--bg-surface), var(--bg-hover), var(--bg-surface))',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
-                  <div style={{ color: '#c5d5c5', fontSize: '1.2rem', marginBottom: '4px' }}>{groupDetails.name}</div>
+                  <div style={{ color: 'var(--text-primary)', fontSize: '1.2rem', marginBottom: '4px' }}>{groupDetails.name}</div>
                   {groupDetails.description && (
-                    <div style={{ color: '#6a7a6a', fontSize: '0.85rem' }}>{groupDetails.description}</div>
+                    <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>{groupDetails.description}</div>
                   )}
-                  <div style={{ color: '#5a6a5a', fontSize: '0.75rem', marginTop: '8px' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '8px' }}>
                     {groupDetails.members?.length} members
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <button onClick={() => setShowInviteModal(true)} style={{
-                    padding: '6px 12px', background: '#3bceac15', border: '1px solid #3bceac',
-                    color: '#3bceac', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+                    padding: '6px 12px', background: 'var(--accent-teal)15', border: '1px solid var(--accent-teal)',
+                    color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
                   }}>+ INVITE</button>
                   <button onClick={handleLeaveGroup} style={{
-                    padding: '6px 12px', background: '#ffd23f15', border: '1px solid #ffd23f50',
-                    color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+                    padding: '6px 12px', background: 'var(--accent-amber)15', border: '1px solid var(--accent-amber)50',
+                    color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
                   }}>LEAVE GROUP</button>
                   {groupDetails.isAdmin && (
                     <button onClick={handleDeleteGroup} style={{
-                      padding: '6px 12px', background: '#ff6b3520', border: '1px solid #ff6b35',
-                      color: '#ff6b35', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+                      padding: '6px 12px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)',
+                      color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
                     }}>DELETE GROUP</button>
                   )}
                 </div>
               </div>
             </div>
 
-            <div style={{ padding: '20px', borderBottom: '1px solid #2a3a2a' }}>
+            <div style={{ padding: '20px', borderBottom: '1px solid var(--border-subtle)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-                <GlowText color="#ffd23f" size="0.9rem">MEMBERS</GlowText>
+                <GlowText color="var(--accent-amber)" size="0.9rem">MEMBERS</GlowText>
                 {groupDetails.isAdmin && (
                   <button onClick={() => setShowAddMember(!showAddMember)} style={{
-                    padding: '6px 12px', background: showAddMember ? '#3bceac20' : 'transparent',
-                    border: `1px solid ${showAddMember ? '#3bceac' : '#3a4a3a'}`,
-                    color: showAddMember ? '#3bceac' : '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+                    padding: '6px 12px', background: showAddMember ? 'var(--accent-teal)20' : 'transparent',
+                    border: `1px solid ${showAddMember ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+                    color: showAddMember ? 'var(--accent-teal)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
                   }}>{showAddMember ? '✕ CLOSE' : '+ INVITE MEMBER'}</button>
                 )}
               </div>
 
               {showAddMember && (
-                <div style={{ marginBottom: '16px', padding: '12px', background: '#0a100a', border: '1px solid #3bceac40' }}>
+                <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--accent-teal)40' }}>
                   <input type="text" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)}
                     placeholder="Search users..."
                     style={{
                       width: '100%', padding: '10px', boxSizing: 'border-box', marginBottom: '8px',
-                      background: 'transparent', border: '1px solid #2a3a2a', color: '#c5d5c5', fontFamily: 'inherit',
+                      background: 'transparent', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
                     }} />
                   {searchResults.map(user => (
                     <div key={user.id} style={{
                       padding: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      background: '#0d150d', marginBottom: '4px',
+                      background: 'var(--bg-surface)', marginBottom: '4px',
                     }}>
-                      <span style={{ color: '#c5d5c5' }}>{user.displayName}</span>
+                      <span style={{ color: 'var(--text-primary)' }}>{user.displayName}</span>
                       <button onClick={() => handleAddMember(user.id)} style={{
-                        padding: '4px 8px', background: '#3bceac20', border: '1px solid #3bceac',
-                        color: '#3bceac', cursor: 'pointer', fontSize: '0.7rem',
+                        padding: '4px 8px', background: 'var(--accent-teal)20', border: '1px solid var(--accent-teal)',
+                        color: 'var(--accent-teal)', cursor: 'pointer', fontSize: '0.7rem',
                       }}>INVITE</button>
                     </div>
                   ))}
@@ -7033,26 +7041,26 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
               {groupDetails.members?.map(member => (
                 <div key={member.id} style={{
                   padding: '12px', marginTop: '8px',
-                  background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-                  border: '1px solid #2a3a2a',
+                  background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+                  border: '1px solid var(--border-subtle)',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <Avatar letter={member.avatar || member.name[0]} color={member.role === 'admin' ? '#ffd23f' : '#6a7a6a'} size={36} status={member.status} />
+                    <Avatar letter={member.avatar || member.name[0]} color={member.role === 'admin' ? 'var(--accent-amber)' : 'var(--text-dim)'} size={36} status={member.status} />
                     <div>
-                      <div style={{ color: '#c5d5c5' }}>{member.name}</div>
-                      <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>{member.role}</div>
+                      <div style={{ color: 'var(--text-primary)' }}>{member.name}</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{member.role}</div>
                     </div>
                   </div>
                   {groupDetails.isAdmin && (
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={() => handleToggleAdmin(member.id, member.role)} style={{
-                        padding: '4px 8px', background: 'transparent', border: '1px solid #3a4a3a',
-                        color: '#6a7a6a', cursor: 'pointer', fontSize: '0.65rem', fontFamily: 'monospace',
+                        padding: '4px 8px', background: 'transparent', border: '1px solid var(--border-primary)',
+                        color: 'var(--text-dim)', cursor: 'pointer', fontSize: '0.65rem', fontFamily: 'monospace',
                       }}>{member.role === 'admin' ? '↓' : '↑'}</button>
                       <button onClick={() => handleRemoveMember(member.id)} style={{
-                        padding: '4px 8px', background: 'transparent', border: '1px solid #ff6b3550',
-                        color: '#ff6b35', cursor: 'pointer', fontSize: '0.65rem', fontFamily: 'monospace',
+                        padding: '4px 8px', background: 'transparent', border: '1px solid var(--accent-orange)50',
+                        color: 'var(--accent-orange)', cursor: 'pointer', fontSize: '0.65rem', fontFamily: 'monospace',
                       }}>✕</button>
                     </div>
                   )}
@@ -7070,41 +7078,41 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
         }}>
           <div style={{
-            width: '100%', maxWidth: '400px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-            border: '2px solid #ffd23f40', padding: '24px',
+            width: '100%', maxWidth: '400px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+            border: '2px solid var(--accent-amber)40', padding: '24px',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <GlowText color="#ffd23f" size="1.1rem">Create Group</GlowText>
-              <button onClick={() => setShowNewGroup(false)} style={{ background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer' }}>✕</button>
+              <GlowText color="var(--accent-amber)" size="1.1rem">Create Group</GlowText>
+              <button onClick={() => setShowNewGroup(false)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}>✕</button>
             </div>
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>NAME</div>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>NAME</div>
               <input type="text" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)}
                 placeholder="Group name..."
                 style={{
                   width: '100%', padding: '10px', boxSizing: 'border-box',
-                  background: '#0a100a', border: '1px solid #2a3a2a', color: '#c5d5c5', fontFamily: 'inherit',
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
                 }} />
             </div>
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>DESCRIPTION (optional)</div>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>DESCRIPTION (optional)</div>
               <textarea value={newGroupDesc} onChange={(e) => setNewGroupDesc(e.target.value)}
                 placeholder="What's this group for?"
                 style={{
                   width: '100%', padding: '10px', boxSizing: 'border-box', height: '80px', resize: 'none',
-                  background: '#0a100a', border: '1px solid #2a3a2a', color: '#c5d5c5', fontFamily: 'inherit',
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
                 }} />
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
               <button onClick={() => setShowNewGroup(false)} style={{
                 flex: 1, padding: '12px', background: 'transparent',
-                border: '1px solid #3a4a3a', color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace',
+                border: '1px solid var(--border-primary)', color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace',
               }}>CANCEL</button>
               <button onClick={handleCreateGroup} disabled={!newGroupName.trim()} style={{
                 flex: 1, padding: '12px',
-                background: newGroupName.trim() ? '#ffd23f20' : 'transparent',
-                border: `1px solid ${newGroupName.trim() ? '#ffd23f' : '#3a4a3a'}`,
-                color: newGroupName.trim() ? '#ffd23f' : '#5a6a5a',
+                background: newGroupName.trim() ? 'var(--accent-amber)20' : 'transparent',
+                border: `1px solid ${newGroupName.trim() ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                color: newGroupName.trim() ? 'var(--accent-amber)' : 'var(--text-muted)',
                 cursor: newGroupName.trim() ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
               }}>CREATE</button>
             </div>
@@ -7176,8 +7184,8 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
     return (
       <div style={{
         padding: '20px', textAlign: 'center',
-        color: '#5a6a5a', fontSize: isMobile ? '0.9rem' : '0.85rem',
-        background: '#0a100a', border: '1px solid #2a3a2a',
+        color: 'var(--text-muted)', fontSize: isMobile ? '0.9rem' : '0.85rem',
+        background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
         marginTop: '16px',
       }}>
         No pending handle change requests
@@ -7190,8 +7198,8 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
       {requests.map(req => (
         <div key={req.id} style={{
           padding: isMobile ? '14px' : '16px',
-          background: '#0a100a',
-          border: '1px solid #2a3a2a',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-subtle)',
           marginBottom: '12px',
         }}>
           <div style={{
@@ -7203,13 +7211,13 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
             gap: '8px',
           }}>
             <div>
-              <div style={{ color: '#c5d5c5', fontSize: isMobile ? '1rem' : '0.9rem', marginBottom: '4px' }}>
+              <div style={{ color: 'var(--text-primary)', fontSize: isMobile ? '1rem' : '0.9rem', marginBottom: '4px' }}>
                 {req.displayName}
               </div>
-              <div style={{ color: '#5a6a5a', fontSize: isMobile ? '0.85rem' : '0.75rem', fontFamily: 'monospace' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.85rem' : '0.75rem', fontFamily: 'monospace' }}>
                 @{req.currentHandle} → @{req.newHandle}
               </div>
-              <div style={{ color: '#6a7a6a', fontSize: isMobile ? '0.8rem' : '0.7rem', marginTop: '4px' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: isMobile ? '0.8rem' : '0.7rem', marginTop: '4px' }}>
                 Requested: {new Date(req.createdAt).toLocaleString()}
               </div>
             </div>
@@ -7219,16 +7227,16 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
             <button onClick={() => handleApprove(req.id)} style={{
               padding: isMobile ? '10px 16px' : '8px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: '#0ead6920',
-              border: '1px solid #0ead69', color: '#0ead69',
+              background: 'var(--accent-green)20',
+              border: '1px solid var(--accent-green)', color: 'var(--accent-green)',
               cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.75rem',
             }}>APPROVE</button>
 
             <button onClick={() => handleReject(req.id)} style={{
               padding: isMobile ? '10px 16px' : '8px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: '#ff6b3520',
-              border: '1px solid #ff6b35', color: '#ff6b35',
+              background: 'var(--accent-orange)20',
+              border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)',
               cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.75rem',
             }}>REJECT</button>
           </div>
@@ -7422,29 +7430,29 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
 
   const inputStyle = {
     width: '100%', padding: '10px 12px', boxSizing: 'border-box',
-    background: '#0a100a', border: '1px solid #2a3a2a',
-    color: '#c5d5c5', fontSize: '0.9rem', fontFamily: 'inherit',
+    background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+    color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'inherit',
   };
 
   return (
     <div style={{ flex: 1, padding: isMobile ? '16px' : '20px', overflowY: 'auto' }}>
-      <GlowText color="#ffd23f" size="1.1rem">PROFILE SETTINGS</GlowText>
+      <GlowText color="var(--accent-amber)" size="1.1rem">PROFILE SETTINGS</GlowText>
 
       {/* Profile Info */}
-      <div style={{ marginTop: '24px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
-        <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '16px' }}>PROFILE</div>
+      <div style={{ marginTop: '24px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '16px' }}>PROFILE</div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <Avatar letter={avatar || displayName?.[0] || '?'} color="#ffd23f" size={60} imageUrl={avatarUrl} />
+          <Avatar letter={avatar || displayName?.[0] || '?'} color="var(--accent-amber)" size={60} imageUrl={avatarUrl} />
           <div>
-            <div style={{ color: '#c5d5c5', fontSize: '1.1rem' }}>{displayName || user?.displayName}</div>
-            <div style={{ color: '#5a6a5a', fontSize: '0.8rem' }}>@{user?.handle}</div>
+            <div style={{ color: 'var(--text-primary)', fontSize: '1.1rem' }}>{displayName || user?.displayName}</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>@{user?.handle}</div>
           </div>
         </div>
 
         {/* Profile Image Upload */}
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>PROFILE IMAGE</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PROFILE IMAGE</label>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
             <input
               ref={fileInputRef}
@@ -7459,9 +7467,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
               style={{
                 padding: isMobile ? '10px 16px' : '8px 14px',
                 minHeight: isMobile ? '44px' : 'auto',
-                background: '#0ead6920',
-                border: '1px solid #0ead69',
-                color: '#0ead69',
+                background: 'var(--accent-green)20',
+                border: '1px solid var(--accent-green)',
+                color: 'var(--accent-green)',
                 cursor: uploadingAvatar ? 'wait' : 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.85rem' : '0.8rem',
@@ -7476,8 +7484,8 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                   padding: isMobile ? '10px 16px' : '8px 14px',
                   minHeight: isMobile ? '44px' : 'auto',
                   background: 'transparent',
-                  border: '1px solid #ff6b35',
-                  color: '#ff6b35',
+                  border: '1px solid var(--accent-orange)',
+                  color: 'var(--accent-orange)',
                   cursor: 'pointer',
                   fontFamily: 'monospace',
                   fontSize: isMobile ? '0.85rem' : '0.8rem',
@@ -7487,27 +7495,27 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
               </button>
             )}
           </div>
-          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '4px' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '4px' }}>
             Max 2MB. Formats: jpg, png, gif, webp. Image will be resized to 256×256.
           </div>
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>DISPLAY NAME</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>DISPLAY NAME</label>
           <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={inputStyle} />
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>FALLBACK AVATAR (1-2 characters)</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>FALLBACK AVATAR (1-2 characters)</label>
           <input type="text" value={avatar} onChange={(e) => setAvatar(e.target.value.slice(0, 2))} maxLength={2} style={inputStyle} />
-          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '4px' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '4px' }}>
             Shown when no profile image is set or if it fails to load.
           </div>
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
-            BIO <span style={{ color: '#5a6a5a' }}>({bio.length}/500)</span>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+            BIO <span style={{ color: 'var(--text-muted)' }}>({bio.length}/500)</span>
           </label>
           <textarea
             value={bio}
@@ -7524,15 +7532,15 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
         </div>
 
         <button onClick={handleSaveProfile} style={{
-          padding: '10px 20px', background: '#ffd23f20', border: '1px solid #ffd23f',
-          color: '#ffd23f', cursor: 'pointer', fontFamily: 'monospace',
+          padding: '10px 20px', background: 'var(--accent-amber)20', border: '1px solid var(--accent-amber)',
+          color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace',
         }}>SAVE PROFILE</button>
       </div>
 
       {/* Handle Change */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
-        <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '16px' }}>HANDLE CHANGE</div>
-        <div style={{ color: '#5a6a5a', fontSize: '0.75rem', marginBottom: '12px' }}>
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '16px' }}>HANDLE CHANGE</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
           Handle changes require admin approval. You can change your handle once every 30 days.
         </div>
         <div style={{ marginBottom: '16px' }}>
@@ -7541,40 +7549,40 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
         </div>
         <button onClick={handleRequestHandleChange} disabled={!newHandle} style={{
           padding: '10px 20px',
-          background: newHandle ? '#3bceac20' : 'transparent',
-          border: `1px solid ${newHandle ? '#3bceac' : '#3a4a3a'}`,
-          color: newHandle ? '#3bceac' : '#5a6a5a',
+          background: newHandle ? 'var(--accent-teal)20' : 'transparent',
+          border: `1px solid ${newHandle ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+          color: newHandle ? 'var(--accent-teal)' : 'var(--text-muted)',
           cursor: newHandle ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
         }}>REQUEST CHANGE</button>
       </div>
 
       {/* Password Change */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
-        <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '12px' }}>CHANGE PASSWORD</div>
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '12px' }}>CHANGE PASSWORD</div>
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>CURRENT PASSWORD</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CURRENT PASSWORD</label>
           <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={inputStyle} />
         </div>
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>NEW PASSWORD</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>NEW PASSWORD</label>
           <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
             placeholder="Min 8 chars, upper, lower, number" style={inputStyle} />
         </div>
         <button onClick={handleChangePassword} disabled={!currentPassword || !newPassword} style={{
           padding: '10px 20px',
-          background: currentPassword && newPassword ? '#ff6b3520' : 'transparent',
-          border: `1px solid ${currentPassword && newPassword ? '#ff6b35' : '#3a4a3a'}`,
-          color: currentPassword && newPassword ? '#ff6b35' : '#5a6a5a',
+          background: currentPassword && newPassword ? 'var(--accent-orange)20' : 'transparent',
+          border: `1px solid ${currentPassword && newPassword ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+          color: currentPassword && newPassword ? 'var(--accent-orange)' : 'var(--text-muted)',
           cursor: currentPassword && newPassword ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
         }}>CHANGE PASSWORD</button>
       </div>
 
       {/* Display Preferences */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
-        <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '12px' }}>DISPLAY PREFERENCES</div>
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '12px' }}>DISPLAY PREFERENCES</div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>THEME</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>THEME</label>
           <select
             value={user?.preferences?.theme || 'firefly'}
             onChange={(e) => handleUpdatePreferences({ theme: e.target.value })}
@@ -7587,10 +7595,13 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
               <option key={key} value={key}>{config.name}</option>
             ))}
           </select>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
+            {THEMES[user?.preferences?.theme || 'firefly']?.description}
+          </div>
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>FONT SIZE</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>FONT SIZE</label>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {Object.entries(FONT_SIZES).map(([key, config]) => (
               <button
@@ -7599,9 +7610,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                 style={{
                   padding: isMobile ? '10px 16px' : '8px 16px',
                   minHeight: isMobile ? '44px' : 'auto',
-                  background: (user?.preferences?.fontSize || 'medium') === key ? '#ffd23f20' : 'transparent',
-                  border: `1px solid ${(user?.preferences?.fontSize || 'medium') === key ? '#ffd23f' : '#2a3a2a'}`,
-                  color: (user?.preferences?.fontSize || 'medium') === key ? '#ffd23f' : '#6a7a6a',
+                  background: (user?.preferences?.fontSize || 'medium') === key ? 'var(--accent-amber)20' : 'transparent',
+                  border: `1px solid ${(user?.preferences?.fontSize || 'medium') === key ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
+                  color: (user?.preferences?.fontSize || 'medium') === key ? 'var(--accent-amber)' : 'var(--text-dim)',
                   cursor: 'pointer',
                   fontFamily: 'monospace',
                   fontSize: key === 'small' ? '0.75rem' : key === 'large' ? '1rem' : key === 'xlarge' ? '1.1rem' : '0.85rem',
@@ -7614,15 +7625,15 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>CRT SCAN LINES</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CRT SCAN LINES</label>
           <button
             onClick={() => handleUpdatePreferences({ scanLines: !(user?.preferences?.scanLines !== false) })}
             style={{
               padding: isMobile ? '10px 16px' : '8px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: (user?.preferences?.scanLines !== false) ? '#ffd23f20' : 'transparent',
-              border: `1px solid ${(user?.preferences?.scanLines !== false) ? '#ffd23f' : '#2a3a2a'}`,
-              color: (user?.preferences?.scanLines !== false) ? '#ffd23f' : '#6a7a6a',
+              background: (user?.preferences?.scanLines !== false) ? 'var(--accent-amber)20' : 'transparent',
+              border: `1px solid ${(user?.preferences?.scanLines !== false) ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
+              color: (user?.preferences?.scanLines !== false) ? 'var(--accent-amber)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -7630,21 +7641,21 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
           >
             {(user?.preferences?.scanLines !== false) ? '▣ ENABLED' : '▢ DISABLED'}
           </button>
-          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
             Disable for improved readability
           </div>
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>AUTO-FOCUS DROPLETS</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>AUTO-FOCUS DROPLETS</label>
           <button
             onClick={() => handleUpdatePreferences({ autoFocusDroplets: !(user?.preferences?.autoFocusDroplets === true) })}
             style={{
               padding: isMobile ? '10px 16px' : '8px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: (user?.preferences?.autoFocusDroplets === true) ? '#3bceac20' : 'transparent',
-              border: `1px solid ${(user?.preferences?.autoFocusDroplets === true) ? '#3bceac' : '#2a3a2a'}`,
-              color: (user?.preferences?.autoFocusDroplets === true) ? '#3bceac' : '#6a7a6a',
+              background: (user?.preferences?.autoFocusDroplets === true) ? 'var(--accent-teal)20' : 'transparent',
+              border: `1px solid ${(user?.preferences?.autoFocusDroplets === true) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+              color: (user?.preferences?.autoFocusDroplets === true) ? 'var(--accent-teal)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -7652,13 +7663,13 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
           >
             {(user?.preferences?.autoFocusDroplets === true) ? '⤢ ENABLED' : '⤢ DISABLED'}
           </button>
-          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
             Automatically enter Focus View when clicking droplets with replies
           </div>
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>PUSH NOTIFICATIONS</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PUSH NOTIFICATIONS</label>
           <button
             onClick={async () => {
               const token = storage.getToken();
@@ -7685,9 +7696,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
             style={{
               padding: isMobile ? '10px 16px' : '8px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: storage.getPushEnabled() ? '#0ead6920' : 'transparent',
-              border: `1px solid ${storage.getPushEnabled() ? '#0ead69' : '#2a3a2a'}`,
-              color: storage.getPushEnabled() ? '#0ead69' : '#6a7a6a',
+              background: storage.getPushEnabled() ? 'var(--accent-green)20' : 'transparent',
+              border: `1px solid ${storage.getPushEnabled() ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+              color: storage.getPushEnabled() ? 'var(--accent-green)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -7695,33 +7706,33 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
           >
             {storage.getPushEnabled() ? '🔔 ENABLED' : '🔕 DISABLED'}
           </button>
-          <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
             Receive notifications when the app is closed or in background
           </div>
           {/* iOS warning */}
           {/iPad|iPhone|iPod/.test(navigator.userAgent) && (
-            <div style={{ color: '#ff6b35', fontSize: '0.65rem', marginTop: '6px', padding: '6px', background: '#ff6b3510', border: '1px solid #ff6b3530' }}>
+            <div style={{ color: 'var(--accent-orange)', fontSize: '0.65rem', marginTop: '6px', padding: '6px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
               ⚠️ iOS does not support push notifications for web apps. This is a platform limitation by Apple.
             </div>
           )}
         </div>
 
-        <div style={{ color: '#5a6a5a', fontSize: '0.7rem', padding: '10px', background: '#0a100a', border: '1px solid #2a3a2a' }}>
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
           ℹ️ Theme customization will change colors throughout the app (coming soon). Other changes take effect immediately.
         </div>
       </div>
 
       {/* Notification Preferences */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div style={{ color: '#6a7a6a', fontSize: '0.8rem' }}>NOTIFICATION PREFERENCES</div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>NOTIFICATION PREFERENCES</div>
           <button
             onClick={() => setShowNotificationPrefs(!showNotificationPrefs)}
             style={{
               padding: isMobile ? '8px 12px' : '6px 10px',
-              background: showNotificationPrefs ? '#ffd23f20' : 'transparent',
-              border: `1px solid ${showNotificationPrefs ? '#ffd23f' : '#3a4a3a'}`,
-              color: showNotificationPrefs ? '#ffd23f' : '#6a7a6a',
+              background: showNotificationPrefs ? 'var(--accent-amber)20' : 'transparent',
+              border: `1px solid ${showNotificationPrefs ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+              color: showNotificationPrefs ? 'var(--accent-amber)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: '0.7rem',
@@ -7735,7 +7746,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
           <div>
             {/* Global Enable */}
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
                 NOTIFICATIONS
               </label>
               <button
@@ -7743,9 +7754,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                 style={{
                   padding: isMobile ? '10px 16px' : '8px 16px',
                   minHeight: isMobile ? '44px' : 'auto',
-                  background: notificationPrefs.enabled ? '#0ead6920' : 'transparent',
-                  border: `1px solid ${notificationPrefs.enabled ? '#0ead69' : '#2a3a2a'}`,
-                  color: notificationPrefs.enabled ? '#0ead69' : '#6a7a6a',
+                  background: notificationPrefs.enabled ? 'var(--accent-green)20' : 'transparent',
+                  border: `1px solid ${notificationPrefs.enabled ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                  color: notificationPrefs.enabled ? 'var(--accent-green)' : 'var(--text-dim)',
                   cursor: 'pointer',
                   fontFamily: 'monospace',
                   fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -7753,7 +7764,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
               >
                 {notificationPrefs.enabled ? '🔔 ENABLED' : '🔕 DISABLED'}
               </button>
-              <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
                 Master switch for all in-app notifications
               </div>
             </div>
@@ -7768,7 +7779,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                   { key: 'rippleEvents', label: 'RIPPLE EVENTS', icon: '◈', desc: 'When droplets are rippled to new waves' },
                 ].map(({ key, label, icon, desc }) => (
                   <div key={key} style={{ marginBottom: '16px' }}>
-                    <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
+                    <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
                       {icon} {label}
                     </label>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -7783,9 +7794,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                           style={{
                             padding: isMobile ? '8px 12px' : '6px 12px',
                             minHeight: isMobile ? '40px' : 'auto',
-                            background: notificationPrefs[key] === opt.value ? '#ffd23f20' : 'transparent',
-                            border: `1px solid ${notificationPrefs[key] === opt.value ? '#ffd23f' : '#2a3a2a'}`,
-                            color: notificationPrefs[key] === opt.value ? '#ffd23f' : '#6a7a6a',
+                            background: notificationPrefs[key] === opt.value ? 'var(--accent-amber)20' : 'transparent',
+                            border: `1px solid ${notificationPrefs[key] === opt.value ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
+                            color: notificationPrefs[key] === opt.value ? 'var(--accent-amber)' : 'var(--text-dim)',
                             cursor: 'pointer',
                             fontFamily: 'monospace',
                             fontSize: '0.75rem',
@@ -7795,7 +7806,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                         </button>
                       ))}
                     </div>
-                    <div style={{ color: '#5a6a5a', fontSize: '0.6rem', marginTop: '4px' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.6rem', marginTop: '4px' }}>
                       {desc}
                     </div>
                   </div>
@@ -7803,7 +7814,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
 
                 {/* Suppress While Focused */}
                 <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>
+                  <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
                     SUPPRESS WHILE VIEWING
                   </label>
                   <button
@@ -7811,9 +7822,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                     style={{
                       padding: isMobile ? '10px 16px' : '8px 16px',
                       minHeight: isMobile ? '44px' : 'auto',
-                      background: notificationPrefs.suppressWhileFocused ? '#ffd23f20' : 'transparent',
-                      border: `1px solid ${notificationPrefs.suppressWhileFocused ? '#ffd23f' : '#2a3a2a'}`,
-                      color: notificationPrefs.suppressWhileFocused ? '#ffd23f' : '#6a7a6a',
+                      background: notificationPrefs.suppressWhileFocused ? 'var(--accent-amber)20' : 'transparent',
+                      border: `1px solid ${notificationPrefs.suppressWhileFocused ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
+                      color: notificationPrefs.suppressWhileFocused ? 'var(--accent-amber)' : 'var(--text-dim)',
                       cursor: 'pointer',
                       fontFamily: 'monospace',
                       fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -7821,37 +7832,37 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                   >
                     {notificationPrefs.suppressWhileFocused ? '▣ ENABLED' : '▢ DISABLED'}
                   </button>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.65rem', marginTop: '6px' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
                     Don't show wave activity notifications when you're viewing that wave
                   </div>
                 </div>
               </>
             )}
 
-            <div style={{ color: '#5a6a5a', fontSize: '0.7rem', padding: '10px', background: '#0a100a', border: '1px solid #2a3a2a', marginTop: '12px' }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', marginTop: '12px' }}>
               ℹ️ "Always" shows notifications even when viewing the app. "App Closed" only notifies when the app is in background. "Never" disables that notification type.
             </div>
           </div>
         )}
 
         {showNotificationPrefs && !notificationPrefs && (
-          <div style={{ color: '#6a7a6a', fontSize: '0.8rem', padding: '20px', textAlign: 'center' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', padding: '20px', textAlign: 'center' }}>
             Loading preferences...
           </div>
         )}
       </div>
 
       {/* Blocked & Muted Users */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div style={{ color: '#6a7a6a', fontSize: '0.8rem' }}>BLOCKED & MUTED USERS</div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>BLOCKED & MUTED USERS</div>
           <button
             onClick={() => setShowBlockedMuted(!showBlockedMuted)}
             style={{
               padding: isMobile ? '8px 12px' : '6px 10px',
-              background: showBlockedMuted ? '#ff6b3520' : 'transparent',
-              border: `1px solid ${showBlockedMuted ? '#ff6b35' : '#3a4a3a'}`,
-              color: showBlockedMuted ? '#ff6b35' : '#6a7a6a',
+              background: showBlockedMuted ? 'var(--accent-orange)20' : 'transparent',
+              border: `1px solid ${showBlockedMuted ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+              color: showBlockedMuted ? 'var(--accent-orange)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: '0.7rem',
@@ -7865,11 +7876,11 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
           <div>
             {/* Blocked Users */}
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ color: '#ff6b35', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span>⊘</span> BLOCKED ({blockedUsers.length})
               </div>
               {blockedUsers.length === 0 ? (
-                <div style={{ color: '#5a6a5a', fontSize: '0.75rem', padding: '12px', background: '#0a100a', border: '1px solid #1a2a1a' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
                   No blocked users. Blocked users cannot send you contact requests, invite you to groups, or have their messages shown to you.
                 </div>
               ) : (
@@ -7880,13 +7891,13 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       padding: '10px 12px',
-                      background: '#ff6b3510',
-                      border: '1px solid #ff6b3530',
+                      background: 'var(--accent-orange)10',
+                      border: '1px solid var(--accent-orange)30',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="#ff6b35" size={28} />
+                        <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="var(--accent-orange)" size={28} />
                         <div>
-                          <div style={{ color: '#c5d5c5', fontSize: '0.8rem' }}>{u.displayName}</div>
+                          <div style={{ color: 'var(--text-primary)', fontSize: '0.8rem' }}>{u.displayName}</div>
                         </div>
                       </div>
                       <button
@@ -7894,9 +7905,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                         style={{
                           padding: isMobile ? '8px 12px' : '6px 10px',
                           minHeight: isMobile ? '40px' : 'auto',
-                          background: '#0ead6920',
-                          border: '1px solid #0ead69',
-                          color: '#0ead69',
+                          background: 'var(--accent-green)20',
+                          border: '1px solid var(--accent-green)',
+                          color: 'var(--accent-green)',
                           cursor: 'pointer',
                           fontFamily: 'monospace',
                           fontSize: '0.65rem',
@@ -7910,11 +7921,11 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
 
             {/* Muted Users */}
             <div>
-              <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span>🔇</span> MUTED ({mutedUsers.length})
               </div>
               {mutedUsers.length === 0 ? (
-                <div style={{ color: '#5a6a5a', fontSize: '0.75rem', padding: '12px', background: '#0a100a', border: '1px solid #1a2a1a' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
                   No muted users. Muted users can still interact with you, but their messages will be hidden from view.
                 </div>
               ) : (
@@ -7925,13 +7936,13 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       padding: '10px 12px',
-                      background: '#0a100a',
-                      border: '1px solid #2a3a2a',
+                      background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border-subtle)',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="#6a7a6a" size={28} />
+                        <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="var(--text-dim)" size={28} />
                         <div>
-                          <div style={{ color: '#8a9a8a', fontSize: '0.8rem' }}>{u.displayName}</div>
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{u.displayName}</div>
                         </div>
                       </div>
                       <button
@@ -7939,9 +7950,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
                         style={{
                           padding: isMobile ? '8px 12px' : '6px 10px',
                           minHeight: isMobile ? '40px' : 'auto',
-                          background: '#0ead6920',
-                          border: '1px solid #0ead69',
-                          color: '#0ead69',
+                          background: 'var(--accent-green)20',
+                          border: '1px solid var(--accent-green)',
+                          color: 'var(--accent-green)',
                           cursor: 'pointer',
                           fontFamily: 'monospace',
                           fontSize: '0.65rem',
@@ -7958,8 +7969,8 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
 
       {/* Admin Panel */}
       {user?.isAdmin && (
-        <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #1a2a1a, #0d150d)', border: '2px solid #ffd23f40' }}>
-          <GlowText color="#ffd23f" size={isMobile ? '1rem' : '0.9rem'}>ADMIN PANEL</GlowText>
+        <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-hover), var(--bg-surface))', border: '2px solid var(--accent-amber)40' }}>
+          <GlowText color="var(--accent-amber)" size={isMobile ? '1rem' : '0.9rem'}>ADMIN PANEL</GlowText>
 
           <div style={{ marginTop: '16px' }}>
             <button
@@ -7967,9 +7978,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
               style={{
                 padding: isMobile ? '12px 20px' : '10px 20px',
                 minHeight: isMobile ? '44px' : 'auto',
-                background: showHandleRequests ? '#ffd23f20' : 'transparent',
-                border: `1px solid ${showHandleRequests ? '#ffd23f' : '#3a4a3a'}`,
-                color: showHandleRequests ? '#ffd23f' : '#6a7a6a',
+                background: showHandleRequests ? 'var(--accent-amber)20' : 'transparent',
+                border: `1px solid ${showHandleRequests ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                color: showHandleRequests ? 'var(--accent-amber)' : 'var(--text-dim)',
                 cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.9rem' : '0.85rem',
               }}
             >
@@ -7985,21 +7996,21 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
       )}
 
       {/* My Reports Section */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
         <MyReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
       </div>
 
       {/* Logout Section */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, #0d150d, #1a2a1a)', border: '1px solid #2a3a2a' }}>
-        <div style={{ color: '#6a7a6a', fontSize: '0.8rem', marginBottom: '16px' }}>SESSION</div>
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '16px' }}>SESSION</div>
         <button
           onClick={onLogout}
           style={{
             padding: isMobile ? '14px 24px' : '12px 24px',
             minHeight: isMobile ? '44px' : 'auto',
             background: 'transparent',
-            border: '1px solid #ff6b35',
-            color: '#ff6b35',
+            border: '1px solid var(--accent-orange)',
+            color: 'var(--accent-orange)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -8041,38 +8052,38 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
     }}>
       <div style={{
         width: '100%', maxWidth: '450px', maxHeight: '80vh', overflowY: 'auto',
-        background: 'linear-gradient(135deg, #0d150d, #1a2a1a)',
-        border: '2px solid #ffd23f40', padding: '24px',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '2px solid var(--accent-amber)40', padding: '24px',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <GlowText color="#ffd23f" size="1.1rem">New Wave</GlowText>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6a7a6a', cursor: 'pointer' }}>✕</button>
+          <GlowText color="var(--accent-amber)" size="1.1rem">New Wave</GlowText>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}>✕</button>
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>TITLE</div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>TITLE</div>
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
             placeholder="Wave title..."
             style={{
               width: '100%', padding: '10px', boxSizing: 'border-box',
-              background: '#0a100a', border: '1px solid #2a3a2a', color: '#c5d5c5', fontFamily: 'inherit',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
             }} />
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>PRIVACY LEVEL</div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PRIVACY LEVEL</div>
           {Object.entries(PRIVACY_LEVELS).map(([key, config]) => (
             <button key={key} onClick={() => { setPrivacy(key); if (key !== 'group') setSelectedGroup(null); }}
               style={{
                 width: '100%', padding: '12px', marginBottom: '8px', textAlign: 'left',
-                background: privacy === key ? config.bgColor : '#0a100a',
-                border: `1px solid ${privacy === key ? config.color : '#2a3a2a'}`, cursor: 'pointer',
+                background: privacy === key ? config.bgColor : 'var(--bg-elevated)',
+                border: `1px solid ${privacy === key ? config.color : 'var(--border-subtle)'}`, cursor: 'pointer',
               }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ color: config.color, fontSize: '1.1rem' }}>{config.icon}</span>
                 <div>
                   <div style={{ color: config.color }}>{config.name}</div>
-                  <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>{config.desc}</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{config.desc}</div>
                 </div>
               </div>
             </button>
@@ -8081,17 +8092,17 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
 
         {privacy === 'group' && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT GROUP</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT GROUP</div>
             {groups.length === 0 ? (
-              <div style={{ color: '#5a6a5a', padding: '10px', background: '#0a100a' }}>No groups. Create one first.</div>
+              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>No groups. Create one first.</div>
             ) : groups.map(g => (
               <button key={g.id} onClick={() => setSelectedGroup(g.id)} style={{
                 width: '100%', padding: '10px', marginBottom: '4px', textAlign: 'left',
-                background: selectedGroup === g.id ? '#ffd23f15' : '#0a100a',
-                border: `1px solid ${selectedGroup === g.id ? '#ffd23f' : '#2a3a2a'}`, cursor: 'pointer',
+                background: selectedGroup === g.id ? 'var(--accent-amber)15' : 'var(--bg-elevated)',
+                border: `1px solid ${selectedGroup === g.id ? 'var(--accent-amber)' : 'var(--border-subtle)'}`, cursor: 'pointer',
               }}>
-                <div style={{ color: '#c5d5c5' }}>{g.name}</div>
-                <div style={{ color: '#5a6a5a', fontSize: '0.7rem' }}>{g.memberCount} members</div>
+                <div style={{ color: 'var(--text-primary)' }}>{g.name}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{g.memberCount} members</div>
               </button>
             ))}
           </div>
@@ -8099,19 +8110,19 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
 
         {privacy !== 'group' && privacy !== 'public' && contacts.length > 0 && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: '#6a7a6a', fontSize: '0.75rem', marginBottom: '8px' }}>ADD PARTICIPANTS</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>ADD PARTICIPANTS</div>
             <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
               {contacts.map(c => (
                 <button key={c.id} onClick={() => setSelectedParticipants(p => p.includes(c.id) ? p.filter(x => x !== c.id) : [...p, c.id])}
                   style={{
                     width: '100%', padding: '8px', marginBottom: '4px',
-                    background: selectedParticipants.includes(c.id) ? '#ffd23f15' : 'transparent',
-                    border: `1px solid ${selectedParticipants.includes(c.id) ? '#ffd23f' : '#2a3a2a'}`,
+                    background: selectedParticipants.includes(c.id) ? 'var(--accent-amber)15' : 'transparent',
+                    border: `1px solid ${selectedParticipants.includes(c.id) ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
                   }}>
-                  <Avatar letter={c.avatar} color="#ffd23f" size={24} />
-                  <span style={{ color: '#c5d5c5', fontSize: '0.85rem' }}>{c.name}</span>
-                  {selectedParticipants.includes(c.id) && <span style={{ marginLeft: 'auto', color: '#0ead69' }}>✔</span>}
+                  <Avatar letter={c.avatar} color="var(--accent-amber)" size={24} />
+                  <span style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>{c.name}</span>
+                  {selectedParticipants.includes(c.id) && <span style={{ marginLeft: 'auto', color: 'var(--accent-green)' }}>✔</span>}
                 </button>
               ))}
             </div>
@@ -8121,13 +8132,13 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
         <div style={{ display: 'flex', gap: '12px' }}>
           <button onClick={onClose} style={{
             flex: 1, padding: '12px', background: 'transparent',
-            border: '1px solid #3a4a3a', color: '#6a7a6a', cursor: 'pointer', fontFamily: 'monospace',
+            border: '1px solid var(--border-primary)', color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace',
           }}>CANCEL</button>
           <button onClick={handleCreate} disabled={!canCreate} style={{
             flex: 1, padding: '12px',
-            background: canCreate ? '#ffd23f20' : 'transparent',
-            border: `1px solid ${canCreate ? '#ffd23f' : '#5a6a5a'}`,
-            color: canCreate ? '#ffd23f' : '#5a6a5a',
+            background: canCreate ? 'var(--accent-amber)20' : 'transparent',
+            border: `1px solid ${canCreate ? 'var(--accent-amber)' : 'var(--text-muted)'}`,
+            color: canCreate ? 'var(--accent-amber)' : 'var(--text-muted)',
             cursor: canCreate ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
           }}>CREATE</button>
         </div>
@@ -8142,18 +8153,18 @@ const ConnectionStatus = ({ wsConnected, apiConnected }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
       <div style={{
         width: '6px', height: '6px', borderRadius: '50%',
-        background: apiConnected ? '#0ead69' : '#ff6b35',
-        boxShadow: apiConnected ? '0 0 6px #0ead69' : 'none',
+        background: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)',
+        boxShadow: apiConnected ? '0 0 6px var(--accent-green)' : 'none',
       }} />
-      <span style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>API</span>
+      <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>API</span>
     </div>
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
       <div style={{
         width: '6px', height: '6px', borderRadius: '50%',
-        background: wsConnected ? '#0ead69' : '#ff6b35',
-        boxShadow: wsConnected ? '0 0 6px #0ead69' : 'none',
+        background: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)',
+        boxShadow: wsConnected ? '0 0 6px var(--accent-green)' : 'none',
       }} />
-      <span style={{ color: '#5a6a5a', fontSize: '0.65rem' }}>LIVE</span>
+      <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>LIVE</span>
     </div>
   </div>
 );
@@ -8197,6 +8208,12 @@ function MainApp() {
       document.documentElement.style.fontSize = '100%';
     };
   }, [fontScale]);
+
+  // Apply theme to document root
+  useEffect(() => {
+    const theme = user?.preferences?.theme || 'firefly';
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [user?.preferences?.theme]);
 
   const showToastMsg = useCallback((message, type) => setToast({ message, type }), []);
 
@@ -8570,8 +8587,8 @@ function MainApp() {
 
   return (
     <div style={{
-      height: '100vh', background: 'linear-gradient(180deg, #0d150d, #050805)',
-      fontFamily: "'Courier New', monospace", color: '#c5d5c5',
+      height: '100vh', background: 'linear-gradient(180deg, var(--bg-surface), var(--bg-base))',
+      fontFamily: "'Courier New', monospace", color: 'var(--text-primary)',
       display: 'flex', flexDirection: 'column',
     }}>
       <ScanLines enabled={scanLinesEnabled} />
@@ -8580,22 +8597,22 @@ function MainApp() {
           max-width: 100%;
           max-height: 400px;
           height: auto;
-          border: 1px solid #2a3a2a;
+          border: 1px solid var(--border-subtle);
           border-radius: 2px;
           margin: 8px 0;
           display: block;
         }
         /* Search result highlighting */
         mark {
-          background: #ffd23f40;
-          color: #ffd23f;
+          background: var(--accent-amber)40;
+          color: var(--accent-amber);
           font-weight: bold;
           padding: 0 2px;
           border-radius: 2px;
         }
         /* Thread navigation highlight animation */
         @keyframes highlight-pulse {
-          0%, 100% { border-color: #ffd23f; box-shadow: 0 0 0 0 rgba(255, 210, 63, 0.7); }
+          0%, 100% { border-color: var(--accent-amber); box-shadow: 0 0 0 0 rgba(255, 210, 63, 0.7); }
           50% { border-color: #ffed4e; box-shadow: 0 0 20px 4px rgba(255, 210, 63, 0.4); }
         }
         .highlight-flash > div {
@@ -8613,7 +8630,7 @@ function MainApp() {
           top: 0;
           bottom: 0;
           width: 1px;
-          border-left: 1px dashed #2a3a2a;
+          border-left: 1px dashed var(--border-subtle);
         }
         .thread-connector::after {
           content: '';
@@ -8622,7 +8639,7 @@ function MainApp() {
           top: 20px;
           width: 12px;
           height: 1px;
-          border-top: 1px dashed #2a3a2a;
+          border-top: 1px dashed var(--border-subtle);
         }
         /* Mobile thread connectors - thinner lines and smaller indent */
         @media (max-width: 768px) {
@@ -8642,21 +8659,21 @@ function MainApp() {
       <header style={{
         padding: isMobile ? '8px 10px' : '12px 24px',
         paddingTop: isMobile ? 'calc(8px + env(safe-area-inset-top, 0px))' : '12px',
-        borderBottom: '2px solid #ffd23f40',
-        background: 'linear-gradient(90deg, #0d150d, #1a2a1a, #0d150d)',
+        borderBottom: '2px solid var(--accent-amber)40',
+        background: 'linear-gradient(90deg, var(--bg-surface), var(--bg-hover), var(--bg-surface))',
         display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px',
       }}>
         {/* Logo and Status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-            <GlowText color="#ffd23f" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            <span style={{ color: '#5a6a5a', fontSize: '0.55rem' }}>v1.11.0</span>
+            <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.11.0</span>
           </div>
           {/* Status indicators */}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', fontSize: '0.55rem', fontFamily: 'monospace' }}>
-            <span style={{ color: '#5a6a5a' }}><span style={{ color: '#0ead69' }}>●</span> ENC</span>
-            <span style={{ color: '#5a6a5a' }}><span style={{ color: apiConnected ? '#0ead69' : '#ff6b35' }}>●</span> API</span>
-            <span style={{ color: '#5a6a5a' }}><span style={{ color: wsConnected ? '#0ead69' : '#ff6b35' }}>●</span> WS</span>
+            <span style={{ color: 'var(--text-muted)' }}><span style={{ color: 'var(--accent-green)' }}>●</span> ENC</span>
+            <span style={{ color: 'var(--text-muted)' }}><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
+            <span style={{ color: 'var(--text-muted)' }}><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> WS</span>
           </div>
         </div>
 
@@ -8671,9 +8688,9 @@ function MainApp() {
               return (
                 <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); }} style={{
                   padding: '8px 16px',
-                  background: activeView === view ? '#ffd23f15' : 'transparent',
-                  border: `1px solid ${activeView === view ? '#ffd23f50' : '#3a4a3a'}`,
-                  color: activeView === view ? '#ffd23f' : '#6a7a6a',
+                  background: activeView === view ? 'var(--accent-amber)15' : 'transparent',
+                  border: `1px solid ${activeView === view ? 'var(--accent-amber)50' : 'var(--border-primary)'}`,
+                  color: activeView === view ? 'var(--accent-amber)' : 'var(--text-dim)',
                   cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', textTransform: 'uppercase',
                   position: 'relative',
                 }}>
@@ -8683,7 +8700,7 @@ function MainApp() {
                       position: 'absolute',
                       top: '-6px',
                       right: '-6px',
-                      background: pendingRequests > 0 ? '#3bceac' : pendingInvitations > 0 ? '#ffd23f' : '#ff6b35',
+                      background: pendingRequests > 0 ? 'var(--accent-teal)' : pendingInvitations > 0 ? 'var(--accent-amber)' : 'var(--accent-orange)',
                       color: pendingInvitations > 0 && !pendingRequests ? '#000' : '#fff',
                       fontSize: '0.55rem',
                       fontWeight: 700,
@@ -8714,8 +8731,8 @@ function MainApp() {
               style={{
                 padding: '8px 12px',
                 background: 'transparent',
-                border: '1px solid #3bceac',
-                color: '#3bceac',
+                border: '1px solid var(--accent-teal)',
+                color: 'var(--accent-teal)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: '0.8rem',
@@ -8725,7 +8742,7 @@ function MainApp() {
               🔍
             </button>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ color: '#ffd23f', fontSize: '0.8rem' }}>{user?.displayName}</div>
+              <div style={{ color: 'var(--accent-amber)', fontSize: '0.8rem' }}>{user?.displayName}</div>
             </div>
           </div>
         )}
@@ -8789,7 +8806,7 @@ function MainApp() {
                     onNavigateToWave={handleNavigateToWave} />
                 </ErrorBoundary>
               ) : !isMobile && (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a4a3a' }}>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--border-primary)' }}>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '4rem', marginBottom: '16px' }}>◎</div>
                     <div>Select a wave or create a new one</div>
@@ -8832,16 +8849,16 @@ function MainApp() {
       {/* Footer - hidden on mobile (using bottom nav instead) */}
       {!isMobile && (
         <footer style={{
-          padding: '8px 8px', background: '#050805', borderTop: '1px solid #2a3a2a',
+          padding: '8px 8px', background: 'var(--bg-base)', borderTop: '1px solid var(--border-subtle)',
           display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
         }}>
-          <div style={{ color: '#5a6a5a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ color: '#3a4a3a' }}>v1.11.0</span>
-            <span><span style={{ color: '#0ead69' }}>●</span> ENCRYPTED</span>
-            <span><span style={{ color: apiConnected ? '#0ead69' : '#ff6b35' }}>●</span> API</span>
-            <span><span style={{ color: wsConnected ? '#0ead69' : '#ff6b35' }}>●</span> LIVE</span>
+          <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: 'var(--border-primary)' }}>v1.11.0</span>
+            <span><span style={{ color: 'var(--accent-green)' }}>●</span> ENCRYPTED</span>
+            <span><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
+            <span><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> LIVE</span>
           </div>
-          <div style={{ color: '#5a6a5a' }}>WAVES: {waves.length} • GROUPS: {groups.length} • CONTACTS: {contacts.length}</div>
+          <div style={{ color: 'var(--text-muted)' }}>WAVES: {waves.length} • GROUPS: {groups.length} • CONTACTS: {contacts.length}</div>
         </footer>
       )}
 
