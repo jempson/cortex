@@ -2351,7 +2351,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
           >
             <Avatar letter={message.sender_avatar || '?'} color={config.color} size={isMobile ? 32 : 28} imageUrl={message.sender_avatar_url} />
             <div style={{ minWidth: 0 }}>
-              <div style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.9rem' : '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.sender_name}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: isMobile ? '0.9rem' : '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{message.sender_name}</div>
               <div style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.85rem' : '0.65rem', fontFamily: 'monospace' }}>
                 {new Date(message.created_at).toLocaleString()}
               </div>
@@ -2475,7 +2475,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               }
             }}
             style={{
-              color: 'var(--text-secondary)',
+              color: 'var(--text-primary)',
               fontSize: isMobile ? '0.95rem' : '0.85rem',
               lineHeight: 1.6,
               marginBottom: '10px',
@@ -2921,7 +2921,7 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
                 background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)',
               }}>
                 <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '8px' }}>ABOUT</div>
-                <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                   {profile.bio}
                 </div>
               </div>
