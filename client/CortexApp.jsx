@@ -167,7 +167,21 @@ async function subscribeToPush(token) {
     let subscription = await registration.pushManager.getSubscription();
     console.log('[Push] Existing subscription:', subscription ? 'yes' : 'no');
 
-    // If no subscription, create new subscription
+    // Check if VAPID key has changed - if so, unsubscribe old and create new
+    const storedVapidKey = localStorage.getItem('cortex_vapid_key');
+    if (subscription && storedVapidKey && storedVapidKey !== publicKey) {
+      console.log('[Push] VAPID key changed, unsubscribing old subscription...');
+      try {
+        await subscription.unsubscribe();
+        subscription = null;
+        console.log('[Push] Old subscription removed due to VAPID key change');
+      } catch (unsubError) {
+        console.warn('[Push] Failed to unsubscribe old subscription:', unsubError.message);
+        subscription = null; // Proceed anyway
+      }
+    }
+
+    // If no subscription (or was cleared due to VAPID change), create new subscription
     if (!subscription) {
       console.log('[Push] Creating new push subscription...');
       try {
@@ -199,6 +213,8 @@ async function subscribeToPush(token) {
       return { success: false, reason: `Server rejected subscription: ${errorText}` };
     }
 
+    // Store VAPID key to detect future changes
+    localStorage.setItem('cortex_vapid_key', publicKey);
     console.log('[Push] Push subscription registered with server');
     return { success: true };
   } catch (error) {
@@ -229,6 +245,8 @@ async function unsubscribeFromPush(token) {
         body: JSON.stringify({ endpoint: subscription.endpoint })
       });
 
+      // Clear stored VAPID key
+      localStorage.removeItem('cortex_vapid_key');
       console.log('[Push] Push subscription removed');
     }
     return true;
@@ -8679,7 +8697,7 @@ function MainApp() {
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.11.0</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.12.0</span>
           </div>
           {/* Status indicators */}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', fontSize: '0.55rem', fontFamily: 'monospace' }}>
@@ -8865,7 +8883,7 @@ function MainApp() {
           display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
         }}>
           <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ color: 'var(--border-primary)' }}>v1.11.0</span>
+            <span style={{ color: 'var(--border-primary)' }}>v1.12.0</span>
             <span><span style={{ color: 'var(--accent-green)' }}>●</span> ENCRYPTED</span>
             <span><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> LIVE</span>

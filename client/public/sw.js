@@ -1,6 +1,6 @@
 // Cortex Service Worker v1.12.0
 // Includes: Push notifications, offline caching, stale-while-revalidate
-// v1.12.0: CSS variable theme system with persistence
+// v1.12.0: CSS variable theme system with persistence, VAPID key change detection
 const CACHE_NAME = 'cortex-v1.12.0';
 const STATIC_ASSETS = [
   '/',

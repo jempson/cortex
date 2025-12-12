@@ -619,11 +619,12 @@ Automatic embedding of videos and media from popular platforms.
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
 
-- **v1.12.0 (December 2025)** - CSS Variable Theme System
+- **v1.12.0 (December 2025)** - CSS Variable Theme System & Push Notification Fixes
   - **Theme System Refactor**: Complete CSS variable-based theming
     - All colors now use CSS custom properties instead of hardcoded values
     - Theme applied via `data-theme` attribute on `<html>` element
-    - useEffect hook applies theme from user preferences
+    - Inline script in index.html applies theme before React loads (prevents flash)
+    - Theme persisted in dedicated `cortex_theme` localStorage key
   - **5 Themes Available**:
     - Firefly (default): Enhanced green terminal with improved mobile contrast
     - High Contrast: Maximum readability with brighter text/borders
@@ -631,9 +632,9 @@ Automatic embedding of videos and media from popular platforms.
     - Light Mode: Light background for daytime use
     - Ocean Blue: Blue-tinted dark alternative
   - **Mobile Readability Improvements**:
-    - Text colors brightened for better mobile visibility
+    - Droplet content now uses `--text-primary` for maximum readability
+    - Usernames demoted to `--text-secondary`
     - Border colors increased for better definition
-    - Enhanced contrast in Firefly default theme
   - **CSS Variable Categories**:
     - Background: `--bg-base`, `--bg-elevated`, `--bg-surface`, `--bg-hover`, `--bg-active`
     - Text: `--text-primary`, `--text-secondary`, `--text-dim`, `--text-muted`
@@ -641,6 +642,16 @@ Automatic embedding of videos and media from popular platforms.
     - Accents: `--accent-amber`, `--accent-teal`, `--accent-green`, `--accent-orange`, `--accent-purple`
     - Glows: `--glow-amber`, `--glow-teal`, `--glow-green`, `--glow-orange`, `--glow-purple`
     - Overlays: `--overlay-amber`, `--overlay-teal`, `--overlay-green`, `--overlay-orange`, `--overlay-purple`
+  - **Push Notification Fixes**:
+    - Fixed SQLite `push_subscriptions` table UNIQUE constraint migration
+    - Auto-migration recreates table with proper `UNIQUE (user_id, endpoint)` constraint
+    - Added VAPID key change detection - auto re-subscribes if server VAPID key changes
+    - Stored VAPID key in `cortex_vapid_key` localStorage to detect future changes
+    - Improved error handling with detailed failure messages in UI toast
+    - Push toggle button now uses proper React state management
+  - **Database Fixes**:
+    - Added `updateUserPreferences()` method to SQLite class for direct preference updates
+    - Fixed preferences not persisting in SQLite (was using no-op `saveUsers()`)
   - **Server Validation**: New themes added to valid theme list
 
 - **v1.10.0 (December 2025)** - Droplets Architecture
