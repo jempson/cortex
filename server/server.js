@@ -713,6 +713,18 @@ class Database {
     }
   }
 
+  updateUserPreferences(userId, preferences) {
+    const user = this.findUserById(userId);
+    if (!user) return null;
+
+    if (!user.preferences) {
+      user.preferences = { theme: 'firefly', fontSize: 'medium' };
+    }
+    user.preferences = { ...user.preferences, ...preferences };
+    this.saveUsers();
+    return user.preferences;
+  }
+
   async changePassword(userId, currentPassword, newPassword) {
     const user = this.findUserById(userId);
     if (!user) return { success: false, error: 'User not found' };
@@ -2941,7 +2953,7 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const updates = {};
-  const validThemes = ['firefly', 'highContrast', 'light'];
+  const validThemes = ['firefly', 'highContrast', 'amoled', 'light', 'ocean'];
   const validFontSizes = ['small', 'medium', 'large', 'xlarge'];
 
   if (req.body.theme && validThemes.includes(req.body.theme)) {
@@ -2957,14 +2969,13 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
     updates.autoFocusDroplets = req.body.autoFocusDroplets;
   }
 
-  if (!user.preferences) {
-    user.preferences = { theme: 'firefly', fontSize: 'medium', scanLines: true, autoFocusDroplets: false };
+  // Use the dedicated method that works with both JSON and SQLite
+  const updatedPreferences = db.updateUserPreferences(req.user.userId, updates);
+  if (!updatedPreferences) {
+    return res.status(500).json({ error: 'Failed to update preferences' });
   }
 
-  user.preferences = { ...user.preferences, ...updates };
-  db.saveUsers();
-
-  res.json({ success: true, preferences: user.preferences });
+  res.json({ success: true, preferences: updatedPreferences });
 });
 
 // Default notification preferences
@@ -3150,12 +3161,19 @@ app.post('/api/push/subscribe', authenticateToken, (req, res) => {
 
   const { subscription } = req.body;
   if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+    console.log('❌ Invalid push subscription object:', JSON.stringify(subscription, null, 2));
     return res.status(400).json({ error: 'Invalid subscription object' });
   }
 
-  db.addPushSubscription(req.user.userId, subscription);
-  console.log(`🔔 Push subscription added for user ${req.user.userId}`);
-  res.json({ success: true });
+  try {
+    console.log(`🔔 Adding push subscription for user ${req.user.userId}, endpoint: ${subscription.endpoint.substring(0, 60)}...`);
+    db.addPushSubscription(req.user.userId, subscription);
+    console.log(`✅ Push subscription added for user ${req.user.userId}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error(`❌ Failed to add push subscription for user ${req.user.userId}:`, error.message);
+    res.status(500).json({ error: `Database error: ${error.message}` });
+  }
 });
 
 // Unsubscribe from push notifications

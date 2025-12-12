@@ -180,10 +180,23 @@ Demo data seeded if `SEED_DEMO_DATA=true` (password: "Demo123!")
 - **Server-side Processing**: `detectAndEmbedMedia()` function converts URLs to `<img>` tags
 - **Security**: All HTML sanitized before storage and display
 
-### User Preferences & Customization (v1.3.2+)
-- **Theme Selection**: Firefly (default), High Contrast, Light Mode
+### User Preferences & Customization (v1.3.2+, updated v1.12.0)
+- **Theme Selection**: 5 themes with CSS variable-based styling (v1.12.0)
+  - Firefly (default): Classic green terminal aesthetic with enhanced mobile contrast
+  - High Contrast: Maximum readability with sharper borders and brighter text
+  - AMOLED Black: True black (#000) background for OLED screens
+  - Light Mode: Light background for daytime use
+  - Ocean Blue: Blue-tinted dark theme alternative
+- **CSS Variables**: All colors use CSS custom properties for theme switching
+  - Background: `--bg-base`, `--bg-elevated`, `--bg-surface`, `--bg-hover`, `--bg-active`
+  - Text: `--text-primary`, `--text-secondary`, `--text-dim`, `--text-muted`
+  - Borders: `--border-primary`, `--border-secondary`, `--border-subtle`
+  - Accents: `--accent-amber`, `--accent-teal`, `--accent-green`, `--accent-orange`, `--accent-purple`
+  - Glows/Overlays: `--glow-*`, `--overlay-*` variants for transparency effects
+- **Theme Application**: `data-theme` attribute on `<html>` element
 - **Font Size Control**: Small (0.9x), Medium (1x), Large (1.15x), X-Large (1.3x)
 - **Preferences API**: `PUT /api/profile/preferences` to update settings
+- **Server Validation**: Themes validated against: firefly, highContrast, amoled, light, ocean
 
 ### Per-Message Read Tracking (v1.4.0+)
 - **Click-to-Read Pattern**: Messages marked as read only when explicitly clicked by user
@@ -605,6 +618,41 @@ Automatic embedding of videos and media from popular platforms.
   - Converts `username` → `handle`
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
+
+- **v1.12.0 (December 2025)** - CSS Variable Theme System & Push Notification Fixes
+  - **Theme System Refactor**: Complete CSS variable-based theming
+    - All colors now use CSS custom properties instead of hardcoded values
+    - Theme applied via `data-theme` attribute on `<html>` element
+    - Inline script in index.html applies theme before React loads (prevents flash)
+    - Theme persisted in dedicated `cortex_theme` localStorage key
+  - **5 Themes Available**:
+    - Firefly (default): Enhanced green terminal with improved mobile contrast
+    - High Contrast: Maximum readability with brighter text/borders
+    - AMOLED Black: True #000 background for OLED battery savings
+    - Light Mode: Light background for daytime use
+    - Ocean Blue: Blue-tinted dark alternative
+  - **Mobile Readability Improvements**:
+    - Droplet content now uses `--text-primary` for maximum readability
+    - Usernames demoted to `--text-secondary`
+    - Border colors increased for better definition
+  - **CSS Variable Categories**:
+    - Background: `--bg-base`, `--bg-elevated`, `--bg-surface`, `--bg-hover`, `--bg-active`
+    - Text: `--text-primary`, `--text-secondary`, `--text-dim`, `--text-muted`
+    - Borders: `--border-primary`, `--border-secondary`, `--border-subtle`
+    - Accents: `--accent-amber`, `--accent-teal`, `--accent-green`, `--accent-orange`, `--accent-purple`
+    - Glows: `--glow-amber`, `--glow-teal`, `--glow-green`, `--glow-orange`, `--glow-purple`
+    - Overlays: `--overlay-amber`, `--overlay-teal`, `--overlay-green`, `--overlay-orange`, `--overlay-purple`
+  - **Push Notification Fixes**:
+    - Fixed SQLite `push_subscriptions` table UNIQUE constraint migration
+    - Auto-migration recreates table with proper `UNIQUE (user_id, endpoint)` constraint
+    - Added VAPID key change detection - auto re-subscribes if server VAPID key changes
+    - Stored VAPID key in `cortex_vapid_key` localStorage to detect future changes
+    - Improved error handling with detailed failure messages in UI toast
+    - Push toggle button now uses proper React state management
+  - **Database Fixes**:
+    - Added `updateUserPreferences()` method to SQLite class for direct preference updates
+    - Fixed preferences not persisting in SQLite (was using no-op `saveUsers()`)
+  - **Server Validation**: New themes added to valid theme list
 
 - **v1.10.0 (December 2025)** - Droplets Architecture
   - **Terminology Rename**: Messages → Droplets throughout codebase
