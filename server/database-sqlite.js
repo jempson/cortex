@@ -342,6 +342,76 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Notifications tables created');
     }
+
+    // Check if push_subscriptions table exists and has correct schema (v1.12.0 fix)
+    const pushSubsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='push_subscriptions'
+    `).get();
+
+    if (!pushSubsExists) {
+      console.log('📝 Creating push_subscriptions table...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          endpoint TEXT NOT NULL,
+          keys TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE (user_id, endpoint)
+        );
+        CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON push_subscriptions(endpoint);
+      `);
+      console.log('✅ Push subscriptions table created');
+    } else {
+      // Check if UNIQUE constraint exists - if table was created without it, recreate
+      const tableInfo = this.db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='push_subscriptions'`).get();
+      if (tableInfo && !tableInfo.sql.includes('UNIQUE')) {
+        console.log('📝 Recreating push_subscriptions table with UNIQUE constraint (v1.12.0 fix)...');
+
+        // Backup existing data
+        const existingData = this.db.prepare('SELECT * FROM push_subscriptions').all();
+
+        // Drop old table and indexes
+        this.db.exec('DROP INDEX IF EXISTS idx_push_subscriptions_user');
+        this.db.exec('DROP INDEX IF EXISTS idx_push_subscriptions_endpoint');
+        this.db.exec('DROP TABLE push_subscriptions');
+
+        // Create new table with constraint
+        this.db.exec(`
+          CREATE TABLE push_subscriptions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            endpoint TEXT NOT NULL,
+            keys TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (user_id, endpoint)
+          );
+          CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id);
+          CREATE INDEX idx_push_subscriptions_endpoint ON push_subscriptions(endpoint);
+        `);
+
+        // Restore data (skip duplicates)
+        if (existingData.length > 0) {
+          const seenPairs = new Set();
+          const insertStmt = this.db.prepare(`
+            INSERT INTO push_subscriptions (id, user_id, endpoint, keys, created_at)
+            VALUES (?, ?, ?, ?, ?)
+          `);
+
+          for (const row of existingData) {
+            const key = `${row.user_id}:${row.endpoint}`;
+            if (!seenPairs.has(key)) {
+              seenPairs.add(key);
+              insertStmt.run(row.id, row.user_id, row.endpoint, row.keys, row.created_at);
+            }
+          }
+          console.log(`✅ Restored ${seenPairs.size} unique push subscriptions`);
+        }
+
+        console.log('✅ Push subscriptions table recreated with UNIQUE constraint');
+      }
+    }
   }
 
   prepareStatements() {
