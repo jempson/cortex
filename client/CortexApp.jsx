@@ -192,7 +192,29 @@ async function subscribeToPush(token) {
         console.log('[Push] New push subscription created');
       } catch (subError) {
         console.error('[Push] Failed to create subscription:', subError.name, subError.message);
-        return { success: false, reason: `Browser subscription failed: ${subError.message}` };
+
+        // If AbortError (push service error), try unregistering and re-registering service worker
+        if (subError.name === 'AbortError') {
+          console.log('[Push] AbortError detected - attempting service worker recovery...');
+          try {
+            await registration.unregister();
+            console.log('[Push] Service worker unregistered, re-registering...');
+            const newReg = await navigator.serviceWorker.register('/sw.js');
+            await navigator.serviceWorker.ready;
+            console.log('[Push] Service worker re-registered, retrying subscription...');
+
+            subscription = await newReg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(publicKey)
+            });
+            console.log('[Push] Subscription succeeded after recovery');
+          } catch (recoveryError) {
+            console.error('[Push] Recovery failed:', recoveryError.message);
+            return { success: false, reason: 'Push service error. Try clearing browser cache and refreshing.' };
+          }
+        } else {
+          return { success: false, reason: `Browser subscription failed: ${subError.message}` };
+        }
       }
     }
 
