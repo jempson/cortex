@@ -3161,12 +3161,19 @@ app.post('/api/push/subscribe', authenticateToken, (req, res) => {
 
   const { subscription } = req.body;
   if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+    console.log('❌ Invalid push subscription object:', JSON.stringify(subscription, null, 2));
     return res.status(400).json({ error: 'Invalid subscription object' });
   }
 
-  db.addPushSubscription(req.user.userId, subscription);
-  console.log(`🔔 Push subscription added for user ${req.user.userId}`);
-  res.json({ success: true });
+  try {
+    console.log(`🔔 Adding push subscription for user ${req.user.userId}, endpoint: ${subscription.endpoint.substring(0, 60)}...`);
+    db.addPushSubscription(req.user.userId, subscription);
+    console.log(`✅ Push subscription added for user ${req.user.userId}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error(`❌ Failed to add push subscription for user ${req.user.userId}:`, error.message);
+    res.status(500).json({ error: `Database error: ${error.message}` });
+  }
 });
 
 // Unsubscribe from push notifications
