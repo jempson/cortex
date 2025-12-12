@@ -50,7 +50,11 @@ CREATE TABLE IF NOT EXISTS waves (
     root_droplet_id TEXT REFERENCES droplets(id) ON DELETE SET NULL,
     broken_out_from TEXT REFERENCES waves(id) ON DELETE SET NULL,
     -- JSON array storing the lineage: [{"wave_id":"...", "droplet_id":"...", "title":"..."}]
-    breakout_chain TEXT
+    breakout_chain TEXT,
+    -- Federation fields (v1.13.0)
+    federation_state TEXT DEFAULT 'local',  -- local, origin, participant
+    origin_node TEXT,                        -- node name if participant wave
+    origin_wave_id TEXT                      -- original wave id on origin server
 );
 
 -- Wave participants
@@ -361,6 +365,113 @@ CREATE INDEX IF NOT EXISTS idx_notifications_group_key ON notifications(group_ke
 -- Wave notification settings lookups
 CREATE INDEX IF NOT EXISTS idx_wave_notification_settings_user ON wave_notification_settings(user_id);
 CREATE INDEX IF NOT EXISTS idx_wave_notification_settings_wave ON wave_notification_settings(wave_id);
+
+-- ============ Federation ============
+
+-- Server's own identity and keypair (singleton table)
+CREATE TABLE IF NOT EXISTS server_identity (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    node_name TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    private_key TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Trusted federation partners (allowlist)
+CREATE TABLE IF NOT EXISTS federation_nodes (
+    id TEXT PRIMARY KEY,
+    node_name TEXT NOT NULL UNIQUE,
+    base_url TEXT NOT NULL,
+    public_key TEXT,
+    status TEXT DEFAULT 'pending',  -- pending, active, suspended, blocked
+    added_by TEXT REFERENCES users(id),
+    last_contact_at TEXT,
+    failure_count INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Cached profiles from federated servers
+CREATE TABLE IF NOT EXISTS remote_users (
+    id TEXT PRIMARY KEY,
+    node_name TEXT NOT NULL,
+    handle TEXT NOT NULL,
+    display_name TEXT,
+    avatar TEXT,
+    avatar_url TEXT,
+    bio TEXT,
+    cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(node_name, handle)
+);
+
+-- Track which nodes are participating in our waves
+CREATE TABLE IF NOT EXISTS wave_federation (
+    wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+    node_name TEXT NOT NULL,
+    status TEXT DEFAULT 'active',  -- active, pending, removed
+    added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (wave_id, node_name)
+);
+
+-- Cached droplets from federated servers
+CREATE TABLE IF NOT EXISTS remote_droplets (
+    id TEXT PRIMARY KEY,
+    wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+    origin_wave_id TEXT NOT NULL,
+    origin_node TEXT NOT NULL,
+    author_id TEXT NOT NULL,
+    author_node TEXT NOT NULL,
+    parent_id TEXT,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    edited_at TEXT,
+    deleted INTEGER DEFAULT 0,
+    reactions TEXT DEFAULT '{}',
+    cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Outbound federation message queue
+CREATE TABLE IF NOT EXISTS federation_queue (
+    id TEXT PRIMARY KEY,
+    target_node TEXT NOT NULL,
+    message_type TEXT NOT NULL,  -- wave_invite, new_droplet, droplet_edited, etc.
+    payload TEXT NOT NULL,       -- JSON payload
+    status TEXT DEFAULT 'pending',  -- pending, processing, delivered, failed
+    attempts INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 5,
+    next_retry_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    delivered_at TEXT,
+    last_error TEXT
+);
+
+-- Inbound message log (for idempotency)
+CREATE TABLE IF NOT EXISTS federation_inbox_log (
+    id TEXT PRIMARY KEY,
+    source_node TEXT NOT NULL,
+    message_type TEXT NOT NULL,
+    received_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    processed_at TEXT,
+    status TEXT DEFAULT 'received'  -- received, processed, rejected
+);
+
+-- Federation indexes
+CREATE INDEX IF NOT EXISTS idx_federation_nodes_status ON federation_nodes(status);
+CREATE INDEX IF NOT EXISTS idx_federation_nodes_name ON federation_nodes(node_name);
+CREATE INDEX IF NOT EXISTS idx_remote_users_node ON remote_users(node_name);
+CREATE INDEX IF NOT EXISTS idx_remote_users_handle ON remote_users(node_name, handle);
+CREATE INDEX IF NOT EXISTS idx_wave_federation_wave ON wave_federation(wave_id);
+CREATE INDEX IF NOT EXISTS idx_wave_federation_node ON wave_federation(node_name);
+CREATE INDEX IF NOT EXISTS idx_remote_droplets_wave ON remote_droplets(wave_id);
+CREATE INDEX IF NOT EXISTS idx_remote_droplets_origin ON remote_droplets(origin_node, origin_wave_id);
+CREATE INDEX IF NOT EXISTS idx_remote_droplets_author ON remote_droplets(author_node, author_id);
+CREATE INDEX IF NOT EXISTS idx_federation_queue_status ON federation_queue(status, next_retry_at);
+CREATE INDEX IF NOT EXISTS idx_federation_queue_node ON federation_queue(target_node);
+CREATE INDEX IF NOT EXISTS idx_federation_inbox_source ON federation_inbox_log(source_node);
+CREATE INDEX IF NOT EXISTS idx_federation_inbox_status ON federation_inbox_log(status);
 
 -- ============ Full-Text Search ============
 
