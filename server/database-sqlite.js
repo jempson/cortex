@@ -2381,10 +2381,13 @@ export class DatabaseSQLite {
     const id = uuidv4();
     const now = new Date().toISOString();
 
-    // Use INSERT OR REPLACE to handle duplicate endpoints
+    // Use ON CONFLICT to properly handle duplicate user_id + endpoint combinations
     this.db.prepare(`
-      INSERT OR REPLACE INTO push_subscriptions (id, user_id, endpoint, keys, created_at)
+      INSERT INTO push_subscriptions (id, user_id, endpoint, keys, created_at)
       VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (user_id, endpoint) DO UPDATE SET
+        keys = excluded.keys,
+        created_at = excluded.created_at
     `).run(id, userId, subscription.endpoint, JSON.stringify(subscription.keys), now);
 
     return true;
