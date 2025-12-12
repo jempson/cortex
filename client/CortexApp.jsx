@@ -100,10 +100,18 @@ const storage = {
   setToken: (token) => localStorage.setItem('cortex_token', token),
   removeToken: () => localStorage.removeItem('cortex_token'),
   getUser: () => { try { return JSON.parse(localStorage.getItem('cortex_user')); } catch { return null; } },
-  setUser: (user) => localStorage.setItem('cortex_user', JSON.stringify(user)),
-  removeUser: () => localStorage.removeItem('cortex_user'),
+  setUser: (user) => {
+    localStorage.setItem('cortex_user', JSON.stringify(user));
+    // Also store theme separately for fast access on page load
+    if (user?.preferences?.theme) {
+      localStorage.setItem('cortex_theme', user.preferences.theme);
+    }
+  },
+  removeUser: () => { localStorage.removeItem('cortex_user'); localStorage.removeItem('cortex_theme'); },
   getPushEnabled: () => localStorage.getItem('cortex_push_enabled') !== 'false', // Default true
   setPushEnabled: (enabled) => localStorage.setItem('cortex_push_enabled', enabled ? 'true' : 'false'),
+  getTheme: () => localStorage.getItem('cortex_theme'),
+  setTheme: (theme) => localStorage.setItem('cortex_theme', theme),
 };
 
 // ============ PUSH NOTIFICATION HELPERS ============
@@ -8209,10 +8217,12 @@ function MainApp() {
     };
   }, [fontScale]);
 
-  // Apply theme to document root
+  // Apply theme to document root and persist to localStorage
   useEffect(() => {
     const theme = user?.preferences?.theme || 'firefly';
     document.documentElement.setAttribute('data-theme', theme);
+    // Save to dedicated storage for fast access on next page load
+    storage.setTheme(theme);
   }, [user?.preferences?.theme]);
 
   const showToastMsg = useCallback((message, type) => setToast({ message, type }), []);

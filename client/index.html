@@ -203,6 +203,28 @@
     </style>
   </head>
   <body>
+    <script>
+      // Apply theme immediately before React loads to prevent flash
+      (function() {
+        try {
+          // First try dedicated theme storage (fastest)
+          var theme = localStorage.getItem('cortex_theme');
+          // Fallback to user object in storage
+          if (!theme) {
+            var user = localStorage.getItem('cortex_user');
+            if (user) {
+              var parsed = JSON.parse(user);
+              theme = parsed?.preferences?.theme;
+            }
+          }
+          if (theme && ['firefly', 'highContrast', 'amoled', 'light', 'ocean'].includes(theme)) {
+            document.documentElement.setAttribute('data-theme', theme);
+          }
+        } catch (e) {
+          // Silently fail - React will apply theme later
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/main.jsx"></script>
   </body>
