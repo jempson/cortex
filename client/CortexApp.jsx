@@ -121,12 +121,12 @@ async function subscribeToPush(token) {
 
   if (!('serviceWorker' in navigator)) {
     console.log('[Push] Service Worker not supported');
-    return false;
+    return { success: false, reason: 'Service Worker not supported in this browser' };
   }
 
   if (!('PushManager' in window)) {
     console.log('[Push] PushManager not supported');
-    return false;
+    return { success: false, reason: 'Push notifications not supported in this browser' };
   }
 
   try {
@@ -141,7 +141,7 @@ async function subscribeToPush(token) {
 
     if (permission !== 'granted') {
       console.log('[Push] Notification permission not granted:', permission);
-      return false;
+      return { success: false, reason: permission === 'denied' ? 'Notification permission denied. Check browser settings.' : 'Notification permission required' };
     }
 
     // Get VAPID public key from server
@@ -152,7 +152,7 @@ async function subscribeToPush(token) {
 
     if (!response.ok) {
       console.log('[Push] VAPID key fetch failed:', response.status);
-      return false;
+      return { success: false, reason: 'Server push configuration unavailable' };
     }
 
     const { publicKey } = await response.json();
@@ -178,7 +178,7 @@ async function subscribeToPush(token) {
         console.log('[Push] New push subscription created');
       } catch (subError) {
         console.error('[Push] Failed to create subscription:', subError.name, subError.message);
-        return false;
+        return { success: false, reason: `Browser subscription failed: ${subError.message}` };
       }
     }
 
@@ -196,14 +196,14 @@ async function subscribeToPush(token) {
     if (!subscribeResponse.ok) {
       const errorText = await subscribeResponse.text();
       console.error('[Push] Server rejected subscription:', subscribeResponse.status, errorText);
-      return false;
+      return { success: false, reason: `Server rejected subscription: ${errorText}` };
     }
 
     console.log('[Push] Push subscription registered with server');
-    return true;
+    return { success: true };
   } catch (error) {
     console.error('[Push] Failed to subscribe:', error.name, error.message, error);
-    return false;
+    return { success: false, reason: `Unexpected error: ${error.message}` };
   }
 }
 
@@ -7270,6 +7270,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [mutedUsers, setMutedUsers] = useState([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(storage.getPushEnabled());
   const fileInputRef = useRef(null);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -7681,38 +7682,36 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
           <button
             onClick={async () => {
               const token = storage.getToken();
-              const currentlyEnabled = storage.getPushEnabled();
-              if (currentlyEnabled) {
+              if (pushEnabled) {
                 // Disable push
                 storage.setPushEnabled(false);
+                setPushEnabled(false);
                 await unsubscribeFromPush(token);
                 showToast('Push notifications disabled', 'success');
               } else {
                 // Enable push
-                storage.setPushEnabled(true);
-                const success = await subscribeToPush(token);
-                if (success) {
+                const result = await subscribeToPush(token);
+                if (result.success) {
+                  storage.setPushEnabled(true);
+                  setPushEnabled(true);
                   showToast('Push notifications enabled', 'success');
                 } else {
-                  showToast('Failed to enable push notifications', 'error');
-                  storage.setPushEnabled(false);
+                  showToast(result.reason || 'Failed to enable push notifications', 'error');
                 }
               }
-              // Force re-render by updating a local state (use the component's state)
-              setDisplayName(prev => prev); // Trigger re-render
             }}
             style={{
               padding: isMobile ? '10px 16px' : '8px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: storage.getPushEnabled() ? 'var(--accent-green)20' : 'transparent',
-              border: `1px solid ${storage.getPushEnabled() ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
-              color: storage.getPushEnabled() ? 'var(--accent-green)' : 'var(--text-dim)',
+              background: pushEnabled ? 'var(--accent-green)20' : 'transparent',
+              border: `1px solid ${pushEnabled ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+              color: pushEnabled ? 'var(--accent-green)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.9rem' : '0.85rem',
             }}
           >
-            {storage.getPushEnabled() ? '🔔 ENABLED' : '🔕 DISABLED'}
+            {pushEnabled ? '🔔 ENABLED' : '🔕 DISABLED'}
           </button>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
             Receive notifications when the app is closed or in background
