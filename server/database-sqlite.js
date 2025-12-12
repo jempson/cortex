@@ -569,6 +569,18 @@ export class DatabaseSQLite {
     this.stmts.updateUserStatus.run(status, now, userId);
   }
 
+  updateUserPreferences(userId, preferences) {
+    const user = this.findUserById(userId);
+    if (!user) return null;
+
+    const updatedPrefs = { ...user.preferences, ...preferences };
+    this.db.prepare('UPDATE users SET preferences = ? WHERE id = ?').run(
+      JSON.stringify(updatedPrefs),
+      userId
+    );
+    return updatedPrefs;
+  }
+
   async changePassword(userId, currentPassword, newPassword) {
     const user = this.findUserById(userId);
     if (!user) return { success: false, error: 'User not found' };

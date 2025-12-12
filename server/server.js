@@ -713,6 +713,18 @@ class Database {
     }
   }
 
+  updateUserPreferences(userId, preferences) {
+    const user = this.findUserById(userId);
+    if (!user) return null;
+
+    if (!user.preferences) {
+      user.preferences = { theme: 'firefly', fontSize: 'medium' };
+    }
+    user.preferences = { ...user.preferences, ...preferences };
+    this.saveUsers();
+    return user.preferences;
+  }
+
   async changePassword(userId, currentPassword, newPassword) {
     const user = this.findUserById(userId);
     if (!user) return { success: false, error: 'User not found' };
@@ -2957,14 +2969,13 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
     updates.autoFocusDroplets = req.body.autoFocusDroplets;
   }
 
-  if (!user.preferences) {
-    user.preferences = { theme: 'firefly', fontSize: 'medium', scanLines: true, autoFocusDroplets: false };
+  // Use the dedicated method that works with both JSON and SQLite
+  const updatedPreferences = db.updateUserPreferences(req.user.userId, updates);
+  if (!updatedPreferences) {
+    return res.status(500).json({ error: 'Failed to update preferences' });
   }
 
-  user.preferences = { ...user.preferences, ...updates };
-  db.saveUsers();
-
-  res.json({ success: true, preferences: user.preferences });
+  res.json({ success: true, preferences: updatedPreferences });
 });
 
 // Default notification preferences
