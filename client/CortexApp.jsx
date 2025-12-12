@@ -8599,9 +8599,13 @@ function MainApp() {
         console.log('✅ Desktop notifications enabled');
       }
 
-      // If permission granted, subscribe to push
+      // If permission granted, subscribe to push (silently fail on startup)
       if ('Notification' in window && Notification.permission === 'granted') {
-        await subscribeToPush(token);
+        const result = await subscribeToPush(token);
+        if (!result.success) {
+          // Don't show error toast on auto-subscribe - user didn't initiate it
+          console.log('[Push] Auto-subscribe failed (this is ok):', result.reason);
+        }
       }
     };
 
