@@ -214,10 +214,10 @@
             var user = localStorage.getItem('cortex_user');
             if (user) {
               var parsed = JSON.parse(user);
-              theme = parsed?.preferences?.theme;
+              theme = parsed && parsed.preferences && parsed.preferences.theme;
             }
           }
-          if (theme && ['firefly', 'highContrast', 'amoled', 'light', 'ocean'].includes(theme)) {
+          if (theme && ['firefly', 'highContrast', 'amoled', 'light', 'ocean'].indexOf(theme) !== -1) {
             document.documentElement.setAttribute('data-theme', theme);
           }
         } catch (e) {

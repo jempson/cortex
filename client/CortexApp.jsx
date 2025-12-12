@@ -8221,8 +8221,11 @@ function MainApp() {
   useEffect(() => {
     const theme = user?.preferences?.theme || 'firefly';
     document.documentElement.setAttribute('data-theme', theme);
-    // Save to dedicated storage for fast access on next page load
-    storage.setTheme(theme);
+    // Only save to dedicated storage when we have actual user data
+    // This prevents overwriting saved theme with 'firefly' on initial load
+    if (user?.preferences?.theme) {
+      storage.setTheme(theme);
+    }
   }, [user?.preferences?.theme]);
 
   const showToastMsg = useCallback((message, type) => setToast({ message, type }), []);
