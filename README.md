@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 1.12.1** | A privacy-first communication platform inspired by Google Wave.
+**Version 1.13.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
 ## Quick Start
 
@@ -42,6 +42,15 @@ Demo accounts (password: `demo123`):
 - **Groups & Contacts** - Organize connections with request/invitation workflows
 - **Search** - Full-text search across all droplets (SQLite FTS)
 - **PWA** - Installable app with offline support and push notifications
+- **Federation** - Connect multiple Cortex servers to share waves (v1.13.0)
+
+### Federation (v1.13.0)
+- **Server-to-Server** - Multiple Cortex instances can exchange droplets
+- **Federated Users** - Add `@user@other-server.com` as wave participants
+- **HTTP Signatures** - RSA-SHA256 signed requests for server authentication
+- **Trust Model** - Manual allowlist of trusted federation partners
+- **Message Queue** - Reliable delivery with exponential backoff retries
+- **Admin Panel** - Manage federation identity and trusted nodes
 
 ### Droplets Architecture (v1.10.0)
 - **Focus View** - View any droplet with replies as its own wave-like context
@@ -67,6 +76,7 @@ Demo accounts (password: `demo123`):
 - Account lockout after failed attempts
 - HTML sanitization for all user content
 - Helmet.js security headers
+- HTTP Signature verification for federation
 
 ---
 
@@ -110,6 +120,10 @@ ALLOWED_ORIGINS=https://your-domain.com
 VAPID_PUBLIC_KEY=your-public-key
 VAPID_PRIVATE_KEY=your-private-key
 VAPID_EMAIL=mailto:admin@example.com
+
+# Federation (optional) - see "Enabling Federation" below
+FEDERATION_ENABLED=false           # Enable server-to-server federation
+FEDERATION_NODE_NAME=cortex.example.com  # Your server's federation name
 
 # Rate Limits (defaults shown)
 RATE_LIMIT_LOGIN_MAX=30            # Per 15 minutes
@@ -203,6 +217,69 @@ Restart your server. You should see this in the logs:
 - **Generate keys ONCE** - Changing keys invalidates all existing push subscriptions
 - **Keep private key secret** - Never commit `VAPID_PRIVATE_KEY` to version control
 - **iOS limitation** - Push notifications are not supported on iOS/Safari PWAs (Apple platform limitation)
+
+---
+
+## Enabling Federation
+
+Federation allows multiple Cortex servers to exchange waves and droplets. Users can participate in waves hosted on other servers.
+
+### Step 1: Enable Federation
+
+Add to your `server/.env` file:
+
+```bash
+FEDERATION_ENABLED=true
+FEDERATION_NODE_NAME=cortex.example.com  # Your server's public hostname
+```
+
+### Step 2: Restart Server
+
+Restart your server. You should see:
+```
+🌐 Federation enabled as: cortex.example.com
+📤 Federation queue processor started (30s interval)
+```
+
+### Step 3: Generate Server Identity
+
+1. Log in as an admin user
+2. Go to **Profile Settings** → **Federation** (admin only)
+3. Click **"Generate Identity"** to create RSA keypair
+4. Your server's public key will be displayed
+
+### Step 4: Add Trusted Nodes
+
+To connect with another Cortex server:
+
+1. In the Federation panel, click **"Add Node"**
+2. Enter the other server's:
+   - **Node Name**: e.g., `other-cortex.example.com`
+   - **Base URL**: e.g., `https://other-cortex.example.com`
+3. Click **"Initiate Handshake"** to exchange public keys
+4. The other server's admin must also add your server
+
+### Step 5: Create Federated Waves
+
+Once nodes are connected (status: "active"), users can:
+
+1. Create a new wave
+2. Add participants using `@username@other-server.com` format
+3. The wave will be shared with the remote server
+4. Remote users will see it in their wave list
+
+### Federation Architecture
+
+- **Origin Server**: Where the wave was created (authoritative)
+- **Participant Server**: Servers with users in the wave (cached copy)
+- **HTTP Signatures**: RSA-SHA256 signed requests between servers
+- **Message Queue**: Failed deliveries retry with exponential backoff (1min → 5min → 25min → 2hr → 10hr)
+
+### Important Notes
+
+- **Trust is manual** - Only add servers you trust as federation partners
+- **Origin is authoritative** - The server where a wave was created is the source of truth
+- **Keys are permanent** - Regenerating your identity breaks existing federation relationships
 
 ---
 
@@ -356,6 +433,30 @@ server {
 
 ## Changelog
 
+### v1.13.0 (December 2025)
+- **Federation**: Server-to-server communication for cross-instance waves
+  - HTTP Signature authentication (RSA-SHA256) between servers
+  - Federated user resolution (`@user@server.com` format)
+  - Wave invitations propagate to remote servers
+  - Droplets sync in real-time across federated nodes
+  - Message queue with exponential backoff retries
+- **Admin Federation Panel**: Manage server identity and trusted nodes
+  - Generate/view server RSA keypair
+  - Add/remove federation partners
+  - Initiate handshakes to exchange public keys
+  - View node status and connection health
+- **Database Schema**: New federation tables
+  - `server_identity` - Server's RSA keypair
+  - `federation_nodes` - Trusted server allowlist
+  - `remote_users` - Cached profiles from other servers
+  - `remote_droplets` - Cached droplets from federated waves
+  - `wave_federation` - Wave-to-node relationships
+  - `federation_queue` - Outbound message queue
+  - `federation_inbox_log` - Inbound message deduplication
+- **Environment Variables**:
+  - `FEDERATION_ENABLED` - Enable/disable federation
+  - `FEDERATION_NODE_NAME` - Server's public hostname
+
 ### v1.12.1 (December 2025)
 - **Bug Fix**: GIF and image embedding now works correctly in SQLite mode
   - Added missing `sanitizeMessage()` and `detectAndEmbedMedia()` calls to SQLite database class
@@ -460,7 +561,7 @@ See `CHANGELOG.md` for complete history.
 |-------|------|-------------|
 | Private | ◉ | Only invited participants |
 | Group | ◈ | All group members |
-| Cross-Server | ◇ | Federated servers (future) |
+| Cross-Server | ◇ | Federated servers (v1.13.0) |
 | Public | ○ | Public feeds (future) |
 
 ---

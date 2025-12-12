@@ -1,6 +1,6 @@
 # Cortex REST API Documentation
 
-Version: 1.10.0
+Version: 1.13.0
 
 ## Overview
 
@@ -32,6 +32,7 @@ The Cortex API is a RESTful API that powers the Cortex federated communication p
    - [Moderation](#moderation-endpoints)
    - [Admin](#admin-endpoints)
    - [Reports](#reports-endpoints)
+   - [Federation](#federation-endpoints)
 5. [WebSocket API](#websocket-api)
 
 ---
@@ -3008,6 +3009,8 @@ WebSocket connections are rate-limited per IP:
 | `RATE_LIMIT_OEMBED_MAX` | `30` | oEmbed requests per minute |
 | `LOCKOUT_THRESHOLD` | `15` | Failed login attempts before lockout |
 | `LOCKOUT_DURATION_MINUTES` | `15` | Account lockout duration |
+| `FEDERATION_ENABLED` | `false` | Enable server-to-server federation |
+| `FEDERATION_NODE_NAME` | `null` | Server's public hostname for federation |
 
 ### Data Storage
 
@@ -3048,6 +3051,356 @@ WebSocket connections are rate-limited per IP:
 
 - `/uploads/avatars/` - Avatar images
 - `/uploads/messages/` - Message images
+
+---
+
+## Federation Endpoints
+
+Federation enables server-to-server communication for cross-instance waves. These endpoints require `FEDERATION_ENABLED=true`.
+
+### Public Federation Endpoints
+
+#### GET /api/federation/identity
+
+Get this server's federation identity (public key). No authentication required.
+
+**Response (200 OK):**
+
+```json
+{
+  "nodeName": "cortex.example.com",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN...",
+  "createdAt": "2025-12-12T10:00:00.000Z"
+}
+```
+
+**Response (404 Not Found):** Federation not enabled or identity not configured.
+
+---
+
+### Server-to-Server Endpoints
+
+These endpoints require HTTP Signature authentication from a trusted federation node.
+
+#### POST /api/federation/inbox
+
+Receive signed messages from other servers. This is the main entry point for federated content delivery.
+
+**Authentication:** HTTP Signature (RSA-SHA256)
+
+**Request Body:**
+
+```json
+{
+  "id": "msg-uuid-12345",
+  "type": "wave_invite | new_droplet | droplet_edited | droplet_deleted | user_profile | ping",
+  "payload": { ... }
+}
+```
+
+**Message Types:**
+
+| Type | Description | Payload |
+|------|-------------|---------|
+| `wave_invite` | Invite local user to federated wave | `{ wave, participants, invitedUserHandle }` |
+| `new_droplet` | New droplet in federated wave | `{ droplet, originWaveId, author }` |
+| `droplet_edited` | Droplet edited | `{ dropletId, originWaveId, content, editedAt, version }` |
+| `droplet_deleted` | Droplet deleted | `{ dropletId, originWaveId }` |
+| `user_profile` | User profile update | `{ user }` |
+| `ping` | Connectivity test | `{}` |
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "processed": true
+}
+```
+
+**Notes:**
+
+- Messages are idempotent (duplicate IDs return success without reprocessing)
+- Rate limit: 500 requests per minute per node
+
+---
+
+#### GET /api/federation/users/:handle
+
+Get a local user's public profile for remote servers.
+
+**Authentication:** HTTP Signature (RSA-SHA256)
+
+**Response (200 OK):**
+
+```json
+{
+  "user": {
+    "id": "user-uuid",
+    "handle": "mal",
+    "displayName": "Malcolm Reynolds",
+    "avatar": "M",
+    "avatarUrl": "/uploads/avatars/user-uuid.webp",
+    "bio": "Captain of Serenity",
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  }
+}
+```
+
+---
+
+### User Federation Endpoints
+
+#### GET /api/users/resolve/:identifier
+
+Resolve a user identifier (local or federated).
+
+**Authentication:** Required (JWT)
+
+**Parameters:**
+
+- `:identifier` - Local handle (`mal`) or federated (`@mal@other-server.com`)
+
+**Response (200 OK) - Local User:**
+
+```json
+{
+  "user": {
+    "id": "user-uuid",
+    "handle": "mal",
+    "displayName": "Malcolm Reynolds",
+    "avatar": "M",
+    "avatarUrl": "/uploads/avatars/user-uuid.webp",
+    "bio": "Captain of Serenity",
+    "isLocal": true
+  }
+}
+```
+
+**Response (200 OK) - Federated User:**
+
+```json
+{
+  "user": {
+    "id": "remote-user-uuid",
+    "handle": "zoe",
+    "displayName": "Zoe Washburne",
+    "avatar": "Z",
+    "avatarUrl": null,
+    "bio": "First mate",
+    "isLocal": false,
+    "nodeName": "other-server.com"
+  }
+}
+```
+
+---
+
+### Admin Federation Endpoints
+
+These endpoints require admin authentication.
+
+#### GET /api/admin/federation/status
+
+Get federation status and configuration.
+
+**Authentication:** Required (Admin)
+
+**Response (200 OK):**
+
+```json
+{
+  "enabled": true,
+  "configured": true,
+  "nodeName": "cortex.example.com",
+  "nodeCount": 2,
+  "activeNodes": 1,
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN..."
+}
+```
+
+---
+
+#### POST /api/admin/federation/identity
+
+Generate server identity (RSA keypair). Only callable if no identity exists.
+
+**Authentication:** Required (Admin)
+
+**Response (201 Created):**
+
+```json
+{
+  "success": true,
+  "identity": {
+    "nodeName": "cortex.example.com",
+    "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN...",
+    "createdAt": "2025-12-12T10:00:00.000Z"
+  }
+}
+```
+
+---
+
+#### GET /api/admin/federation/nodes
+
+List all federation nodes.
+
+**Authentication:** Required (Admin)
+
+**Response (200 OK):**
+
+```json
+{
+  "nodes": [
+    {
+      "id": "node-uuid",
+      "nodeName": "other-cortex.example.com",
+      "baseUrl": "https://other-cortex.example.com",
+      "publicKey": "-----BEGIN PUBLIC KEY-----\n...",
+      "status": "active",
+      "lastContactAt": "2025-12-12T10:30:00.000Z",
+      "failureCount": 0,
+      "createdAt": "2025-12-12T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Node Status Values:**
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Added but not yet connected |
+| `active` | Connected and exchanging messages |
+| `suspended` | Temporarily disabled |
+| `blocked` | Permanently blocked |
+
+---
+
+#### POST /api/admin/federation/nodes
+
+Add a new federation node.
+
+**Authentication:** Required (Admin)
+
+**Request Body:**
+
+```json
+{
+  "nodeName": "other-cortex.example.com",
+  "baseUrl": "https://other-cortex.example.com"
+}
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "success": true,
+  "node": {
+    "id": "node-uuid",
+    "nodeName": "other-cortex.example.com",
+    "baseUrl": "https://other-cortex.example.com",
+    "status": "pending",
+    "createdAt": "2025-12-12T10:00:00.000Z"
+  }
+}
+```
+
+---
+
+#### DELETE /api/admin/federation/nodes/:id
+
+Remove a federation node.
+
+**Authentication:** Required (Admin)
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true
+}
+```
+
+---
+
+#### POST /api/admin/federation/nodes/:id/handshake
+
+Initiate handshake with a federation node to exchange public keys.
+
+**Authentication:** Required (Admin)
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "node": {
+    "id": "node-uuid",
+    "nodeName": "other-cortex.example.com",
+    "status": "active",
+    "publicKey": "-----BEGIN PUBLIC KEY-----\n..."
+  }
+}
+```
+
+**Notes:**
+
+- Fetches the remote server's public key
+- Updates local node record with the key
+- Node status changes to `active` on success
+
+---
+
+### HTTP Signature Format
+
+Server-to-server requests use HTTP Signatures (RSA-SHA256) for authentication.
+
+**Signature Header Format:**
+
+```
+Signature: keyId="https://server.com/api/federation/identity#main-key",
+           algorithm="rsa-sha256",
+           headers="(request-target) host date digest",
+           signature="base64-encoded-signature"
+```
+
+**Required Headers:**
+
+| Header | Description |
+|--------|-------------|
+| `Host` | Target server hostname |
+| `Date` | RFC 2822 formatted date |
+| `Digest` | SHA-256 hash of request body (if present) |
+| `Signature` | HTTP Signature header |
+
+**Example Request:**
+
+```bash
+curl -X POST https://other-server.com/api/federation/inbox \
+  -H "Host: other-server.com" \
+  -H "Date: Thu, 12 Dec 2025 10:00:00 GMT" \
+  -H "Digest: SHA-256=X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=" \
+  -H "Signature: keyId=\"https://my-server.com/api/federation/identity#main-key\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest\",signature=\"...\"" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"msg-1","type":"ping","payload":{}}'
+```
+
+---
+
+### Federation Database Tables
+
+| Table | Description |
+|-------|-------------|
+| `server_identity` | Server's RSA keypair (singleton) |
+| `federation_nodes` | Trusted federation partners |
+| `remote_users` | Cached profiles from other servers |
+| `remote_droplets` | Cached droplets from federated waves |
+| `wave_federation` | Wave-to-node relationships |
+| `federation_queue` | Outbound message queue with retries |
+| `federation_inbox_log` | Inbound message deduplication |
 
 ---
 

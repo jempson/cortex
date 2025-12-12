@@ -619,6 +619,48 @@ Automatic embedding of videos and media from popular platforms.
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
 
+- **v1.13.0 (December 2025)** - Federation
+  - **Server-to-Server Federation**: Multiple Cortex instances can exchange waves and droplets
+    - HTTP Signature authentication (RSA-SHA256) for server-to-server requests
+    - Federated user format: `@handle@server.com`
+    - Origin-authoritative model: origin server is source of truth
+    - Manual trust model: admin allowlist of federation partners
+  - **Federation Endpoints**:
+    - `GET /api/federation/identity` - Public: Get server's public key
+    - `POST /api/federation/inbox` - Receive signed messages from other servers
+    - `GET /api/federation/users/:handle` - Get local user profile for remote servers
+    - `GET /api/users/resolve/:identifier` - Resolve local or federated users
+    - `GET /api/admin/federation/status` - Admin: Get federation status
+    - `GET /api/admin/federation/nodes` - Admin: List trusted nodes
+    - `POST /api/admin/federation/nodes` - Admin: Add trusted node
+    - `DELETE /api/admin/federation/nodes/:id` - Admin: Remove node
+    - `POST /api/admin/federation/nodes/:id/handshake` - Admin: Exchange keys
+  - **Database Schema** (new tables):
+    - `server_identity` - Server's RSA keypair (singleton)
+    - `federation_nodes` - Trusted federation partners
+    - `remote_users` - Cached profiles from federated servers
+    - `remote_droplets` - Cached droplets from federated waves
+    - `wave_federation` - Wave-to-node relationships
+    - `federation_queue` - Outbound message queue with retries
+    - `federation_inbox_log` - Inbound message deduplication
+  - **Wave Federation**:
+    - `federation_state` column on waves: 'local', 'origin', 'participant'
+    - Wave invites sent when adding `@user@server` participants
+    - Participant waves created on receiving `wave_invite`
+  - **Droplet Federation**:
+    - New droplets forwarded to federated nodes
+    - Edits and deletions propagate to all participants
+    - Remote droplets cached locally with author info
+  - **Message Queue**:
+    - Optimistic send with queue fallback on failure
+    - Exponential backoff: 1min → 5min → 25min → 2hr → 10hr
+    - Background processor runs every 30 seconds
+    - Auto-cleanup of old messages after 7 days
+  - **Environment Variables**:
+    - `FEDERATION_ENABLED` - Enable/disable federation
+    - `FEDERATION_NODE_NAME` - Server's public hostname
+  - **Client**: FederationAdminPanel in ProfileSettings (admin only)
+
 - **v1.12.0 (December 2025)** - CSS Variable Theme System & Push Notification Fixes
   - **Theme System Refactor**: Complete CSS variable-based theming
     - All colors now use CSS custom properties instead of hardcoded values
@@ -870,6 +912,8 @@ ALLOWED_ORIGINS=https://your-domain.com             # CORS whitelist (comma-sepa
 SEED_DEMO_DATA=true                                 # Seed demo accounts on first run
 GIPHY_API_KEY=your-giphy-api-key                    # Required for GIF search (get from developers.giphy.com)
 USE_SQLITE=true                                     # Use SQLite instead of JSON files (v1.8.0+)
+FEDERATION_ENABLED=false                            # Enable server-to-server federation (v1.13.0+)
+FEDERATION_NODE_NAME=cortex.example.com             # Server's public hostname for federation
 ```
 
 **Client:** Hardcoded to `localhost:3001` for development. Change `API_URL` and `WS_URL` in `CortexApp.jsx` for production.
