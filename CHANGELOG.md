@@ -5,6 +5,235 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2025-12-15
+
+### Added
+
+#### Server-to-Server Federation
+- **Federation Architecture**: Multiple Cortex servers can now exchange waves and droplets
+- **HTTP Signature Authentication**: RSA-SHA256 signed requests for secure server-to-server communication
+- **Federated User Format**: Reference users on other servers with `@handle@server.com`
+- **Origin-Authoritative Model**: Origin server is the source of truth for wave data
+- **Manual Trust Model**: Admin-managed allowlist of trusted federation partners
+
+#### Federation Endpoints
+- `GET /api/federation/identity` - Public endpoint for server's public key
+- `POST /api/federation/inbox` - Receive signed messages from other servers
+- `GET /api/federation/users/:handle` - Get local user profile for remote servers
+- `GET /api/users/resolve/:identifier` - Resolve local or federated users
+
+#### Admin Federation Management
+- `GET /api/admin/federation/status` - Get federation status and configuration
+- `GET /api/admin/federation/nodes` - List trusted federation nodes
+- `POST /api/admin/federation/nodes` - Add trusted node
+- `DELETE /api/admin/federation/nodes/:id` - Remove trusted node
+- `POST /api/admin/federation/nodes/:id/handshake` - Exchange public keys with node
+
+#### Database Schema (New Tables)
+- `server_identity` - Server's RSA keypair (singleton)
+- `federation_nodes` - Trusted federation partners
+- `remote_users` - Cached profiles from federated servers
+- `remote_droplets` - Cached droplets from federated waves
+- `wave_federation` - Wave-to-node relationships
+- `federation_queue` - Outbound message queue with retry logic
+- `federation_inbox_log` - Inbound message deduplication
+
+#### Message Queue System
+- Optimistic send with automatic queue fallback on failure
+- Exponential backoff retries: 1min → 5min → 25min → 2hr → 10hr
+- Background processor runs every 30 seconds
+- Auto-cleanup of old messages after 7 days
+
+#### Client Updates
+- **FederationAdminPanel**: New admin panel in Profile Settings for managing federation
+- Generate and view server identity
+- Add/remove trusted nodes
+- Initiate handshakes with remote servers
+- View node status and connection health
+
+### Changed
+
+- Server startup banner now shows federation status
+- Updated environment variables section with `FEDERATION_ENABLED` and `FEDERATION_NODE_NAME`
+
+### Technical Details
+
+- RSA-2048 keypair generation for server identity
+- HTTP Signature draft-cavage-http-signatures-12 compatible
+- Rate limiting: 500 requests/minute per federated node
+- Idempotent inbox processing prevents duplicate message handling
+
+---
+
+## [1.12.1] - 2025-12-12
+
+### Fixed
+
+#### SQLite Media Embedding
+- **GIF/Image Embedding**: Fixed media embedding not working in SQLite mode
+- Added missing `sanitizeMessage()` and `detectAndEmbedMedia()` calls to SQLite database class
+- GIPHY URLs now properly converted to embedded `<img>` tags in SQLite mode
+
+---
+
+## [1.12.0] - 2025-12-11
+
+### Added
+
+#### CSS Variable Theme System
+- **Complete Theme Refactor**: All colors now use CSS custom properties
+- **Theme Application**: `data-theme` attribute on `<html>` element
+- **Flash Prevention**: Inline script applies theme before React loads
+- **Theme Persistence**: Dedicated `cortex_theme` localStorage key
+
+#### 5 Themes Available
+- **Firefly** (default): Classic green terminal with enhanced mobile contrast
+- **High Contrast**: Maximum readability with brighter text and borders
+- **AMOLED Black**: True #000 background for OLED battery savings
+- **Light Mode**: Light background for daytime use
+- **Ocean Blue**: Blue-tinted dark alternative
+
+### Fixed
+
+#### Push Notifications
+- **VAPID Key Change Detection**: Auto re-subscribe if server VAPID key changes
+- **SQLite Constraint Migration**: Auto-migration for `push_subscriptions` UNIQUE constraint
+- **Toggle State Management**: Proper React state for push notification toggle
+- **Error Feedback**: Detailed failure messages in UI toast
+
+#### Database
+- **Preferences Persistence**: Fixed preferences not persisting in SQLite mode
+- Added `updateUserPreferences()` method to SQLite class
+
+### Technical Details
+
+- CSS variable categories: Background, Text, Borders, Accents, Glows, Overlays
+- Mobile readability: Droplet content uses `--text-primary` for maximum contrast
+- Server validates themes against: firefly, highContrast, amoled, light, ocean
+
+---
+
+## [1.11.0] - 2025-12-11
+
+### Added
+
+#### Notification System
+- **In-App Notifications**: Comprehensive notification system for all activity types
+- **Notification Types**: @mentions, replies to your droplets, wave activity, ripples
+- **Smart Routing**: Notifications suppressed when viewing source wave
+- **Real-Time Updates**: WebSocket-powered instant notifications
+
+#### Enhanced Wave List Badges
+- **Color-Coded Indicators**: Visual distinction for notification types
+- **Amber (@)**: Direct @mentions
+- **Green (↩)**: Replies to your droplets
+- **Purple (◈)**: Ripple activity
+- **Orange**: General wave activity
+
+#### Notification Preferences
+- Per-type control in Profile Settings
+- Options: Always, App Closed Only, Never
+- "Suppress while focused" toggle
+
+### Changed
+
+#### API Deprecation
+- Legacy `/api/messages/*` endpoints now return deprecation headers
+- Migration guide added to docs/API.md
+- Sunset date: March 1, 2026
+
+#### Component Updates
+- Internal terminology alignment (ThreadedMessage → Droplet)
+- Auto-focus preference for Focus View on droplet click
+
+### Fixed
+
+- Notification badges now clear when droplets are read
+- Push notification re-enable after disabling
+- Droplet creation endpoint uses POST /droplets
+
+---
+
+## [1.10.0] - 2025-12-10
+
+### Added
+
+#### Droplets Architecture
+- **Terminology Rename**: Messages → Droplets throughout codebase
+- Database tables renamed: `messages` → `droplets`, `messages_fts` → `droplets_fts`
+- API endpoints support both `/droplets` and `/messages` (backward compatibility)
+- WebSocket events renamed with legacy aliases maintained
+
+#### Focus View
+- **Wave-Like Context**: View any droplet with replies as its own wave
+- **Desktop Entry**: "⤢ FOCUS" button on droplets with children
+- **Mobile Entry**: Tap droplet content area, swipe right to go back
+- **Breadcrumb Navigation**: Clickable path items for navigation
+- **Navigation Stack**: Push/pop model for nested focus levels
+
+#### Threading Depth Limit
+- 3-level inline limit in WaveView
+- "FOCUS TO REPLY" button at depth limit
+- Visual depth indicator banner
+- Focus View allows unlimited depth
+
+#### Ripple System
+- **Spin Off Threads**: Create new waves from droplet trees
+- **RippleModal**: Title input and participant selection
+- **RippledLinkCard**: Visual "Rippled to wave..." link in original
+- **Nested Ripples**: `breakout_chain` field tracks lineage
+- **API Endpoint**: `POST /api/droplets/:id/ripple`
+
+### Changed
+
+#### Database Schema
+- New fields: `droplets.broken_out_to`, `droplets.original_wave_id`
+- New fields: `waves.root_droplet_id`, `waves.broken_out_from`, `waves.breakout_chain`
+- Auto-migration for existing SQLite databases
+
+---
+
+## [1.9.0] - 2025-12-10
+
+### Added
+
+#### Message Threading Improvements
+- **Collapse/Expand**: Thread collapse with localStorage persistence per wave
+- **Bulk Actions**: "Collapse All" / "Expand All" buttons in wave toolbar
+- **Jump to Parent**: "↑ Parent" button with highlight animation
+- **Depth Indicator**: Visual indicator for deeply nested messages (depth > 3)
+- **Thread Connectors**: Dashed lines showing reply hierarchy
+
+#### Mobile Gesture Enhancements
+- **useSwipeGesture Hook**: Swipe navigation support
+- **usePullToRefresh Hook**: Pull-to-refresh with PullIndicator component
+- **BottomNav Component**: 5-tab navigation (Waves, Contacts, Groups, Search, Profile)
+- **Haptic Feedback**: 10ms vibration on navigation
+- **Badge Indicators**: Unread counts and pending requests
+
+#### Report System
+- **Report Types**: Spam, harassment, inappropriate content, other
+- **Rate Limiting**: 10 reports per hour per user
+- **ReportModal**: Reason selection and details textarea
+- **Admin Dashboard**: ReportsAdminPanel with tabs (Pending/Resolved/Dismissed)
+- **Resolution Options**: Warning Issued, Content Removed, User Banned, No Action
+- **MyReportsPanel**: Users can view their submitted reports
+- **WebSocket Event**: `report_resolved` notifies reporters
+
+#### Moderation Actions
+- **Warning System**: `warnings` table with `createWarning()` method
+- **Moderation Audit Log**: `moderation_log` table
+- **Admin Endpoints**: Warn user, get warnings, get moderation log
+- **WebSocket Event**: `warning_received` notifies warned users
+
+#### API Documentation
+- Comprehensive `docs/API.md` with 70+ endpoints documented
+- WebSocket events documentation
+- Rate limiting and error response formats
+- curl examples for key endpoints
+
+---
+
 ## [1.8.1] - 2025-12-09
 
 ### Fixed

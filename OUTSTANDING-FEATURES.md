@@ -1,13 +1,13 @@
 # Cortex - Outstanding Features & Future Roadmap
 
-**Last Updated:** December 9, 2025
-**Current Version:** v1.8.1
+**Last Updated:** December 15, 2025
+**Current Version:** v1.13.0
 
 This document tracks planned but not-yet-implemented features for future releases.
 
 ---
 
-## Completed Features (v1.5.0 - v1.8.1)
+## Completed Features (v1.5.0 - v1.13.0)
 
 The following features have been implemented and are no longer outstanding:
 
@@ -31,21 +31,32 @@ The following features have been implemented and are no longer outstanding:
 | SQLite Database | v1.8.0 | Optional SQLite backend with FTS |
 | PWA Push Notifications | v1.8.0 | Server-sent push for offline users |
 | Message Pagination | v1.8.0 | Load older messages on demand |
+| Threading Improvements | v1.9.0 | Collapse/expand, visual connectors, jump-to-parent |
+| Mobile Gestures | v1.9.0 | Swipe navigation, pull-to-refresh, bottom nav |
+| Report System | v1.9.0 | Content moderation with admin dashboard |
+| API Documentation | v1.9.0 | Comprehensive docs/API.md with 70+ endpoints |
+| Moderation Actions | v1.9.0 | Warning system, audit log |
+| Droplets Architecture | v1.10.0 | Messages → Droplets terminology rename |
+| Focus View | v1.10.0 | View any droplet as its own wave-like context |
+| Ripple System | v1.10.0 | Spin off threads into new waves |
+| Threading Depth Limit | v1.10.0 | 3-level inline limit, unlimited in Focus View |
+| Notification System | v1.11.0 | In-app notifications with smart routing |
+| Wave List Badges | v1.11.0 | Color-coded notification indicators |
+| Notification Preferences | v1.11.0 | Per-type control in settings |
+| CSS Variable Themes | v1.12.0 | 5 themes with CSS custom properties |
+| VAPID Key Detection | v1.12.0 | Auto re-subscribe on key change |
+| SQLite GIF Fix | v1.12.1 | Media embedding in SQLite mode |
+| **Federation** | v1.13.0 | Server-to-server communication |
+| **HTTP Signatures** | v1.13.0 | RSA-SHA256 server authentication |
+| **Federated Users** | v1.13.0 | @handle@server.com format |
+| **Message Queue** | v1.13.0 | Exponential backoff retries |
+| **Federation Admin** | v1.13.0 | Node management panel |
 
 ---
 
-## In Progress (v1.9.0)
+## In Progress
 
-The following features are currently being implemented in v1.9.0:
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Message Threading Improvements | In Progress | Collapse/expand, visual connectors, navigation |
-| Mobile Gesture Enhancements | In Progress | Swipe gestures, pull-to-refresh, bottom nav |
-| Report System | In Progress | Content moderation, admin dashboard |
-| Public REST API Documentation | In Progress | Full endpoint documentation |
-
-See `docs/PLAN-v1.9.0.md` for detailed implementation plan.
+No features currently in active development.
 
 ---
 
@@ -57,7 +68,7 @@ See `docs/PLAN-v1.9.0.md` for detailed implementation plan.
 Export entire waves for archival or sharing.
 
 **Requirements:**
-- Export wave with all messages
+- Export wave with all droplets
 - Include attachments/media
 - Formatted HTML or PDF output
 - Preserve threading structure
@@ -83,15 +94,22 @@ Enhanced search with advanced filters and boolean operators.
 
 ---
 
+### 3. End-to-End Encryption for Federation
+**Complexity:** High
+
+Encrypt federated messages so only participants can read them.
+
+**Requirements:**
+- Key exchange between federated users
+- Client-side encryption/decryption
+- Key rotation and recovery
+- Backward compatibility with non-E2E waves
+
+---
+
 ## Future Considerations (v2.0.0+)
 
 These features require significant architectural changes:
-
-### Federation & Cross-Server Communication
-- Connect to other Cortex servers
-- Cross-server waves and messaging
-- Server discovery and trust system
-- End-to-end encryption for federated messages
 
 ### Advanced API & Integrations
 - Webhooks: Outbound HTTP callbacks for events
@@ -111,18 +129,23 @@ These features require significant architectural changes:
 - Auto-moderation Rules: Regex filters, word blacklists
 - Appeal System: Users can appeal moderation decisions
 
+### Federation Enhancements
+- Server Discovery: Automatic discovery of federation partners
+- Public Directory: Opt-in public server listing
+- Federation Statistics: Cross-server analytics
+- Relay Servers: Message delivery through intermediaries
+
 ---
 
 ## Priority Matrix
 
 | Feature | Priority | Complexity | User Impact | Status |
 |---------|----------|------------|-------------|--------|
-| Threading Improvements | Medium | Medium | Medium | v1.9.0 |
-| Mobile Gestures | Medium | Medium | Medium | v1.9.0 |
-| Report System | Medium | Medium | Medium | v1.9.0 |
-| API Documentation | Low-Medium | Low-Medium | Low | v1.9.0 |
 | Export Wave | Low | Medium | Low | Backlog |
 | Advanced Search | Low | Medium | Medium | Backlog |
+| E2E Encryption | Medium | High | High | Backlog |
+| Webhooks | Low | Medium | Medium | Backlog |
+| Voice Messages | Low | High | Medium | Backlog |
 
 ---
 

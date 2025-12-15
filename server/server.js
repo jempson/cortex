@@ -7049,17 +7049,17 @@ server.listen(PORT, () => {
 ║  ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗         ║
 ║  ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗        ║
 ║   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝        ║
-║  SECURE COMMUNICATIONS SYSTEM v1.12.2                      ║
+║  SECURE COMMUNICATIONS SYSTEM v1.13.0                      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  🔒 Security: Rate limiting, XSS protection, Helmet        ║
-║  📁 Data: Separated files (users, waves, messages, groups) ║
+║  🌐 Federation: Server-to-server communication             ║
 ║  👥 Groups: Create groups, manage members, group waves     ║
 ║  🆔 Identity: UUID-based with changeable handles           ║
 ║  📝 Profiles: Change password, display name, avatar        ║
 ║  📦 Archives: Personal wave archiving                      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  PORT=${PORT} | JWT=${JWT_SECRET === 'cortex-default-secret-CHANGE-ME' ? '⚠️ DEFAULT' : '✅ Custom'} | CORS=${ALLOWED_ORIGINS ? '✅' : '⚠️ All'}
-║  DEMO_DATA=${demoEnabled ? '✅' : '❌'} | Server: http://localhost:${PORT}
+║  FEDERATION=${process.env.FEDERATION_ENABLED === 'true' ? '✅' : '❌'} | Server: http://localhost:${PORT}
 ╚════════════════════════════════════════════════════════════╝
 `);
 });
