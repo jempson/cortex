@@ -4205,6 +4205,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     if (success) {
       showToast(wasBlocked ? `Unblocked ${participant.name}` : `Blocked ${participant.name}`, 'success');
       onBlockedMutedChange?.();
+      // Reload wave to show/hide blocked user's droplets
+      loadWave();
     } else {
       showToast(`Failed to ${wasBlocked ? 'unblock' : 'block'} user`, 'error');
     }
@@ -4219,6 +4221,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     if (success) {
       showToast(wasMuted ? `Unmuted ${participant.name}` : `Muted ${participant.name}`, 'success');
       onBlockedMutedChange?.();
+      // Reload wave to show/hide muted user's droplets
+      loadWave();
     } else {
       showToast(`Failed to ${wasMuted ? 'unmute' : 'mute'} user`, 'error');
     }
@@ -4359,7 +4363,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   // Scroll to first unread message or bottom on initial wave load
   useEffect(() => {
-    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading) return;
+    // Skip if: no data, no container, already scrolled, still loading, OR pending scroll restoration
+    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading || scrollPositionToRestore.current !== null) return;
 
     // Only run once per wave
     hasScrolledToUnreadRef.current = true;
@@ -6210,11 +6215,19 @@ const FocusView = ({
   };
 
   const handleReaction = async (messageId, emoji) => {
+    // Save scroll position before updating
+    const scrollTop = messagesRef.current?.scrollTop;
     try {
       await fetchAPI(`/droplets/${messageId}/react`, {
         method: 'POST',
         body: { emoji }
       });
+      // Refresh data to show reaction
+      await fetchFreshData();
+      // Restore scroll position
+      if (messagesRef.current && scrollTop !== undefined) {
+        messagesRef.current.scrollTop = scrollTop;
+      }
     } catch (err) {
       showToast('Failed to react', 'error');
     }

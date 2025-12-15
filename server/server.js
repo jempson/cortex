@@ -1592,14 +1592,14 @@ class Database {
     );
   }
 
-  createReport(data) {
+  createReport(reporterId, type, targetId, reason, details = '') {
     const report = {
       id: uuidv4(),
-      reporterId: data.reporterId,
-      type: data.type, // 'message' | 'wave' | 'user'
-      targetId: data.targetId,
-      reason: data.reason, // 'spam' | 'harassment' | 'inappropriate' | 'other'
-      details: data.details || '',
+      reporterId: reporterId,
+      type: type, // 'message' | 'wave' | 'user'
+      targetId: targetId,
+      reason: reason, // 'spam' | 'harassment' | 'inappropriate' | 'other'
+      details: details || '',
       status: 'pending', // 'pending' | 'resolved' | 'dismissed'
       createdAt: new Date().toISOString(),
       resolvedAt: null,
