@@ -11,8 +11,71 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
+import sanitizeHtml from 'sanitize-html';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ============ Security: Input Sanitization ============
+const sanitizeMessageOptions = {
+  allowedTags: ['img', 'a', 'br', 'p', 'strong', 'em', 'code', 'pre'],
+  allowedAttributes: {
+    'img': ['src', 'alt', 'width', 'height', 'class', 'style'],
+    'a': ['href', 'target', 'rel'],
+  },
+  allowedSchemes: ['http', 'https', 'data'],
+  allowedSchemesByTag: {
+    img: ['http', 'https', 'data']
+  },
+  transformTags: {
+    'a': (tagName, attribs) => ({
+      tagName: 'a',
+      attribs: { ...attribs, target: '_blank', rel: 'noopener noreferrer' }
+    }),
+    'img': (tagName, attribs) => {
+      const src = attribs.src || '';
+      const isGif = src.match(/\.gif(\?|$)/i) ||
+                    src.match(/(giphy\.com|tenor\.com)/i);
+      return {
+        tagName: 'img',
+        attribs: {
+          ...attribs,
+          style: attribs.style || 'max-width: 100%; height: auto;',
+          loading: isGif ? 'eager' : 'lazy',
+          class: 'message-media'
+        }
+      };
+    }
+  }
+};
+
+function sanitizeMessage(content) {
+  if (typeof content !== 'string') return '';
+  return sanitizeHtml(content, sanitizeMessageOptions).trim().slice(0, 10000);
+}
+
+function detectAndEmbedMedia(content) {
+  const urlRegex = /(?<!["'>])(https?:\/\/[^\s<]+)(?![^<]*>|[^<>]*<\/)/gi;
+  const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg)(\?[^\s]*)?$/i;
+  const imageHosts = /(media\.giphy\.com|i\.giphy\.com|media\.tenor\.com|c\.tenor\.com)/i;
+  const imgStyle = 'max-width:200px;max-height:150px;border-radius:4px;cursor:pointer;object-fit:cover;display:block;border:1px solid #3a4a3a;';
+
+  content = content.replace(urlRegex, (match) => {
+    if (imageExtensions.test(match) || imageHosts.test(match)) {
+      return `<img src="${match}" alt="Embedded media" style="${imgStyle}" class="zoomable-image" />`;
+    }
+    return `<a href="${match}" target="_blank" rel="noopener noreferrer">${match}</a>`;
+  });
+
+  const uploadPathRegex = /(?<!["'>])(\/uploads\/(?:messages|avatars)\/[^\s<]+)(?![^<]*>|[^<>]*<\/)/gi;
+  content = content.replace(uploadPathRegex, (match) => {
+    if (imageExtensions.test(match)) {
+      return `<img src="${match}" alt="Uploaded image" style="${imgStyle}" class="zoomable-image" />`;
+    }
+    return match;
+  });
+
+  return content;
+}
 
 // Configuration
 const DATA_DIR = path.join(__dirname, 'data');
@@ -2081,12 +2144,17 @@ export class DatabaseSQLite {
 
   createDroplet(data) {
     const now = new Date().toISOString();
+
+    // Sanitize and auto-embed media URLs
+    let content = sanitizeMessage(data.content);
+    content = detectAndEmbedMedia(content);
+
     const droplet = {
       id: `droplet-${uuidv4()}`,
       waveId: data.waveId,
       parentId: data.parentId || null,
       authorId: data.authorId,
-      content: data.content,
+      content: content,
       privacy: data.privacy || 'private',
       version: 1,
       createdAt: now,
@@ -2177,9 +2245,13 @@ export class DatabaseSQLite {
       VALUES (?, ?, ?, ?, ?)
     `).run(`hist-${uuidv4()}`, dropletId, droplet.content, droplet.version, new Date().toISOString());
 
+    // Sanitize and auto-embed media URLs (same as createDroplet)
+    let processedContent = sanitizeMessage(content);
+    processedContent = detectAndEmbedMedia(processedContent);
+
     // Update droplet
     const now = new Date().toISOString();
-    this.db.prepare('UPDATE droplets SET content = ?, version = ?, edited_at = ? WHERE id = ?').run(content, droplet.version + 1, now, dropletId);
+    this.db.prepare('UPDATE droplets SET content = ?, version = ?, edited_at = ? WHERE id = ?').run(processedContent, droplet.version + 1, now, dropletId);
 
     // Return updated droplet
     const updated = this.db.prepare(`

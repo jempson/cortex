@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 1.10.0** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 1.12.1** | A privacy-first communication platform inspired by Google Wave.
 
 ## Quick Start
 
@@ -355,6 +355,19 @@ server {
 ---
 
 ## Changelog
+
+### v1.12.1 (December 2025)
+- **Bug Fix**: GIF and image embedding now works correctly in SQLite mode
+  - Added missing `sanitizeMessage()` and `detectAndEmbedMedia()` calls to SQLite database class
+  - GIPHY URLs are now properly converted to embedded `<img>` tags
+
+### v1.12.0 (December 2025)
+- **CSS Variable Theme System**: Complete theme overhaul using CSS variables
+  - 5 themes: Firefly (default), High Contrast, Light, Amber CRT, Matrix
+  - Theme persistence via localStorage
+  - Consistent styling across all components
+- **Push Notification Fixes**: VAPID key change detection and auto-resubscribe
+- **Service Worker Improvements**: Better cache management and update handling
 
 ### v1.11.0 (December 2025)
 - **Notification System**: Comprehensive in-app notifications
