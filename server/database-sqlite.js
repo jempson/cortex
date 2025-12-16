@@ -1776,6 +1776,7 @@ export class DatabaseSQLite {
     const mutedIds = this.db.prepare('SELECT muted_user_id FROM mutes WHERE user_id = ?').all(userId).map(r => r.muted_user_id);
 
     // Build wave query
+    // Note: federated participant waves (crossServer with federation_state='participant') are shown to all local users
     let sql = `
       SELECT w.*, wp.archived, wp.last_read,
         u.display_name as creator_name, u.avatar as creator_avatar, u.handle as creator_handle,
@@ -1790,6 +1791,8 @@ export class DatabaseSQLite {
         OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
         OR (w.privacy = 'crossServer' AND wp.user_id IS NOT NULL)
         OR (w.privacy = 'cross-server' AND wp.user_id IS NOT NULL)
+        OR (w.privacy = 'crossServer' AND w.federation_state = 'participant')
+        OR (w.privacy = 'cross-server' AND w.federation_state = 'participant')
         OR (w.privacy = 'group' AND w.group_id IN (${userGroupIds.map(() => '?').join(',') || 'NULL'}))
       )
     `;

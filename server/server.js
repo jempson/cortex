@@ -4728,19 +4728,8 @@ async function sendSignedFederationRequest(targetNode, method, path, body = null
 
   const url = `${targetNode.baseUrl}${path}`;
 
-  // Debug: Check if body is already a string (would cause double-stringify)
-  if (body && typeof body === 'string') {
-    console.error('⚠️ WARNING: body is already a string, this will cause double-stringify!');
-    console.error('Body preview:', body.substring(0, 100));
-  }
-
   // Stringify body once and use the same string for both signature and request
   const bodyString = body ? JSON.stringify(body) : null;
-
-  // Debug: Log what we're sending
-  console.log(`📤 Sending federation request to ${url}`);
-  console.log(`📤 Body type: ${typeof body}, Body string first 100 chars: ${bodyString?.substring(0, 100)}`);
-  console.log(`📤 Body string first char code: ${bodyString?.charCodeAt(0)}`); // 123 = '{', 34 = '"'
 
   // Pass the stringified body to createHttpSignature for consistent digest calculation
   const headers = createHttpSignatureFromString(method, url, bodyString, ourIdentity.privateKey, ourIdentity.nodeName);
