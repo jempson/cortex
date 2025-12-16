@@ -4803,13 +4803,10 @@ async function sendSignedFederationRequest(targetNode, method, path, body = null
   // Guard against double-stringify: if body is already a string, don't stringify again
   let bodyString = null;
   if (body) {
-    console.log(`🔍 sendSignedFederationRequest body type: ${typeof body}`);
     if (typeof body === 'string') {
-      console.warn('⚠️  sendSignedFederationRequest received string body, first 100 chars:', body.substring(0, 100));
       bodyString = body;
     } else {
       bodyString = JSON.stringify(body);
-      console.log(`🔍 Stringified body first 100 chars: ${bodyString.substring(0, 100)}`);
     }
   }
 
