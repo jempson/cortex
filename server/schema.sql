@@ -30,9 +30,10 @@ CREATE TABLE IF NOT EXISTS handle_history (
 );
 
 -- Contacts relationship (one-directional, need two rows for mutual)
+-- Note: contact_id has no FK to allow federated user follows
 CREATE TABLE IF NOT EXISTS contacts (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    contact_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    contact_id TEXT NOT NULL,
     added_at TEXT NOT NULL,
     PRIMARY KEY (user_id, contact_id)
 );

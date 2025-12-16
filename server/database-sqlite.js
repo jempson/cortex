@@ -607,6 +607,39 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Wave federation columns added');
     }
+
+    // Migrate contacts table to remove FK constraint on contact_id (v1.13.0)
+    // This allows storing remote user IDs for federated follows
+    const contactsInfo = this.db.prepare(`PRAGMA table_info(contacts)`).all();
+    const contactsFKs = this.db.prepare(`PRAGMA foreign_key_list(contacts)`).all();
+    const hasContactIdFK = contactsFKs.some(fk => fk.from === 'contact_id' && fk.table === 'users');
+
+    if (hasContactIdFK) {
+      console.log('📝 Migrating contacts table to support federated follows (v1.13.0)...');
+      this.db.exec(`
+        -- Temporarily disable foreign keys for migration
+        PRAGMA foreign_keys = OFF;
+
+        -- Create new contacts table without FK on contact_id
+        CREATE TABLE contacts_new (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          contact_id TEXT NOT NULL,
+          added_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, contact_id)
+        );
+
+        -- Copy existing data
+        INSERT INTO contacts_new SELECT * FROM contacts;
+
+        -- Drop old table and rename new one
+        DROP TABLE contacts;
+        ALTER TABLE contacts_new RENAME TO contacts;
+
+        -- Re-enable foreign keys
+        PRAGMA foreign_keys = ON;
+      `);
+      console.log('✅ Contacts table migrated for federation support');
+    }
   }
 
   prepareStatements() {
