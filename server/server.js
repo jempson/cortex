@@ -5285,8 +5285,20 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
           break;
         }
 
-        // Find the local participant wave for this origin
-        const localWave = db.getWaveByOrigin(sourceNode.nodeName, originWaveId);
+        // Find the local wave - could be participant wave OR origin wave
+        // First try: this server is participant, sourceNode is origin
+        let localWave = db.getWaveByOrigin(sourceNode.nodeName, originWaveId);
+        let isOriginServer = false;
+
+        // Second try: this server is origin, sourceNode is participant
+        if (!localWave) {
+          const maybeOriginWave = db.getWave(originWaveId);
+          if (maybeOriginWave && maybeOriginWave.federationState === 'origin') {
+            localWave = maybeOriginWave;
+            isOriginServer = true;
+          }
+        }
+
         if (!localWave) {
           console.error(`new_droplet: No local wave found for origin ${originWaveId} from ${sourceNode.nodeName}`);
           break;
@@ -5310,7 +5322,7 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
           id: droplet.id,
           waveId: localWave.id,
           originWaveId,
-          originNode: sourceNode.nodeName,
+          originNode: author?.nodeName || sourceNode.nodeName,
           authorId: author?.id || droplet.authorId,
           authorNode: author?.nodeName || sourceNode.nodeName,
           parentId: droplet.parentId,
@@ -5333,7 +5345,33 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
           isRemote: true,
         });
 
-        console.log(`✅ Cached remote droplet ${droplet.id} in wave ${localWave.id}`);
+        console.log(`✅ Cached remote droplet ${droplet.id} in wave ${localWave.id} (origin=${isOriginServer})`);
+
+        // If this is the origin server, relay the droplet to other participant nodes
+        if (isOriginServer) {
+          const federationNodes = db.getWaveFederationNodes(localWave.id);
+          for (const fed of federationNodes) {
+            // Don't send back to the node that sent it
+            if (fed.nodeName === sourceNode.nodeName) continue;
+
+            const node = db.getFederationNodeByName(fed.nodeName);
+            if (!node || node.status !== 'active') continue;
+
+            const relayPayload = {
+              id: `relay-${droplet.id}-${Date.now()}`,
+              type: 'new_droplet',
+              payload: { droplet, originWaveId, author },
+            };
+
+            sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', relayPayload)
+              .then(res => {
+                if (res.ok) console.log(`✅ Relayed droplet to ${node.nodeName}`);
+                else console.error(`❌ Relay to ${node.nodeName} failed: ${res.status}`);
+              })
+              .catch(err => console.error(`❌ Relay error to ${node.nodeName}:`, err.message));
+          }
+        }
+
         break;
       }
 
@@ -6107,10 +6145,10 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
   // Also broadcast legacy event for backward compatibility
   broadcastToWave(waveId, { type: 'new_message', data: droplet });
 
-  // Federation: If this is an origin wave, send to all federated nodes
-  if (FEDERATION_ENABLED && wave.federationState === 'origin') {
+  // Federation: Send droplet to federated nodes
+  if (FEDERATION_ENABLED && (wave.federationState === 'origin' || wave.federationState === 'participant')) {
     const ourIdentity = db.getServerIdentity();
-    sendDropletToFederatedNodes(waveId, 'new_droplet', {
+    const dropletPayload = {
       droplet: {
         id: droplet.id,
         parentId: droplet.parentId,
@@ -6119,7 +6157,7 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
         editedAt: droplet.editedAt,
         reactions: droplet.reactions,
       },
-      originWaveId: waveId,
+      originWaveId: wave.federationState === 'origin' ? waveId : wave.originWaveId,
       author: author ? {
         id: author.id,
         handle: author.handle,
@@ -6129,9 +6167,34 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
         bio: author.bio,
         nodeName: ourIdentity?.nodeName,
       } : null,
-    }).catch(err => {
-      console.error('Federation droplet delivery error:', err.message);
-    });
+    };
+
+    if (wave.federationState === 'origin') {
+      // Origin server: send to all participant nodes
+      sendDropletToFederatedNodes(waveId, 'new_droplet', dropletPayload).catch(err => {
+        console.error('Federation droplet delivery error:', err.message);
+      });
+    } else if (wave.federationState === 'participant' && wave.originNode) {
+      // Participant server: send back to origin node
+      const originNode = db.getFederationNodeByName(wave.originNode);
+      if (originNode && originNode.status === 'active') {
+        const messageId = `new_droplet-${droplet.id}-${Date.now()}`;
+        const fullPayload = { id: messageId, type: 'new_droplet', payload: dropletPayload };
+        sendSignedFederationRequest(originNode, 'POST', '/api/federation/inbox', fullPayload)
+          .then(response => {
+            if (response.ok) {
+              console.log(`✅ new_droplet sent to origin ${originNode.nodeName}`);
+            } else {
+              console.error(`❌ new_droplet to origin failed: ${response.status}`);
+              db.queueFederationMessage({ targetNode: originNode.nodeName, messageType: 'new_droplet', payload: fullPayload });
+            }
+          })
+          .catch(err => {
+            console.error(`❌ new_droplet to origin error:`, err.message);
+            db.queueFederationMessage({ targetNode: originNode.nodeName, messageType: 'new_droplet', payload: fullPayload });
+          });
+      }
+    }
   }
 
   res.status(201).json(droplet);

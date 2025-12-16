@@ -2244,7 +2244,7 @@ export class DatabaseSQLite {
 
     const rows = this.db.prepare(sql).all(...params);
 
-    return rows.map(d => {
+    const localDroplets = rows.map(d => {
       // Check if user has read this droplet
       const hasRead = userId ? !!this.db.prepare('SELECT 1 FROM droplet_read_by WHERE droplet_id = ? AND user_id = ?').get(d.id, userId) : false;
       const isUnread = d.deleted ? false : (userId ? !hasRead && d.author_id !== userId : false);
@@ -2279,8 +2279,48 @@ export class DatabaseSQLite {
         is_unread: isUnread,
         brokenOutTo: d.broken_out_to,
         brokenOutToTitle: d.broken_out_to_title,
+        isRemote: false,
       };
     });
+
+    // Also get remote droplets for federated waves
+    const remoteDroplets = this.getRemoteDropletsForWave(waveId).map(rd => ({
+      id: rd.id,
+      waveId: rd.waveId,
+      parentId: rd.parentId,
+      authorId: rd.authorId,
+      content: rd.content,
+      privacy: null,
+      version: 1,
+      createdAt: rd.createdAt,
+      editedAt: rd.editedAt,
+      deleted: rd.deleted,
+      deletedAt: null,
+      reactions: rd.reactions || {},
+      readBy: [],
+      sender_name: rd.authorDisplayName || 'Unknown',
+      sender_avatar: rd.authorAvatar || '?',
+      sender_avatar_url: rd.authorAvatarUrl,
+      sender_handle: `${rd.authorId}@${rd.authorNode}`,
+      author_id: rd.authorId,
+      parent_id: rd.parentId,
+      wave_id: rd.waveId,
+      created_at: rd.createdAt,
+      edited_at: rd.editedAt,
+      deleted_at: null,
+      is_unread: false, // Remote droplets don't track read status locally
+      brokenOutTo: null,
+      brokenOutToTitle: null,
+      isRemote: true,
+      originNode: rd.originNode,
+      authorNode: rd.authorNode,
+    }));
+
+    // Merge and sort by created_at
+    const allDroplets = [...localDroplets, ...remoteDroplets];
+    allDroplets.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    return allDroplets;
   }
 
   // Backward compatibility alias
