@@ -5437,6 +5437,12 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
                 });
               }
 
+              // Ensure reactions is an object (may be string if corrupted)
+              let reactions = d.reactions || {};
+              if (typeof reactions === 'string') {
+                try { reactions = JSON.parse(reactions); } catch { reactions = {}; }
+              }
+
               // Cache the droplet
               db.cacheRemoteDroplet({
                 id: d.id,
@@ -5449,7 +5455,7 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
                 content: d.content,
                 createdAt: d.createdAt,
                 editedAt: d.editedAt,
-                reactions: d.reactions || {},
+                reactions,
               });
             }
           }
@@ -6287,22 +6293,29 @@ app.put('/api/waves/:id', authenticateToken, async (req, res) => {
               nodeName: ourNodeName,
             })),
             // Include existing droplets so federated servers have history
-            droplets: existingDroplets.map(d => ({
-              id: d.id,
-              parentId: d.parentId || d.parent_id,
-              content: d.content,
-              createdAt: d.createdAt || d.created_at,
-              editedAt: d.editedAt || d.edited_at,
-              reactions: d.reactions || {},
-              author: {
-                id: d.authorId || d.author_id,
-                handle: d.sender_handle,
-                displayName: d.sender_name,
-                avatar: d.sender_avatar,
-                avatarUrl: d.sender_avatar_url,
-                nodeName: ourNodeName,
-              },
-            })),
+            droplets: existingDroplets.map(d => {
+              // Ensure reactions is an object (may be string from DB)
+              let reactions = d.reactions || {};
+              if (typeof reactions === 'string') {
+                try { reactions = JSON.parse(reactions); } catch { reactions = {}; }
+              }
+              return {
+                id: d.id,
+                parentId: d.parentId || d.parent_id,
+                content: d.content,
+                createdAt: d.createdAt || d.created_at,
+                editedAt: d.editedAt || d.edited_at,
+                reactions,
+                author: {
+                  id: d.authorId || d.author_id,
+                  handle: d.sender_handle,
+                  displayName: d.sender_name,
+                  avatar: d.sender_avatar,
+                  avatarUrl: d.sender_avatar_url,
+                  nodeName: ourNodeName,
+                },
+              };
+            }),
           },
         };
 
