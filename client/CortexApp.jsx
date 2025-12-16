@@ -2518,11 +2518,6 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 setLightboxImage(e.target.src);
                 return;
               }
-              // Mobile tap-to-focus: tap content area to enter focus view if droplet has replies
-              if (isMobile && hasChildren && onFocus) {
-                e.stopPropagation();
-                onFocus(message);
-              }
             }}
             style={{
               color: 'var(--text-primary)',
@@ -2532,30 +2527,9 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               wordBreak: 'break-word',
               whiteSpace: 'pre-wrap',
               overflow: 'hidden',
-              // Visual hint for tap-to-focus on mobile
-              cursor: (isMobile && hasChildren && onFocus) ? 'pointer' : 'default',
             }}
           >
             <DropletWithEmbeds content={message.content} />
-            {/* Mobile tap-to-focus hint */}
-            {isMobile && hasChildren && onFocus && (
-              <div style={{
-                marginTop: '6px',
-                padding: '4px 8px',
-                background: 'var(--accent-teal)10',
-                border: '1px dashed var(--accent-teal)30',
-                borderRadius: '4px',
-                fontSize: '0.65rem',
-                color: 'var(--accent-teal)',
-                fontFamily: 'monospace',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}>
-                <span>⤢</span>
-                <span>Tap to focus ({message.children?.length} {message.children?.length === 1 ? 'reply' : 'replies'})</span>
-              </div>
-            )}
           </div>
         )}
         {/* Actions Row: Parent, Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
@@ -2564,7 +2538,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <button onClick={() => onJumpToParent(message.parentId)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: '1px solid var(--accent-teal)30',
+              background: 'transparent', border: 'none',
               color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }}>↑ PARENT</button>
           )}
@@ -2573,21 +2547,21 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <button onClick={() => onFocus(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'var(--accent-teal)15', border: '1px solid var(--accent-teal)',
+              background: 'var(--accent-teal)15', border: 'none',
               color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }} title="Thread is deep - focus to continue">⤢ FOCUS TO REPLY</button>
           ) : isAtDepthLimit && onFocus ? (
             <button onClick={() => onFocus(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'var(--accent-teal)15', border: '1px solid var(--accent-teal)',
+              background: 'var(--accent-teal)15', border: 'none',
               color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }} title="Thread is deep - focus to reply">⤢ FOCUS TO REPLY</button>
           ) : (
             <button onClick={() => onReply(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: '1px solid var(--border-primary)',
+              background: 'transparent', border: 'none',
               color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }}>↵ REPLY</button>
           )}
@@ -2597,7 +2571,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 padding: isMobile ? '8px 12px' : '4px 8px',
                 minHeight: isMobile ? '38px' : 'auto',
                 background: unreadChildCount > 0 ? 'var(--accent-amber)15' : 'transparent',
-                border: `1px solid ${unreadChildCount > 0 ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                border: 'none',
                 color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
               }}>{isCollapsed ? `▶ ${message.children.length}${unreadChildCount > 0 ? ` (${unreadChildCount} new)` : ''}` : '▼'}</button>
               {/* Show separate Focus button only when not at depth limit (at limit, Focus is in reply button) */}
@@ -2605,7 +2579,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 <button onClick={() => onFocus(message)} style={{
                   padding: isMobile ? '8px 12px' : '4px 8px',
                   minHeight: isMobile ? '38px' : 'auto',
-                  background: 'transparent', border: '1px solid var(--accent-teal)40',
+                  background: 'transparent', border: 'none',
                   color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
                 }} title="Focus on this droplet and its replies">⤢ FOCUS</button>
               )}
@@ -2614,7 +2588,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 <button onClick={() => onRipple(message)} style={{
                   padding: isMobile ? '8px 12px' : '4px 8px',
                   minHeight: isMobile ? '38px' : 'auto',
-                  background: 'transparent', border: '1px solid var(--accent-teal)30',
+                  background: 'transparent', border: 'none',
                   color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
                 }} title="Ripple to new wave">◈ RIPPLE</button>
               )}
@@ -2625,13 +2599,13 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               <button onClick={() => onEdit(message)} style={{
                 padding: isMobile ? '8px 12px' : '4px 8px',
                 minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: '1px solid var(--accent-amber)30',
+                background: 'transparent', border: 'none',
                 color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
               }}>✏️</button>
               <button onClick={() => onDelete(message)} style={{
                 padding: isMobile ? '8px 12px' : '4px 8px',
                 minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: '1px solid var(--accent-orange)30',
+                background: 'transparent', border: 'none',
                 color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
               }}>✕</button>
             </>
@@ -2642,7 +2616,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <button onClick={() => onReport(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: '1px solid var(--text-dim)30',
+              background: 'transparent', border: 'none',
               color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }} title="Report droplet">⚐</button>
           )}
@@ -2656,7 +2630,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                   padding: isMobile ? '8px 10px' : '4px 8px',
                   minHeight: isMobile ? '38px' : 'auto',
                   background: showReactionPicker ? 'var(--border-primary)' : 'transparent',
-                  border: '1px solid var(--border-primary)',
+                  border: 'none',
                   color: 'var(--text-dim)',
                   cursor: 'pointer',
                   fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -2693,7 +2667,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                         minHeight: isMobile ? '38px' : 'auto',
                         minWidth: isMobile ? '38px' : 'auto',
                         background: 'transparent',
-                        border: '1px solid var(--border-subtle)',
+                        border: 'none',
                         cursor: 'pointer',
                         fontSize: isMobile ? '1.3rem' : '1.1rem',
                       }}
@@ -2723,7 +2697,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                     padding: isMobile ? '6px 8px' : '3px 6px',
                     minHeight: isMobile ? '38px' : 'auto',
                     background: hasReacted ? 'var(--accent-amber)20' : 'transparent',
-                    border: `1px solid ${hasReacted ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                    border: 'none',
                     color: hasReacted ? 'var(--accent-amber)' : 'var(--text-dim)',
                     cursor: 'pointer',
                     fontSize: isMobile ? '0.95rem' : '0.85rem',
