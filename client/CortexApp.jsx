@@ -2315,6 +2315,16 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   const isReply = depth > 0 && message.parentId;
   const isAtDepthLimit = depth >= THREAD_DEPTH_LIMIT;
 
+  // Count unread droplets in children (recursive) - for collapsed thread indicator
+  const countUnreadChildren = (children) => {
+    if (!children) return 0;
+    return children.reduce((count, child) => {
+      const childUnread = !child.deleted && child.is_unread && child.author_id !== currentUserId ? 1 : 0;
+      return count + childUnread + countUnreadChildren(child.children);
+    }, 0);
+  };
+  const unreadChildCount = isCollapsed && hasChildren ? countUnreadChildren(message.children) : 0;
+
   const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏'];
 
   if (!isVisible) return null;
@@ -2586,9 +2596,10 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               <button onClick={() => onToggleCollapse(message.id)} style={{
                 padding: isMobile ? '8px 12px' : '4px 8px',
                 minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: '1px solid var(--border-primary)',
+                background: unreadChildCount > 0 ? 'var(--accent-amber)15' : 'transparent',
+                border: `1px solid ${unreadChildCount > 0 ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
                 color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-              }}>{isCollapsed ? `▶ ${message.children.length}` : '▼'}</button>
+              }}>{isCollapsed ? `▶ ${message.children.length}${unreadChildCount > 0 ? ` (${unreadChildCount} new)` : ''}` : '▼'}</button>
               {/* Show separate Focus button only when not at depth limit (at limit, Focus is in reply button) */}
               {!isAtDepthLimit && onFocus && (
                 <button onClick={() => onFocus(message)} style={{
@@ -4461,6 +4472,37 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     return () => { if (playbackRef.current) clearInterval(playbackRef.current); };
   }, [isPlaying, playbackSpeed, waveData]);
 
+  // Scroll to current playback message when playbackIndex changes
+  useEffect(() => {
+    if (playbackIndex === null || !waveData?.all_messages || !messagesRef.current) return;
+
+    // Find the message with the current playback index
+    const findMessageByIndex = (messages, targetIndex) => {
+      for (const msg of messages) {
+        if (msg._index === targetIndex) return msg;
+        if (msg.children) {
+          const found = findMessageByIndex(msg.children, targetIndex);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const currentMessage = findMessageByIndex(messageTree, playbackIndex);
+    if (currentMessage) {
+      const element = messagesRef.current.querySelector(`[data-message-id="${currentMessage.id}"]`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Brief highlight effect
+        element.style.transition = 'background-color 0.3s';
+        element.style.backgroundColor = 'var(--accent-amber)20';
+        setTimeout(() => {
+          element.style.backgroundColor = '';
+        }, 500);
+      }
+    }
+  }, [playbackIndex, waveData, messageTree]);
+
   // Scroll to compose area when replying on mobile
   useEffect(() => {
     if (replyingTo && isMobile && composeRef.current) {
@@ -5024,8 +5066,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             <button
               onClick={async () => {
                 try {
+                  // Use is_unread flag from server for consistency
                   const unreadDroplets = allDroplets
-                    .filter(m => (m.readBy || [m.author_id]).includes(currentUser.id) === false && m.author_id !== currentUser.id);
+                    .filter(m => m.is_unread && m.author_id !== currentUser.id);
                   if (unreadDroplets.length === 0) return;
                   await Promise.all(unreadDroplets.map(m => fetchAPI(`/droplets/${m.id}/read`, { method: 'POST' })));
                   await loadWave();
