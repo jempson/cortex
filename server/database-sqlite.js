@@ -1783,6 +1783,8 @@ export class DatabaseSQLite {
       WHERE (
         w.privacy = 'public'
         OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
+        OR (w.privacy = 'crossServer' AND wp.user_id IS NOT NULL)
+        OR (w.privacy = 'cross-server' AND wp.user_id IS NOT NULL)
         OR (w.privacy = 'group' AND w.group_id IN (${userGroupIds.map(() => '?').join(',') || 'NULL'}))
       )
     `;
@@ -1829,6 +1831,9 @@ export class DatabaseSQLite {
         is_participant: r.archived !== null,
         is_archived: r.archived === 1,
         group_name: r.group_name,
+        federationState: r.federation_state || 'local',
+        originNode: r.origin_node || null,
+        originWaveId: r.origin_wave_id || null,
       };
     });
   }
