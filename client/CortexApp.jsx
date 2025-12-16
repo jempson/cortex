@@ -4490,16 +4490,34 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
     const currentMessage = findMessageByIndex(waveData.messages || [], playbackIndex);
     if (currentMessage) {
-      const element = messagesRef.current.querySelector(`[data-message-id="${currentMessage.id}"]`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // Brief highlight effect
-        element.style.transition = 'background-color 0.3s';
-        element.style.backgroundColor = 'var(--accent-amber)20';
-        setTimeout(() => {
-          element.style.backgroundColor = '';
-        }, 500);
-      }
+      // Use requestAnimationFrame to ensure DOM has updated after visibility change
+      requestAnimationFrame(() => {
+        const container = messagesRef.current;
+        const element = container?.querySelector(`[data-message-id="${currentMessage.id}"]`);
+        if (element && container) {
+          // Calculate element's position relative to the scroll container
+          const containerRect = container.getBoundingClientRect();
+          const elementRect = element.getBoundingClientRect();
+
+          // Current scroll position + element's visual offset from container top
+          // minus half the container height to center it
+          const elementVisualTop = elementRect.top - containerRect.top;
+          const targetScrollTop = container.scrollTop + elementVisualTop - (containerRect.height / 2) + (elementRect.height / 2);
+
+          // Smooth scroll to the target position
+          container.scrollTo({
+            top: Math.max(0, targetScrollTop),
+            behavior: 'smooth'
+          });
+
+          // Brief highlight effect
+          element.style.transition = 'background-color 0.3s';
+          element.style.backgroundColor = 'var(--accent-amber)20';
+          setTimeout(() => {
+            element.style.backgroundColor = '';
+          }, 500);
+        }
+      });
     }
   }, [playbackIndex, waveData]);
 
