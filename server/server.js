@@ -4538,6 +4538,9 @@ app.post('/api/droplets/:id/react', authenticateToken, (req, res) => {
   const result = db.toggleMessageReaction(dropletId, req.user.userId, emoji);
   if (!result.success) return res.status(400).json({ error: result.error });
 
+  // Mark droplet as read since user has seen it (prevents unread indicator after reaction)
+  db.markMessageAsRead(dropletId, req.user.userId);
+
   // Broadcast reaction update to all participants
   broadcastToWave(result.waveId, {
     type: 'droplet_reaction',
@@ -4772,6 +4775,9 @@ app.post('/api/messages/:id/react', authenticateToken, deprecatedEndpoint, (req,
 
   const result = db.toggleMessageReaction(messageId, req.user.userId, emoji);
   if (!result.success) return res.status(400).json({ error: result.error });
+
+  // Mark message as read since user has seen it (prevents unread indicator after reaction)
+  db.markMessageAsRead(messageId, req.user.userId);
 
   // Broadcast reaction update to all participants
   broadcastToWave(result.waveId, {
