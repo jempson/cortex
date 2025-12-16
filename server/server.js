@@ -5288,10 +5288,10 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
       case 'wave_broadcast': {
         // Handle public/cross-server wave broadcast from origin server
         // This creates a participant wave visible to all users on this server
-        // payload: { wave, participants }
+        // payload: { wave, participants, droplets }
         console.log(`📢 Received wave_broadcast from ${sourceNode.nodeName}`);
 
-        const { wave, participants } = payload;
+        const { wave, participants, droplets } = payload;
         if (!wave) {
           console.error('Invalid wave_broadcast payload');
           break;
@@ -5338,6 +5338,39 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
                   avatarUrl: p.avatarUrl,
                 });
               }
+            }
+          }
+
+          // Cache existing droplets from the broadcast
+          if (droplets && Array.isArray(droplets)) {
+            console.log(`📥 Caching ${droplets.length} existing droplets from wave broadcast`);
+            for (const d of droplets) {
+              // Cache the droplet author if remote
+              if (d.author && d.author.nodeName) {
+                db.cacheRemoteUser({
+                  id: d.author.id,
+                  nodeName: d.author.nodeName,
+                  handle: d.author.handle,
+                  displayName: d.author.displayName,
+                  avatar: d.author.avatar,
+                  avatarUrl: d.author.avatarUrl,
+                });
+              }
+
+              // Cache the droplet
+              db.cacheRemoteDroplet({
+                id: d.id,
+                waveId: localWave.id,
+                originWaveId: wave.id,
+                originNode: d.author?.nodeName || sourceNode.nodeName,
+                authorId: d.author?.id || d.authorId,
+                authorNode: d.author?.nodeName || sourceNode.nodeName,
+                parentId: d.parentId,
+                content: d.content,
+                createdAt: d.createdAt,
+                editedAt: d.editedAt,
+                reactions: d.reactions || {},
+              });
             }
           }
 
@@ -6144,6 +6177,10 @@ app.put('/api/waves/:id', authenticateToken, async (req, res) => {
       // Get current participants for the wave invite
       const localParticipants = db.getWaveParticipants(waveId);
 
+      // Get existing droplets to include in broadcast
+      const existingDroplets = db.getDropletsForWave(waveId);
+      const ourNodeName = db.getServerIdentity()?.nodeName;
+
       // Broadcast wave to all trusted nodes
       // We use a special "broadcast" flag indicating this is a public wave broadcast
       for (const node of trustedNodes) {
@@ -6167,7 +6204,24 @@ app.put('/api/waves/:id', authenticateToken, async (req, res) => {
               handle: p.handle,
               displayName: p.name,
               avatar: p.avatar,
-              nodeName: db.getServerIdentity()?.nodeName,
+              nodeName: ourNodeName,
+            })),
+            // Include existing droplets so federated servers have history
+            droplets: existingDroplets.map(d => ({
+              id: d.id,
+              parentId: d.parentId || d.parent_id,
+              content: d.content,
+              createdAt: d.createdAt || d.created_at,
+              editedAt: d.editedAt || d.edited_at,
+              reactions: d.reactions || {},
+              author: {
+                id: d.authorId || d.author_id,
+                handle: d.sender_handle,
+                displayName: d.sender_name,
+                avatar: d.sender_avatar,
+                avatarUrl: d.sender_avatar_url,
+                nodeName: ourNodeName,
+              },
             })),
           },
         };
