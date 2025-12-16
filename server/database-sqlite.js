@@ -508,6 +508,19 @@ export class DatabaseSQLite {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
+        -- Incoming federation requests from other servers
+        CREATE TABLE IF NOT EXISTS federation_requests (
+            id TEXT PRIMARY KEY,
+            from_node_name TEXT NOT NULL,
+            from_base_url TEXT NOT NULL,
+            from_public_key TEXT NOT NULL,
+            to_node_name TEXT NOT NULL,
+            message TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            responded_at TEXT
+        );
+
         -- Cached profiles from federated servers
         CREATE TABLE IF NOT EXISTS remote_users (
             id TEXT PRIMARY KEY,
@@ -577,6 +590,8 @@ export class DatabaseSQLite {
         -- Federation indexes
         CREATE INDEX IF NOT EXISTS idx_federation_nodes_status ON federation_nodes(status);
         CREATE INDEX IF NOT EXISTS idx_federation_nodes_name ON federation_nodes(node_name);
+        CREATE INDEX IF NOT EXISTS idx_federation_requests_status ON federation_requests(status);
+        CREATE INDEX IF NOT EXISTS idx_federation_requests_from_node ON federation_requests(from_node_name);
         CREATE INDEX IF NOT EXISTS idx_remote_users_node ON remote_users(node_name);
         CREATE INDEX IF NOT EXISTS idx_remote_users_handle ON remote_users(node_name, handle);
         CREATE INDEX IF NOT EXISTS idx_wave_federation_wave ON wave_federation(wave_id);
@@ -3235,6 +3250,117 @@ export class DatabaseSQLite {
         WHERE id = ?
       `).run(now, nodeId);
     }
+  }
+
+  // ============ Federation - Request Methods ============
+
+  createFederationRequest(fromNodeName, fromBaseUrl, fromPublicKey, toNodeName, message = null) {
+    const id = `fedreq-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO federation_requests (id, from_node_name, from_base_url, from_public_key, to_node_name, message, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+    `).run(id, fromNodeName, fromBaseUrl, fromPublicKey, toNodeName, message, now);
+
+    return this.getFederationRequest(id);
+  }
+
+  getFederationRequest(requestId) {
+    const row = this.db.prepare('SELECT * FROM federation_requests WHERE id = ?').get(requestId);
+    if (!row) return null;
+    return {
+      id: row.id,
+      fromNodeName: row.from_node_name,
+      fromBaseUrl: row.from_base_url,
+      fromPublicKey: row.from_public_key,
+      toNodeName: row.to_node_name,
+      message: row.message,
+      status: row.status,
+      createdAt: row.created_at,
+      respondedAt: row.responded_at
+    };
+  }
+
+  getPendingFederationRequests() {
+    const rows = this.db.prepare(`
+      SELECT * FROM federation_requests WHERE status = 'pending' ORDER BY created_at DESC
+    `).all();
+
+    return rows.map(row => ({
+      id: row.id,
+      fromNodeName: row.from_node_name,
+      fromBaseUrl: row.from_base_url,
+      fromPublicKey: row.from_public_key,
+      toNodeName: row.to_node_name,
+      message: row.message,
+      status: row.status,
+      createdAt: row.created_at,
+      respondedAt: row.responded_at
+    }));
+  }
+
+  getPendingRequestFromNode(fromNodeName) {
+    const row = this.db.prepare(`
+      SELECT * FROM federation_requests WHERE from_node_name = ? AND status = 'pending'
+    `).get(fromNodeName);
+    if (!row) return null;
+    return {
+      id: row.id,
+      fromNodeName: row.from_node_name,
+      fromBaseUrl: row.from_base_url,
+      fromPublicKey: row.from_public_key,
+      toNodeName: row.to_node_name,
+      message: row.message,
+      status: row.status,
+      createdAt: row.created_at,
+      respondedAt: row.responded_at
+    };
+  }
+
+  acceptFederationRequest(requestId) {
+    const request = this.getFederationRequest(requestId);
+    if (!request) return null;
+    if (request.status !== 'pending') return null;
+
+    const now = new Date().toISOString();
+
+    // Update request status
+    this.db.prepare(`
+      UPDATE federation_requests SET status = 'accepted', responded_at = ? WHERE id = ?
+    `).run(now, requestId);
+
+    // Create federation node entry (or update if exists)
+    const existingNode = this.getFederationNodeByName(request.fromNodeName);
+    if (existingNode) {
+      this.updateFederationNode(existingNode.id, {
+        publicKey: request.fromPublicKey,
+        status: 'active',
+        baseUrl: request.fromBaseUrl
+      });
+    } else {
+      const nodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      this.db.prepare(`
+        INSERT INTO federation_nodes (id, node_name, base_url, public_key, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'active', ?, ?)
+      `).run(nodeId, request.fromNodeName, request.fromBaseUrl, request.fromPublicKey, now, now);
+    }
+
+    return this.getFederationRequest(requestId);
+  }
+
+  declineFederationRequest(requestId) {
+    const request = this.getFederationRequest(requestId);
+    if (!request) return null;
+    if (request.status !== 'pending') return null;
+
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      UPDATE federation_requests SET status = 'declined', responded_at = ? WHERE id = ?
+    `).run(now, requestId);
+
+    return this.getFederationRequest(requestId);
   }
 
   // ============ Federation - Remote Users Methods ============

@@ -5258,6 +5258,495 @@ app.post('/api/admin/federation/nodes/:id/handshake', authenticateToken, async (
   }
 });
 
+// ============ Federation Request System ============
+
+// Rate limiter for federation request endpoint (stricter than general inbox)
+const federationRequestLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // 10 requests per hour per IP
+  message: { error: 'Too many federation requests. Try again later.' }
+});
+
+// Send a federation request to another server (admin only)
+app.post('/api/admin/federation/request', authenticateToken, async (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+  if (!ourIdentity) {
+    return res.status(400).json({ error: 'Server identity not configured. Set up federation identity first.' });
+  }
+
+  const { baseUrl, message } = req.body;
+  if (!baseUrl) {
+    return res.status(400).json({ error: 'baseUrl is required' });
+  }
+
+  // Normalize base URL (remove trailing slash)
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+
+  try {
+    // Step 1: Fetch the remote server's identity
+    const identityUrl = `${normalizedBaseUrl}/api/federation/identity`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const identityResponse = await fetch(identityUrl, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+      }
+    });
+    clearTimeout(timeout);
+
+    if (!identityResponse.ok) {
+      const errorText = await identityResponse.text();
+      return res.status(502).json({
+        error: 'Failed to reach remote server',
+        details: `HTTP ${identityResponse.status}: ${errorText.substring(0, 100)}`
+      });
+    }
+
+    const remoteIdentity = await identityResponse.json();
+    if (!remoteIdentity.nodeName || !remoteIdentity.publicKey) {
+      return res.status(502).json({ error: 'Invalid response from remote server - missing identity' });
+    }
+
+    // Check if we already have a relationship with this server
+    const existingNode = db.getFederationNodeByName(remoteIdentity.nodeName);
+    if (existingNode) {
+      if (existingNode.status === 'active') {
+        return res.status(400).json({ error: 'Already federated with this server' });
+      }
+      if (existingNode.status === 'outbound_pending') {
+        return res.status(400).json({ error: 'Federation request already pending for this server' });
+      }
+    }
+
+    // Check if they have a pending request to us (auto-accept scenario)
+    const incomingRequest = db.getPendingRequestFromNode(remoteIdentity.nodeName);
+    if (incomingRequest) {
+      // They already requested us - auto-accept their request instead
+      const accepted = db.acceptFederationRequest(incomingRequest.id);
+      if (accepted) {
+        // Send acceptance notification back to them
+        try {
+          const acceptBody = {
+            type: 'federation_accepted',
+            requestId: incomingRequest.id,
+            acceptorNodeName: ourIdentity.nodeName,
+            acceptorPublicKey: ourIdentity.publicKey
+          };
+          const targetNode = { baseUrl: incomingRequest.fromBaseUrl, nodeName: incomingRequest.fromNodeName };
+          await sendSignedFederationRequest(targetNode, 'POST', '/api/federation/inbox/accept', acceptBody);
+        } catch (notifyErr) {
+          console.error('Failed to notify acceptance:', notifyErr.message);
+        }
+        return res.json({
+          success: true,
+          message: 'They had a pending request to us - auto-accepted and federation is now active',
+          node: db.getFederationNodeByName(remoteIdentity.nodeName)
+        });
+      }
+    }
+
+    // Step 2: Send signed federation request to remote server
+    const requestBody = {
+      type: 'federation_request',
+      fromNodeName: ourIdentity.nodeName,
+      fromBaseUrl: `${req.protocol}://${req.get('host')}`, // Our server's URL
+      fromPublicKey: ourIdentity.publicKey,
+      message: message || null
+    };
+
+    // Build signature for the request using our private key
+    const requestUrl = `${normalizedBaseUrl}/api/federation/inbox/request`;
+    const bodyString = JSON.stringify(requestBody);
+    const headers = createHttpSignatureFromString('POST', requestUrl, bodyString, ourIdentity.privateKey, ourIdentity.nodeName);
+
+    const controller2 = new AbortController();
+    const timeout2 = setTimeout(() => controller2.abort(), 15000);
+
+    const requestResponse = await fetch(requestUrl, {
+      method: 'POST',
+      signal: controller2.signal,
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json'
+      },
+      body: bodyString
+    });
+    clearTimeout(timeout2);
+
+    if (!requestResponse.ok) {
+      const errorText = await requestResponse.text();
+      return res.status(502).json({
+        error: 'Remote server rejected our request',
+        details: `HTTP ${requestResponse.status}: ${errorText.substring(0, 200)}`
+      });
+    }
+
+    // Step 3: Create local node entry with outbound_pending status
+    const nodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+    db.addFederationNode({
+      nodeName: remoteIdentity.nodeName,
+      baseUrl: normalizedBaseUrl,
+      addedBy: user.id
+    });
+    // Update to outbound_pending and store their public key
+    const node = db.getFederationNodeByName(remoteIdentity.nodeName);
+    if (node) {
+      db.updateFederationNode(node.id, {
+        status: 'outbound_pending',
+        publicKey: remoteIdentity.publicKey
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Federation request sent successfully',
+      remoteNode: {
+        nodeName: remoteIdentity.nodeName,
+        status: 'outbound_pending'
+      }
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ error: 'Connection timed out' });
+    }
+    console.error('Federation request failed:', error.message);
+    res.status(502).json({
+      error: 'Failed to send federation request',
+      details: error.message
+    });
+  }
+});
+
+// Receive a federation request from another server (public, but signed)
+app.post('/api/federation/inbox/request', federationRequestLimiter, async (req, res) => {
+  if (!FEDERATION_ENABLED) {
+    return res.status(404).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+  if (!ourIdentity) {
+    return res.status(404).json({ error: 'Server identity not configured' });
+  }
+
+  const { type, fromNodeName, fromBaseUrl, fromPublicKey, message } = req.body;
+
+  if (type !== 'federation_request') {
+    return res.status(400).json({ error: 'Invalid request type' });
+  }
+
+  if (!fromNodeName || !fromBaseUrl || !fromPublicKey) {
+    return res.status(400).json({ error: 'Missing required fields: fromNodeName, fromBaseUrl, fromPublicKey' });
+  }
+
+  // Verify the HTTP signature using the provided public key (bootstrap trust)
+  const signatureHeader = req.headers['signature'];
+  if (!signatureHeader) {
+    return res.status(401).json({ error: 'Missing Signature header' });
+  }
+
+  // Parse and verify signature
+  const parsed = parseHttpSignature(signatureHeader);
+  if (!parsed || !parsed.signature) {
+    return res.status(401).json({ error: 'Invalid Signature header format' });
+  }
+
+  // Verify keyId matches the claimed node name
+  const keyIdMatch = parsed.keyId?.match(/https?:\/\/([^\/]+)\//);
+  if (!keyIdMatch || keyIdMatch[1] !== fromNodeName) {
+    return res.status(401).json({ error: 'Signature keyId does not match fromNodeName' });
+  }
+
+  // Verify the signature using the provided public key
+  try {
+    const isValid = verifyHttpSignature(req, fromPublicKey);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+  } catch (err) {
+    console.error('Signature verification error:', err.message);
+    return res.status(401).json({ error: 'Signature verification failed' });
+  }
+
+  // Check if we're already federated with this node
+  const existingNode = db.getFederationNodeByName(fromNodeName);
+  if (existingNode && existingNode.status === 'active') {
+    return res.json({ success: true, message: 'Already federated', alreadyFederated: true });
+  }
+
+  // Check if we have an outbound_pending request to them (mutual request scenario)
+  if (existingNode && existingNode.status === 'outbound_pending') {
+    // They're requesting us while we're waiting for them - auto-accept!
+    db.updateFederationNode(existingNode.id, {
+      status: 'active',
+      publicKey: fromPublicKey
+    });
+
+    // Send acceptance notification back
+    try {
+      const acceptBody = {
+        type: 'federation_accepted',
+        acceptorNodeName: ourIdentity.nodeName,
+        acceptorPublicKey: ourIdentity.publicKey
+      };
+      const targetNode = { baseUrl: fromBaseUrl, nodeName: fromNodeName };
+      await sendSignedFederationRequest(targetNode, 'POST', '/api/federation/inbox/accept', acceptBody);
+    } catch (notifyErr) {
+      console.error('Failed to send acceptance notification:', notifyErr.message);
+    }
+
+    return res.json({ success: true, message: 'Mutual request - auto-accepted', autoAccepted: true });
+  }
+
+  // Check for existing pending request from this node
+  const existingRequest = db.getPendingRequestFromNode(fromNodeName);
+  if (existingRequest) {
+    return res.json({ success: true, message: 'Request already pending', duplicate: true });
+  }
+
+  // Create the federation request
+  const request = db.createFederationRequest(
+    fromNodeName,
+    fromBaseUrl,
+    fromPublicKey,
+    ourIdentity.nodeName,
+    message
+  );
+
+  console.log(`📨 Received federation request from ${fromNodeName}`);
+  res.json({ success: true, message: 'Federation request received', requestId: request.id });
+});
+
+// Get pending federation requests (admin only)
+app.get('/api/admin/federation/requests', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const requests = db.getPendingFederationRequests();
+  res.json({ requests, count: requests.length });
+});
+
+// Accept a federation request (admin only)
+app.post('/api/admin/federation/requests/:id/accept', authenticateToken, async (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+  if (!ourIdentity) {
+    return res.status(400).json({ error: 'Server identity not configured' });
+  }
+
+  const requestId = sanitizeInput(req.params.id);
+  const request = db.getFederationRequest(requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: 'Federation request not found' });
+  }
+
+  if (request.status !== 'pending') {
+    return res.status(400).json({ error: `Request already ${request.status}` });
+  }
+
+  try {
+    // Verify the requesting server's identity by fetching their current public key
+    const identityUrl = `${request.fromBaseUrl}/api/federation/identity`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const identityResponse = await fetch(identityUrl, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+      }
+    });
+    clearTimeout(timeout);
+
+    if (!identityResponse.ok) {
+      return res.status(502).json({ error: 'Could not verify remote server identity' });
+    }
+
+    const remoteIdentity = await identityResponse.json();
+
+    // Verify public key matches what was in the request (prevent bait-and-switch)
+    if (remoteIdentity.publicKey !== request.fromPublicKey) {
+      return res.status(400).json({
+        error: 'Public key mismatch',
+        details: 'The remote server\'s public key has changed since the request was made. Please decline and have them re-request.'
+      });
+    }
+
+    // Accept the request (creates federation_nodes entry)
+    const accepted = db.acceptFederationRequest(requestId);
+    if (!accepted) {
+      return res.status(500).json({ error: 'Failed to accept request' });
+    }
+
+    // Send acceptance notification to the requesting server
+    const acceptBody = {
+      type: 'federation_accepted',
+      requestId: requestId,
+      acceptorNodeName: ourIdentity.nodeName,
+      acceptorPublicKey: ourIdentity.publicKey
+    };
+
+    const targetNode = { baseUrl: request.fromBaseUrl, nodeName: request.fromNodeName };
+
+    try {
+      await sendSignedFederationRequest(targetNode, 'POST', '/api/federation/inbox/accept', acceptBody);
+    } catch (notifyErr) {
+      console.error('Failed to notify requesting server of acceptance:', notifyErr.message);
+      // Continue anyway - they can retry their handshake
+    }
+
+    const node = db.getFederationNodeByName(request.fromNodeName);
+    console.log(`✅ Accepted federation request from ${request.fromNodeName}`);
+
+    res.json({
+      success: true,
+      message: 'Federation request accepted',
+      node
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ error: 'Connection timed out while verifying remote server' });
+    }
+    console.error('Accept federation request failed:', error.message);
+    res.status(500).json({ error: 'Failed to accept federation request', details: error.message });
+  }
+});
+
+// Decline a federation request (admin only)
+app.post('/api/admin/federation/requests/:id/decline', authenticateToken, async (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+
+  const requestId = sanitizeInput(req.params.id);
+  const request = db.getFederationRequest(requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: 'Federation request not found' });
+  }
+
+  if (request.status !== 'pending') {
+    return res.status(400).json({ error: `Request already ${request.status}` });
+  }
+
+  // Decline the request
+  const declined = db.declineFederationRequest(requestId);
+  if (!declined) {
+    return res.status(500).json({ error: 'Failed to decline request' });
+  }
+
+  // Notify the requesting server (best effort)
+  if (ourIdentity) {
+    try {
+      const declineBody = {
+        type: 'federation_declined',
+        fromNodeName: request.fromNodeName
+      };
+      const targetNode = { baseUrl: request.fromBaseUrl, nodeName: request.fromNodeName };
+      await sendSignedFederationRequest(targetNode, 'POST', '/api/federation/inbox/decline', declineBody);
+    } catch (notifyErr) {
+      console.error('Failed to notify requesting server of decline:', notifyErr.message);
+      // Continue anyway
+    }
+  }
+
+  console.log(`❌ Declined federation request from ${request.fromNodeName}`);
+  res.json({ success: true, message: 'Federation request declined' });
+});
+
+// Receive acceptance notification from a server we requested
+app.post('/api/federation/inbox/accept', federationRequestLimiter, authenticateFederationRequest, (req, res) => {
+  const { type, acceptorNodeName, acceptorPublicKey } = req.body;
+  const sourceNode = req.federationNode;
+
+  if (type !== 'federation_accepted') {
+    return res.status(400).json({ error: 'Invalid message type' });
+  }
+
+  // Find our outbound pending node for this server
+  const node = db.getFederationNodeByName(sourceNode.nodeName);
+  if (!node) {
+    return res.status(404).json({ error: 'No pending request found for this server' });
+  }
+
+  if (node.status !== 'outbound_pending') {
+    return res.json({ success: true, message: 'Already processed' });
+  }
+
+  // Update to active status
+  db.updateFederationNode(node.id, {
+    status: 'active',
+    publicKey: acceptorPublicKey || node.publicKey
+  });
+  db.recordFederationContact(node.id, true);
+
+  console.log(`✅ Federation request to ${sourceNode.nodeName} was accepted`);
+  res.json({ success: true, message: 'Acceptance acknowledged' });
+});
+
+// Receive decline notification from a server we requested
+app.post('/api/federation/inbox/decline', federationRequestLimiter, authenticateFederationRequest, (req, res) => {
+  const { type, fromNodeName } = req.body;
+  const sourceNode = req.federationNode;
+
+  if (type !== 'federation_declined') {
+    return res.status(400).json({ error: 'Invalid message type' });
+  }
+
+  // Find our outbound pending node for this server
+  const node = db.getFederationNodeByName(sourceNode.nodeName);
+  if (!node) {
+    return res.status(404).json({ error: 'No pending request found for this server' });
+  }
+
+  if (node.status !== 'outbound_pending') {
+    return res.json({ success: true, message: 'Already processed' });
+  }
+
+  // Update to declined status or delete the node entry
+  db.updateFederationNode(node.id, { status: 'declined' });
+
+  console.log(`❌ Federation request to ${sourceNode.nodeName} was declined`);
+  res.json({ success: true, message: 'Decline acknowledged' });
+});
+
+// ============ End Federation Request System ============
+
 // Federation inbox - receives signed messages from other servers
 // This is the main entry point for federated content delivery
 app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederationRequest, async (req, res) => {

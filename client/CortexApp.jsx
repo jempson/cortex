@@ -7563,16 +7563,24 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
   const [newNodeName, setNewNodeName] = useState('');
   const [newNodeUrl, setNewNodeUrl] = useState('');
   const [handshakeLoading, setHandshakeLoading] = useState(null);
+  // Federation request system
+  const [federationRequests, setFederationRequests] = useState([]);
+  const [requestUrl, setRequestUrl] = useState('');
+  const [requestMessage, setRequestMessage] = useState('');
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [acceptLoading, setAcceptLoading] = useState(null);
 
   const loadFederationData = useCallback(async () => {
     setLoading(true);
     try {
-      const [statusData, nodesData] = await Promise.all([
+      const [statusData, nodesData, requestsData] = await Promise.all([
         fetchAPI('/admin/federation/status'),
-        fetchAPI('/admin/federation/nodes')
+        fetchAPI('/admin/federation/nodes'),
+        fetchAPI('/admin/federation/requests').catch(() => ({ requests: [] }))
       ]);
       setStatus(statusData);
       setNodes(nodesData.nodes || []);
+      setFederationRequests(requestsData.requests || []);
       if (statusData.nodeName) {
         setNodeName(statusData.nodeName);
       }
@@ -7661,13 +7669,79 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
     }
   };
 
+  // Send federation request to another server
+  const handleSendRequest = async () => {
+    if (!requestUrl.trim()) {
+      showToast('Server URL is required', 'error');
+      return;
+    }
+    setRequestLoading(true);
+    try {
+      const result = await fetchAPI('/admin/federation/request', {
+        method: 'POST',
+        body: {
+          baseUrl: requestUrl.trim(),
+          message: requestMessage.trim() || null
+        }
+      });
+      showToast(result.message || 'Federation request sent!', 'success');
+      setRequestUrl('');
+      setRequestMessage('');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to send federation request', 'error');
+    }
+    setRequestLoading(false);
+  };
+
+  // Accept incoming federation request
+  const handleAcceptRequest = async (requestId) => {
+    setAcceptLoading(requestId);
+    try {
+      const result = await fetchAPI(`/admin/federation/requests/${requestId}/accept`, {
+        method: 'POST'
+      });
+      showToast(result.message || 'Federation request accepted!', 'success');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to accept request', 'error');
+    }
+    setAcceptLoading(null);
+  };
+
+  // Decline incoming federation request
+  const handleDeclineRequest = async (requestId) => {
+    if (!confirm('Decline this federation request?')) return;
+    setAcceptLoading(requestId);
+    try {
+      await fetchAPI(`/admin/federation/requests/${requestId}/decline`, {
+        method: 'POST'
+      });
+      showToast('Federation request declined', 'success');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to decline request', 'error');
+    }
+    setAcceptLoading(null);
+  };
+
   const getStatusColor = (s) => {
     switch (s) {
       case 'active': return 'var(--accent-green)';
       case 'pending': return 'var(--accent-amber)';
+      case 'outbound_pending': return 'var(--accent-teal)';
       case 'suspended': return 'var(--accent-orange)';
       case 'blocked': return 'var(--status-error)';
+      case 'declined': return 'var(--text-dim)';
       default: return 'var(--text-dim)';
+    }
+  };
+
+  const getStatusLabel = (s) => {
+    switch (s) {
+      case 'outbound_pending': return 'AWAITING RESPONSE';
+      case 'declined': return 'DECLINED';
+      default: return s.toUpperCase();
     }
   };
 
@@ -7780,6 +7854,172 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
           <span>Active: <span style={{ color: 'var(--accent-green)' }}>{status?.activeNodes || 0}</span></span>
         </div>
       </div>
+
+      {/* Request Federation Section */}
+      {status?.configured && status?.enabled && (
+        <div style={{ marginTop: '16px' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
+            Request Federation
+          </div>
+          <div style={{
+            padding: isMobile ? '14px' : '16px',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--accent-purple)40',
+          }}>
+            <div style={{ marginBottom: '12px' }}>
+              <input
+                type="text"
+                value={requestUrl}
+                onChange={(e) => setRequestUrl(e.target.value)}
+                placeholder="Server URL (e.g., https://other-cortex.com)"
+                style={{
+                  width: '100%',
+                  padding: isMobile ? '12px' : '10px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  marginBottom: '8px',
+                }}
+              />
+              <textarea
+                value={requestMessage}
+                onChange={(e) => setRequestMessage(e.target.value)}
+                placeholder="Optional message (e.g., Hi, we'd like to federate!)"
+                rows={2}
+                style={{
+                  width: '100%',
+                  padding: isMobile ? '12px' : '10px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+            <button
+              onClick={handleSendRequest}
+              disabled={requestLoading || !requestUrl.trim()}
+              style={{
+                padding: isMobile ? '12px 20px' : '10px 20px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'var(--accent-purple)20',
+                border: '1px solid var(--accent-purple)',
+                color: 'var(--accent-purple)',
+                cursor: requestLoading || !requestUrl.trim() ? 'not-allowed' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.8rem',
+                opacity: requestLoading || !requestUrl.trim() ? 0.6 : 1,
+              }}
+            >
+              {requestLoading ? 'SENDING...' : 'REQUEST FEDERATION'}
+            </button>
+            <div style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+              Send a federation request to another Cortex server. They will need to accept your request.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Incoming Federation Requests */}
+      {federationRequests.length > 0 && (
+        <div style={{ marginTop: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+              Incoming Requests
+            </span>
+            <span style={{
+              padding: '2px 8px',
+              background: 'var(--accent-purple)20',
+              color: 'var(--accent-purple)',
+              fontSize: '0.7rem',
+              borderRadius: '10px',
+            }}>
+              {federationRequests.length}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {federationRequests.map((request) => (
+              <div
+                key={request.id}
+                style={{
+                  padding: isMobile ? '14px' : '12px 16px',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--accent-purple)40',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <div>
+                    <span style={{ color: 'var(--accent-purple)', fontFamily: 'monospace', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
+                      {request.fromNodeName}
+                    </span>
+                  </div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                    {new Date(request.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+
+                <div style={{ color: 'var(--text-dim)', fontSize: isMobile ? '0.8rem' : '0.75rem', marginBottom: '8px' }}>
+                  {request.fromBaseUrl}
+                </div>
+
+                {request.message && (
+                  <div style={{
+                    padding: '8px',
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-secondary)',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                    fontStyle: 'italic',
+                    marginBottom: '12px',
+                  }}>
+                    "{request.message}"
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => handleAcceptRequest(request.id)}
+                    disabled={acceptLoading === request.id}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 14px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: 'var(--accent-green)20',
+                      border: '1px solid var(--accent-green)',
+                      color: 'var(--accent-green)',
+                      cursor: acceptLoading === request.id ? 'wait' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.8rem' : '0.75rem',
+                      opacity: acceptLoading === request.id ? 0.6 : 1,
+                    }}
+                  >
+                    {acceptLoading === request.id ? 'ACCEPTING...' : 'ACCEPT'}
+                  </button>
+                  <button
+                    onClick={() => handleDeclineRequest(request.id)}
+                    disabled={acceptLoading === request.id}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 14px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: 'transparent',
+                      border: '1px solid var(--accent-orange)',
+                      color: 'var(--accent-orange)',
+                      cursor: acceptLoading === request.id ? 'wait' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.8rem' : '0.75rem',
+                      opacity: acceptLoading === request.id ? 0.6 : 1,
+                    }}
+                  >
+                    DECLINE
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Trusted Nodes */}
       <div style={{ marginTop: '16px' }}>
@@ -7894,9 +8134,8 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
                       background: `${getStatusColor(node.status)}20`,
                       color: getStatusColor(node.status),
                       fontSize: '0.7rem',
-                      textTransform: 'uppercase',
                     }}>
-                      {node.status}
+                      {getStatusLabel(node.status)}
                     </span>
                   </div>
                   <button
@@ -7944,6 +8183,30 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
                     >
                       {handshakeLoading === node.id ? 'CONNECTING...' : 'HANDSHAKE'}
                     </button>
+                  )}
+
+                  {node.status === 'outbound_pending' && (
+                    <span style={{
+                      padding: isMobile ? '10px 16px' : '8px 14px',
+                      background: 'var(--accent-teal)10',
+                      color: 'var(--accent-teal)',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.8rem' : '0.75rem',
+                    }}>
+                      Waiting for their response...
+                    </span>
+                  )}
+
+                  {node.status === 'declined' && (
+                    <span style={{
+                      padding: isMobile ? '10px 16px' : '8px 14px',
+                      background: 'var(--text-dim)10',
+                      color: 'var(--text-dim)',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.8rem' : '0.75rem',
+                    }}>
+                      Request was declined
+                    </span>
                   )}
 
                   {node.status === 'active' && (

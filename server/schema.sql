@@ -385,13 +385,29 @@ CREATE TABLE IF NOT EXISTS federation_nodes (
     node_name TEXT NOT NULL UNIQUE,
     base_url TEXT NOT NULL,
     public_key TEXT,
-    status TEXT DEFAULT 'pending',  -- pending, active, suspended, blocked
+    status TEXT DEFAULT 'pending',  -- pending, outbound_pending, active, suspended, blocked, declined
     added_by TEXT REFERENCES users(id),
     last_contact_at TEXT,
     failure_count INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Incoming federation requests from other servers
+CREATE TABLE IF NOT EXISTS federation_requests (
+    id TEXT PRIMARY KEY,
+    from_node_name TEXT NOT NULL,
+    from_base_url TEXT NOT NULL,
+    from_public_key TEXT NOT NULL,
+    to_node_name TEXT NOT NULL,
+    message TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending, accepted, declined
+    created_at TEXT NOT NULL,
+    responded_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_federation_requests_status ON federation_requests(status);
+CREATE INDEX IF NOT EXISTS idx_federation_requests_to_node ON federation_requests(to_node_name);
 
 -- Cached profiles from federated servers
 CREATE TABLE IF NOT EXISTS remote_users (
