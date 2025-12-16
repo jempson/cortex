@@ -3275,21 +3275,41 @@ app.put('/api/profile', authenticateToken, (req, res) => {
   res.json({ id: user.id, handle: user.handle, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, preferences: user.preferences, bio: user.bio });
 });
 
-// Get public profile for any user
+// Get public profile for any user (local or federated)
 app.get('/api/users/:id/profile', authenticateToken, (req, res) => {
+  // First try to find local user
   const user = db.findUserById(req.params.id);
-  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user) {
+    // Return only public profile fields (no email, passwordHash, preferences, etc.)
+    return res.json({
+      id: user.id,
+      handle: user.handle,
+      displayName: user.displayName,
+      avatar: user.avatar,
+      avatarUrl: user.avatarUrl || null,
+      bio: user.bio || null,
+      createdAt: user.createdAt,
+      isRemote: false,
+    });
+  }
 
-  // Return only public profile fields (no email, passwordHash, preferences, etc.)
-  res.json({
-    id: user.id,
-    handle: user.handle,
-    displayName: user.displayName,
-    avatar: user.avatar,
-    avatarUrl: user.avatarUrl || null,
-    bio: user.bio || null,
-    createdAt: user.createdAt,
-  });
+  // Try to find remote/federated user
+  const remoteUser = db.getRemoteUser(req.params.id);
+  if (remoteUser) {
+    return res.json({
+      id: remoteUser.id,
+      handle: remoteUser.handle,
+      displayName: remoteUser.displayName,
+      avatar: remoteUser.avatar,
+      avatarUrl: remoteUser.avatarUrl || null,
+      bio: remoteUser.bio || null,
+      createdAt: remoteUser.cachedAt, // Use cache time as we don't know their actual join date
+      isRemote: true,
+      nodeName: remoteUser.nodeName,
+    });
+  }
+
+  return res.status(404).json({ error: 'User not found' });
 });
 
 // Upload profile avatar image

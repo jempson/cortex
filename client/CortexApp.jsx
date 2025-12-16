@@ -2927,14 +2927,29 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
               }}>✕</button>
             </div>
 
+            {/* Federated user indicator */}
+            {profile.isRemote && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                marginBottom: '16px', padding: '8px 12px',
+                background: 'var(--accent-purple)15', border: '1px solid var(--accent-purple)50',
+                fontSize: '0.75rem', color: 'var(--accent-purple)',
+              }}>
+                <span>◇</span>
+                <span>Federated User from <strong>{profile.nodeName}</strong></span>
+              </div>
+            )}
+
             {/* Avatar and basic info */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <Avatar letter={profile.avatar || profile.displayName?.[0] || '?'} color="var(--accent-amber)" size={80} imageUrl={profile.avatarUrl} />
+              <Avatar letter={profile.avatar || profile.displayName?.[0] || '?'} color={profile.isRemote ? 'var(--accent-purple)' : 'var(--accent-amber)'} size={80} imageUrl={profile.avatarUrl} />
               <div>
                 <div style={{ color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 600 }}>{profile.displayName}</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>@{profile.handle}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  @{profile.handle}{profile.isRemote && <span style={{ color: 'var(--accent-purple)' }}>@{profile.nodeName}</span>}
+                </div>
                 <div style={{ color: 'var(--border-secondary)', fontSize: '0.75rem', marginTop: '4px' }}>
-                  Joined {formatDate(profile.createdAt)}
+                  {profile.isRemote ? `Cached ${formatDate(profile.createdAt)}` : `Joined ${formatDate(profile.createdAt)}`}
                 </div>
               </div>
             </div>
@@ -2952,8 +2967,8 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
               </div>
             )}
 
-            {/* Action buttons (not shown for current user) */}
-            {!isCurrentUser && (
+            {/* Action buttons (not shown for current user or federated users) */}
+            {!isCurrentUser && !profile.isRemote && (
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {!isContact && !isBlocked && onAddContact && (
                   <button onClick={() => { onAddContact(userId, profile.displayName); onClose(); }} style={{
@@ -2997,6 +3012,17 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
                     Muted
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Note for federated users */}
+            {!isCurrentUser && profile.isRemote && (
+              <div style={{
+                padding: '12px', marginTop: '8px',
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                fontSize: '0.75rem', color: 'var(--text-dim)', textAlign: 'center',
+              }}>
+                Contact and moderation actions are not available for federated users.
               </div>
             )}
           </>
