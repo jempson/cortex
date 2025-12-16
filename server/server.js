@@ -5249,7 +5249,7 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
         db.addWaveFederationNode(localWave.id, sourceNode.nodeName);
 
         // Notify the local user via WebSocket
-        const wsClients = connectedClients.get(invitedUser.id);
+        const wsClients = clients.get(invitedUser.id);
         if (wsClients) {
           const notification = {
             type: 'wave_invite_received',
