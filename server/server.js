@@ -3830,6 +3830,57 @@ app.post('/api/contacts/request', authenticateToken, (req, res) => {
   res.status(201).json(result);
 });
 
+// Follow a federated user (direct add, no request flow)
+app.post('/api/contacts/follow', authenticateToken, (req, res) => {
+  const { userId } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  // Verify the target is a remote user
+  const remoteUser = db.getRemoteUser(userId);
+  if (!remoteUser) {
+    return res.status(400).json({ error: 'User not found or not a federated user' });
+  }
+
+  // Add as contact directly (one-way follow)
+  const success = db.addContact(req.user.userId, userId);
+  if (!success) {
+    return res.status(400).json({ error: 'Already following this user' });
+  }
+
+  res.json({
+    success: true,
+    contact: {
+      id: remoteUser.id,
+      handle: remoteUser.handle,
+      name: remoteUser.displayName,
+      avatar: remoteUser.avatar,
+      avatarUrl: remoteUser.avatarUrl,
+      nodeName: remoteUser.nodeName,
+      isRemote: true,
+    }
+  });
+});
+
+// Unfollow a federated user
+app.delete('/api/contacts/follow/:userId', authenticateToken, (req, res) => {
+  const targetUserId = sanitizeInput(req.params.userId);
+
+  // Verify the target is a remote user
+  const remoteUser = db.getRemoteUser(targetUserId);
+  if (!remoteUser) {
+    return res.status(400).json({ error: 'User not found or not a federated user' });
+  }
+
+  const success = db.removeContact(req.user.userId, targetUserId);
+  if (!success) {
+    return res.status(400).json({ error: 'Not following this user' });
+  }
+
+  res.json({ success: true });
+});
+
 // Get received pending contact requests
 app.get('/api/contacts/requests', authenticateToken, (req, res) => {
   const requests = db.getContactRequestsForUser(req.user.userId);

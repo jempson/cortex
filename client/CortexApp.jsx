@@ -2874,7 +2874,7 @@ const DeleteConfirmModal = ({ isOpen, onClose, waveTitle, onConfirm, isMobile })
 };
 
 // ============ USER PROFILE MODAL ============
-const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, showToast, contacts, blockedUsers, mutedUsers, onAddContact, onBlock, onMute, isMobile }) => {
+const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, showToast, contacts, blockedUsers, mutedUsers, onAddContact, onBlock, onMute, onFollow, onUnfollow, isMobile }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -2895,6 +2895,7 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
 
   const isCurrentUser = userId === currentUser?.id;
   const isContact = contacts?.some(c => c.id === userId);
+  const isFollowing = contacts?.some(c => c.id === userId && c.isRemote);
   const isBlocked = blockedUsers?.some(u => u.blockedUserId === userId);
   const isMuted = mutedUsers?.some(u => u.mutedUserId === userId);
 
@@ -3015,14 +3016,55 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
               </div>
             )}
 
-            {/* Note for federated users */}
+            {/* Action buttons for federated users */}
             {!isCurrentUser && profile.isRemote && (
-              <div style={{
-                padding: '12px', marginTop: '8px',
-                background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
-                fontSize: '0.75rem', color: 'var(--text-dim)', textAlign: 'center',
-              }}>
-                Contact and moderation actions are not available for federated users.
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {!isFollowing && !isBlocked && onFollow && (
+                  <button onClick={() => { onFollow(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'var(--accent-purple)20', border: '1px solid var(--accent-purple)',
+                    color: 'var(--accent-purple)', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>◇ FOLLOW</button>
+                )}
+                {isFollowing && onUnfollow && (
+                  <button onClick={() => { onUnfollow(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'var(--accent-purple)10', border: '1px solid var(--accent-purple)40',
+                    color: 'var(--accent-purple)', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>✓ FOLLOWING</button>
+                )}
+                {!isBlocked && onBlock && (
+                  <button onClick={() => { onBlock(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'transparent', border: '1px solid var(--accent-orange)',
+                    color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>BLOCK</button>
+                )}
+                {isBlocked && (
+                  <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', padding: '8px 14px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)40' }}>
+                    Blocked
+                  </div>
+                )}
+                {!isMuted && !isBlocked && onMute && (
+                  <button onClick={() => { onMute(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'transparent', border: '1px solid var(--accent-amber)',
+                    color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>MUTE</button>
+                )}
+                {isMuted && (
+                  <div style={{ color: 'var(--accent-amber)', fontSize: '0.8rem', padding: '8px 14px', background: 'var(--accent-amber)10', border: '1px solid var(--accent-amber)40' }}>
+                    Muted
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -10038,6 +10080,24 @@ function MainApp() {
         onMute={async (userId, name) => {
           if (await handleMuteUser(userId)) {
             showToastMsg(`Muted ${name}`, 'success');
+          }
+        }}
+        onFollow={async (userId, name) => {
+          try {
+            await fetchAPI('/contacts/follow', { method: 'POST', body: { userId } });
+            showToastMsg(`Now following ${name}`, 'success');
+            loadContacts();
+          } catch (e) {
+            showToastMsg(e.message || 'Failed to follow user', 'error');
+          }
+        }}
+        onUnfollow={async (userId, name) => {
+          try {
+            await fetchAPI(`/contacts/follow/${userId}`, { method: 'DELETE' });
+            showToastMsg(`Unfollowed ${name}`, 'success');
+            loadContacts();
+          } catch (e) {
+            showToastMsg(e.message || 'Failed to unfollow user', 'error');
           }
         }}
         isMobile={isMobile}

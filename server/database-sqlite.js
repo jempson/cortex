@@ -987,20 +987,33 @@ export class DatabaseSQLite {
 
   // === Contact Methods ===
   getContactsForUser(userId) {
-    const rows = this.db.prepare(`
-      SELECT u.id, u.handle, u.display_name, u.avatar, u.status, u.node_name
+    // Get local user contacts
+    const localRows = this.db.prepare(`
+      SELECT u.id, u.handle, u.display_name, u.avatar, u.avatar_url, u.status, NULL as node_name
       FROM contacts c
       JOIN users u ON c.contact_id = u.id
       WHERE c.user_id = ?
     `).all(userId);
 
-    return rows.map(r => ({
+    // Get remote user contacts (federated follows)
+    const remoteRows = this.db.prepare(`
+      SELECT ru.id, ru.handle, ru.display_name, ru.avatar, ru.avatar_url, 'online' as status, ru.node_name
+      FROM contacts c
+      JOIN remote_users ru ON c.contact_id = ru.id
+      WHERE c.user_id = ?
+    `).all(userId);
+
+    const allRows = [...localRows, ...remoteRows];
+
+    return allRows.map(r => ({
       id: r.id,
       handle: r.handle,
       name: r.display_name,
       avatar: r.avatar,
+      avatarUrl: r.avatar_url,
       status: r.status,
-      nodeName: r.node_name,
+      nodeName: r.node_name || null,
+      isRemote: !!r.node_name,
     }));
   }
 
@@ -1421,8 +1434,11 @@ export class DatabaseSQLite {
   // === Moderation Methods ===
   blockUser(userId, blockedUserId) {
     const user = this.findUserById(userId);
-    const blockedUser = this.findUserById(blockedUserId);
-    if (!user || !blockedUser) return false;
+    if (!user) return false;
+
+    // Check if target is local user or remote user
+    const blockedUser = this.findUserById(blockedUserId) || this.getRemoteUser(blockedUserId);
+    if (!blockedUser) return false;
 
     try {
       this.db.prepare('INSERT INTO blocks (id, user_id, blocked_user_id, blocked_at) VALUES (?, ?, ?, ?)').run(uuidv4(), userId, blockedUserId, new Date().toISOString());
@@ -1438,19 +1454,31 @@ export class DatabaseSQLite {
   }
 
   getBlockedUsers(userId) {
-    const rows = this.db.prepare(`
-      SELECT b.*, u.handle, u.display_name FROM blocks b
+    // Get locally blocked users
+    const localRows = this.db.prepare(`
+      SELECT b.*, u.handle, u.display_name, NULL as node_name FROM blocks b
       JOIN users u ON b.blocked_user_id = u.id
       WHERE b.user_id = ?
     `).all(userId);
 
-    return rows.map(r => ({
+    // Get blocked remote users
+    const remoteRows = this.db.prepare(`
+      SELECT b.*, ru.handle, ru.display_name, ru.node_name FROM blocks b
+      JOIN remote_users ru ON b.blocked_user_id = ru.id
+      WHERE b.user_id = ?
+    `).all(userId);
+
+    const allRows = [...localRows, ...remoteRows];
+
+    return allRows.map(r => ({
       id: r.id,
       userId: r.user_id,
       blockedUserId: r.blocked_user_id,
       blockedAt: r.blocked_at,
       handle: r.handle,
       displayName: r.display_name,
+      nodeName: r.node_name || null,
+      isRemote: !!r.node_name,
     }));
   }
 
@@ -1464,8 +1492,11 @@ export class DatabaseSQLite {
 
   muteUser(userId, mutedUserId) {
     const user = this.findUserById(userId);
-    const mutedUser = this.findUserById(mutedUserId);
-    if (!user || !mutedUser) return false;
+    if (!user) return false;
+
+    // Check if target is local user or remote user
+    const mutedUser = this.findUserById(mutedUserId) || this.getRemoteUser(mutedUserId);
+    if (!mutedUser) return false;
 
     try {
       this.db.prepare('INSERT INTO mutes (id, user_id, muted_user_id, muted_at) VALUES (?, ?, ?, ?)').run(uuidv4(), userId, mutedUserId, new Date().toISOString());
@@ -1481,19 +1512,31 @@ export class DatabaseSQLite {
   }
 
   getMutedUsers(userId) {
-    const rows = this.db.prepare(`
-      SELECT m.*, u.handle, u.display_name FROM mutes m
+    // Get locally muted users
+    const localRows = this.db.prepare(`
+      SELECT m.*, u.handle, u.display_name, NULL as node_name FROM mutes m
       JOIN users u ON m.muted_user_id = u.id
       WHERE m.user_id = ?
     `).all(userId);
 
-    return rows.map(r => ({
+    // Get muted remote users
+    const remoteRows = this.db.prepare(`
+      SELECT m.*, ru.handle, ru.display_name, ru.node_name FROM mutes m
+      JOIN remote_users ru ON m.muted_user_id = ru.id
+      WHERE m.user_id = ?
+    `).all(userId);
+
+    const allRows = [...localRows, ...remoteRows];
+
+    return allRows.map(r => ({
       id: r.id,
       userId: r.user_id,
       mutedUserId: r.muted_user_id,
       mutedAt: r.muted_at,
       handle: r.handle,
       displayName: r.display_name,
+      nodeName: r.node_name || null,
+      isRemote: !!r.node_name,
     }));
   }
 
