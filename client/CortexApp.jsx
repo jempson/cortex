@@ -4317,6 +4317,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const scrollPositionToRestore = useRef(null);
   const lastTypingSentRef = useRef(null);
   const hasScrolledToUnreadRef = useRef(false);
+  const userActionInProgressRef = useRef(false); // Suppress WebSocket reloads during user actions
 
   useEffect(() => {
     loadWave();
@@ -4339,6 +4340,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Reload wave when reloadTrigger changes (from WebSocket events)
   useEffect(() => {
     if (reloadTrigger > 0) {
+      // Skip WebSocket-triggered reloads when a user action (send/edit/delete) is in progress
+      // The user action will handle its own reload and scroll restoration
+      if (userActionInProgressRef.current) {
+        return;
+      }
       // Only save scroll position if not already pending restoration
       // (prevents overwriting correct position during race conditions)
       if (messagesRef.current && scrollPositionToRestore.current === null) {
@@ -4592,6 +4598,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
     const isReply = replyingTo !== null;
+
+    // Suppress WebSocket-triggered reloads during this operation
+    userActionInProgressRef.current = true;
+
     try {
       // Save scroll position if replying (so we don't jump around)
       if (isReply && messagesRef.current) {
@@ -4613,12 +4623,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           if (messagesRef.current) {
             messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
           }
-        }, 100);
+          // Clear the flag after scroll completes
+          userActionInProgressRef.current = false;
+        }, 150);
+      } else {
+        // For replies, clear the flag after scroll restoration has time to complete
+        setTimeout(() => {
+          userActionInProgressRef.current = false;
+        }, 150);
       }
-      // If it was a reply, scroll position will be restored by the useEffect
     } catch (err) {
       showToast('Failed to send droplet', 'error');
       scrollPositionToRestore.current = null; // Clear on error
+      userActionInProgressRef.current = false;
     }
   };
 
@@ -4718,6 +4735,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       showToast('Droplet cannot be empty', 'error');
       return;
     }
+
+    // Suppress WebSocket-triggered reloads and preserve scroll
+    userActionInProgressRef.current = true;
+    if (messagesRef.current) {
+      scrollPositionToRestore.current = messagesRef.current.scrollTop;
+    }
+
     try {
       await fetchAPI(`/droplets/${messageId}`, {
         method: 'PUT',
@@ -4727,8 +4751,14 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       setEditingMessageId(null);
       setEditContent('');
       await loadWave();
+      // Clear flag after scroll restoration has time to complete
+      setTimeout(() => {
+        userActionInProgressRef.current = false;
+      }, 150);
     } catch (err) {
       showToast(err.message || 'Failed to update droplet', 'error');
+      scrollPositionToRestore.current = null;
+      userActionInProgressRef.current = false;
     }
   };
 
@@ -4738,21 +4768,27 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   };
 
   const handleReaction = async (messageId, emoji) => {
-    try {
-      // Save scroll position before reloading
-      if (messagesRef.current) {
-        scrollPositionToRestore.current = messagesRef.current.scrollTop;
-      }
+    // Suppress WebSocket-triggered reloads and preserve scroll
+    userActionInProgressRef.current = true;
+    if (messagesRef.current) {
+      scrollPositionToRestore.current = messagesRef.current.scrollTop;
+    }
 
+    try {
       await fetchAPI(`/droplets/${messageId}/react`, {
         method: 'POST',
         body: { emoji },
       });
       // Reload wave data immediately to show the reaction
       await loadWave();
+      // Clear flag after scroll restoration has time to complete
+      setTimeout(() => {
+        userActionInProgressRef.current = false;
+      }, 150);
     } catch (err) {
       showToast(err.message || 'Failed to add reaction', 'error');
-      scrollPositionToRestore.current = null; // Clear on error
+      scrollPositionToRestore.current = null;
+      userActionInProgressRef.current = false;
     }
   };
 
@@ -4768,32 +4804,52 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   const confirmDeleteMessage = async () => {
     if (!messageToDelete) return;
+
+    // Suppress WebSocket-triggered reloads and preserve scroll
+    userActionInProgressRef.current = true;
+    if (messagesRef.current) {
+      scrollPositionToRestore.current = messagesRef.current.scrollTop;
+    }
+
     try {
       await fetchAPI(`/droplets/${messageToDelete.id}`, { method: 'DELETE' });
       showToast('Droplet deleted', 'success');
-      loadWave();
+      await loadWave();
+      // Clear flag after scroll restoration has time to complete
+      setTimeout(() => {
+        userActionInProgressRef.current = false;
+      }, 150);
     } catch (err) {
       showToast(err.message || 'Failed to delete droplet', 'error');
+      scrollPositionToRestore.current = null;
+      userActionInProgressRef.current = false;
     }
   };
 
   const handleMessageClick = async (messageId) => {
+    // Suppress WebSocket-triggered reloads and preserve scroll
+    userActionInProgressRef.current = true;
+    if (messagesRef.current) {
+      scrollPositionToRestore.current = messagesRef.current.scrollTop;
+    }
+
     try {
       console.log(`📖 Marking droplet ${messageId} as read...`);
-      // Save current scroll position before reloading
-      if (messagesRef.current) {
-        scrollPositionToRestore.current = messagesRef.current.scrollTop;
-      }
       await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
       console.log(`✅ Droplet ${messageId} marked as read, refreshing wave`);
       // Reload wave to update unread status
       await loadWave();
       // Also refresh wave list to update unread counts
       onWaveUpdate?.();
+      // Clear flag after scroll restoration has time to complete
+      setTimeout(() => {
+        userActionInProgressRef.current = false;
+      }, 150);
     } catch (err) {
       console.error(`❌ Failed to mark droplet ${messageId} as read:`, err);
       showToast('Failed to mark droplet as read', 'error');
-      scrollPositionToRestore.current = null; // Clear on error
+      scrollPositionToRestore.current = null;
+      userActionInProgressRef.current = false;
     }
   };
 
