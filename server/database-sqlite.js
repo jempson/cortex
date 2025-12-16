@@ -1903,6 +1903,11 @@ export class DatabaseSQLite {
 
     if (wave.privacy === 'public') return true;
 
+    // Federated participant waves are accessible to all local users
+    if ((wave.privacy === 'crossServer' || wave.privacy === 'cross-server') && wave.federationState === 'participant') {
+      return true;
+    }
+
     if (wave.privacy === 'group' && wave.groupId) {
       return this.isGroupMember(wave.groupId, userId);
     }
