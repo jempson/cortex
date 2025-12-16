@@ -7029,7 +7029,8 @@ const FocusView = ({
 // ============ CONTACTS VIEW ============
 const ContactsView = ({
   contacts, fetchAPI, showToast, onContactsChange,
-  contactRequests, sentContactRequests, onRequestsChange
+  contactRequests, sentContactRequests, onRequestsChange,
+  onShowProfile
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -7159,12 +7160,30 @@ const ContactsView = ({
             {contacts.map(contact => (
               <div key={contact.id} style={{
                 padding: '16px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
-                border: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                border: `1px solid ${contact.isRemote ? 'var(--accent-purple)30' : 'var(--border-subtle)'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                  <Avatar letter={contact.avatar || contact.name[0]} color="var(--accent-amber)" size={44} status={contact.status} />
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, cursor: onShowProfile ? 'pointer' : 'default', flex: 1 }}
+                  onClick={onShowProfile ? () => onShowProfile(contact.id) : undefined}
+                  title={onShowProfile ? 'View profile' : undefined}
+                >
+                  <Avatar
+                    letter={contact.avatar || contact.name?.[0] || '?'}
+                    color={contact.isRemote ? 'var(--accent-purple)' : 'var(--accent-amber)'}
+                    size={44}
+                    status={contact.status}
+                    imageUrl={contact.avatarUrl}
+                  />
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</div>
+                    <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {contact.name}
+                    </div>
+                    {contact.isRemote && (
+                      <div style={{ color: 'var(--accent-purple)', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        @{contact.handle}@{contact.nodeName}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button onClick={() => handleRemoveContact(contact.id)} style={{
@@ -9998,6 +10017,7 @@ function MainApp() {
             contactRequests={contactRequests}
             sentContactRequests={sentContactRequests}
             onRequestsChange={loadContactRequests}
+            onShowProfile={setProfileUserId}
           />
         )}
 
