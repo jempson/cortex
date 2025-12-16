@@ -4191,7 +4191,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       showToast(wasBlocked ? `Unblocked ${participant.name}` : `Blocked ${participant.name}`, 'success');
       onBlockedMutedChange?.();
       // Reload wave to show/hide blocked user's droplets
-      loadWave();
+      loadWave(true);
     } else {
       showToast(`Failed to ${wasBlocked ? 'unblock' : 'block'} user`, 'error');
     }
@@ -4207,7 +4207,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       showToast(wasMuted ? `Unmuted ${participant.name}` : `Muted ${participant.name}`, 'success');
       onBlockedMutedChange?.();
       // Reload wave to show/hide muted user's droplets
-      loadWave();
+      loadWave(true);
     } else {
       showToast(`Failed to ${wasMuted ? 'unmute' : 'mute'} user`, 'error');
     }
@@ -4335,7 +4335,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       if (messagesRef.current && scrollPositionToRestore.current === null) {
         scrollPositionToRestore.current = messagesRef.current.scrollTop;
       }
-      loadWave();
+      loadWave(true);
     }
   }, [reloadTrigger]);
 
@@ -4569,8 +4569,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   }, [newMessage]);
 
-  const loadWave = async () => {
-    setLoading(true);
+  const loadWave = async (isRefresh = false) => {
+    // Only show loading spinner on initial load, not on refresh
+    // This prevents scroll position from being lost when the container is unmounted
+    if (!isRefresh) {
+      setLoading(true);
+    }
     try {
       const data = await fetchAPI(`/waves/${wave.id}`);
       console.log('Wave API response:', data);
@@ -4619,7 +4623,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       console.error('Failed to load wave:', err);
       showToast('Failed to load wave', 'error');
     }
-    setLoading(false);
+    if (!isRefresh) {
+      setLoading(false);
+    }
   };
 
   // Load older messages (pagination)
@@ -4788,7 +4794,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       setNewMessage('');
       setReplyingTo(null);
       showToast('Droplet sent', 'success');
-      await loadWave();
+      await loadWave(true);
 
       // Only scroll to bottom if posting a root message (not a reply)
       if (!isReply) {
@@ -4923,7 +4929,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       showToast('Droplet updated', 'success');
       setEditingMessageId(null);
       setEditContent('');
-      await loadWave();
+      await loadWave(true);
       // Clear flag after scroll restoration has time to complete
       setTimeout(() => {
         userActionInProgressRef.current = false;
@@ -4953,7 +4959,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         body: { emoji },
       });
       // Reload wave data immediately to show the reaction
-      await loadWave();
+      await loadWave(true);
       // Clear flag after scroll restoration has time to complete
       setTimeout(() => {
         userActionInProgressRef.current = false;
@@ -4987,7 +4993,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     try {
       await fetchAPI(`/droplets/${messageToDelete.id}`, { method: 'DELETE' });
       showToast('Droplet deleted', 'success');
-      await loadWave();
+      await loadWave(true);
       // Clear flag after scroll restoration has time to complete
       setTimeout(() => {
         userActionInProgressRef.current = false;
@@ -5011,7 +5017,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
       console.log(`✅ Droplet ${messageId} marked as read, refreshing wave`);
       // Reload wave to update unread status
-      await loadWave();
+      await loadWave(true);
       // Also refresh wave list to update unread counts
       onWaveUpdate?.();
       // Clear flag after scroll restoration has time to complete
@@ -5202,7 +5208,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                     .filter(m => m.is_unread && m.author_id !== currentUser.id);
                   if (unreadDroplets.length === 0) return;
                   await Promise.all(unreadDroplets.map(m => fetchAPI(`/droplets/${m.id}/read`, { method: 'POST' })));
-                  await loadWave();
+                  await loadWave(true);
                   onWaveUpdate?.();
                   showToast(`Marked ${unreadDroplets.length} droplet${unreadDroplets.length !== 1 ? 's' : ''} as read`, 'success');
                 } catch (err) {
@@ -5686,7 +5692,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       <WaveSettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)}
        wave={waveData} groups={groups} fetchAPI={fetchAPI} showToast={showToast}
-        onUpdate={() => { loadWave(); onWaveUpdate?.(); }} />
+        onUpdate={() => { loadWave(true); onWaveUpdate?.(); }} />
 
       <DeleteConfirmModal
         isOpen={showDeleteConfirm}
