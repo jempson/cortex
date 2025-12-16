@@ -7009,8 +7009,21 @@ async function processFederationQueue() {
       continue;
     }
 
+    // Handle corrupted queue entries where payload might be a string
+    let payload = msg.payload;
+    if (typeof payload === 'string') {
+      console.warn(`⚠️  Queue message ${msg.id} has string payload, attempting to parse`);
+      try {
+        payload = JSON.parse(payload);
+      } catch (e) {
+        console.error(`❌ Failed to parse queue message ${msg.id}, marking as failed`);
+        db.markFederationMessageFailed(msg.id, 'Corrupted payload');
+        continue;
+      }
+    }
+
     try {
-      const response = await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', msg.payload);
+      const response = await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
 
       if (response.ok) {
         db.markFederationMessageDelivered(msg.id);
