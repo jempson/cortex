@@ -8672,12 +8672,37 @@ function MainApp() {
         setFocusStack([]);
         setSelectedWave(wave);
         setActiveView('waves');
-        // TODO: If dropletId provided, scroll to that droplet
+
+        // If dropletId provided, mark it as read and scroll to it
+        if (dropletId) {
+          // Mark the droplet as read since user is navigating to it
+          try {
+            await fetchAPI(`/droplets/${dropletId}/read`, { method: 'POST' });
+            // Refresh wave list to update unread counts
+            loadWaves();
+          } catch (e) {
+            // Ignore errors - droplet might not exist or already read
+          }
+
+          // Scroll to the droplet after a short delay (let WaveView render)
+          setTimeout(() => {
+            const element = document.querySelector(`[data-message-id="${dropletId}"]`);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              // Brief highlight effect
+              element.style.transition = 'background-color 0.3s';
+              element.style.backgroundColor = 'var(--accent-amber)20';
+              setTimeout(() => {
+                element.style.backgroundColor = '';
+              }, 1500);
+            }
+          }, 300);
+        }
       }
     } catch (err) {
       console.error('Failed to navigate to wave:', err);
     }
-  }, [waves, fetchAPI]);
+  }, [waves, fetchAPI, loadWaves]);
 
   useEffect(() => {
     loadWaves();
