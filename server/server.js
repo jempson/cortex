@@ -4800,7 +4800,16 @@ async function sendSignedFederationRequest(targetNode, method, path, body = null
   const url = `${targetNode.baseUrl}${path}`;
 
   // Stringify body once and use the same string for both signature and request
-  const bodyString = body ? JSON.stringify(body) : null;
+  // Guard against double-stringify: if body is already a string, don't stringify again
+  let bodyString = null;
+  if (body) {
+    if (typeof body === 'string') {
+      console.warn('⚠️  sendSignedFederationRequest received string body, using as-is');
+      bodyString = body;
+    } else {
+      bodyString = JSON.stringify(body);
+    }
+  }
 
   // Pass the stringified body to createHttpSignature for consistent digest calculation
   const headers = createHttpSignatureFromString(method, url, bodyString, ourIdentity.privateKey, ourIdentity.nodeName);
