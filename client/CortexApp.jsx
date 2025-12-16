@@ -4488,7 +4488,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       return null;
     };
 
-    const currentMessage = findMessageByIndex(messageTree, playbackIndex);
+    const currentMessage = findMessageByIndex(waveData.messages || [], playbackIndex);
     if (currentMessage) {
       const element = messagesRef.current.querySelector(`[data-message-id="${currentMessage.id}"]`);
       if (element) {
@@ -4501,7 +4501,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         }, 500);
       }
     }
-  }, [playbackIndex, waveData, messageTree]);
+  }, [playbackIndex, waveData]);
 
   // Scroll to compose area when replying on mobile
   useEffect(() => {
