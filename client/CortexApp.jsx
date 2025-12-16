@@ -4679,6 +4679,82 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     setLoadingMore(false);
   };
 
+  // Handle playback toggle - load all messages first if needed
+  const handlePlaybackToggle = async () => {
+    if (isPlaying) {
+      // Stopping playback
+      setIsPlaying(false);
+      return;
+    }
+
+    // Starting playback - load all messages first if there are more
+    if (hasMoreMessages) {
+      showToast('Loading all droplets for playback...', 'info');
+      try {
+        // Keep loading until we have all messages
+        let allMessages = [...(waveData?.all_messages || [])];
+        let hasMore = true;
+
+        while (hasMore) {
+          const oldestMessage = allMessages.reduce((oldest, m) =>
+            new Date(m.created_at) < new Date(oldest.created_at) ? m : oldest
+          );
+          const data = await fetchAPI(`/waves/${wave.id}/messages?limit=100&before=${oldestMessage.id}`);
+
+          if (data.messages.length > 0) {
+            allMessages = [...data.messages, ...allMessages];
+            hasMore = data.hasMore;
+          } else {
+            hasMore = false;
+          }
+        }
+
+        // Rebuild the tree with all messages
+        const messageIds = new Set(allMessages.map(m => m.id));
+        function buildMessageTree(messages, parentId = null) {
+          return messages
+            .filter(m => {
+              if (parentId === null) {
+                return m.parent_id === null || !messageIds.has(m.parent_id);
+              }
+              return m.parent_id === parentId;
+            })
+            .map(m => ({ ...m, children: buildMessageTree(messages, m.id) }));
+        }
+
+        const tree = buildMessageTree(allMessages);
+
+        // Assign chronological indices
+        const sortedByTime = [...allMessages].sort((a, b) =>
+          new Date(a.created_at) - new Date(b.created_at)
+        );
+        const chronoIndexMap = new Map();
+        sortedByTime.forEach((m, idx) => chronoIndexMap.set(m.id, idx));
+
+        const addIndices = (msgs) => msgs.forEach(m => {
+          m._index = chronoIndexMap.get(m.id) ?? 0;
+          if (m.children) addIndices(m.children);
+        });
+        addIndices(tree);
+
+        setWaveData(prev => ({
+          ...prev,
+          messages: tree,
+          all_messages: allMessages,
+        }));
+        setHasMoreMessages(false);
+        showToast(`Loaded ${allMessages.length} droplets`, 'success');
+      } catch (err) {
+        showToast('Failed to load all droplets for playback', 'error');
+        return;
+      }
+    }
+
+    // Start playback from the beginning
+    setPlaybackIndex(0);
+    setIsPlaying(true);
+  };
+
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
     const isReply = replyingTo !== null;
@@ -5335,7 +5411,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       {/* Expanded Playback Panel */}
       {showPlayback && total > 0 && (
-        <PlaybackControls isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)}
+        <PlaybackControls isPlaying={isPlaying} onTogglePlay={handlePlaybackToggle}
           currentIndex={playbackIndex} totalMessages={total} onSeek={setPlaybackIndex}
           onReset={() => { setPlaybackIndex(null); setIsPlaying(false); }}
           playbackSpeed={playbackSpeed} onSpeedChange={setPlaybackSpeed} isMobile={isMobile} />
