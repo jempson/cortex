@@ -4553,12 +4553,18 @@ function generateFederationKeypair() {
 //                    signature="base64sig"
 
 function createHttpSignature(method, url, body, privateKey, nodeName) {
+  // For backward compatibility, stringify the body if it's an object
+  const bodyString = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : '';
+  return createHttpSignatureFromString(method, url, bodyString || null, privateKey, nodeName);
+}
+
+// Create HTTP signature from an already-stringified body
+function createHttpSignatureFromString(method, url, bodyString, privateKey, nodeName) {
   const parsedUrl = new URL(url);
   const date = new Date().toUTCString();
   const requestTarget = `${method.toLowerCase()} ${parsedUrl.pathname}`;
 
   // Create digest of body (SHA-256)
-  const bodyString = body ? JSON.stringify(body) : '';
   const digest = bodyString
     ? `SHA-256=${crypto.createHash('sha256').update(bodyString).digest('base64')}`
     : '';
@@ -4721,7 +4727,12 @@ async function sendSignedFederationRequest(targetNode, method, path, body = null
   }
 
   const url = `${targetNode.baseUrl}${path}`;
-  const headers = createHttpSignature(method, url, body, ourIdentity.privateKey, ourIdentity.nodeName);
+
+  // Stringify body once and use the same string for both signature and request
+  const bodyString = body ? JSON.stringify(body) : null;
+
+  // Pass the stringified body to createHttpSignature for consistent digest calculation
+  const headers = createHttpSignatureFromString(method, url, bodyString, ourIdentity.privateKey, ourIdentity.nodeName);
 
   // Remove undefined headers
   Object.keys(headers).forEach(key => headers[key] === undefined && delete headers[key]);
@@ -4733,7 +4744,7 @@ async function sendSignedFederationRequest(targetNode, method, path, body = null
     const response = await fetch(url, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: bodyString || undefined,
       signal: controller.signal,
     });
     clearTimeout(timeout);
