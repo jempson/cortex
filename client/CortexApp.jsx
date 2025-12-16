@@ -8794,19 +8794,45 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
 };
 
 // ============ NEW WAVE MODAL ============
-const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
+const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups, federationEnabled }) => {
   const [title, setTitle] = useState('');
   const [privacy, setPrivacy] = useState('private');
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [federatedInput, setFederatedInput] = useState('');
+  const [federatedParticipants, setFederatedParticipants] = useState([]); // Array of "@handle@server" strings
 
   if (!isOpen) return null;
+
+  const handleAddFederated = () => {
+    const input = federatedInput.trim();
+    // Validate format: @handle@server or handle@server
+    const match = input.match(/^@?([^@\s]+)@([^@\s]+)$/);
+    if (match) {
+      const normalized = `@${match[1]}@${match[2]}`;
+      if (!federatedParticipants.includes(normalized)) {
+        setFederatedParticipants([...federatedParticipants, normalized]);
+        // Auto-switch to cross-server privacy when adding federated participant
+        if (privacy !== 'crossServer') {
+          setPrivacy('crossServer');
+        }
+      }
+      setFederatedInput('');
+    }
+  };
+
+  const handleRemoveFederated = (fp) => {
+    setFederatedParticipants(federatedParticipants.filter(f => f !== fp));
+  };
 
   const handleCreate = () => {
     if (!title.trim()) return;
     if (privacy === 'group' && !selectedGroup) return;
-    onCreate({ title, privacy, participants: selectedParticipants, groupId: privacy === 'group' ? selectedGroup : null });
+    // Combine local participant IDs with federated participant strings
+    const allParticipants = [...selectedParticipants, ...federatedParticipants];
+    onCreate({ title, privacy, participants: allParticipants, groupId: privacy === 'group' ? selectedGroup : null });
     setTitle(''); setPrivacy('private'); setSelectedParticipants([]); setSelectedGroup(null);
+    setFederatedInput(''); setFederatedParticipants([]);
     onClose();
   };
 
@@ -8877,7 +8903,7 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
 
         {privacy !== 'group' && privacy !== 'public' && contacts.length > 0 && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>ADD PARTICIPANTS</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>LOCAL CONTACTS</div>
             <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
               {contacts.map(c => (
                 <button key={c.id} onClick={() => setSelectedParticipants(p => p.includes(c.id) ? p.filter(x => x !== c.id) : [...p, c.id])}
@@ -8892,6 +8918,61 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
                   {selectedParticipants.includes(c.id) && <span style={{ marginLeft: 'auto', color: 'var(--accent-green)' }}>✔</span>}
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Federated participants section */}
+        {federationEnabled && privacy !== 'group' && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+              FEDERATED PARTICIPANTS <span style={{ color: 'var(--accent-teal)' }}>◇</span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              <input
+                type="text"
+                value={federatedInput}
+                onChange={(e) => setFederatedInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddFederated()}
+                placeholder="@handle@server.com"
+                style={{
+                  flex: 1, padding: '8px', boxSizing: 'border-box',
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem',
+                }}
+              />
+              <button
+                onClick={handleAddFederated}
+                disabled={!federatedInput.trim()}
+                style={{
+                  padding: '8px 12px', background: 'var(--accent-teal)20',
+                  border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)',
+                  cursor: federatedInput.trim() ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+                }}
+              >ADD</button>
+            </div>
+            {federatedParticipants.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {federatedParticipants.map(fp => (
+                  <div key={fp} style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '4px 8px', background: 'var(--accent-teal)15',
+                    border: '1px solid var(--accent-teal)40', fontSize: '0.8rem',
+                  }}>
+                    <span style={{ color: 'var(--accent-teal)' }}>{fp}</span>
+                    <button
+                      onClick={() => handleRemoveFederated(fp)}
+                      style={{
+                        background: 'none', border: 'none', color: 'var(--text-muted)',
+                        cursor: 'pointer', padding: '0 2px', fontSize: '0.9rem',
+                      }}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
+              Format: @handle@server.com (user on another Cortex server)
             </div>
           </div>
         )}
@@ -8960,6 +9041,7 @@ function MainApp() {
   const [blockedUsers, setBlockedUsers] = useState([]); // Users blocked by current user
   const [mutedUsers, setMutedUsers] = useState([]); // Users muted by current user
   const [profileUserId, setProfileUserId] = useState(null); // User ID for profile modal
+  const [federationEnabled, setFederationEnabled] = useState(false); // Whether federation is enabled on server
   const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0); // Increment to refresh notifications
   const [waveNotifications, setWaveNotifications] = useState({}); // Notification counts/types by wave ID
   const typingTimeoutsRef = useRef({});
@@ -9310,6 +9392,10 @@ function MainApp() {
     loadGroupInvitations();
     loadBlockedMutedUsers();
     loadWaveNotifications();
+    // Check if federation is enabled (public endpoint returns 404 if disabled)
+    fetch(`${API_URL}/federation/identity`)
+      .then(res => setFederationEnabled(res.ok))
+      .catch(() => setFederationEnabled(false));
   }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications]);
 
   // Listen for service worker messages (push notification clicks)
@@ -9692,7 +9778,7 @@ function MainApp() {
       )}
 
       <NewWaveModal isOpen={showNewWave} onClose={() => setShowNewWave(false)}
-        onCreate={handleCreateWave} contacts={contacts} groups={groups} />
+        onCreate={handleCreateWave} contacts={contacts} groups={groups} federationEnabled={federationEnabled} />
 
       {showSearch && (
         <SearchModal
