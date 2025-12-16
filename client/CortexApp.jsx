@@ -4490,8 +4490,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
     const currentMessage = findMessageByIndex(waveData.messages || [], playbackIndex);
     if (currentMessage) {
-      // Use requestAnimationFrame to ensure DOM has updated after visibility change
-      requestAnimationFrame(() => {
+      // Use setTimeout to ensure React has re-rendered and the element is in the DOM
+      // This is needed because the element only appears when playbackIndex >= its _index
+      setTimeout(() => {
         const container = messagesRef.current;
         const element = container?.querySelector(`[data-message-id="${currentMessage.id}"]`);
         if (element && container) {
@@ -4504,20 +4505,22 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           const elementVisualTop = elementRect.top - containerRect.top;
           const targetScrollTop = container.scrollTop + elementVisualTop - (containerRect.height / 2) + (elementRect.height / 2);
 
-          // Smooth scroll to the target position
+          // Scroll to the target position (instant for reliability, highlight provides visual feedback)
           container.scrollTo({
             top: Math.max(0, targetScrollTop),
-            behavior: 'smooth'
+            behavior: 'auto'
           });
 
-          // Brief highlight effect
+          // Brief highlight effect to show current playback position
           element.style.transition = 'background-color 0.3s';
-          element.style.backgroundColor = 'var(--accent-amber)20';
+          element.style.backgroundColor = 'var(--accent-amber)30';
+          element.style.outline = '2px solid var(--accent-amber)';
           setTimeout(() => {
             element.style.backgroundColor = '';
-          }, 500);
+            element.style.outline = '';
+          }, 800);
         }
-      });
+      }, 50);
     }
   }, [playbackIndex, waveData]);
 
@@ -4564,8 +4567,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       if (!data.all_messages) data.all_messages = [];
       if (!data.participants) data.participants = [];
 
-      let idx = 0;
-      const addIndices = (msgs) => msgs.forEach(m => { m._index = idx++; if (m.children) addIndices(m.children); });
+      // Assign chronological indices based on created_at for proper playback order
+      // Sort all_messages by created_at and create a map of id -> chronoIndex
+      const sortedByTime = [...data.all_messages].sort((a, b) =>
+        new Date(a.created_at) - new Date(b.created_at)
+      );
+      const chronoIndexMap = new Map();
+      sortedByTime.forEach((m, idx) => chronoIndexMap.set(m.id, idx));
+
+      // Apply chronological indices to the tree structure
+      const addIndices = (msgs) => msgs.forEach(m => {
+        m._index = chronoIndexMap.get(m.id) ?? 0;
+        if (m.children) addIndices(m.children);
+      });
       addIndices(data.messages);
       console.log('Wave data loaded:', {
         title: data.title,
@@ -4627,9 +4641,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             .map(m => ({ ...m, children: buildMessageTree(messages, m.id) }));
         }
 
-        let idx = 0;
         const tree = buildMessageTree(mergedMessages);
-        const addIndices = (msgs) => msgs.forEach(m => { m._index = idx++; if (m.children) addIndices(m.children); });
+
+        // Assign chronological indices based on created_at for proper playback order
+        const sortedByTime = [...mergedMessages].sort((a, b) =>
+          new Date(a.created_at) - new Date(b.created_at)
+        );
+        const chronoIndexMap = new Map();
+        sortedByTime.forEach((m, idx) => chronoIndexMap.set(m.id, idx));
+
+        const addIndices = (msgs) => msgs.forEach(m => {
+          m._index = chronoIndexMap.get(m.id) ?? 0;
+          if (m.children) addIndices(m.children);
+        });
         addIndices(tree);
 
         setWaveData(prev => ({
