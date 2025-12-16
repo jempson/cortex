@@ -2316,8 +2316,11 @@ export class DatabaseSQLite {
       authorNode: rd.authorNode,
     }));
 
-    // Merge and sort by created_at
-    const allDroplets = [...localDroplets, ...remoteDroplets];
+    // Merge and deduplicate by ID (prefer local over remote)
+    const seenIds = new Set(localDroplets.map(d => d.id));
+    const uniqueRemoteDroplets = remoteDroplets.filter(rd => !seenIds.has(rd.id));
+
+    const allDroplets = [...localDroplets, ...uniqueRemoteDroplets];
     allDroplets.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
     return allDroplets;

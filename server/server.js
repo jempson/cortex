@@ -5274,6 +5274,94 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
         break;
       }
 
+      case 'wave_broadcast': {
+        // Handle public/cross-server wave broadcast from origin server
+        // This creates a participant wave visible to all users on this server
+        // payload: { wave, participants }
+        console.log(`📢 Received wave_broadcast from ${sourceNode.nodeName}`);
+
+        const { wave, participants } = payload;
+        if (!wave) {
+          console.error('Invalid wave_broadcast payload');
+          break;
+        }
+
+        // Check if we already have this wave as a participant
+        let localWave = db.getWaveByOrigin(sourceNode.nodeName, wave.id);
+
+        if (!localWave) {
+          // Create participant wave with privacy set to crossServer
+          // This allows any local user to see it
+          const participantWaveId = `wave-${uuidv4()}`;
+
+          // We need a local user to be the "reference" creator
+          // Use the first admin or fall back to first active user
+          const adminUser = db.getAllUsers().find(u => u.role === 'admin');
+          const fallbackUser = db.getAllUsers()[0];
+          const referenceUser = adminUser || fallbackUser;
+
+          if (!referenceUser) {
+            console.error('wave_broadcast: No local users to reference as participant wave owner');
+            break;
+          }
+
+          localWave = db.createParticipantWave({
+            id: participantWaveId,
+            title: wave.title,
+            privacy: 'crossServer',
+            createdBy: referenceUser.id,
+            originNode: sourceNode.nodeName,
+            originWaveId: wave.id,
+          });
+
+          // Cache any remote participants
+          if (participants) {
+            for (const p of participants) {
+              if (p.nodeName && p.nodeName !== db.getServerIdentity()?.nodeName) {
+                db.cacheRemoteUser({
+                  id: p.id,
+                  nodeName: p.nodeName,
+                  handle: p.handle,
+                  displayName: p.displayName,
+                  avatar: p.avatar,
+                  avatarUrl: p.avatarUrl,
+                });
+              }
+            }
+          }
+
+          // Broadcast to all connected local users
+          const allUsers = db.getAllUsers();
+          for (const user of allUsers) {
+            const wsClients = clients.get(user.id);
+            if (wsClients) {
+              const notification = {
+                type: 'wave_broadcast_received',
+                wave: {
+                  id: localWave.id,
+                  title: localWave.title,
+                  privacy: localWave.privacy,
+                  federationState: 'participant',
+                  originNode: sourceNode.nodeName,
+                  originWaveId: wave.id,
+                },
+                fromNode: sourceNode.nodeName,
+              };
+              wsClients.forEach(client => {
+                if (client.readyState === 1) {
+                  client.send(JSON.stringify(notification));
+                }
+              });
+            }
+          }
+
+          console.log(`✅ Created public participant wave ${localWave.id} from broadcast`);
+        } else {
+          console.log(`ℹ️ Wave broadcast already exists as ${localWave.id}`);
+        }
+        break;
+      }
+
       case 'new_droplet': {
         // Handle new droplet from federated wave
         // payload: { droplet, originWaveId, author }
@@ -6004,15 +6092,18 @@ app.post('/api/waves', authenticateToken, async (req, res) => {
   res.status(201).json(result);
 });
 
-app.put('/api/waves/:id', authenticateToken, (req, res) => {
+app.put('/api/waves/:id', authenticateToken, async (req, res) => {
   const waveId = sanitizeInput(req.params.id);
-  const wave = db.getWave(waveId);
+  let wave = db.getWave(waveId);
   if (!wave) return res.status(404).json({ error: 'Wave not found' });
   if (wave.createdBy !== req.user.userId) {
     return res.status(403).json({ error: 'Only wave creator can modify' });
   }
 
   const privacy = req.body.privacy;
+  const wasLocal = wave.federationState === 'local' || !wave.federationState;
+  const changingToCrossServer = privacy === 'crossServer' && wave.privacy !== 'crossServer';
+
   if (privacy && ['private', 'group', 'crossServer', 'public'].includes(privacy)) {
     let groupId = null;
     if (privacy === 'group') {
@@ -6030,8 +6121,165 @@ app.put('/api/waves/:id', authenticateToken, (req, res) => {
     db.saveWaves();
   }
 
+  // If wave is being promoted to crossServer and federation is enabled, broadcast to all trusted nodes
+  if (FEDERATION_ENABLED && changingToCrossServer && wasLocal) {
+    // Mark wave as origin
+    db.setWaveAsOrigin(waveId);
+
+    // Get all active trusted nodes
+    const trustedNodes = db.getFederationNodes().filter(n => n.status === 'active');
+
+    if (trustedNodes.length > 0) {
+      // Get current participants for the wave invite
+      const localParticipants = db.getWaveParticipants(waveId);
+
+      // Broadcast wave to all trusted nodes
+      // We use a special "broadcast" flag indicating this is a public wave broadcast
+      for (const node of trustedNodes) {
+        // Track federation relationship
+        db.addWaveFederationNode(waveId, node.nodeName);
+
+        // Send wave broadcast (invites all users on the remote node)
+        const broadcastPayload = {
+          id: `wave-broadcast-${uuidv4()}`,
+          type: 'wave_broadcast',
+          payload: {
+            wave: {
+              id: wave.id,
+              title: wave.title,
+              privacy: 'crossServer',
+              createdBy: wave.createdBy,
+              createdAt: wave.createdAt,
+            },
+            participants: localParticipants.map(p => ({
+              id: p.id,
+              handle: p.handle,
+              displayName: p.name,
+              avatar: p.avatar,
+              nodeName: db.getServerIdentity()?.nodeName,
+            })),
+          },
+        };
+
+        sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', broadcastPayload)
+          .then(response => {
+            if (response.ok) {
+              console.log(`✅ Wave broadcast sent to ${node.nodeName}`);
+            } else {
+              console.error(`❌ Wave broadcast to ${node.nodeName} failed: ${response.status}`);
+            }
+          })
+          .catch(err => {
+            console.error(`❌ Wave broadcast to ${node.nodeName} error:`, err.message);
+          });
+      }
+
+      console.log(`📢 Broadcasting wave ${waveId} to ${trustedNodes.length} federated nodes`);
+    }
+  }
+
+  // Re-fetch wave to get updated state
+  wave = db.getWave(waveId);
+
   broadcastToWave(waveId, { type: 'wave_updated', wave });
   res.json(wave);
+});
+
+// Invite federated participants to an existing wave
+app.post('/api/waves/:id/invite-federated', authenticateToken, async (req, res) => {
+  if (!FEDERATION_ENABLED) {
+    return res.status(501).json({ error: 'Federation not enabled' });
+  }
+
+  const waveId = sanitizeInput(req.params.id);
+  const wave = db.getWave(waveId);
+  if (!wave) return res.status(404).json({ error: 'Wave not found' });
+  if (wave.createdBy !== req.user.userId) {
+    return res.status(403).json({ error: 'Only wave creator can invite federated participants' });
+  }
+
+  const { participants } = req.body;
+  if (!participants || !Array.isArray(participants) || participants.length === 0) {
+    return res.status(400).json({ error: 'participants array required' });
+  }
+
+  // Parse federated identifiers
+  const federatedParticipants = [];
+  for (const participant of participants) {
+    const federated = parseFederatedIdentifier(participant);
+    if (federated) {
+      const node = db.getFederationNodeByName(federated.nodeName);
+      if (node && node.status === 'active') {
+        federatedParticipants.push({ ...federated, node });
+      } else {
+        console.warn(`Skipping federated participant @${federated.handle}@${federated.nodeName}: node not found or not active`);
+      }
+    }
+  }
+
+  if (federatedParticipants.length === 0) {
+    return res.status(400).json({ error: 'No valid federated participants found' });
+  }
+
+  // Update wave to crossServer if not already federated
+  if (wave.privacy !== 'crossServer' && wave.privacy !== 'cross-server') {
+    db.updateWavePrivacy(waveId, 'crossServer', null);
+    wave.privacy = 'crossServer';
+  }
+
+  // Mark wave as origin if not already
+  if (wave.federationState !== 'origin') {
+    db.setWaveAsOrigin(waveId);
+    wave.federationState = 'origin';
+  }
+
+  // Get current local participants for the invite
+  const localParticipants = db.getWaveParticipants(waveId);
+
+  // Group invites by node
+  const nodeInvites = new Map();
+  for (const fp of federatedParticipants) {
+    const nodeKey = fp.nodeName;
+    if (!nodeInvites.has(nodeKey)) {
+      nodeInvites.set(nodeKey, { node: fp.node, handles: [] });
+    }
+    nodeInvites.get(nodeKey).handles.push(fp.handle);
+  }
+
+  // Send invites and track federation relationships
+  const results = { invited: [], failed: [] };
+  for (const [nodeName, { node, handles }] of nodeInvites) {
+    // Track federation relationship if not already
+    db.addWaveFederationNode(waveId, nodeName);
+
+    for (const handle of handles) {
+      try {
+        const success = await sendWaveInvite(node, wave, localParticipants, handle);
+        if (success) {
+          results.invited.push(`@${handle}@${nodeName}`);
+        } else {
+          results.failed.push(`@${handle}@${nodeName}`);
+        }
+      } catch (err) {
+        console.error(`Failed to send wave invite to ${nodeName}:`, err.message);
+        results.failed.push(`@${handle}@${nodeName}`);
+      }
+    }
+  }
+
+  // Broadcast update to local users
+  broadcastToWave(waveId, { type: 'wave_updated', wave });
+
+  res.json({
+    success: true,
+    wave: {
+      id: wave.id,
+      title: wave.title,
+      privacy: wave.privacy,
+      federationState: wave.federationState,
+    },
+    results,
+  });
 });
 
 app.post('/api/waves/:id/archive', authenticateToken, (req, res) => {

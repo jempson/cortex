@@ -4133,7 +4133,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave, scrollToDropletId, onScrollToDropletComplete }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave, scrollToDropletId, onScrollToDropletComplete, federationEnabled }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -4166,6 +4166,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [loadingMore, setLoadingMore] = useState(false);
   const [reportTarget, setReportTarget] = useState(null); // { type, targetId, targetPreview }
   const [rippleTarget, setRippleTarget] = useState(null); // droplet to ripple
+  const [showFederateModal, setShowFederateModal] = useState(false);
   const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For ripple activity badges
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -5162,6 +5163,29 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             </button>
           )}
 
+          {/* Federate Button - visible to wave owner when federation enabled */}
+          {federationEnabled && waveData?.createdBy === currentUser?.id && waveData?.federationState !== 'participant' && (
+            <button
+              onClick={() => setShowFederateModal(true)}
+              style={{
+                padding: isMobile ? '8px 12px' : '6px 10px',
+                background: waveData?.federationState === 'origin' ? 'var(--accent-teal)20' : 'transparent',
+                border: `1px solid ${waveData?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+                color: waveData?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--text-dim)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title={waveData?.federationState === 'origin' ? 'Add more federated participants' : 'Federate this wave to other servers'}
+            >
+              <span>◇</span>
+              {waveData?.federationState === 'origin' ? 'FEDERATED' : 'FEDERATE'}
+            </button>
+          )}
+
           {/* Thread Collapse/Expand Buttons */}
           {total > 0 && (
             <>
@@ -5753,6 +5777,17 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             // Navigate to the new wave
             onNavigateToWave?.(newWave);
           }}
+        />
+      )}
+
+      {showFederateModal && waveData && (
+        <InviteFederatedModal
+          isOpen={showFederateModal}
+          onClose={() => setShowFederateModal(false)}
+          wave={waveData}
+          fetchAPI={fetchAPI}
+          showToast={showToast}
+          isMobile={isMobile}
         />
       )}
     </div>
@@ -8995,6 +9030,158 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups, federationE
   );
 };
 
+// ============ INVITE FEDERATED MODAL ============
+const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMobile }) => {
+  const [federatedInput, setFederatedInput] = useState('');
+  const [federatedParticipants, setFederatedParticipants] = useState([]);
+  const [inviting, setInviting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setFederatedInput('');
+      setFederatedParticipants([]);
+    }
+  }, [isOpen]);
+
+  const handleAddFederated = () => {
+    const input = federatedInput.trim();
+    const match = input.match(/^@?([^@\s]+)@([^@\s]+)$/);
+    if (match) {
+      const normalized = `@${match[1]}@${match[2]}`;
+      if (!federatedParticipants.includes(normalized)) {
+        setFederatedParticipants([...federatedParticipants, normalized]);
+      }
+      setFederatedInput('');
+    }
+  };
+
+  const handleRemoveFederated = (fp) => {
+    setFederatedParticipants(federatedParticipants.filter(x => x !== fp));
+  };
+
+  const handleInvite = async () => {
+    if (federatedParticipants.length === 0) return;
+    setInviting(true);
+
+    try {
+      const res = await fetchAPI(`/waves/${wave.id}/invite-federated`, {
+        method: 'POST',
+        body: JSON.stringify({ participants: federatedParticipants }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const invited = data.results?.invited || [];
+        const failed = data.results?.failed || [];
+
+        if (invited.length > 0) {
+          showToast(`Invited: ${invited.join(', ')}`, 'success');
+        }
+        if (failed.length > 0) {
+          showToast(`Failed to invite: ${failed.join(', ')}`, 'error');
+        }
+        onClose();
+      } else {
+        const error = await res.json();
+        showToast(error.error || 'Failed to invite', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to invite federated participants', 'error');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'var(--overlay-amber)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: isMobile ? '16px' : 0,
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--bg-base)', border: '1px solid var(--accent-teal)',
+        padding: '24px', width: isMobile ? '100%' : '400px', maxWidth: '90vw',
+        maxHeight: '80vh', overflowY: 'auto',
+      }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ color: 'var(--accent-teal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '1.2rem' }}>◇</span> FEDERATE WAVE
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px' }}>
+          Invite users from other Cortex servers to join "{wave.title || wave.name}".
+        </p>
+
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+            ADD FEDERATED PARTICIPANTS
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+            <input
+              type="text"
+              value={federatedInput}
+              onChange={(e) => setFederatedInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddFederated()}
+              placeholder="@handle@server.com"
+              style={{
+                flex: 1, padding: '8px', boxSizing: 'border-box',
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem',
+              }}
+            />
+            <button
+              onClick={handleAddFederated}
+              disabled={!federatedInput.trim()}
+              style={{
+                padding: '8px 12px', background: 'var(--accent-teal)20',
+                border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)',
+                cursor: federatedInput.trim() ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+              }}
+            >ADD</button>
+          </div>
+          {federatedParticipants.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+              {federatedParticipants.map(fp => (
+                <div key={fp} style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '4px 8px', background: 'var(--accent-teal)15',
+                  border: '1px solid var(--accent-teal)40', fontSize: '0.8rem',
+                }}>
+                  <span style={{ color: 'var(--accent-teal)' }}>{fp}</span>
+                  <button
+                    onClick={() => handleRemoveFederated(fp)}
+                    style={{
+                      background: 'none', border: 'none', color: 'var(--text-muted)',
+                      cursor: 'pointer', padding: '0 2px', fontSize: '0.9rem',
+                    }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>
+            Format: @handle@server.com (user on another Cortex server)
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={onClose} style={{
+            flex: 1, padding: '12px', background: 'transparent',
+            border: '1px solid var(--border-primary)', color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace',
+          }}>CANCEL</button>
+          <button onClick={handleInvite} disabled={federatedParticipants.length === 0 || inviting} style={{
+            flex: 1, padding: '12px',
+            background: federatedParticipants.length > 0 ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${federatedParticipants.length > 0 ? 'var(--accent-teal)' : 'var(--text-muted)'}`,
+            color: federatedParticipants.length > 0 ? 'var(--accent-teal)' : 'var(--text-muted)',
+            cursor: federatedParticipants.length > 0 && !inviting ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+          }}>{inviting ? 'INVITING...' : 'INVITE'}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ============ CONNECTION STATUS ============
 const ConnectionStatus = ({ wsConnected, apiConnected }) => (
   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -9084,7 +9271,8 @@ function MainApp() {
   }, [fetchAPI, showArchived]);
 
   const handleWSMessage = useCallback((data) => {
-    if (data.type === 'new_message' || data.type === 'message_edited' || data.type === 'message_deleted' || data.type === 'wave_created' || data.type === 'wave_updated' || data.type === 'message_reaction') {
+    // Handle both legacy (new_message) and new (new_droplet) event names
+    if (data.type === 'new_message' || data.type === 'new_droplet' || data.type === 'message_edited' || data.type === 'droplet_edited' || data.type === 'message_deleted' || data.type === 'droplet_deleted' || data.type === 'wave_created' || data.type === 'wave_updated' || data.type === 'message_reaction' || data.type === 'droplet_reaction' || data.type === 'wave_invite_received' || data.type === 'wave_broadcast_received') {
       loadWaves();
       // If the event is for the currently viewed wave, trigger a reload
       // Extract waveId from different event structures
@@ -9094,18 +9282,24 @@ function MainApp() {
         setWaveReloadTrigger(prev => prev + 1);
       }
 
-      // Desktop notifications for new messages
-      if (data.type === 'new_message' && data.data) {
+      // Desktop notifications for new messages/droplets
+      if ((data.type === 'new_message' || data.type === 'new_droplet') && (data.data || data.droplet)) {
+        // Handle both local (data.data) and federated (data.droplet) message structures
+        const msgData = data.data || data.droplet;
+        const authorId = msgData.author_id || msgData.authorId;
+        const senderName = msgData.sender_name || msgData.senderName || 'Unknown';
+        const content = msgData.content || '';
+
         const isViewingDifferentWave = !selectedWave || eventWaveId !== selectedWave.id;
         const isBackgrounded = document.visibilityState === 'hidden';
-        const isOwnMessage = data.data.author_id === user?.id;
+        const isOwnMessage = authorId === user?.id;
 
         // Show notification if viewing different wave or tab is in background
         if ((isViewingDifferentWave || isBackgrounded) && !isOwnMessage) {
           if ('Notification' in window && Notification.permission === 'granted') {
             const waveName = waves.find(w => w.id === eventWaveId)?.name || 'Unknown Wave';
             const notification = new Notification(`New droplet in ${waveName}`, {
-              body: `${data.data.sender_name}: ${data.data.content.substring(0, 100)}${data.data.content.length > 100 ? '...' : ''}`,
+              body: `${senderName}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
               icon: '/favicon.ico',
               tag: eventWaveId, // Group notifications by wave
               requireInteraction: false,
@@ -9700,7 +9894,8 @@ function MainApp() {
                     onFocusDroplet={handleFocusDroplet}
                     onNavigateToWave={handleNavigateToWave}
                     scrollToDropletId={scrollToDropletId}
-                    onScrollToDropletComplete={() => setScrollToDropletId(null)} />
+                    onScrollToDropletComplete={() => setScrollToDropletId(null)}
+                    federationEnabled={federationEnabled} />
                 </ErrorBoundary>
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--border-primary)' }}>
