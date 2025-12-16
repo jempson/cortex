@@ -171,7 +171,8 @@ self.addEventListener('notificationclick', (event) => {
           if (event.notification.data?.waveId) {
             client.postMessage({
               type: 'navigate-to-wave',
-              waveId: event.notification.data.waveId
+              waveId: event.notification.data.waveId,
+              dropletId: event.notification.data.messageId
             });
           }
           return client.focus();

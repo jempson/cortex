@@ -8841,6 +8841,24 @@ function MainApp() {
     loadWaveNotifications();
   }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications]);
 
+  // Listen for service worker messages (push notification clicks)
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+
+    const handleSWMessage = (event) => {
+      if (event.data?.type === 'navigate-to-wave') {
+        console.log('[SW] Received navigate-to-wave:', event.data);
+        const { waveId, dropletId } = event.data;
+        if (waveId) {
+          handleNavigateToWaveById(waveId, dropletId);
+        }
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+  }, [handleNavigateToWaveById]);
+
   // Request notification permission and set up push on first load
   useEffect(() => {
     const token = storage.getToken();

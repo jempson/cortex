@@ -1,5 +1,23 @@
 # Known Issues & Future Work
 
+## Wave Participant Management (v1.12.2)
+
+**Issue**: Wave creators cannot view or manage the full participant list in wave settings.
+
+**Current behavior**:
+- Only participants who have responded to a wave are visible
+- No way to see the original invited participants
+- No way to add/remove participants after wave creation
+- Private waves may exist with no other participants visible
+
+**Future work**:
+- Add participant list to wave settings modal
+- Show all invited participants, not just those who responded
+- Allow wave creator to add/remove participants
+- Handle edge case of waves with no other participants
+
+---
+
 ## Playback Mode Issues (v1.12.2)
 
 The playback feature (timeline slider that reveals droplets chronologically) has some edge cases that need future work:
