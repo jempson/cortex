@@ -5227,12 +5227,13 @@ async function sendPushNotification(userId, payload) {
         keys: sub.keys
       }, payloadString);
     } catch (error) {
-      if (error.statusCode === 410 || error.statusCode === 404) {
-        // Subscription expired or invalid - clean up
+      // Clean up invalid subscriptions (expired, VAPID mismatch, or endpoint issues)
+      if (error.statusCode === 410 || error.statusCode === 404 || error.statusCode === 401 ||
+          error.message?.includes('unexpected response code')) {
         db.removeExpiredPushSubscription(sub.endpoint);
-        console.log(`🔕 Removed expired push subscription`);
+        console.log(`🔕 Removed invalid push subscription (${error.statusCode || error.message})`);
       } else {
-        console.error('Push notification error:', error.message);
+        console.error('Push notification error:', error.statusCode, error.message);
       }
     }
   }
