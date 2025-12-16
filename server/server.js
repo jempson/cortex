@@ -1592,14 +1592,14 @@ class Database {
     );
   }
 
-  createReport(data) {
+  createReport(reporterId, type, targetId, reason, details = '') {
     const report = {
       id: uuidv4(),
-      reporterId: data.reporterId,
-      type: data.type, // 'message' | 'wave' | 'user'
-      targetId: data.targetId,
-      reason: data.reason, // 'spam' | 'harassment' | 'inappropriate' | 'other'
-      details: data.details || '',
+      reporterId: reporterId,
+      type: type, // 'message' | 'wave' | 'user'
+      targetId: targetId,
+      reason: reason, // 'spam' | 'harassment' | 'inappropriate' | 'other'
+      details: details || '',
       status: 'pending', // 'pending' | 'resolved' | 'dismissed'
       createdAt: new Date().toISOString(),
       resolvedAt: null,
@@ -4538,6 +4538,9 @@ app.post('/api/droplets/:id/react', authenticateToken, (req, res) => {
   const result = db.toggleMessageReaction(dropletId, req.user.userId, emoji);
   if (!result.success) return res.status(400).json({ error: result.error });
 
+  // Mark droplet as read since user has seen it (prevents unread indicator after reaction)
+  db.markMessageAsRead(dropletId, req.user.userId);
+
   // Broadcast reaction update to all participants
   broadcastToWave(result.waveId, {
     type: 'droplet_reaction',
@@ -4772,6 +4775,9 @@ app.post('/api/messages/:id/react', authenticateToken, deprecatedEndpoint, (req,
 
   const result = db.toggleMessageReaction(messageId, req.user.userId, emoji);
   if (!result.success) return res.status(400).json({ error: result.error });
+
+  // Mark message as read since user has seen it (prevents unread indicator after reaction)
+  db.markMessageAsRead(messageId, req.user.userId);
 
   // Broadcast reaction update to all participants
   broadcastToWave(result.waveId, {
@@ -5221,12 +5227,13 @@ async function sendPushNotification(userId, payload) {
         keys: sub.keys
       }, payloadString);
     } catch (error) {
-      if (error.statusCode === 410 || error.statusCode === 404) {
-        // Subscription expired or invalid - clean up
+      // Clean up invalid subscriptions (expired, VAPID mismatch, or endpoint issues)
+      if (error.statusCode === 410 || error.statusCode === 404 || error.statusCode === 401 ||
+          error.message?.includes('unexpected response code')) {
         db.removeExpiredPushSubscription(sub.endpoint);
-        console.log(`🔕 Removed expired push subscription`);
+        console.log(`🔕 Removed invalid push subscription (${error.statusCode || error.message})`);
       } else {
-        console.error('Push notification error:', error.message);
+        console.error('Push notification error:', error.statusCode, error.message);
       }
     }
   }
@@ -5283,7 +5290,7 @@ server.listen(PORT, () => {
 ║  ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗         ║
 ║  ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗        ║
 ║   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝        ║
-║  SECURE COMMUNICATIONS SYSTEM v1.6.0                       ║
+║  SECURE COMMUNICATIONS SYSTEM v1.12.2                      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  🔒 Security: Rate limiting, XSS protection, Helmet        ║
 ║  📁 Data: Separated files (users, waves, messages, groups) ║

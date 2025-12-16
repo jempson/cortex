@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
 
 // ============ CONFIGURATION ============
 // Auto-detect production vs development
@@ -2315,6 +2315,16 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   const isReply = depth > 0 && message.parentId;
   const isAtDepthLimit = depth >= THREAD_DEPTH_LIMIT;
 
+  // Count unread droplets in children (recursive) - for collapsed thread indicator
+  const countUnreadChildren = (children) => {
+    if (!children) return 0;
+    return children.reduce((count, child) => {
+      const childUnread = !child.deleted && child.is_unread && child.author_id !== currentUserId ? 1 : 0;
+      return count + childUnread + countUnreadChildren(child.children);
+    }, 0);
+  };
+  const unreadChildCount = isCollapsed && hasChildren ? countUnreadChildren(message.children) : 0;
+
   const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏'];
 
   if (!isVisible) return null;
@@ -2508,11 +2518,6 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 setLightboxImage(e.target.src);
                 return;
               }
-              // Mobile tap-to-focus: tap content area to enter focus view if droplet has replies
-              if (isMobile && hasChildren && onFocus) {
-                e.stopPropagation();
-                onFocus(message);
-              }
             }}
             style={{
               color: 'var(--text-primary)',
@@ -2522,30 +2527,9 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               wordBreak: 'break-word',
               whiteSpace: 'pre-wrap',
               overflow: 'hidden',
-              // Visual hint for tap-to-focus on mobile
-              cursor: (isMobile && hasChildren && onFocus) ? 'pointer' : 'default',
             }}
           >
             <DropletWithEmbeds content={message.content} />
-            {/* Mobile tap-to-focus hint */}
-            {isMobile && hasChildren && onFocus && (
-              <div style={{
-                marginTop: '6px',
-                padding: '4px 8px',
-                background: 'var(--accent-teal)10',
-                border: '1px dashed var(--accent-teal)30',
-                borderRadius: '4px',
-                fontSize: '0.65rem',
-                color: 'var(--accent-teal)',
-                fontFamily: 'monospace',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}>
-                <span>⤢</span>
-                <span>Tap to focus ({message.children?.length} {message.children?.length === 1 ? 'reply' : 'replies'})</span>
-              </div>
-            )}
           </div>
         )}
         {/* Actions Row: Parent, Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
@@ -2554,7 +2538,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <button onClick={() => onJumpToParent(message.parentId)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: '1px solid var(--accent-teal)30',
+              background: 'transparent', border: 'none',
               color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }}>↑ PARENT</button>
           )}
@@ -2563,21 +2547,21 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <button onClick={() => onFocus(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'var(--accent-teal)15', border: '1px solid var(--accent-teal)',
+              background: 'var(--accent-teal)15', border: 'none',
               color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }} title="Thread is deep - focus to continue">⤢ FOCUS TO REPLY</button>
           ) : isAtDepthLimit && onFocus ? (
             <button onClick={() => onFocus(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'var(--accent-teal)15', border: '1px solid var(--accent-teal)',
+              background: 'var(--accent-teal)15', border: 'none',
               color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }} title="Thread is deep - focus to reply">⤢ FOCUS TO REPLY</button>
           ) : (
             <button onClick={() => onReply(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: '1px solid var(--border-primary)',
+              background: 'transparent', border: 'none',
               color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }}>↵ REPLY</button>
           )}
@@ -2586,15 +2570,16 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               <button onClick={() => onToggleCollapse(message.id)} style={{
                 padding: isMobile ? '8px 12px' : '4px 8px',
                 minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: '1px solid var(--border-primary)',
+                background: unreadChildCount > 0 ? 'var(--accent-amber)15' : 'transparent',
+                border: 'none',
                 color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-              }}>{isCollapsed ? `▶ ${message.children.length}` : '▼'}</button>
+              }}>{isCollapsed ? `▶ ${message.children.length}${unreadChildCount > 0 ? ` (${unreadChildCount} new)` : ''}` : '▼'}</button>
               {/* Show separate Focus button only when not at depth limit (at limit, Focus is in reply button) */}
               {!isAtDepthLimit && onFocus && (
                 <button onClick={() => onFocus(message)} style={{
                   padding: isMobile ? '8px 12px' : '4px 8px',
                   minHeight: isMobile ? '38px' : 'auto',
-                  background: 'transparent', border: '1px solid var(--accent-teal)40',
+                  background: 'transparent', border: 'none',
                   color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
                 }} title="Focus on this droplet and its replies">⤢ FOCUS</button>
               )}
@@ -2603,7 +2588,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 <button onClick={() => onRipple(message)} style={{
                   padding: isMobile ? '8px 12px' : '4px 8px',
                   minHeight: isMobile ? '38px' : 'auto',
-                  background: 'transparent', border: '1px solid var(--accent-teal)30',
+                  background: 'transparent', border: 'none',
                   color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
                 }} title="Ripple to new wave">◈ RIPPLE</button>
               )}
@@ -2614,13 +2599,13 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               <button onClick={() => onEdit(message)} style={{
                 padding: isMobile ? '8px 12px' : '4px 8px',
                 minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: '1px solid var(--accent-amber)30',
+                background: 'transparent', border: 'none',
                 color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
               }}>✏️</button>
               <button onClick={() => onDelete(message)} style={{
                 padding: isMobile ? '8px 12px' : '4px 8px',
                 minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: '1px solid var(--accent-orange)30',
+                background: 'transparent', border: 'none',
                 color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
               }}>✕</button>
             </>
@@ -2631,7 +2616,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <button onClick={() => onReport(message)} style={{
               padding: isMobile ? '8px 12px' : '4px 8px',
               minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: '1px solid var(--text-dim)30',
+              background: 'transparent', border: 'none',
               color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
             }} title="Report droplet">⚐</button>
           )}
@@ -2645,7 +2630,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                   padding: isMobile ? '8px 10px' : '4px 8px',
                   minHeight: isMobile ? '38px' : 'auto',
                   background: showReactionPicker ? 'var(--border-primary)' : 'transparent',
-                  border: '1px solid var(--border-primary)',
+                  border: 'none',
                   color: 'var(--text-dim)',
                   cursor: 'pointer',
                   fontSize: isMobile ? '0.9rem' : '0.85rem',
@@ -2682,7 +2667,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                         minHeight: isMobile ? '38px' : 'auto',
                         minWidth: isMobile ? '38px' : 'auto',
                         background: 'transparent',
-                        border: '1px solid var(--border-subtle)',
+                        border: 'none',
                         cursor: 'pointer',
                         fontSize: isMobile ? '1.3rem' : '1.1rem',
                       }}
@@ -2712,7 +2697,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                     padding: isMobile ? '6px 8px' : '3px 6px',
                     minHeight: isMobile ? '38px' : 'auto',
                     background: hasReacted ? 'var(--accent-amber)20' : 'transparent',
-                    border: `1px solid ${hasReacted ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                    border: 'none',
                     color: hasReacted ? 'var(--accent-amber)' : 'var(--text-dim)',
                     cursor: 'pointer',
                     fontSize: isMobile ? '0.95rem' : '0.85rem',
@@ -4148,7 +4133,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave, scrollToDropletId, onScrollToDropletComplete }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -4205,6 +4190,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     if (success) {
       showToast(wasBlocked ? `Unblocked ${participant.name}` : `Blocked ${participant.name}`, 'success');
       onBlockedMutedChange?.();
+      // Reload wave to show/hide blocked user's droplets
+      loadWave(true);
     } else {
       showToast(`Failed to ${wasBlocked ? 'unblock' : 'block'} user`, 'error');
     }
@@ -4219,6 +4206,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     if (success) {
       showToast(wasMuted ? `Unmuted ${participant.name}` : `Muted ${participant.name}`, 'success');
       onBlockedMutedChange?.();
+      // Reload wave to show/hide muted user's droplets
+      loadWave(true);
     } else {
       showToast(`Failed to ${wasMuted ? 'unmute' : 'mute'} user`, 'error');
     }
@@ -4313,6 +4302,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const scrollPositionToRestore = useRef(null);
   const lastTypingSentRef = useRef(null);
   const hasScrolledToUnreadRef = useRef(false);
+  const userActionInProgressRef = useRef(false); // Suppress WebSocket reloads during user actions
 
   useEffect(() => {
     loadWave();
@@ -4335,31 +4325,33 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Reload wave when reloadTrigger changes (from WebSocket events)
   useEffect(() => {
     if (reloadTrigger > 0) {
+      // Skip WebSocket-triggered reloads when a user action (send/edit/delete) is in progress
+      // The user action will handle its own reload and scroll restoration
+      if (userActionInProgressRef.current) {
+        return;
+      }
       // Only save scroll position if not already pending restoration
       // (prevents overwriting correct position during race conditions)
       if (messagesRef.current && scrollPositionToRestore.current === null) {
         scrollPositionToRestore.current = messagesRef.current.scrollTop;
       }
-      loadWave();
+      loadWave(true);
     }
   }, [reloadTrigger]);
 
   // Restore scroll position after wave data updates (for click-to-read and similar actions)
-  useEffect(() => {
+  // Use useLayoutEffect to restore scroll synchronously before browser paint
+  useLayoutEffect(() => {
     if (scrollPositionToRestore.current !== null && messagesRef.current) {
-      // Use requestAnimationFrame for smoother restoration without visible jump
-      requestAnimationFrame(() => {
-        if (messagesRef.current) {
-          messagesRef.current.scrollTop = scrollPositionToRestore.current;
-          scrollPositionToRestore.current = null;
-        }
-      });
+      messagesRef.current.scrollTop = scrollPositionToRestore.current;
+      scrollPositionToRestore.current = null;
     }
   }, [waveData]);
 
   // Scroll to first unread message or bottom on initial wave load
   useEffect(() => {
-    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading) return;
+    // Skip if: no data, no container, already scrolled, still loading, pending scroll restoration, OR navigating to specific droplet
+    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading || scrollPositionToRestore.current !== null || scrollToDropletId) return;
 
     // Only run once per wave
     hasScrolledToUnreadRef.current = true;
@@ -4388,6 +4380,49 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       container.scrollTop = container.scrollHeight;
     }, 100);
   }, [waveData, loading, currentUser?.id]);
+
+  // Scroll to specific droplet when navigating from notification
+  useEffect(() => {
+    if (!scrollToDropletId || !waveData || loading) return;
+
+    // Wait for render to complete
+    const scrollToTarget = () => {
+      const element = document.querySelector(`[data-message-id="${scrollToDropletId}"]`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Brief highlight effect
+        element.style.transition = 'background-color 0.3s, outline 0.3s';
+        element.style.backgroundColor = 'var(--accent-amber)20';
+        element.style.outline = '2px solid var(--accent-amber)';
+        setTimeout(() => {
+          element.style.backgroundColor = '';
+          element.style.outline = '';
+        }, 1500);
+        // Clear the target
+        onScrollToDropletComplete?.();
+      } else {
+        // Droplet not in DOM - might be in "load more" section
+        // Try again after a short delay in case of slow render
+        setTimeout(() => {
+          const retryElement = document.querySelector(`[data-message-id="${scrollToDropletId}"]`);
+          if (retryElement) {
+            retryElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            retryElement.style.transition = 'background-color 0.3s, outline 0.3s';
+            retryElement.style.backgroundColor = 'var(--accent-amber)20';
+            retryElement.style.outline = '2px solid var(--accent-amber)';
+            setTimeout(() => {
+              retryElement.style.backgroundColor = '';
+              retryElement.style.outline = '';
+            }, 1500);
+          }
+          onScrollToDropletComplete?.();
+        }, 300);
+      }
+    };
+
+    // Delay to allow React to render the messages
+    setTimeout(scrollToTarget, 100);
+  }, [scrollToDropletId, waveData, loading, onScrollToDropletComplete]);
 
   // Mark wave as read when user scrolls to bottom or views unread messages
   useEffect(() => {
@@ -4450,6 +4485,58 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     return () => { if (playbackRef.current) clearInterval(playbackRef.current); };
   }, [isPlaying, playbackSpeed, waveData]);
 
+  // Scroll to current playback message when playbackIndex changes
+  useEffect(() => {
+    if (playbackIndex === null || !waveData?.all_messages || !messagesRef.current) return;
+
+    // Find the message with the current playback index
+    const findMessageByIndex = (messages, targetIndex) => {
+      for (const msg of messages) {
+        if (msg._index === targetIndex) return msg;
+        if (msg.children) {
+          const found = findMessageByIndex(msg.children, targetIndex);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const currentMessage = findMessageByIndex(waveData.messages || [], playbackIndex);
+    if (currentMessage) {
+      // Use setTimeout to ensure React has re-rendered and the element is in the DOM
+      // This is needed because the element only appears when playbackIndex >= its _index
+      setTimeout(() => {
+        const container = messagesRef.current;
+        const element = container?.querySelector(`[data-message-id="${currentMessage.id}"]`);
+        if (element && container) {
+          // Calculate element's position relative to the scroll container
+          const containerRect = container.getBoundingClientRect();
+          const elementRect = element.getBoundingClientRect();
+
+          // Current scroll position + element's visual offset from container top
+          // minus half the container height to center it
+          const elementVisualTop = elementRect.top - containerRect.top;
+          const targetScrollTop = container.scrollTop + elementVisualTop - (containerRect.height / 2) + (elementRect.height / 2);
+
+          // Scroll to the target position (instant for reliability, highlight provides visual feedback)
+          container.scrollTo({
+            top: Math.max(0, targetScrollTop),
+            behavior: 'auto'
+          });
+
+          // Brief highlight effect to show current playback position
+          element.style.transition = 'background-color 0.3s';
+          element.style.backgroundColor = 'var(--accent-amber)30';
+          element.style.outline = '2px solid var(--accent-amber)';
+          setTimeout(() => {
+            element.style.backgroundColor = '';
+            element.style.outline = '';
+          }, 800);
+        }
+      }, 50);
+    }
+  }, [playbackIndex, waveData]);
+
   // Scroll to compose area when replying on mobile
   useEffect(() => {
     if (replyingTo && isMobile && composeRef.current) {
@@ -4482,8 +4569,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   }, [newMessage]);
 
-  const loadWave = async () => {
-    setLoading(true);
+  const loadWave = async (isRefresh = false) => {
+    // Only show loading spinner on initial load, not on refresh
+    // This prevents scroll position from being lost when the container is unmounted
+    if (!isRefresh) {
+      setLoading(true);
+    }
     try {
       const data = await fetchAPI(`/waves/${wave.id}`);
       console.log('Wave API response:', data);
@@ -4493,8 +4584,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       if (!data.all_messages) data.all_messages = [];
       if (!data.participants) data.participants = [];
 
-      let idx = 0;
-      const addIndices = (msgs) => msgs.forEach(m => { m._index = idx++; if (m.children) addIndices(m.children); });
+      // Assign chronological indices based on created_at for proper playback order
+      // Sort all_messages by created_at and create a map of id -> chronoIndex
+      const sortedByTime = [...data.all_messages].sort((a, b) =>
+        new Date(a.created_at) - new Date(b.created_at)
+      );
+      const chronoIndexMap = new Map();
+      sortedByTime.forEach((m, idx) => chronoIndexMap.set(m.id, idx));
+
+      // Apply chronological indices to the tree structure
+      const addIndices = (msgs) => msgs.forEach(m => {
+        m._index = chronoIndexMap.get(m.id) ?? 0;
+        if (m.children) addIndices(m.children);
+      });
       addIndices(data.messages);
       console.log('Wave data loaded:', {
         title: data.title,
@@ -4521,7 +4623,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       console.error('Failed to load wave:', err);
       showToast('Failed to load wave', 'error');
     }
-    setLoading(false);
+    if (!isRefresh) {
+      setLoading(false);
+    }
   };
 
   // Load older messages (pagination)
@@ -4556,9 +4660,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             .map(m => ({ ...m, children: buildMessageTree(messages, m.id) }));
         }
 
-        let idx = 0;
         const tree = buildMessageTree(mergedMessages);
-        const addIndices = (msgs) => msgs.forEach(m => { m._index = idx++; if (m.children) addIndices(m.children); });
+
+        // Assign chronological indices based on created_at for proper playback order
+        const sortedByTime = [...mergedMessages].sort((a, b) =>
+          new Date(a.created_at) - new Date(b.created_at)
+        );
+        const chronoIndexMap = new Map();
+        sortedByTime.forEach((m, idx) => chronoIndexMap.set(m.id, idx));
+
+        const addIndices = (msgs) => msgs.forEach(m => {
+          m._index = chronoIndexMap.get(m.id) ?? 0;
+          if (m.children) addIndices(m.children);
+        });
         addIndices(tree);
 
         setWaveData(prev => ({
@@ -4584,9 +4698,89 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     setLoadingMore(false);
   };
 
+  // Handle playback toggle - load all messages first if needed
+  const handlePlaybackToggle = async () => {
+    if (isPlaying) {
+      // Stopping playback
+      setIsPlaying(false);
+      return;
+    }
+
+    // Starting playback - load all messages first if there are more
+    if (hasMoreMessages) {
+      showToast('Loading all droplets for playback...', 'info');
+      try {
+        // Keep loading until we have all messages
+        let allMessages = [...(waveData?.all_messages || [])];
+        let hasMore = true;
+
+        while (hasMore) {
+          const oldestMessage = allMessages.reduce((oldest, m) =>
+            new Date(m.created_at) < new Date(oldest.created_at) ? m : oldest
+          );
+          const data = await fetchAPI(`/waves/${wave.id}/messages?limit=100&before=${oldestMessage.id}`);
+
+          if (data.messages.length > 0) {
+            allMessages = [...data.messages, ...allMessages];
+            hasMore = data.hasMore;
+          } else {
+            hasMore = false;
+          }
+        }
+
+        // Rebuild the tree with all messages
+        const messageIds = new Set(allMessages.map(m => m.id));
+        function buildMessageTree(messages, parentId = null) {
+          return messages
+            .filter(m => {
+              if (parentId === null) {
+                return m.parent_id === null || !messageIds.has(m.parent_id);
+              }
+              return m.parent_id === parentId;
+            })
+            .map(m => ({ ...m, children: buildMessageTree(messages, m.id) }));
+        }
+
+        const tree = buildMessageTree(allMessages);
+
+        // Assign chronological indices
+        const sortedByTime = [...allMessages].sort((a, b) =>
+          new Date(a.created_at) - new Date(b.created_at)
+        );
+        const chronoIndexMap = new Map();
+        sortedByTime.forEach((m, idx) => chronoIndexMap.set(m.id, idx));
+
+        const addIndices = (msgs) => msgs.forEach(m => {
+          m._index = chronoIndexMap.get(m.id) ?? 0;
+          if (m.children) addIndices(m.children);
+        });
+        addIndices(tree);
+
+        setWaveData(prev => ({
+          ...prev,
+          messages: tree,
+          all_messages: allMessages,
+        }));
+        setHasMoreMessages(false);
+        showToast(`Loaded ${allMessages.length} droplets`, 'success');
+      } catch (err) {
+        showToast('Failed to load all droplets for playback', 'error');
+        return;
+      }
+    }
+
+    // Start playback from the beginning
+    setPlaybackIndex(0);
+    setIsPlaying(true);
+  };
+
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
     const isReply = replyingTo !== null;
+
+    // Suppress WebSocket-triggered reloads during this operation
+    userActionInProgressRef.current = true;
+
     try {
       // Save scroll position if replying (so we don't jump around)
       if (isReply && messagesRef.current) {
@@ -4600,7 +4794,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       setNewMessage('');
       setReplyingTo(null);
       showToast('Droplet sent', 'success');
-      await loadWave();
+      await loadWave(true);
 
       // Only scroll to bottom if posting a root message (not a reply)
       if (!isReply) {
@@ -4608,12 +4802,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           if (messagesRef.current) {
             messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
           }
-        }, 100);
+          // Clear the flag after scroll completes
+          userActionInProgressRef.current = false;
+        }, 150);
+      } else {
+        // For replies, clear the flag after scroll restoration has time to complete
+        setTimeout(() => {
+          userActionInProgressRef.current = false;
+        }, 150);
       }
-      // If it was a reply, scroll position will be restored by the useEffect
     } catch (err) {
       showToast('Failed to send droplet', 'error');
       scrollPositionToRestore.current = null; // Clear on error
+      userActionInProgressRef.current = false;
     }
   };
 
@@ -4713,6 +4914,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       showToast('Droplet cannot be empty', 'error');
       return;
     }
+
+    // Suppress WebSocket-triggered reloads and preserve scroll
+    userActionInProgressRef.current = true;
+    if (messagesRef.current) {
+      scrollPositionToRestore.current = messagesRef.current.scrollTop;
+    }
+
     try {
       await fetchAPI(`/droplets/${messageId}`, {
         method: 'PUT',
@@ -4721,9 +4929,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       showToast('Droplet updated', 'success');
       setEditingMessageId(null);
       setEditContent('');
-      await loadWave();
+      await loadWave(true);
+      // Clear flag after scroll restoration has time to complete
+      setTimeout(() => {
+        userActionInProgressRef.current = false;
+      }, 150);
     } catch (err) {
       showToast(err.message || 'Failed to update droplet', 'error');
+      scrollPositionToRestore.current = null;
+      userActionInProgressRef.current = false;
     }
   };
 
@@ -4733,21 +4947,27 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   };
 
   const handleReaction = async (messageId, emoji) => {
-    try {
-      // Save scroll position before reloading
-      if (messagesRef.current) {
-        scrollPositionToRestore.current = messagesRef.current.scrollTop;
-      }
+    // Suppress WebSocket-triggered reloads and preserve scroll
+    userActionInProgressRef.current = true;
+    if (messagesRef.current) {
+      scrollPositionToRestore.current = messagesRef.current.scrollTop;
+    }
 
+    try {
       await fetchAPI(`/droplets/${messageId}/react`, {
         method: 'POST',
         body: { emoji },
       });
       // Reload wave data immediately to show the reaction
-      await loadWave();
+      await loadWave(true);
+      // Clear flag after scroll restoration has time to complete
+      setTimeout(() => {
+        userActionInProgressRef.current = false;
+      }, 150);
     } catch (err) {
       showToast(err.message || 'Failed to add reaction', 'error');
-      scrollPositionToRestore.current = null; // Clear on error
+      scrollPositionToRestore.current = null;
+      userActionInProgressRef.current = false;
     }
   };
 
@@ -4763,32 +4983,52 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   const confirmDeleteMessage = async () => {
     if (!messageToDelete) return;
+
+    // Suppress WebSocket-triggered reloads and preserve scroll
+    userActionInProgressRef.current = true;
+    if (messagesRef.current) {
+      scrollPositionToRestore.current = messagesRef.current.scrollTop;
+    }
+
     try {
       await fetchAPI(`/droplets/${messageToDelete.id}`, { method: 'DELETE' });
       showToast('Droplet deleted', 'success');
-      loadWave();
+      await loadWave(true);
+      // Clear flag after scroll restoration has time to complete
+      setTimeout(() => {
+        userActionInProgressRef.current = false;
+      }, 150);
     } catch (err) {
       showToast(err.message || 'Failed to delete droplet', 'error');
+      scrollPositionToRestore.current = null;
+      userActionInProgressRef.current = false;
     }
   };
 
   const handleMessageClick = async (messageId) => {
+    // Suppress WebSocket-triggered reloads and preserve scroll
+    userActionInProgressRef.current = true;
+    if (messagesRef.current) {
+      scrollPositionToRestore.current = messagesRef.current.scrollTop;
+    }
+
     try {
       console.log(`📖 Marking droplet ${messageId} as read...`);
-      // Save current scroll position before reloading
-      if (messagesRef.current) {
-        scrollPositionToRestore.current = messagesRef.current.scrollTop;
-      }
       await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
       console.log(`✅ Droplet ${messageId} marked as read, refreshing wave`);
       // Reload wave to update unread status
-      await loadWave();
+      await loadWave(true);
       // Also refresh wave list to update unread counts
       onWaveUpdate?.();
+      // Clear flag after scroll restoration has time to complete
+      setTimeout(() => {
+        userActionInProgressRef.current = false;
+      }, 150);
     } catch (err) {
       console.error(`❌ Failed to mark droplet ${messageId} as read:`, err);
       showToast('Failed to mark droplet as read', 'error');
-      scrollPositionToRestore.current = null; // Clear on error
+      scrollPositionToRestore.current = null;
+      userActionInProgressRef.current = false;
     }
   };
 
@@ -4963,11 +5203,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             <button
               onClick={async () => {
                 try {
+                  // Use is_unread flag from server for consistency
                   const unreadDroplets = allDroplets
-                    .filter(m => (m.readBy || [m.author_id]).includes(currentUser.id) === false && m.author_id !== currentUser.id);
+                    .filter(m => m.is_unread && m.author_id !== currentUser.id);
                   if (unreadDroplets.length === 0) return;
                   await Promise.all(unreadDroplets.map(m => fetchAPI(`/droplets/${m.id}/read`, { method: 'POST' })));
-                  await loadWave();
+                  await loadWave(true);
                   onWaveUpdate?.();
                   showToast(`Marked ${unreadDroplets.length} droplet${unreadDroplets.length !== 1 ? 's' : ''} as read`, 'success');
                 } catch (err) {
@@ -5189,7 +5430,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       {/* Expanded Playback Panel */}
       {showPlayback && total > 0 && (
-        <PlaybackControls isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)}
+        <PlaybackControls isPlaying={isPlaying} onTogglePlay={handlePlaybackToggle}
           currentIndex={playbackIndex} totalMessages={total} onSeek={setPlaybackIndex}
           onReset={() => { setPlaybackIndex(null); setIsPlaying(false); }}
           playbackSpeed={playbackSpeed} onSpeedChange={setPlaybackSpeed} isMobile={isMobile} />
@@ -5451,7 +5692,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       <WaveSettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)}
        wave={waveData} groups={groups} fetchAPI={fetchAPI} showToast={showToast}
-        onUpdate={() => { loadWave(); onWaveUpdate?.(); }} />
+        onUpdate={() => { loadWave(true); onWaveUpdate?.(); }} />
 
       <DeleteConfirmModal
         isOpen={showDeleteConfirm}
@@ -6210,11 +6451,19 @@ const FocusView = ({
   };
 
   const handleReaction = async (messageId, emoji) => {
+    // Save scroll position before updating
+    const scrollTop = messagesRef.current?.scrollTop;
     try {
       await fetchAPI(`/droplets/${messageId}/react`, {
         method: 'POST',
         body: { emoji }
       });
+      // Refresh data to show reaction
+      await fetchFreshData();
+      // Restore scroll position
+      if (messagesRef.current && scrollTop !== undefined) {
+        messagesRef.current.scrollTop = scrollTop;
+      }
     } catch (err) {
       showToast('Failed to react', 'error');
     }
@@ -8227,6 +8476,7 @@ function MainApp() {
   const [contacts, setContacts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selectedWave, setSelectedWave] = useState(null);
+  const [scrollToDropletId, setScrollToDropletId] = useState(null); // Droplet to scroll to after wave loads
   const [focusStack, setFocusStack] = useState([]); // Array of { waveId, dropletId, droplet } for Focus View navigation
   const [showNewWave, setShowNewWave] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -8560,12 +8810,26 @@ function MainApp() {
         setFocusStack([]);
         setSelectedWave(wave);
         setActiveView('waves');
-        // TODO: If dropletId provided, scroll to that droplet
+
+        // If dropletId provided, mark it as read and set it for WaveView to scroll to
+        if (dropletId) {
+          // Mark the droplet as read since user is navigating to it
+          try {
+            await fetchAPI(`/droplets/${dropletId}/read`, { method: 'POST' });
+            // Refresh wave list to update unread counts
+            loadWaves();
+          } catch (e) {
+            // Ignore errors - droplet might not exist or already read
+          }
+
+          // Set the target droplet for WaveView to scroll to after loading
+          setScrollToDropletId(dropletId);
+        }
       }
     } catch (err) {
       console.error('Failed to navigate to wave:', err);
     }
-  }, [waves, fetchAPI]);
+  }, [waves, fetchAPI, loadWaves]);
 
   useEffect(() => {
     loadWaves();
@@ -8576,6 +8840,24 @@ function MainApp() {
     loadBlockedMutedUsers();
     loadWaveNotifications();
   }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications]);
+
+  // Listen for service worker messages (push notification clicks)
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+
+    const handleSWMessage = (event) => {
+      if (event.data?.type === 'navigate-to-wave') {
+        console.log('[SW] Received navigate-to-wave:', event.data);
+        const { waveId, dropletId } = event.data;
+        if (waveId) {
+          handleNavigateToWaveById(waveId, dropletId);
+        }
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+  }, [handleNavigateToWaveById]);
 
   // Request notification permission and set up push on first load
   useEffect(() => {
@@ -8723,7 +9005,7 @@ function MainApp() {
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.12.1</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.12.2</span>
           </div>
           {/* Status indicators */}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', fontSize: '0.55rem', fontFamily: 'monospace' }}>
@@ -8859,7 +9141,9 @@ function MainApp() {
                     onBlockedMutedChange={loadBlockedMutedUsers}
                     onShowProfile={setProfileUserId}
                     onFocusDroplet={handleFocusDroplet}
-                    onNavigateToWave={handleNavigateToWave} />
+                    onNavigateToWave={handleNavigateToWave}
+                    scrollToDropletId={scrollToDropletId}
+                    onScrollToDropletComplete={() => setScrollToDropletId(null)} />
                 </ErrorBoundary>
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--border-primary)' }}>
@@ -8909,7 +9193,7 @@ function MainApp() {
           display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
         }}>
           <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ color: 'var(--border-primary)' }}>v1.12.1</span>
+            <span style={{ color: 'var(--border-primary)' }}>v1.12.2</span>
             <span><span style={{ color: 'var(--accent-green)' }}>●</span> ENCRYPTED</span>
             <span><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> LIVE</span>
