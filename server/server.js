@@ -6998,7 +6998,7 @@ app.get('/api/search', authenticateToken, (req, res) => {
 
 // ============ Health Check ============
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.3.1', uptime: process.uptime() });
+  res.json({ status: 'ok', version: '1.13.0', uptime: process.uptime() });
 });
 
 // ============ WebSocket Setup ============
