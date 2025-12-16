@@ -775,6 +775,11 @@ export class DatabaseSQLite {
     return this.rowToUser(row);
   }
 
+  getAllUsers() {
+    const rows = this.db.prepare('SELECT * FROM users ORDER BY created_at ASC').all();
+    return rows.map(r => this.rowToUser(r));
+  }
+
   createUser(userData) {
     const now = new Date().toISOString();
     const isFirstUser = this.stmts.countUsers.get().count === 0;
