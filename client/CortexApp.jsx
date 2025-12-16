@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
 
 // ============ CONFIGURATION ============
 // Auto-detect production vs development
@@ -4133,7 +4133,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave, scrollToDropletId, onScrollToDropletComplete }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -4340,22 +4340,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   }, [reloadTrigger]);
 
   // Restore scroll position after wave data updates (for click-to-read and similar actions)
-  useEffect(() => {
+  // Use useLayoutEffect to restore scroll synchronously before browser paint
+  useLayoutEffect(() => {
     if (scrollPositionToRestore.current !== null && messagesRef.current) {
-      // Use requestAnimationFrame for smoother restoration without visible jump
-      requestAnimationFrame(() => {
-        if (messagesRef.current) {
-          messagesRef.current.scrollTop = scrollPositionToRestore.current;
-          scrollPositionToRestore.current = null;
-        }
-      });
+      messagesRef.current.scrollTop = scrollPositionToRestore.current;
+      scrollPositionToRestore.current = null;
     }
   }, [waveData]);
 
   // Scroll to first unread message or bottom on initial wave load
   useEffect(() => {
-    // Skip if: no data, no container, already scrolled, still loading, OR pending scroll restoration
-    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading || scrollPositionToRestore.current !== null) return;
+    // Skip if: no data, no container, already scrolled, still loading, pending scroll restoration, OR navigating to specific droplet
+    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading || scrollPositionToRestore.current !== null || scrollToDropletId) return;
 
     // Only run once per wave
     hasScrolledToUnreadRef.current = true;
@@ -4384,6 +4380,49 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       container.scrollTop = container.scrollHeight;
     }, 100);
   }, [waveData, loading, currentUser?.id]);
+
+  // Scroll to specific droplet when navigating from notification
+  useEffect(() => {
+    if (!scrollToDropletId || !waveData || loading) return;
+
+    // Wait for render to complete
+    const scrollToTarget = () => {
+      const element = document.querySelector(`[data-message-id="${scrollToDropletId}"]`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Brief highlight effect
+        element.style.transition = 'background-color 0.3s, outline 0.3s';
+        element.style.backgroundColor = 'var(--accent-amber)20';
+        element.style.outline = '2px solid var(--accent-amber)';
+        setTimeout(() => {
+          element.style.backgroundColor = '';
+          element.style.outline = '';
+        }, 1500);
+        // Clear the target
+        onScrollToDropletComplete?.();
+      } else {
+        // Droplet not in DOM - might be in "load more" section
+        // Try again after a short delay in case of slow render
+        setTimeout(() => {
+          const retryElement = document.querySelector(`[data-message-id="${scrollToDropletId}"]`);
+          if (retryElement) {
+            retryElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            retryElement.style.transition = 'background-color 0.3s, outline 0.3s';
+            retryElement.style.backgroundColor = 'var(--accent-amber)20';
+            retryElement.style.outline = '2px solid var(--accent-amber)';
+            setTimeout(() => {
+              retryElement.style.backgroundColor = '';
+              retryElement.style.outline = '';
+            }, 1500);
+          }
+          onScrollToDropletComplete?.();
+        }, 300);
+      }
+    };
+
+    // Delay to allow React to render the messages
+    setTimeout(scrollToTarget, 100);
+  }, [scrollToDropletId, waveData, loading, onScrollToDropletComplete]);
 
   // Mark wave as read when user scrolls to bottom or views unread messages
   useEffect(() => {
@@ -8431,6 +8470,7 @@ function MainApp() {
   const [contacts, setContacts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selectedWave, setSelectedWave] = useState(null);
+  const [scrollToDropletId, setScrollToDropletId] = useState(null); // Droplet to scroll to after wave loads
   const [focusStack, setFocusStack] = useState([]); // Array of { waveId, dropletId, droplet } for Focus View navigation
   const [showNewWave, setShowNewWave] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -8765,7 +8805,7 @@ function MainApp() {
         setSelectedWave(wave);
         setActiveView('waves');
 
-        // If dropletId provided, mark it as read and scroll to it
+        // If dropletId provided, mark it as read and set it for WaveView to scroll to
         if (dropletId) {
           // Mark the droplet as read since user is navigating to it
           try {
@@ -8776,19 +8816,8 @@ function MainApp() {
             // Ignore errors - droplet might not exist or already read
           }
 
-          // Scroll to the droplet after a short delay (let WaveView render)
-          setTimeout(() => {
-            const element = document.querySelector(`[data-message-id="${dropletId}"]`);
-            if (element) {
-              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              // Brief highlight effect
-              element.style.transition = 'background-color 0.3s';
-              element.style.backgroundColor = 'var(--accent-amber)20';
-              setTimeout(() => {
-                element.style.backgroundColor = '';
-              }, 1500);
-            }
-          }, 300);
+          // Set the target droplet for WaveView to scroll to after loading
+          setScrollToDropletId(dropletId);
         }
       }
     } catch (err) {
@@ -9088,7 +9117,9 @@ function MainApp() {
                     onBlockedMutedChange={loadBlockedMutedUsers}
                     onShowProfile={setProfileUserId}
                     onFocusDroplet={handleFocusDroplet}
-                    onNavigateToWave={handleNavigateToWave} />
+                    onNavigateToWave={handleNavigateToWave}
+                    scrollToDropletId={scrollToDropletId}
+                    onScrollToDropletComplete={() => setScrollToDropletId(null)} />
                 </ErrorBoundary>
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--border-primary)' }}>
