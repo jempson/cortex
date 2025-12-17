@@ -4721,74 +4721,85 @@ function verifyHttpSignature(req, publicKey) {
 }
 
 // Middleware to authenticate federation requests (server-to-server)
-function authenticateFederationRequest(req, res, next) {
-  if (!FEDERATION_ENABLED) {
-    return res.status(404).json({ error: 'Federation is not enabled' });
-  }
-
-  const signatureHeader = req.headers['signature'];
-  if (!signatureHeader) {
-    return res.status(401).json({ error: 'Missing Signature header' });
-  }
-
-  const signatureParts = parseHttpSignature(signatureHeader);
-  if (!signatureParts) {
-    return res.status(401).json({ error: 'Invalid Signature header format' });
-  }
-
-  // Extract node name from keyId
-  // Format: https://nodename/api/federation/identity#main-key
-  const keyIdMatch = signatureParts.keyId.match(/https?:\/\/([^\/]+)\//);
-  if (!keyIdMatch) {
-    return res.status(401).json({ error: 'Invalid keyId format' });
-  }
-
-  const nodeName = keyIdMatch[1];
-
-  // Look up the node
-  const node = db.getFederationNodeByName(nodeName);
-  if (!node) {
-    return res.status(403).json({ error: 'Unknown federation node' });
-  }
-
-  if (node.status !== 'active') {
-    return res.status(403).json({ error: `Federation node is ${node.status}` });
-  }
-
-  if (!node.publicKey) {
-    return res.status(403).json({ error: 'No public key for this node' });
-  }
-
-  // Verify digest if present
-  if (req.headers['digest']) {
-    const bodyString = JSON.stringify(req.body);
-    const expectedDigest = `SHA-256=${crypto.createHash('sha256').update(bodyString).digest('base64')}`;
-    if (req.headers['digest'] !== expectedDigest) {
-      return res.status(401).json({ error: 'Digest mismatch' });
+// Factory function to create auth middleware with allowed statuses
+function createFederationAuthMiddleware(allowedStatuses = ['active']) {
+  return function(req, res, next) {
+    if (!FEDERATION_ENABLED) {
+      return res.status(404).json({ error: 'Federation is not enabled' });
     }
-  }
 
-  // Verify signature
-  if (!verifyHttpSignature(req, node.publicKey)) {
-    return res.status(401).json({ error: 'Invalid signature' });
-  }
+    const signatureHeader = req.headers['signature'];
+    if (!signatureHeader) {
+      return res.status(401).json({ error: 'Missing Signature header' });
+    }
 
-  // Check date is within acceptable window (5 minutes)
-  const requestDate = new Date(req.headers['date']);
-  const now = new Date();
-  const diffMinutes = Math.abs(now - requestDate) / (1000 * 60);
-  if (diffMinutes > 5) {
-    return res.status(401).json({ error: 'Request date too old or in future' });
-  }
+    const signatureParts = parseHttpSignature(signatureHeader);
+    if (!signatureParts) {
+      return res.status(401).json({ error: 'Invalid Signature header format' });
+    }
 
-  // Attach node info to request
-  req.federationNode = node;
+    // Extract node name from keyId
+    // Format: https://nodename/api/federation/identity#main-key
+    const keyIdMatch = signatureParts.keyId.match(/https?:\/\/([^\/]+)\//);
+    if (!keyIdMatch) {
+      return res.status(401).json({ error: 'Invalid keyId format' });
+    }
 
-  // Record successful contact
-  db.recordFederationContact(node.id, true);
+    const nodeName = keyIdMatch[1];
 
-  next();
+    // Look up the node
+    const node = db.getFederationNodeByName(nodeName);
+    if (!node) {
+      return res.status(403).json({ error: 'Unknown federation node' });
+    }
+
+    if (!allowedStatuses.includes(node.status)) {
+      return res.status(403).json({ error: `Federation node is ${node.status}` });
+    }
+
+    if (!node.publicKey) {
+      return res.status(403).json({ error: 'No public key for this node' });
+    }
+
+    // Verify digest if present
+    if (req.headers['digest']) {
+      const bodyString = JSON.stringify(req.body);
+      const expectedDigest = `SHA-256=${crypto.createHash('sha256').update(bodyString).digest('base64')}`;
+      if (req.headers['digest'] !== expectedDigest) {
+        return res.status(401).json({ error: 'Digest mismatch' });
+      }
+    }
+
+    // Verify signature
+    if (!verifyHttpSignature(req, node.publicKey)) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    // Check date is within acceptable window (5 minutes)
+    const requestDate = new Date(req.headers['date']);
+    const now = new Date();
+    const diffMinutes = Math.abs(now - requestDate) / (1000 * 60);
+    if (diffMinutes > 5) {
+      return res.status(401).json({ error: 'Request date too old or in future' });
+    }
+
+    // Attach node info to request
+    req.federationNode = node;
+
+    // Record successful contact (only for active nodes)
+    if (node.status === 'active') {
+      db.recordFederationContact(node.id, true);
+    }
+
+    next();
+  };
 }
+
+// Default middleware for active nodes only
+const authenticateFederationRequest = createFederationAuthMiddleware(['active']);
+
+// Middleware that also allows outbound_pending (for accept/decline responses)
+const authenticateFederationResponse = createFederationAuthMiddleware(['active', 'outbound_pending']);
 
 // Helper to send signed federation requests
 async function sendSignedFederationRequest(targetNode, method, path, body = null) {
@@ -5702,7 +5713,7 @@ app.post('/api/admin/federation/requests/:id/decline', authenticateToken, async 
 });
 
 // Receive acceptance notification from a server we requested
-app.post('/api/federation/inbox/accept', federationRequestLimiter, authenticateFederationRequest, (req, res) => {
+app.post('/api/federation/inbox/accept', federationRequestLimiter, authenticateFederationResponse, (req, res) => {
   const { type, acceptorNodeName, acceptorPublicKey } = req.body;
   const sourceNode = req.federationNode;
 
@@ -5732,7 +5743,7 @@ app.post('/api/federation/inbox/accept', federationRequestLimiter, authenticateF
 });
 
 // Receive decline notification from a server we requested
-app.post('/api/federation/inbox/decline', federationRequestLimiter, authenticateFederationRequest, (req, res) => {
+app.post('/api/federation/inbox/decline', federationRequestLimiter, authenticateFederationResponse, (req, res) => {
   const { type, fromNodeName } = req.body;
   const sourceNode = req.federationNode;
 

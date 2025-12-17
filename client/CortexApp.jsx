@@ -2081,10 +2081,6 @@ const AboutServerPage = ({ onBack }) => {
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [serverUrl, setServerUrl] = useState('');
-  const [message, setMessage] = useState('');
-  const [requestLoading, setRequestLoading] = useState(false);
-  const [requestResult, setRequestResult] = useState(null);
   const { isMobile } = useWindowSize();
 
   useEffect(() => {
@@ -2099,30 +2095,6 @@ const AboutServerPage = ({ onBack }) => {
         setLoading(false);
       });
   }, []);
-
-  const handleRequestFederation = async () => {
-    if (!serverUrl.trim()) return;
-    setRequestLoading(true);
-    setRequestResult(null);
-    try {
-      const res = await fetch(`${API_URL}/server/federation-request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serverUrl: serverUrl.trim(), message: message.trim() || null })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setRequestResult({ success: true, message: data.message });
-        setServerUrl('');
-        setMessage('');
-      } else {
-        setRequestResult({ success: false, message: data.error || 'Request failed' });
-      }
-    } catch (err) {
-      setRequestResult({ success: false, message: err.message });
-    }
-    setRequestLoading(false);
-  };
 
   const formatUptime = (seconds) => {
     const days = Math.floor(seconds / 86400);
@@ -2261,82 +2233,6 @@ const AboutServerPage = ({ onBack }) => {
             ) : (
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 No federation partners yet
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Request Federation */}
-        {info.federationEnabled && info.federation?.configured && (
-          <div style={{ ...sectionStyle, borderBottom: 'none' }}>
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
-              Request Federation
-            </div>
-            <div style={{ marginBottom: '12px' }}>
-              <input
-                type="text"
-                value={serverUrl}
-                onChange={(e) => setServerUrl(e.target.value)}
-                placeholder="Your server URL (e.g., https://your-cortex.com)"
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-primary)',
-                  color: 'var(--text-primary)',
-                  fontFamily: 'monospace',
-                  fontSize: '0.85rem',
-                  marginBottom: '8px',
-                  boxSizing: 'border-box',
-                }}
-              />
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Optional message (e.g., Hi, we'd like to federate!)"
-                rows={2}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-primary)',
-                  color: 'var(--text-primary)',
-                  fontFamily: 'monospace',
-                  fontSize: '0.85rem',
-                  resize: 'vertical',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-            <button
-              onClick={handleRequestFederation}
-              disabled={requestLoading || !serverUrl.trim()}
-              style={{
-                padding: '12px 20px',
-                background: 'var(--accent-purple)20',
-                border: '1px solid var(--accent-purple)',
-                color: 'var(--accent-purple)',
-                cursor: requestLoading || !serverUrl.trim() ? 'not-allowed' : 'pointer',
-                fontFamily: 'monospace',
-                fontSize: '0.85rem',
-                opacity: requestLoading || !serverUrl.trim() ? 0.6 : 1,
-              }}
-            >
-              {requestLoading ? 'SUBMITTING...' : 'REQUEST FEDERATION'}
-            </button>
-            <div style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-              The server admin will need to accept your request.
-            </div>
-            {requestResult && (
-              <div style={{
-                marginTop: '12px',
-                padding: '10px',
-                background: requestResult.success ? 'var(--accent-green)10' : 'var(--status-error)10',
-                border: `1px solid ${requestResult.success ? 'var(--accent-green)' : 'var(--status-error)'}40`,
-                color: requestResult.success ? 'var(--accent-green)' : 'var(--status-error)',
-                fontSize: '0.85rem',
-              }}>
-                {requestResult.message}
               </div>
             )}
           </div>
