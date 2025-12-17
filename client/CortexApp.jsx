@@ -8182,6 +8182,7 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
     admin_warn: { label: 'Admin Warning', color: 'var(--accent-purple)' },
     admin_password_reset: { label: 'Admin Password Reset', color: 'var(--accent-purple)' },
     admin_force_logout: { label: 'Admin Force Logout', color: 'var(--accent-purple)' },
+    admin_disable_mfa: { label: 'Admin MFA Disabled', color: 'var(--accent-purple)' },
     create_wave: { label: 'Wave Created', color: 'var(--accent-teal)' },
     delete_wave: { label: 'Wave Deleted', color: 'var(--accent-orange)' },
     create_droplet: { label: 'Droplet Created', color: 'var(--text-secondary)' },
@@ -8285,10 +8286,12 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
           <option value="login_failed">Failed Logins</option>
           <option value="register">Registrations</option>
           <option value="password_change">Password Changes</option>
+          <option value="password_reset_complete">Password Resets</option>
           <option value="mfa_enable">MFA Enabled</option>
           <option value="mfa_disable">MFA Disabled</option>
           <option value="admin_warn">Admin Warnings</option>
           <option value="admin_password_reset">Admin Password Resets</option>
+          <option value="admin_disable_mfa">Admin MFA Disabled</option>
           <option value="create_wave">Waves Created</option>
           <option value="delete_wave">Waves Deleted</option>
         </select>
