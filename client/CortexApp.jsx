@@ -2255,27 +2255,127 @@ const AboutServerPage = ({ onBack }) => {
 
 // ============ LOGIN SCREEN ============
 const LoginScreen = ({ onAbout }) => {
-  const { login, register } = useAuth();
+  const { login, completeMfaLogin, register } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [handle, setHandle] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStatus, setForgotStatus] = useState({ loading: false, message: '', error: '' });
+  // MFA state
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaChallenge, setMfaChallenge] = useState(null);
+  const [mfaMethods, setMfaMethods] = useState([]);
+  const [mfaMethod, setMfaMethod] = useState('totp');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
+  const [emailCodeSending, setEmailCodeSending] = useState(false);
   const { isMobile, isTablet, isDesktop } = useWindowSize();
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!forgotEmail || !forgotEmail.includes('@')) {
+      setForgotStatus({ loading: false, message: '', error: 'Please enter a valid email address' });
+      return;
+    }
+    setForgotStatus({ loading: true, message: '', error: '' });
+    try {
+      const res = await fetch(`${API_URL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setForgotStatus({ loading: false, message: data.message || 'Check your email for reset instructions.', error: '' });
+      } else {
+        setForgotStatus({ loading: false, message: '', error: data.error || 'Failed to send reset email' });
+      }
+    } catch (err) {
+      setForgotStatus({ loading: false, message: '', error: 'Network error. Please try again.' });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Validate password confirmation during registration
+    if (isRegistering && password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
     setLoading(true);
     try {
-      if (isRegistering) await register(handle, email, password, displayName);
-      else await login(handle, password);
+      if (isRegistering) {
+        await register(handle, email, password, displayName);
+      } else {
+        const result = await login(handle, password);
+        if (result?.mfaRequired) {
+          setMfaRequired(true);
+          setMfaChallenge(result.mfaChallenge);
+          setMfaMethods(result.mfaMethods || []);
+          setMfaMethod(result.mfaMethods?.[0] || 'totp');
+        }
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMfaSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setMfaLoading(true);
+    try {
+      await completeMfaLogin(mfaChallenge, mfaMethod, mfaCode);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaCancel = () => {
+    setMfaRequired(false);
+    setMfaChallenge(null);
+    setMfaMethods([]);
+    setMfaCode('');
+    setError('');
+    setEmailCodeSent(false);
+    setEmailCodeSending(false);
+  };
+
+  const handleSendEmailCode = async () => {
+    setEmailCodeSending(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/auth/mfa/send-email-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: mfaChallenge }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMfaChallenge(data.challengeId); // Update to new challenge ID
+        setEmailCodeSent(true);
+      } else {
+        setError(data.error || 'Failed to send email code');
+      }
+    } catch (err) {
+      console.error('Send email code error:', err);
+      setError('Network error. Please try again.');
+    } finally {
+      setEmailCodeSending(false);
     }
   };
 
@@ -2302,6 +2402,115 @@ const LoginScreen = ({ onAbout }) => {
           <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '8px' }}>SECURE COMMUNICATIONS</div>
         </div>
 
+        {mfaRequired ? (
+          <div>
+            <div style={{ color: 'var(--accent-teal)', fontSize: '0.9rem', marginBottom: '24px', textAlign: 'center' }}>
+              🔐 Two-Factor Authentication Required
+            </div>
+
+            {mfaMethods.length > 1 && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                  VERIFICATION METHOD
+                </label>
+                <select
+                  value={mfaMethod}
+                  onChange={(e) => { setMfaMethod(e.target.value); setMfaCode(''); setError(''); setEmailCodeSent(false); }}
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                >
+                  {mfaMethods.includes('totp') && <option value="totp">Authenticator App</option>}
+                  {mfaMethods.includes('email') && <option value="email">Email Code</option>}
+                  {mfaMethods.includes('recovery') && <option value="recovery">Recovery Code</option>}
+                </select>
+              </div>
+            )}
+
+            <form onSubmit={handleMfaSubmit}>
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                  {mfaMethod === 'totp' ? 'AUTHENTICATOR CODE' : mfaMethod === 'email' ? 'EMAIL CODE' : 'RECOVERY CODE'}
+                </label>
+                <input
+                  type="text"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\s/g, ''))}
+                  placeholder={mfaMethod === 'totp' ? '6-digit code' : mfaMethod === 'email' ? '6-digit code' : '8-character code'}
+                  style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.2em', textAlign: 'center' }}
+                  autoFocus
+                  autoComplete="one-time-code"
+                />
+                {mfaMethod === 'totp' && (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '8px' }}>
+                    Enter the code from your authenticator app
+                  </div>
+                )}
+                {mfaMethod === 'email' && (
+                  <div style={{ marginTop: '8px' }}>
+                    {!emailCodeSent ? (
+                      <button
+                        type="button"
+                        onClick={handleSendEmailCode}
+                        disabled={emailCodeSending}
+                        style={{
+                          width: '100%', padding: '10px',
+                          background: emailCodeSending ? 'var(--border-subtle)' : 'var(--accent-amber)20',
+                          border: `1px solid ${emailCodeSending ? 'var(--border-primary)' : 'var(--accent-amber)'}`,
+                          color: emailCodeSending ? 'var(--text-muted)' : 'var(--accent-amber)',
+                          cursor: emailCodeSending ? 'not-allowed' : 'pointer',
+                          fontFamily: 'monospace', fontSize: '0.8rem',
+                        }}
+                      >
+                        {emailCodeSending ? 'SENDING...' : '📧 SEND CODE TO EMAIL'}
+                      </button>
+                    ) : (
+                      <div style={{ color: 'var(--accent-green)', fontSize: '0.7rem' }}>
+                        ✓ Code sent! Check your email and enter the 6-digit code above.
+                        <button
+                          type="button"
+                          onClick={handleSendEmailCode}
+                          disabled={emailCodeSending}
+                          style={{
+                            background: 'none', border: 'none', color: 'var(--accent-amber)',
+                            cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
+                            marginLeft: '8px', textDecoration: 'underline',
+                          }}
+                        >
+                          {emailCodeSending ? 'Sending...' : 'Resend'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {mfaMethod === 'recovery' && (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '8px' }}>
+                    Enter one of your recovery codes (each can only be used once)
+                  </div>
+                )}
+              </div>
+
+              {error && <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>{error}</div>}
+
+              <button type="submit" disabled={mfaLoading || !mfaCode} style={{
+                width: '100%', padding: '14px',
+                background: mfaLoading ? 'var(--border-subtle)' : 'var(--accent-teal)20',
+                border: `1px solid ${mfaLoading ? 'var(--border-primary)' : 'var(--accent-teal)'}`,
+                color: mfaLoading ? 'var(--text-muted)' : 'var(--accent-teal)',
+                cursor: mfaLoading || !mfaCode ? 'not-allowed' : 'pointer',
+                fontFamily: 'monospace', fontSize: '0.9rem',
+              }}>
+                {mfaLoading ? 'VERIFYING...' : 'VERIFY'}
+              </button>
+            </form>
+
+            <div style={{ textAlign: 'center', marginTop: '16px' }}>
+              <button onClick={handleMfaCancel}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                ← Cancel and try again
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
@@ -2326,11 +2535,19 @@ const LoginScreen = ({ onAbout }) => {
             </>
           )}
 
-          <div style={{ marginBottom: '24px' }}>
+          <div style={{ marginBottom: isRegistering ? '16px' : '24px' }}>
             <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PASSWORD</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder={isRegistering ? 'Min 8 chars, upper, lower, number' : 'Enter password'} style={inputStyle} />
           </div>
+
+          {isRegistering && (
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CONFIRM PASSWORD</label>
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password" style={inputStyle} />
+            </div>
+          )}
 
           {error && <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>{error}</div>}
 
@@ -2347,17 +2564,220 @@ const LoginScreen = ({ onAbout }) => {
         </form>
 
         <div style={{ textAlign: 'center', marginTop: '24px' }}>
-          <button onClick={() => { setIsRegistering(!isRegistering); setError(''); }}
+          <button onClick={() => { setIsRegistering(!isRegistering); setError(''); setConfirmPassword(''); setShowForgotPassword(false); }}
             style={{ background: 'none', border: 'none', color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem' }}>
             {isRegistering ? '← BACK TO LOGIN' : 'NEW USER? CREATE ACCOUNT →'}
           </button>
         </div>
+
+        {!isRegistering && !showForgotPassword && (
+          <div style={{ textAlign: 'center', marginTop: '12px' }}>
+            <button onClick={() => { setShowForgotPassword(true); setError(''); setForgotStatus({ loading: false, message: '', error: '' }); }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+              Forgot password?
+            </button>
+          </div>
+        )}
+
+        {showForgotPassword && (
+          <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--border-subtle)' }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px' }}>
+              Enter your email address and we'll send you a link to reset your password.
+            </div>
+            <form onSubmit={handleForgotPassword}>
+              <div style={{ marginBottom: '16px' }}>
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  style={inputStyle}
+                />
+              </div>
+              {forgotStatus.error && (
+                <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
+                  {forgotStatus.error}
+                </div>
+              )}
+              {forgotStatus.message && (
+                <div style={{ color: 'var(--accent-green)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-green)10', border: '1px solid var(--accent-green)30' }}>
+                  {forgotStatus.message}
+                </div>
+              )}
+              <button type="submit" disabled={forgotStatus.loading} style={{
+                width: '100%', padding: '12px',
+                background: forgotStatus.loading ? 'var(--border-subtle)' : 'var(--accent-teal)20',
+                border: `1px solid ${forgotStatus.loading ? 'var(--border-primary)' : 'var(--accent-teal)'}`,
+                color: forgotStatus.loading ? 'var(--text-muted)' : 'var(--accent-teal)',
+                cursor: forgotStatus.loading ? 'not-allowed' : 'pointer',
+                fontFamily: 'monospace', fontSize: '0.9rem',
+              }}>
+                {forgotStatus.loading ? 'SENDING...' : 'SEND RESET LINK'}
+              </button>
+            </form>
+            <button onClick={() => { setShowForgotPassword(false); setForgotStatus({ loading: false, message: '', error: '' }); }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem', marginTop: '12px', display: 'block', width: '100%', textAlign: 'center' }}>
+              ← Back to login
+            </button>
+          </div>
+        )}
+        </>
+        )}
 
         {onAbout && (
           <div style={{ textAlign: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
             <button onClick={onAbout}
               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
               About this server ◇
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============ RESET PASSWORD PAGE ============
+const ResetPasswordPage = ({ onBack }) => {
+  const [token, setToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [status, setStatus] = useState({ loading: true, valid: null, error: '', success: false });
+  const { isMobile } = useWindowSize();
+
+  // Extract token from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('token');
+    if (!urlToken) {
+      setStatus({ loading: false, valid: false, error: 'No reset token provided', success: false });
+      return;
+    }
+    setToken(urlToken);
+
+    // Verify token with server
+    fetch(`${API_URL}/auth/reset-password/${urlToken}`)
+      .then(res => res.json())
+      .then(data => {
+        setStatus({ loading: false, valid: data.valid, error: data.error || '', success: false });
+      })
+      .catch(() => {
+        setStatus({ loading: false, valid: false, error: 'Failed to verify token', success: false });
+      });
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setStatus(s => ({ ...s, error: 'Passwords do not match' }));
+      return;
+    }
+    if (newPassword.length < 8) {
+      setStatus(s => ({ ...s, error: 'Password must be at least 8 characters' }));
+      return;
+    }
+
+    setStatus(s => ({ ...s, loading: true, error: '' }));
+    try {
+      const res = await fetch(`${API_URL}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, newPassword, confirmPassword }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setStatus({ loading: false, valid: true, error: '', success: true });
+      } else {
+        setStatus(s => ({ ...s, loading: false, error: data.error || 'Failed to reset password' }));
+      }
+    } catch (err) {
+      setStatus(s => ({ ...s, loading: false, error: 'Network error. Please try again.' }));
+    }
+  };
+
+  const inputStyle = {
+    width: '100%', padding: '12px 16px', boxSizing: 'border-box',
+    background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+    color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'inherit',
+  };
+
+  return (
+    <div style={{
+      minHeight: '100vh', background: 'linear-gradient(180deg, var(--bg-surface), var(--bg-base))',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: "'Courier New', monospace", padding: isMobile ? '20px' : '0',
+    }}>
+      <ScanLines />
+      <div style={{
+        width: '100%', maxWidth: '400px', padding: isMobile ? '24px' : '40px',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '2px solid var(--accent-amber)40',
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>CORTEX</GlowText>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '8px' }}>PASSWORD RESET</div>
+        </div>
+
+        {status.loading && !status.success && (
+          <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Verifying reset token...</div>
+        )}
+
+        {!status.loading && !status.valid && !status.success && (
+          <div>
+            <div style={{ color: 'var(--accent-orange)', fontSize: '0.9rem', marginBottom: '24px', padding: '12px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30', textAlign: 'center' }}>
+              {status.error || 'Invalid or expired reset link'}
+            </div>
+            <button onClick={onBack} style={{
+              width: '100%', padding: '12px',
+              background: 'var(--accent-teal)20', border: '1px solid var(--accent-teal)',
+              color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.9rem',
+            }}>
+              BACK TO LOGIN
+            </button>
+          </div>
+        )}
+
+        {!status.loading && status.valid && !status.success && (
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>NEW PASSWORD</label>
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min 8 chars, upper, lower, number" style={inputStyle} />
+            </div>
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CONFIRM PASSWORD</label>
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password" style={inputStyle} />
+            </div>
+            {status.error && (
+              <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
+                {status.error}
+              </div>
+            )}
+            <button type="submit" disabled={status.loading} style={{
+              width: '100%', padding: '14px',
+              background: status.loading ? 'var(--border-subtle)' : 'var(--accent-amber)20',
+              border: `1px solid ${status.loading ? 'var(--border-primary)' : 'var(--accent-amber)'}`,
+              color: status.loading ? 'var(--text-muted)' : 'var(--accent-amber)',
+              cursor: status.loading ? 'not-allowed' : 'pointer',
+              fontFamily: 'monospace', fontSize: '0.9rem',
+            }}>
+              {status.loading ? 'RESETTING...' : 'RESET PASSWORD'}
+            </button>
+          </form>
+        )}
+
+        {status.success && (
+          <div>
+            <div style={{ color: 'var(--accent-green)', fontSize: '0.9rem', marginBottom: '24px', padding: '12px', background: 'var(--accent-green)10', border: '1px solid var(--accent-green)30', textAlign: 'center' }}>
+              Password reset successfully! You can now login with your new password.
+            </div>
+            <button onClick={onBack} style={{
+              width: '100%', padding: '14px',
+              background: 'var(--accent-green)20', border: '1px solid var(--accent-green)',
+              color: 'var(--accent-green)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.9rem',
+            }}>
+              GO TO LOGIN
             </button>
           </div>
         )}
@@ -7739,6 +8159,476 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
   );
 };
 
+// ============ USER MANAGEMENT ADMIN PANEL ============
+const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(null); // 'reset-password' | 'disable-mfa' | null
+
+  const searchUsers = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    try {
+      const data = await fetchAPI(`/admin/users/search?q=${encodeURIComponent(searchQuery)}`);
+      setSearchResults(data.users || []);
+    } catch (err) {
+      showToast('Failed to search users', 'error');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleResetPassword = async (sendEmail) => {
+    if (!selectedUser) return;
+    setActionLoading(true);
+    try {
+      const data = await fetchAPI(`/admin/users/${selectedUser.id}/reset-password`, {
+        method: 'POST',
+        body: { sendEmail }
+      });
+      if (data.temporaryPassword) {
+        showToast(`Password reset. Temp password: ${data.temporaryPassword}`, 'success');
+      } else {
+        showToast(data.message || 'Password reset successfully', 'success');
+      }
+      setShowConfirm(null);
+      setSelectedUser(null);
+    } catch (err) {
+      showToast(err.message || 'Failed to reset password', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDisableMfa = async () => {
+    if (!selectedUser) return;
+    setActionLoading(true);
+    try {
+      await fetchAPI(`/admin/users/${selectedUser.id}/disable-mfa`, { method: 'POST' });
+      showToast('MFA disabled for user', 'success');
+      setShowConfirm(null);
+      setSelectedUser(null);
+    } catch (err) {
+      showToast(err.message || 'Failed to disable MFA', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const inputStyle = {
+    padding: '8px 12px',
+    background: 'var(--bg-elevated)',
+    border: '1px solid var(--border-secondary)',
+    color: 'var(--text-primary)',
+    fontFamily: 'monospace',
+    fontSize: '0.85rem',
+  };
+
+  const buttonStyle = {
+    padding: '8px 16px',
+    background: 'transparent',
+    border: '1px solid var(--border-primary)',
+    color: 'var(--text-dim)',
+    cursor: 'pointer',
+    fontFamily: 'monospace',
+    fontSize: '0.8rem',
+  };
+
+  return (
+    <div style={{ marginTop: '20px' }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          ...buttonStyle,
+          background: expanded ? 'var(--accent-purple)20' : 'transparent',
+          border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+          color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
+        }}
+      >
+        {expanded ? '▼' : '▶'} USER MANAGEMENT
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+          {/* Search */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
+              placeholder="Search by handle or email..."
+              style={{ ...inputStyle, flex: 1, minWidth: '200px' }}
+            />
+            <button
+              onClick={searchUsers}
+              disabled={searching || !searchQuery.trim()}
+              style={{
+                ...buttonStyle,
+                border: '1px solid var(--accent-teal)',
+                color: 'var(--accent-teal)',
+                opacity: searching || !searchQuery.trim() ? 0.5 : 1,
+              }}
+            >
+              {searching ? 'Searching...' : 'SEARCH'}
+            </button>
+          </div>
+
+          {/* Results */}
+          {searchResults.length > 0 && (
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                Found {searchResults.length} user(s)
+              </div>
+              {searchResults.map(u => (
+                <div
+                  key={u.id}
+                  onClick={() => setSelectedUser(selectedUser?.id === u.id ? null : u)}
+                  style={{
+                    padding: '10px 12px',
+                    marginBottom: '4px',
+                    background: selectedUser?.id === u.id ? 'var(--accent-purple)20' : 'var(--bg-elevated)',
+                    border: `1px solid ${selectedUser?.id === u.id ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{u.displayName || u.handle}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>@{u.handle}</div>
+                  </div>
+                  {u.isAdmin && (
+                    <span style={{ color: 'var(--accent-amber)', fontSize: '0.7rem', padding: '2px 6px', border: '1px solid var(--accent-amber)', borderRadius: '3px' }}>
+                      ADMIN
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Actions for selected user */}
+          {selectedUser && !showConfirm && (
+            <div style={{ padding: '12px', background: 'var(--bg-hover)', border: '1px solid var(--border-secondary)' }}>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '12px' }}>
+                Actions for <strong style={{ color: 'var(--text-primary)' }}>@{selectedUser.handle}</strong>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setShowConfirm('reset-password')}
+                  style={{ ...buttonStyle, border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)' }}
+                >
+                  RESET PASSWORD
+                </button>
+                <button
+                  onClick={() => setShowConfirm('disable-mfa')}
+                  style={{ ...buttonStyle, border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)' }}
+                >
+                  DISABLE MFA
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Confirmation dialogs */}
+          {showConfirm === 'reset-password' && (
+            <div style={{ padding: '16px', background: 'var(--accent-amber)10', border: '1px solid var(--accent-amber)40' }}>
+              <div style={{ color: 'var(--accent-amber)', marginBottom: '12px', fontSize: '0.85rem' }}>
+                Reset password for @{selectedUser.handle}?
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
+                User will be required to change password on next login.
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => handleResetPassword(true)}
+                  disabled={actionLoading}
+                  style={{ ...buttonStyle, border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+                >
+                  {actionLoading ? '...' : 'RESET & EMAIL USER'}
+                </button>
+                <button
+                  onClick={() => handleResetPassword(false)}
+                  disabled={actionLoading}
+                  style={{ ...buttonStyle, border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)' }}
+                >
+                  {actionLoading ? '...' : 'RESET (SHOW PASSWORD)'}
+                </button>
+                <button
+                  onClick={() => setShowConfirm(null)}
+                  disabled={actionLoading}
+                  style={buttonStyle}
+                >
+                  CANCEL
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showConfirm === 'disable-mfa' && (
+            <div style={{ padding: '16px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)40' }}>
+              <div style={{ color: 'var(--accent-orange)', marginBottom: '12px', fontSize: '0.85rem' }}>
+                Disable all MFA for @{selectedUser.handle}?
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
+                This will disable TOTP, email MFA, and remove all recovery codes.
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleDisableMfa}
+                  disabled={actionLoading}
+                  style={{ ...buttonStyle, border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)' }}
+                >
+                  {actionLoading ? '...' : 'DISABLE MFA'}
+                </button>
+                <button
+                  onClick={() => setShowConfirm(null)}
+                  disabled={actionLoading}
+                  style={buttonStyle}
+                >
+                  CANCEL
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============ ACTIVITY LOG ADMIN PANEL ============
+const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState(null);
+  const [selectedAction, setSelectedAction] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const LIMIT = 50;
+
+  const ACTION_LABELS = {
+    login: { label: 'Login', color: 'var(--accent-green)' },
+    login_failed: { label: 'Login Failed', color: 'var(--accent-orange)' },
+    logout: { label: 'Logout', color: 'var(--text-dim)' },
+    register: { label: 'Registration', color: 'var(--accent-teal)' },
+    password_change: { label: 'Password Change', color: 'var(--accent-amber)' },
+    password_reset_complete: { label: 'Password Reset', color: 'var(--accent-amber)' },
+    mfa_enable: { label: 'MFA Enabled', color: 'var(--accent-green)' },
+    mfa_disable: { label: 'MFA Disabled', color: 'var(--accent-orange)' },
+    admin_warn: { label: 'Admin Warning', color: 'var(--accent-purple)' },
+    admin_password_reset: { label: 'Admin Password Reset', color: 'var(--accent-purple)' },
+    admin_force_logout: { label: 'Admin Force Logout', color: 'var(--accent-purple)' },
+    admin_disable_mfa: { label: 'Admin MFA Disabled', color: 'var(--accent-purple)' },
+    create_wave: { label: 'Wave Created', color: 'var(--accent-teal)' },
+    delete_wave: { label: 'Wave Deleted', color: 'var(--accent-orange)' },
+    create_droplet: { label: 'Droplet Created', color: 'var(--text-secondary)' },
+    edit_droplet: { label: 'Droplet Edited', color: 'var(--text-secondary)' },
+    delete_droplet: { label: 'Droplet Deleted', color: 'var(--accent-orange)' },
+  };
+
+  const loadActivities = useCallback(async (newOffset = 0) => {
+    setLoading(true);
+    try {
+      let url = `/admin/activity-log?limit=${LIMIT}&offset=${newOffset}`;
+      if (selectedAction) url += `&actionType=${selectedAction}`;
+
+      const data = await fetchAPI(url);
+      if (newOffset === 0) {
+        setActivities(data.activities || []);
+      } else {
+        setActivities(prev => [...prev, ...(data.activities || [])]);
+      }
+      setTotal(data.total || 0);
+      setHasMore((data.activities || []).length === LIMIT);
+      setOffset(newOffset);
+    } catch (err) {
+      // Check if it's a 501 (not implemented) error
+      if (err.message?.includes('501')) {
+        setActivities([]);
+        setTotal(0);
+      } else {
+        showToast('Failed to load activity log', 'error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAPI, selectedAction, showToast]);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const data = await fetchAPI('/admin/activity-stats?days=7');
+      setStats(data);
+    } catch {
+      // Stats not critical, ignore errors
+    }
+  }, [fetchAPI]);
+
+  useEffect(() => {
+    loadActivities(0);
+    loadStats();
+  }, [loadActivities, loadStats]);
+
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    return date.toLocaleString();
+  };
+
+  const getActionStyle = (actionType) => {
+    const config = ACTION_LABELS[actionType] || { label: actionType, color: 'var(--text-dim)' };
+    return config;
+  };
+
+  return (
+    <div style={{ marginTop: '20px', padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '16px',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div style={{ color: 'var(--accent-teal)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+          📊 ACTIVITY LOG
+        </div>
+        {stats && (
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+            Last 7 days: {stats.totalActivities} events | {stats.uniqueUsers} users
+          </div>
+        )}
+      </div>
+
+      {/* Filter by action type */}
+      <div style={{ marginBottom: '16px' }}>
+        <select
+          value={selectedAction}
+          onChange={(e) => {
+            setSelectedAction(e.target.value);
+            setOffset(0);
+          }}
+          style={{
+            padding: '8px 12px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-secondary)',
+            color: 'var(--text-primary)',
+            fontFamily: 'monospace',
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            minWidth: '180px'
+          }}
+        >
+          <option value="">All Actions</option>
+          <option value="login">Logins</option>
+          <option value="login_failed">Failed Logins</option>
+          <option value="register">Registrations</option>
+          <option value="password_change">Password Changes</option>
+          <option value="password_reset_complete">Password Resets</option>
+          <option value="mfa_enable">MFA Enabled</option>
+          <option value="mfa_disable">MFA Disabled</option>
+          <option value="admin_warn">Admin Warnings</option>
+          <option value="admin_password_reset">Admin Password Resets</option>
+          <option value="admin_disable_mfa">Admin MFA Disabled</option>
+          <option value="create_wave">Waves Created</option>
+          <option value="delete_wave">Waves Deleted</option>
+        </select>
+      </div>
+
+      {loading && activities.length === 0 ? (
+        <div style={{ color: 'var(--text-dim)', padding: '20px', textAlign: 'center' }}>Loading...</div>
+      ) : activities.length === 0 ? (
+        <div style={{ color: 'var(--text-dim)', padding: '20px', textAlign: 'center' }}>
+          No activity logs found. Activity logging may not be enabled.
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '8px' }}>
+            Showing {activities.length} of {total} entries
+          </div>
+          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            {activities.map((activity) => {
+              const actionConfig = getActionStyle(activity.action_type);
+              return (
+                <div
+                  key={activity.id}
+                  style={{
+                    padding: '10px 12px',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    gap: isMobile ? '6px' : '12px',
+                    alignItems: isMobile ? 'flex-start' : 'center',
+                  }}
+                >
+                  <span style={{
+                    fontSize: '0.7rem',
+                    padding: '2px 8px',
+                    background: actionConfig.color,
+                    color: 'var(--bg-base)',
+                    borderRadius: '2px',
+                    whiteSpace: 'nowrap',
+                    minWidth: isMobile ? 'auto' : '120px',
+                    textAlign: 'center',
+                  }}>
+                    {actionConfig.label}
+                  </span>
+                  <span style={{
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.8rem',
+                    flex: 1,
+                  }}>
+                    {activity.user_handle || activity.user_id || 'System'}
+                  </span>
+                  <span style={{
+                    color: 'var(--text-dim)',
+                    fontSize: '0.7rem',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {activity.ip_address || '-'}
+                  </span>
+                  <span style={{
+                    color: 'var(--text-muted)',
+                    fontSize: '0.7rem',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {formatDate(activity.created_at)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {hasMore && (
+            <button
+              onClick={() => loadActivities(offset + LIMIT)}
+              disabled={loading}
+              style={{
+                marginTop: '12px',
+                padding: '8px 16px',
+                background: 'transparent',
+                border: '1px solid var(--border-secondary)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.8rem',
+                width: '100%',
+              }}
+            >
+              {loading ? 'Loading...' : 'Load More'}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 // ============ FEDERATION ADMIN PANEL ============
 const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0 }) => {
   const [status, setStatus] = useState(null);
@@ -8585,6 +9475,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
 // ============ PROFILE SETTINGS ============
 const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, federationRequestsRefresh }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [email, setEmail] = useState(user?.email || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || null);
   const [bio, setBio] = useState(user?.bio || '');
@@ -8599,6 +9490,18 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [mutedUsers, setMutedUsers] = useState([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(storage.getPushEnabled());
+  // MFA state
+  const [showMfaSetup, setShowMfaSetup] = useState(false);
+  const [mfaStatus, setMfaStatus] = useState(null);
+  const [mfaSetupStep, setMfaSetupStep] = useState(null); // 'totp-setup', 'totp-verify', 'email-setup', 'email-verify'
+  const [totpSetupData, setTotpSetupData] = useState(null);
+  const [totpVerifyCode, setTotpVerifyCode] = useState('');
+  const [emailVerifyCode, setEmailVerifyCode] = useState('');
+  const [emailChallengeId, setEmailChallengeId] = useState(null);
+  const [recoveryCodes, setRecoveryCodes] = useState(null);
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaDisablePassword, setMfaDisablePassword] = useState('');
+  const [mfaDisableCode, setMfaDisableCode] = useState('');
   const fileInputRef = useRef(null);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -8625,6 +9528,142 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         .catch(err => console.error('Failed to load notification preferences:', err));
     }
   }, [showNotificationPrefs, notificationPrefs, fetchAPI]);
+
+  // Load MFA status when section is expanded
+  useEffect(() => {
+    if (showMfaSetup && !mfaStatus) {
+      fetchAPI('/auth/mfa/status')
+        .then(data => setMfaStatus(data))
+        .catch(err => console.error('Failed to load MFA status:', err));
+    }
+  }, [showMfaSetup, mfaStatus, fetchAPI]);
+
+  // MFA handler functions
+  const loadMfaStatus = async () => {
+    try {
+      const data = await fetchAPI('/auth/mfa/status');
+      setMfaStatus(data);
+    } catch (err) {
+      console.error('Failed to load MFA status:', err);
+    }
+  };
+
+  const handleStartTotpSetup = async () => {
+    setMfaLoading(true);
+    try {
+      const data = await fetchAPI('/auth/mfa/totp/setup', { method: 'POST' });
+      setTotpSetupData(data);
+      setMfaSetupStep('totp-verify');
+    } catch (err) {
+      showToast(err.message || 'Failed to start TOTP setup', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleVerifyTotp = async () => {
+    setMfaLoading(true);
+    try {
+      const data = await fetchAPI('/auth/mfa/totp/verify', { method: 'POST', body: { code: totpVerifyCode } });
+      setRecoveryCodes(data.recoveryCodes);
+      setMfaSetupStep(null);
+      setTotpSetupData(null);
+      setTotpVerifyCode('');
+      loadMfaStatus();
+      showToast('TOTP enabled successfully!', 'success');
+    } catch (err) {
+      showToast(err.message || 'Invalid code. Please try again.', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleDisableTotp = async () => {
+    if (!mfaDisablePassword || !mfaDisableCode) {
+      showToast('Password and code are required', 'error');
+      return;
+    }
+    setMfaLoading(true);
+    try {
+      await fetchAPI('/auth/mfa/totp/disable', { method: 'POST', body: { password: mfaDisablePassword, code: mfaDisableCode } });
+      setMfaDisablePassword('');
+      setMfaDisableCode('');
+      loadMfaStatus();
+      showToast('TOTP disabled successfully', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to disable TOTP', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleStartEmailMfa = async () => {
+    setMfaLoading(true);
+    try {
+      const data = await fetchAPI('/auth/mfa/email/enable', { method: 'POST' });
+      setEmailChallengeId(data.challengeId);
+      setMfaSetupStep('email-verify');
+      showToast('Verification code sent to your email', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to start email MFA setup', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleVerifyEmailMfa = async () => {
+    setMfaLoading(true);
+    try {
+      const data = await fetchAPI('/auth/mfa/email/verify-setup', { method: 'POST', body: { challengeId: emailChallengeId, code: emailVerifyCode } });
+      if (data.recoveryCodes) {
+        setRecoveryCodes(data.recoveryCodes);
+      }
+      setMfaSetupStep(null);
+      setEmailChallengeId(null);
+      setEmailVerifyCode('');
+      loadMfaStatus();
+      showToast('Email MFA enabled successfully!', 'success');
+    } catch (err) {
+      showToast(err.message || 'Invalid code. Please try again.', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleDisableEmailMfa = async () => {
+    if (!mfaDisablePassword) {
+      showToast('Password is required', 'error');
+      return;
+    }
+    setMfaLoading(true);
+    try {
+      await fetchAPI('/auth/mfa/email/disable', { method: 'POST', body: { password: mfaDisablePassword } });
+      setMfaDisablePassword('');
+      loadMfaStatus();
+      showToast('Email MFA disabled successfully', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to disable email MFA', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleRegenerateRecoveryCodes = async () => {
+    if (!mfaDisablePassword) {
+      showToast('Password is required', 'error');
+      return;
+    }
+    setMfaLoading(true);
+    try {
+      const body = { password: mfaDisablePassword };
+      if (mfaStatus?.totpEnabled) {
+        body.mfaMethod = 'totp';
+        body.mfaCode = mfaDisableCode;
+      }
+      const data = await fetchAPI('/auth/mfa/recovery/regenerate', { method: 'POST', body });
+      setRecoveryCodes(data.recoveryCodes);
+      setMfaDisablePassword('');
+      setMfaDisableCode('');
+      showToast('Recovery codes regenerated', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to regenerate recovery codes', 'error');
+    }
+    setMfaLoading(false);
+  };
 
   const handleUpdateNotificationPrefs = async (updates) => {
     try {
@@ -8658,7 +9697,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
   const handleSaveProfile = async () => {
     try {
-      const updated = await fetchAPI('/profile', { method: 'PUT', body: { displayName, avatar, bio } });
+      const updated = await fetchAPI('/profile', { method: 'PUT', body: { displayName, email, avatar, bio } });
       showToast('Profile updated', 'success');
       onUserUpdate?.(updated);
     } catch (err) {
@@ -8843,6 +9882,14 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         </div>
 
         <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>EMAIL</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" style={inputStyle} />
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '4px' }}>
+            Used for password recovery and email-based MFA.
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>FALLBACK AVATAR (1-2 characters)</label>
           <input type="text" value={avatar} onChange={(e) => setAvatar(e.target.value.slice(0, 2))} maxLength={2} style={inputStyle} />
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '4px' }}>
@@ -8912,6 +9959,233 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           color: currentPassword && newPassword ? 'var(--accent-orange)' : 'var(--text-muted)',
           cursor: currentPassword && newPassword ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
         }}>CHANGE PASSWORD</button>
+      </div>
+
+      {/* Two-Factor Authentication */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div
+          onClick={() => setShowMfaSetup(!showMfaSetup)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+        >
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>TWO-FACTOR AUTHENTICATION</div>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showMfaSetup ? '▼' : '▶'}</span>
+        </div>
+
+        {showMfaSetup && (
+          <div style={{ marginTop: '16px' }}>
+            {mfaStatus ? (
+              <>
+                {/* Recovery Codes Modal/Display */}
+                {recoveryCodes && (
+                  <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--accent-amber)10', border: '1px solid var(--accent-amber)', borderRadius: '4px' }}>
+                    <div style={{ color: 'var(--accent-amber)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px' }}>
+                      ⚠️ Save Your Recovery Codes
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '12px' }}>
+                      Store these codes in a safe place. Each code can only be used once. You won't be able to see them again!
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                      {recoveryCodes.map((code, i) => (
+                        <div key={i} style={{ padding: '8px', background: 'var(--bg-elevated)', fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-primary)', textAlign: 'center' }}>
+                          {code}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(recoveryCodes.join('\n'));
+                          showToast('Recovery codes copied to clipboard', 'success');
+                        }}
+                        style={{ padding: '8px 16px', background: 'var(--accent-teal)20', border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}
+                      >
+                        COPY CODES
+                      </button>
+                      <button
+                        onClick={() => setRecoveryCodes(null)}
+                        style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}
+                      >
+                        I'VE SAVED THEM
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* TOTP Setup UI */}
+                {mfaSetupStep === 'totp-verify' && totpSetupData && (
+                  <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border-primary)' }}>
+                    <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px' }}>
+                      Setup Authenticator App
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '16px' }}>
+                      Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+                    </div>
+                    <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                      <img src={totpSetupData.qrCodeDataUrl} alt="TOTP QR Code" style={{ maxWidth: '200px', border: '4px solid white' }} />
+                    </div>
+                    <div style={{ marginBottom: '16px' }}>
+                      <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '4px' }}>Or enter this key manually:</div>
+                      <div style={{ padding: '8px', background: 'var(--bg-base)', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--accent-amber)', wordBreak: 'break-all' }}>
+                        {totpSetupData.secret}
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                        Enter the 6-digit code from your app:
+                      </label>
+                      <input
+                        type="text"
+                        value={totpVerifyCode}
+                        onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        style={{ ...inputStyle, fontFamily: 'monospace', textAlign: 'center', letterSpacing: '0.3em' }}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={handleVerifyTotp}
+                        disabled={totpVerifyCode.length !== 6 || mfaLoading}
+                        style={{ padding: '10px 20px', background: totpVerifyCode.length === 6 ? 'var(--accent-green)20' : 'transparent', border: `1px solid ${totpVerifyCode.length === 6 ? 'var(--accent-green)' : 'var(--border-primary)'}`, color: totpVerifyCode.length === 6 ? 'var(--accent-green)' : 'var(--text-muted)', cursor: totpVerifyCode.length === 6 ? 'pointer' : 'not-allowed', fontFamily: 'monospace' }}
+                      >
+                        {mfaLoading ? 'VERIFYING...' : 'VERIFY & ENABLE'}
+                      </button>
+                      <button
+                        onClick={() => { setMfaSetupStep(null); setTotpSetupData(null); setTotpVerifyCode(''); }}
+                        style={{ padding: '10px 20px', background: 'transparent', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace' }}
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Email MFA Verify UI */}
+                {mfaSetupStep === 'email-verify' && (
+                  <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border-primary)' }}>
+                    <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px' }}>
+                      Verify Email MFA
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '16px' }}>
+                      Enter the 6-digit code we sent to your email address.
+                    </div>
+                    <div style={{ marginBottom: '16px' }}>
+                      <input
+                        type="text"
+                        value={emailVerifyCode}
+                        onChange={(e) => setEmailVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        style={{ ...inputStyle, fontFamily: 'monospace', textAlign: 'center', letterSpacing: '0.3em' }}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={handleVerifyEmailMfa}
+                        disabled={emailVerifyCode.length !== 6 || mfaLoading}
+                        style={{ padding: '10px 20px', background: emailVerifyCode.length === 6 ? 'var(--accent-green)20' : 'transparent', border: `1px solid ${emailVerifyCode.length === 6 ? 'var(--accent-green)' : 'var(--border-primary)'}`, color: emailVerifyCode.length === 6 ? 'var(--accent-green)' : 'var(--text-muted)', cursor: emailVerifyCode.length === 6 ? 'pointer' : 'not-allowed', fontFamily: 'monospace' }}
+                      >
+                        {mfaLoading ? 'VERIFYING...' : 'VERIFY & ENABLE'}
+                      </button>
+                      <button
+                        onClick={() => { setMfaSetupStep(null); setEmailChallengeId(null); setEmailVerifyCode(''); }}
+                        style={{ padding: '10px 20px', background: 'transparent', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace' }}
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* MFA Status Display */}
+                {!mfaSetupStep && (
+                  <>
+                    {/* TOTP Section */}
+                    <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-elevated)', border: `1px solid ${mfaStatus.totpEnabled ? 'var(--accent-green)' : 'var(--border-subtle)'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                          🔑 Authenticator App (TOTP)
+                        </div>
+                        <div style={{ color: mfaStatus.totpEnabled ? 'var(--accent-green)' : 'var(--text-muted)', fontSize: '0.75rem' }}>
+                          {mfaStatus.totpEnabled ? '✓ ENABLED' : 'NOT SET UP'}
+                        </div>
+                      </div>
+                      {mfaStatus.totpEnabled ? (
+                        <div style={{ marginTop: '12px' }}>
+                          <div style={{ marginBottom: '8px' }}>
+                            <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
+                            <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="TOTP Code" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+                          </div>
+                          <button onClick={handleDisableTotp} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {mfaLoading ? 'DISABLING...' : 'DISABLE TOTP'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={handleStartTotpSetup} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-teal)20', border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                          {mfaLoading ? 'LOADING...' : 'SETUP AUTHENTICATOR'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Email MFA Section */}
+                    <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-elevated)', border: `1px solid ${mfaStatus.emailMfaEnabled ? 'var(--accent-green)' : 'var(--border-subtle)'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                          ✉️ Email Verification
+                        </div>
+                        <div style={{ color: mfaStatus.emailMfaEnabled ? 'var(--accent-green)' : 'var(--text-muted)', fontSize: '0.75rem' }}>
+                          {mfaStatus.emailMfaEnabled ? '✓ ENABLED' : 'NOT SET UP'}
+                        </div>
+                      </div>
+                      {mfaStatus.emailMfaEnabled ? (
+                        <div style={{ marginTop: '12px' }}>
+                          <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
+                          <button onClick={handleDisableEmailMfa} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {mfaLoading ? 'DISABLING...' : 'DISABLE EMAIL MFA'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={handleStartEmailMfa} disabled={mfaLoading || !user?.email} style={{ padding: '8px 16px', background: user?.email ? 'var(--accent-teal)20' : 'transparent', border: `1px solid ${user?.email ? 'var(--accent-teal)' : 'var(--border-primary)'}`, color: user?.email ? 'var(--accent-teal)' : 'var(--text-muted)', cursor: user?.email ? 'pointer' : 'not-allowed', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                          {mfaLoading ? 'LOADING...' : user?.email ? 'SETUP EMAIL MFA' : 'EMAIL REQUIRED'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Recovery Codes Section */}
+                    {(mfaStatus.totpEnabled || mfaStatus.emailMfaEnabled) && (
+                      <div style={{ padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                            🔐 Recovery Codes
+                          </div>
+                          <div style={{ color: mfaStatus.hasRecoveryCodes ? 'var(--accent-green)' : 'var(--accent-orange)', fontSize: '0.75rem' }}>
+                            {mfaStatus.hasRecoveryCodes ? '✓ AVAILABLE' : '⚠️ NOT SET'}
+                          </div>
+                        </div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
+                          Recovery codes let you access your account if you lose your authentication device.
+                        </div>
+                        <div style={{ marginTop: '8px' }}>
+                          <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
+                          {mfaStatus.totpEnabled && (
+                            <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="TOTP Code" style={{ ...inputStyle, fontFamily: 'monospace', marginBottom: '8px' }} />
+                          )}
+                          <button onClick={handleRegenerateRecoveryCodes} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-amber)20', border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {mfaLoading ? 'GENERATING...' : 'REGENERATE CODES'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
+                Loading MFA settings...
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Display Preferences */}
@@ -9325,8 +10599,14 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
           {showHandleRequests && <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />}
 
+          {/* User Management Panel */}
+          <UserManagementPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+
           {/* Admin Reports Dashboard */}
           <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+
+          {/* Activity Log Panel */}
+          <ActivityLogPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
 
           {/* Federation Admin Panel */}
           <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} />
@@ -10300,7 +11580,7 @@ function MainApp() {
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.13.0</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.14.0</span>
           </div>
           {/* Status indicators */}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', fontSize: '0.55rem', fontFamily: 'monospace' }}>
@@ -10490,7 +11770,7 @@ function MainApp() {
           display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
         }}>
           <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ color: 'var(--border-primary)' }}>v1.13.0</span>
+            <span style={{ color: 'var(--border-primary)' }}>v1.14.0</span>
             <span><span style={{ color: 'var(--accent-green)' }}>●</span> ENCRYPTED</span>
             <span><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> LIVE</span>
@@ -10617,8 +11897,25 @@ function AuthProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Login failed');
+    // Check if MFA is required
+    if (data.mfaRequired) {
+      return { mfaRequired: true, mfaChallenge: data.mfaChallenge, mfaMethods: data.mfaMethods };
+    }
     storage.setToken(data.token); storage.setUser(data.user);
     setToken(data.token); setUser(data.user);
+    return { success: true };
+  };
+
+  const completeMfaLogin = async (challengeId, method, code) => {
+    const res = await fetch(`${API_URL}/auth/mfa/verify`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeId, method, code }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'MFA verification failed');
+    storage.setToken(data.token); storage.setUser(data.user);
+    setToken(data.token); setUser(data.user);
+    return { success: true };
   };
 
   const register = async (handle, email, password, displayName) => {
@@ -10646,7 +11943,7 @@ function AuthProvider({ children }) {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, login, completeMfaLogin, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -10681,6 +11978,10 @@ function AppContent() {
   // Public routes (accessible without login)
   if (currentPath === '/about') {
     return <AboutServerPage onBack={() => navigate('/')} />;
+  }
+
+  if (currentPath === '/reset-password' || currentPath.startsWith('/reset-password?')) {
+    return <ResetPasswordPage onBack={() => navigate('/')} />;
   }
 
   return user ? <MainApp /> : <LoginScreen onAbout={() => navigate('/about')} />;

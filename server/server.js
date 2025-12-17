@@ -16,16 +16,27 @@ import multer from 'multer';
 import sharp from 'sharp';
 import webpush from 'web-push';
 import crypto from 'crypto';
+import { authenticator } from 'otplib';
+import QRCode from 'qrcode';
 import { DatabaseSQLite } from './database-sqlite.js';
+import { getEmailService } from './email-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ============ Configuration ============
 const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || (() => {
-  console.warn('⚠️  WARNING: Using default JWT_SECRET. Set JWT_SECRET environment variable in production!');
-  return 'cortex-default-secret-CHANGE-ME';
-})();
+
+// JWT_SECRET is REQUIRED in production - fail fast if not configured
+const JWT_SECRET_ENV = process.env.JWT_SECRET;
+if (!JWT_SECRET_ENV) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: JWT_SECRET environment variable is required in production');
+    console.error('Generate a secure secret with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
+    process.exit(1);
+  }
+  console.warn('⚠️  WARNING: JWT_SECRET not set, using insecure default for development only');
+}
+const JWT_SECRET = JWT_SECRET_ENV || 'cortex-dev-secret-DO-NOT-USE-IN-PROD';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 // GIPHY API configuration
@@ -157,6 +168,15 @@ const gifSearchLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // 3 requests per hour per email
+  message: { error: 'Too many password reset requests. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip + ':' + (req.body?.email || 'unknown'),
+});
+
 const RATE_LIMIT_OEMBED_MAX = parseInt(process.env.RATE_LIMIT_OEMBED_MAX) || 30;
 const oembedLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -176,37 +196,37 @@ const reportLimiter = rateLimit({
 });
 
 // ============ Security: Account Lockout ============
-// Configurable via .env
-const failedAttempts = new Map();
-const LOCKOUT_THRESHOLD = parseInt(process.env.LOCKOUT_THRESHOLD) || 15;
-const LOCKOUT_DURATION = (parseInt(process.env.LOCKOUT_DURATION_MINUTES) || 15) * 60 * 1000;
+// Now uses database persistence (see database-sqlite.js account lockout methods)
+// These wrapper functions are called after db is initialized
 
 function checkAccountLockout(handle) {
-  const record = failedAttempts.get(handle);
-  if (!record) return { locked: false };
-  if (record.lockedUntil && Date.now() < record.lockedUntil) {
-    const remainingMs = record.lockedUntil - Date.now();
-    const remainingMin = Math.ceil(remainingMs / 60000);
-    return { locked: true, remainingMin };
+  // db is initialized at runtime before these are called
+  if (typeof db !== 'undefined' && db.isAccountLocked) {
+    const result = db.isAccountLocked(handle);
+    if (result.locked) {
+      const remainingMs = new Date(result.lockedUntil).getTime() - Date.now();
+      const remainingMin = Math.ceil(remainingMs / 60000);
+      return { locked: true, remainingMin };
+    }
+    return { locked: false };
   }
-  if (record.lockedUntil && Date.now() >= record.lockedUntil) {
-    failedAttempts.delete(handle);
-  }
-  return { locked: false };
+  return { locked: false }; // Fallback if db not ready
 }
 
 function recordFailedAttempt(handle) {
-  const record = failedAttempts.get(handle) || { count: 0, lockedUntil: null };
-  record.count += 1;
-  if (record.count >= LOCKOUT_THRESHOLD) {
-    record.lockedUntil = Date.now() + LOCKOUT_DURATION;
-    console.log(`🔒 Account locked: ${handle}`);
+  if (typeof db !== 'undefined' && db.recordFailedLogin) {
+    const result = db.recordFailedLogin(handle);
+    if (result.locked) {
+      console.log(`🔒 Account locked: ${handle}`);
+    }
+    return result;
   }
-  failedAttempts.set(handle, record);
 }
 
 function clearFailedAttempts(handle) {
-  failedAttempts.delete(handle);
+  if (typeof db !== 'undefined' && db.clearFailedLogins) {
+    db.clearFailedLogins(handle);
+  }
 }
 
 // ============ Security: Input Sanitization ============
@@ -258,6 +278,23 @@ const sanitizeMessageOptions = {
 function sanitizeMessage(content) {
   if (typeof content !== 'string') return '';
   return sanitizeHtml(content, sanitizeMessageOptions).trim().slice(0, 10000);
+}
+
+// Validate avatar filename format to prevent path traversal attacks
+// Expected format: UUID-timestamp.webp (or .gif for animated avatars)
+function isValidAvatarFilename(filename) {
+  if (!filename || typeof filename !== 'string') return false;
+  // UUID is 36 chars (with dashes), followed by dash, timestamp (13 digits), extension
+  const validPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}-\d{13}\.(webp|gif)$/i;
+  return validPattern.test(filename);
+}
+
+// Get request metadata for activity logging
+function getRequestMeta(req) {
+  return {
+    ip: req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.connection?.remoteAddress,
+    userAgent: req.headers['user-agent'] || 'Unknown'
+  };
 }
 
 function detectAndEmbedMedia(content) {
@@ -3135,6 +3172,12 @@ app.use(cors({
   } : true,
   credentials: true,
 }));
+
+// Warn about permissive CORS in production
+if (!ALLOWED_ORIGINS && process.env.NODE_ENV === 'production') {
+  console.warn('⚠️  WARNING: CORS allows all origins. Set ALLOWED_ORIGINS for production security.');
+}
+
 app.use(express.json({ limit: '100kb' }));
 app.use('/api/', apiLimiter);
 app.set('trust proxy', 1);
@@ -3199,6 +3242,9 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
     const token = jwt.sign({ userId: id, handle: user.handle }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     console.log(`✅ New user registered: ${handle}`);
 
+    // Log registration
+    if (db.logActivity) db.logActivity(user.id, 'register', 'user', user.id, getRequestMeta(req));
+
     res.status(201).json({
       token,
       user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
@@ -3224,25 +3270,53 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     }
 
     const user = db.findUserByHandle(handle);
+    const meta = getRequestMeta(req);
     if (!user) {
       recordFailedAttempt(handle);
+      // Log failed login attempt (unknown user)
+      if (db.logActivity) db.logActivity(null, 'login_failed', 'user', null, { ...meta, reason: 'unknown_user', attemptedHandle: handle });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const validPassword = await bcrypt.compare(password, user.passwordHash);
     if (!validPassword) {
       recordFailedAttempt(handle);
+      // Log failed login attempt (wrong password)
+      if (db.logActivity) db.logActivity(user.id, 'login_failed', 'user', user.id, { ...meta, reason: 'invalid_password' });
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Check if MFA is enabled
+    const hasMfa = db.hasMfaEnabled && db.hasMfaEnabled(user.id);
+    if (hasMfa) {
+      // Create MFA challenge (5 minute expiry)
+      const mfaMethods = db.getEnabledMfaMethods(user.id);
+      const challenge = db.createMfaChallenge(user.id, 'login', null);
+
+      console.log(`🔐 MFA required for user: ${handle}`);
+
+      return res.json({
+        mfaRequired: true,
+        mfaChallenge: challenge.id,
+        mfaMethods // ['totp', 'email', 'recovery']
+      });
     }
 
     clearFailedAttempts(handle);
     db.updateUserStatus(user.id, 'online');
 
+    // Check if user needs to change password (set by admin reset)
+    const requirePasswordChange = db.requiresPasswordChange ? db.requiresPasswordChange(user.id) : false;
+
     const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     console.log(`✅ User logged in: ${handle}`);
 
+    // Log successful login
+    if (db.logActivity) db.logActivity(user.id, 'login', 'user', user.id, meta);
+
     res.json({
       token,
+      requirePasswordChange,
       user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: 'online', isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
     });
   } catch (err) {
@@ -3259,7 +3333,664 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
   db.updateUserStatus(req.user.userId, 'offline');
+  // Log logout
+  if (db.logActivity) db.logActivity(req.user.userId, 'logout', 'user', req.user.userId, getRequestMeta(req));
   res.json({ success: true });
+});
+
+// ============ Password Reset Routes ============
+
+// Request password reset (public, rate-limited)
+// Always returns success to prevent email enumeration
+app.post('/api/auth/forgot-password', passwordResetLimiter, async (req, res) => {
+  try {
+    const email = sanitizeInput(req.body.email || '').toLowerCase().trim();
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid email address is required' });
+    }
+
+    // Always return success to prevent email enumeration
+    const successResponse = () => {
+      res.json({
+        success: true,
+        message: 'If an account exists with this email, you will receive a password reset link.'
+      });
+    };
+
+    const emailService = getEmailService();
+    if (!emailService.isConfigured()) {
+      console.warn('Password reset requested but email service not configured');
+      return successResponse();
+    }
+
+    const user = db.findUserByEmail ? db.findUserByEmail(email) : null;
+    if (!user) {
+      return successResponse();
+    }
+
+    // Generate secure random token (64 bytes = 128 hex chars)
+    const token = crypto.randomBytes(64).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Store hashed token in database
+    db.createPasswordResetToken(user.id, tokenHash, 60); // 60 minutes expiry
+
+    // Build reset URL - use client origin or configured base URL
+    const origin = req.headers.origin || process.env.CLIENT_URL || `http://localhost:${process.env.CLIENT_PORT || 3000}`;
+    const resetUrl = `${origin}/reset-password?token=${token}`;
+
+    // Send email
+    const result = await emailService.sendPasswordResetEmail(user.email, token, resetUrl);
+    if (!result.success) {
+      console.error(`Failed to send password reset email to ${user.email}:`, result.error);
+    } else {
+      console.log(`Password reset email sent to ${user.email}`);
+    }
+
+    return successResponse();
+  } catch (err) {
+    console.error('Password reset request error:', err);
+    // Still return success to prevent information leakage
+    res.json({
+      success: true,
+      message: 'If an account exists with this email, you will receive a password reset link.'
+    });
+  }
+});
+
+// Verify password reset token (public)
+app.get('/api/auth/reset-password/:token', (req, res) => {
+  try {
+    const token = req.params.token;
+    if (!token || token.length < 64) {
+      return res.status(400).json({ valid: false, error: 'Invalid token format' });
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const result = db.verifyPasswordResetToken(tokenHash);
+
+    res.json({ valid: result.valid, error: result.error });
+  } catch (err) {
+    console.error('Token verification error:', err);
+    res.status(500).json({ valid: false, error: 'Failed to verify token' });
+  }
+});
+
+// Complete password reset (public)
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword, confirmPassword } = req.body;
+
+    if (!token || token.length < 64) {
+      return res.status(400).json({ error: 'Invalid token format' });
+    }
+
+    if (!newPassword || newPassword !== confirmPassword) {
+      return res.status(400).json({ error: 'Passwords do not match' });
+    }
+
+    // Validate password requirements
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password must contain at least one uppercase letter' });
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password must contain at least one lowercase letter' });
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password must contain at least one number' });
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenResult = db.verifyPasswordResetToken(tokenHash);
+
+    if (!tokenResult.valid) {
+      return res.status(400).json({ error: tokenResult.error || 'Invalid or expired token' });
+    }
+
+    // Set new password
+    const setResult = await db.setPassword(tokenResult.userId, newPassword, false);
+    if (!setResult.success) {
+      return res.status(500).json({ error: setResult.error || 'Failed to reset password' });
+    }
+
+    // Mark token as used
+    db.markPasswordResetTokenUsed(tokenHash);
+
+    // Clear any account lockouts for this user
+    const user = db.findUserById(tokenResult.userId);
+    if (user) {
+      db.clearFailedLogins(user.handle);
+      if (user.email) db.clearFailedLogins(user.email);
+    }
+
+    console.log(`Password reset completed for user ${tokenResult.userId}`);
+
+    // Log password reset
+    if (db.logActivity) db.logActivity(tokenResult.userId, 'password_reset_complete', 'user', tokenResult.userId, getRequestMeta(req));
+
+    res.json({ success: true, message: 'Password has been reset successfully' });
+  } catch (err) {
+    console.error('Password reset error:', err);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// Clear password change requirement after changing password (authenticated)
+app.post('/api/auth/clear-password-change', authenticateToken, (req, res) => {
+  try {
+    if (db.clearPasswordChangeRequirement) {
+      db.clearPasswordChangeRequirement(req.user.userId);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Clear password change requirement error:', err);
+    res.status(500).json({ error: 'Failed to clear password change requirement' });
+  }
+});
+
+// ============ MFA Routes ============
+
+// Rate limiter for MFA operations
+const mfaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window
+  message: { error: 'Too many MFA attempts, please try again later' }
+});
+
+// Get MFA status for current user
+app.get('/api/auth/mfa/status', authenticateToken, (req, res) => {
+  try {
+    const settings = db.getMfaSettings(req.user.userId);
+    const methods = db.getEnabledMfaMethods(req.user.userId);
+    res.json({
+      totpEnabled: settings?.totp_enabled === 1,
+      emailMfaEnabled: settings?.email_mfa_enabled === 1,
+      hasRecoveryCodes: settings?.recovery_codes ? JSON.parse(settings.recovery_codes).length > 0 : false,
+      enabledMethods: methods
+    });
+  } catch (err) {
+    console.error('MFA status error:', err);
+    res.status(500).json({ error: 'Failed to get MFA status' });
+  }
+});
+
+// Begin TOTP setup - generate secret and QR code
+app.post('/api/auth/mfa/totp/setup', authenticateToken, async (req, res) => {
+  try {
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Check if TOTP is already enabled
+    const settings = db.getMfaSettings(req.user.userId);
+    if (settings?.totp_enabled === 1) {
+      return res.status(400).json({ error: 'TOTP is already enabled' });
+    }
+
+    // Generate new TOTP secret
+    const secret = authenticator.generateSecret();
+
+    // Store pending secret (not enabled yet)
+    db.storePendingTotpSecret(req.user.userId, secret);
+
+    // Generate otpauth URI for authenticator apps
+    const appName = 'Cortex';
+    const otpauthUrl = authenticator.keyuri(user.handle, appName, secret);
+
+    // Generate QR code as data URL
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    res.json({
+      secret,
+      qrCodeDataUrl,
+      manualEntryKey: secret,
+      otpauthUrl
+    });
+  } catch (err) {
+    console.error('TOTP setup error:', err);
+    res.status(500).json({ error: 'Failed to setup TOTP' });
+  }
+});
+
+// Verify TOTP code and enable
+app.post('/api/auth/mfa/totp/verify', authenticateToken, mfaLimiter, (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ error: 'Code is required' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Get pending secret
+    const secret = db.getTotpSecret(req.user.userId);
+    if (!secret) {
+      return res.status(400).json({ error: 'No TOTP setup in progress. Please start setup first.' });
+    }
+
+    // Verify the code
+    const isValid = authenticator.verify({ token: code, secret });
+    if (!isValid) {
+      return res.status(400).json({ error: 'Invalid code. Please try again.' });
+    }
+
+    // Enable TOTP
+    db.enableTotp(req.user.userId, secret);
+
+    // Generate recovery codes (10 codes)
+    const recoveryCodes = [];
+    const hashedCodes = [];
+    for (let i = 0; i < 10; i++) {
+      const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+      recoveryCodes.push(code);
+      hashedCodes.push(crypto.createHash('sha256').update(code).digest('hex'));
+    }
+
+    // Store hashed recovery codes
+    db.storeRecoveryCodes(req.user.userId, hashedCodes);
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'mfa_enable', 'user', req.user.userId, { ...getRequestMeta(req), method: 'totp' });
+
+    res.json({
+      success: true,
+      message: 'TOTP enabled successfully',
+      recoveryCodes // Return plaintext codes once (user must save them)
+    });
+  } catch (err) {
+    console.error('TOTP verify error:', err);
+    res.status(500).json({ error: 'Failed to verify TOTP' });
+  }
+});
+
+// Disable TOTP (requires password and current TOTP code)
+app.post('/api/auth/mfa/totp/disable', authenticateToken, mfaLimiter, async (req, res) => {
+  try {
+    const { password, code } = req.body;
+    if (!password || !code) {
+      return res.status(400).json({ error: 'Password and code are required' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Verify password
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Verify TOTP code
+    const secret = db.getTotpSecret(req.user.userId);
+    if (!secret) {
+      return res.status(400).json({ error: 'TOTP is not enabled' });
+    }
+
+    const isValid = authenticator.verify({ token: code, secret });
+    if (!isValid) {
+      return res.status(400).json({ error: 'Invalid TOTP code' });
+    }
+
+    // Disable TOTP
+    db.disableTotp(req.user.userId);
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'mfa_disable', 'user', req.user.userId, { ...getRequestMeta(req), method: 'totp' });
+
+    res.json({ success: true, message: 'TOTP disabled successfully' });
+  } catch (err) {
+    console.error('TOTP disable error:', err);
+    res.status(500).json({ error: 'Failed to disable TOTP' });
+  }
+});
+
+// Enable email MFA
+app.post('/api/auth/mfa/email/enable', authenticateToken, async (req, res) => {
+  try {
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (!user.email) {
+      return res.status(400).json({ error: 'No email address on file. Please add an email first.' });
+    }
+
+    // Check if email MFA is already enabled
+    const settings = db.getMfaSettings(req.user.userId);
+    if (settings?.email_mfa_enabled === 1) {
+      return res.status(400).json({ error: 'Email MFA is already enabled' });
+    }
+
+    // Send test code to verify email works
+    const testCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const emailService = getEmailService();
+
+    if (!emailService.configured) {
+      return res.status(400).json({ error: 'Email service is not configured. Contact administrator.' });
+    }
+
+    await emailService.sendMFACode(user.email, testCode);
+
+    // Create MFA challenge for verification (store hashed code)
+    const codeHash = crypto.createHash('sha256').update(testCode).digest('hex');
+    const challenge = db.createMfaChallenge(req.user.userId, 'email_enable', codeHash);
+
+    res.json({
+      success: true,
+      message: 'Verification code sent to your email',
+      challengeId: challenge.id
+    });
+  } catch (err) {
+    console.error('Email MFA enable error:', err);
+    res.status(500).json({ error: 'Failed to enable email MFA' });
+  }
+});
+
+// Verify email MFA setup
+app.post('/api/auth/mfa/email/verify-setup', authenticateToken, mfaLimiter, (req, res) => {
+  try {
+    const { challengeId, code } = req.body;
+    if (!challengeId || !code) {
+      return res.status(400).json({ error: 'Challenge ID and code are required' });
+    }
+
+    // Validate challengeId is a string
+    if (typeof challengeId !== 'string') {
+      return res.status(400).json({ error: 'Invalid challenge ID format' });
+    }
+
+    // Verify the challenge
+    const challenge = db.getMfaChallenge(challengeId);
+    if (!challenge || challenge.userId !== req.user.userId) {
+      return res.status(400).json({ error: 'Invalid or expired challenge' });
+    }
+
+    if (challenge.challengeType !== 'email_enable') {
+      return res.status(400).json({ error: 'Invalid challenge type' });
+    }
+
+    // Check expiration
+    if (new Date(challenge.expiresAt) < new Date()) {
+      db.deleteMfaChallenge(challengeId);
+      return res.status(400).json({ error: 'Code has expired. Please request a new one.' });
+    }
+
+    // Verify code (stored as hash)
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+    if (challenge.codeHash !== codeHash) {
+      return res.status(400).json({ error: 'Invalid code' });
+    }
+
+    // Enable email MFA
+    db.enableEmailMfa(req.user.userId);
+    db.markMfaChallengeVerified(challengeId);
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'mfa_enable', 'user', req.user.userId, { ...getRequestMeta(req), method: 'email' });
+
+    // Generate recovery codes if not already present
+    const settings = db.getMfaSettings(req.user.userId);
+    let recoveryCodes = null;
+    if (!settings?.recovery_codes || JSON.parse(settings.recovery_codes).length === 0) {
+      recoveryCodes = [];
+      const hashedCodes = [];
+      for (let i = 0; i < 10; i++) {
+        const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+        recoveryCodes.push(code);
+        hashedCodes.push(crypto.createHash('sha256').update(code).digest('hex'));
+      }
+      db.storeRecoveryCodes(req.user.userId, hashedCodes);
+    }
+
+    res.json({
+      success: true,
+      message: 'Email MFA enabled successfully',
+      recoveryCodes // Only returned if newly generated
+    });
+  } catch (err) {
+    console.error('Email MFA verify setup error:', err);
+    res.status(500).json({ error: 'Failed to verify email MFA setup' });
+  }
+});
+
+// Disable email MFA (requires password)
+app.post('/api/auth/mfa/email/disable', authenticateToken, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Verify password
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Disable email MFA
+    db.disableEmailMfa(req.user.userId);
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'mfa_disable', 'user', req.user.userId, { ...getRequestMeta(req), method: 'email' });
+
+    res.json({ success: true, message: 'Email MFA disabled successfully' });
+  } catch (err) {
+    console.error('Email MFA disable error:', err);
+    res.status(500).json({ error: 'Failed to disable email MFA' });
+  }
+});
+
+// Regenerate recovery codes (requires password + one MFA method)
+app.post('/api/auth/mfa/recovery/regenerate', authenticateToken, mfaLimiter, async (req, res) => {
+  try {
+    const { password, mfaCode, mfaMethod } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Verify password
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Verify MFA if enabled
+    const hasMfa = db.hasMfaEnabled(req.user.userId);
+    if (hasMfa) {
+      if (!mfaCode || !mfaMethod) {
+        return res.status(400).json({ error: 'MFA verification required' });
+      }
+
+      if (mfaMethod === 'totp') {
+        const secret = db.getTotpSecret(req.user.userId);
+        const isValid = authenticator.verify({ token: mfaCode, secret });
+        if (!isValid) {
+          return res.status(400).json({ error: 'Invalid TOTP code' });
+        }
+      } else {
+        return res.status(400).json({ error: 'Invalid MFA method for this operation' });
+      }
+    }
+
+    // Generate new recovery codes
+    const recoveryCodes = [];
+    const hashedCodes = [];
+    for (let i = 0; i < 10; i++) {
+      const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+      recoveryCodes.push(code);
+      hashedCodes.push(crypto.createHash('sha256').update(code).digest('hex'));
+    }
+
+    // Store new hashed codes (replaces old ones)
+    db.storeRecoveryCodes(req.user.userId, hashedCodes);
+
+    res.json({
+      success: true,
+      message: 'Recovery codes regenerated',
+      recoveryCodes // Return plaintext codes once (user must save them)
+    });
+  } catch (err) {
+    console.error('Recovery codes regenerate error:', err);
+    res.status(500).json({ error: 'Failed to regenerate recovery codes' });
+  }
+});
+
+// Send email MFA code for login
+app.post('/api/auth/mfa/send-email-code', mfaLimiter, async (req, res) => {
+  try {
+    const { challengeId } = req.body;
+    if (!challengeId) {
+      return res.status(400).json({ error: 'Challenge ID is required' });
+    }
+
+    // Validate challengeId is a string
+    if (typeof challengeId !== 'string') {
+      return res.status(400).json({ error: 'Invalid challenge ID format' });
+    }
+
+    // Get the challenge to find user
+    const challenge = db.getMfaChallenge(challengeId);
+    if (!challenge) {
+      return res.status(400).json({ error: 'Invalid challenge' });
+    }
+
+    const user = db.findUserById(challenge.userId);
+    if (!user || !user.email) {
+      return res.status(400).json({ error: 'Cannot send email code' });
+    }
+
+    // Generate and send code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const emailService = getEmailService();
+    if (!emailService.configured) {
+      return res.status(400).json({ error: 'Email service is not configured. Contact administrator.' });
+    }
+
+    // Update challenge with new code (store hashed)
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+    const newChallenge = db.createMfaChallenge(challenge.userId, 'email', codeHash);
+
+    await emailService.sendMFACode(user.email, code);
+
+    res.json({
+      success: true,
+      message: 'Code sent to your email',
+      challengeId: newChallenge.id
+    });
+  } catch (err) {
+    console.error('Send email MFA code error:', err);
+    res.status(500).json({ error: 'Failed to send email code' });
+  }
+});
+
+// Verify MFA during login
+app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
+  try {
+    const { challengeId, method, code } = req.body;
+    if (!challengeId || !method || !code) {
+      return res.status(400).json({ error: 'Challenge ID, method, and code are required' });
+    }
+
+    // Validate challengeId is a string
+    if (typeof challengeId !== 'string') {
+      return res.status(400).json({ error: 'Invalid challenge ID format' });
+    }
+
+    // Get the challenge
+    const challenge = db.getMfaChallenge(challengeId);
+    if (!challenge) {
+      return res.status(400).json({ error: 'Invalid or expired challenge' });
+    }
+
+    // Check expiration
+    if (new Date(challenge.expiresAt) < new Date()) {
+      db.deleteMfaChallenge(challengeId);
+      return res.status(400).json({ error: 'Challenge has expired. Please log in again.' });
+    }
+
+    const user = db.findUserById(challenge.userId);
+    if (!user) {
+      return res.status(400).json({ error: 'User not found' });
+    }
+
+    let verified = false;
+
+    if (method === 'totp') {
+      const secret = db.getTotpSecret(challenge.userId);
+      if (secret) {
+        verified = authenticator.verify({ token: code, secret });
+      }
+    } else if (method === 'email') {
+      // For email, we need to check the codeHash on the challenge
+      const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+      if (challenge.codeHash === codeHash) {
+        verified = true;
+      }
+    } else if (method === 'recovery') {
+      // Verify recovery code (stored as array of hashed codes)
+      const hashedCodes = db.getRecoveryCodes(challenge.userId);
+      if (hashedCodes && hashedCodes.length > 0) {
+        const codeHash = crypto.createHash('sha256').update(code.toUpperCase()).digest('hex');
+        const codeIndex = hashedCodes.findIndex(hash => hash === codeHash);
+        if (codeIndex !== -1) {
+          db.markRecoveryCodeUsed(challenge.userId, codeIndex);
+          verified = true;
+        }
+      }
+    }
+
+    if (!verified) {
+      return res.status(400).json({ error: 'Invalid code' });
+    }
+
+    // Mark challenge as verified
+    db.markMfaChallengeVerified(challengeId);
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user.id, handle: user.handle },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    // Clear any failed login attempts
+    if (db.clearFailedLogins) {
+      db.clearFailedLogins(user.handle);
+    }
+
+    // Log successful MFA login
+    if (db.logActivity) db.logActivity(user.id, 'login', 'user', user.id, { ...getRequestMeta(req), mfaMethod: method });
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        handle: user.handle,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        avatarUrl: user.avatarUrl || null,
+        role: user.role,
+        preferences: user.preferences,
+        bio: user.bio,
+        email: user.email,
+        requirePasswordChange: user.require_password_change === 1
+      }
+    });
+  } catch (err) {
+    console.error('MFA verify error:', err);
+    res.status(500).json({ error: 'Failed to verify MFA' });
+  }
 });
 
 // ============ Profile Routes ============
@@ -3269,10 +4000,28 @@ app.put('/api/profile', authenticateToken, (req, res) => {
   if (req.body.avatar) updates.avatar = sanitizeInput(req.body.avatar).slice(0, 2);
   if (req.body.bio !== undefined) updates.bio = req.body.bio ? sanitizeInput(req.body.bio).slice(0, 500) : null;
 
+  // Email update with validation
+  if (req.body.email !== undefined) {
+    const email = req.body.email ? sanitizeInput(req.body.email).trim().toLowerCase() : null;
+    if (email) {
+      // Basic email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+      // Check if email is already taken by another user
+      const existingUser = db.findUserByEmail ? db.findUserByEmail(email) : db.findUserByHandle(email);
+      if (existingUser && existingUser.id !== req.user.userId) {
+        return res.status(400).json({ error: 'Email already in use' });
+      }
+    }
+    updates.email = email;
+  }
+
   const user = db.updateUser(req.user.userId, updates);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  res.json({ id: user.id, handle: user.handle, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, preferences: user.preferences, bio: user.bio });
+  res.json({ id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, preferences: user.preferences, bio: user.bio });
 });
 
 // Get public profile for any user (local or federated)
@@ -3343,12 +4092,16 @@ app.post('/api/profile/avatar', authenticateToken, (req, res, next) => {
       .webp({ quality: 85 })
       .toFile(filepath);
 
-    // Delete old avatar if exists
+    // Delete old avatar if exists (with path traversal protection)
     if (user.avatarUrl) {
       const oldFilename = path.basename(user.avatarUrl);
-      const oldFilepath = path.join(AVATARS_DIR, oldFilename);
-      if (fs.existsSync(oldFilepath)) {
-        fs.unlinkSync(oldFilepath);
+      if (isValidAvatarFilename(oldFilename)) {
+        const oldFilepath = path.join(AVATARS_DIR, oldFilename);
+        if (fs.existsSync(oldFilepath)) {
+          fs.unlinkSync(oldFilepath);
+        }
+      } else {
+        console.warn(`Invalid avatar filename format, skipping deletion: ${oldFilename}`);
       }
     }
 
@@ -3370,11 +4123,15 @@ app.delete('/api/profile/avatar', authenticateToken, (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     if (user.avatarUrl) {
-      // Delete the file
+      // Delete the file (with path traversal protection)
       const filename = path.basename(user.avatarUrl);
-      const filepath = path.join(AVATARS_DIR, filename);
-      if (fs.existsSync(filepath)) {
-        fs.unlinkSync(filepath);
+      if (isValidAvatarFilename(filename)) {
+        const filepath = path.join(AVATARS_DIR, filename);
+        if (fs.existsSync(filepath)) {
+          fs.unlinkSync(filepath);
+        }
+      } else {
+        console.warn(`Invalid avatar filename format, skipping deletion: ${filename}`);
       }
 
       // Update user to remove avatar URL
@@ -3450,6 +4207,10 @@ app.post('/api/profile/password', authenticateToken, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const result = await db.changePassword(req.user.userId, currentPassword, newPassword);
   if (!result.success) return res.status(400).json({ error: result.error });
+
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'password_change', 'user', req.user.userId, getRequestMeta(req));
+
   res.json({ success: true });
 });
 
@@ -4542,6 +5303,9 @@ app.post('/api/admin/users/:id/warn', authenticateToken, (req, res) => {
     reportId ? sanitizeInput(reportId) : null
   );
 
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'admin_warn', 'user', targetUserId, { ...getRequestMeta(req), reason: sanitizeInput(reason), reportId });
+
   // Notify user via WebSocket
   broadcast({
     type: 'warning_received',
@@ -4563,6 +5327,187 @@ app.get('/api/admin/users/:id/warnings', authenticateToken, (req, res) => {
   const warnings = db.getWarningsByUser(targetUserId);
 
   res.json({ warnings, count: warnings.length });
+});
+
+// Admin user search (admin only)
+// Returns users with admin-level details including email, isAdmin, and MFA status
+app.get('/api/admin/users/search', authenticateToken, (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const query = sanitizeInput(req.query.q);
+  if (!query || query.length < 1) {
+    return res.json({ users: [] });
+  }
+
+  const users = db.adminSearchUsers(query);
+  res.json({ users });
+});
+
+// Admin password reset (admin only)
+// Allows admins to reset a user's password and optionally send them a temporary password
+app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!admin || !admin.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const targetUserId = sanitizeInput(req.params.id);
+    const { temporaryPassword, sendEmail: shouldSendEmail } = req.body;
+
+    const targetUser = db.findUserById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Don't allow resetting your own password this way
+    if (targetUserId === admin.id) {
+      return res.status(400).json({ error: 'Cannot reset your own password via admin panel' });
+    }
+
+    // Generate temporary password if not provided
+    const tempPassword = temporaryPassword || crypto.randomBytes(12).toString('base64').slice(0, 16);
+
+    // Validate temporary password
+    if (tempPassword.length < 8) {
+      return res.status(400).json({ error: 'Temporary password must be at least 8 characters' });
+    }
+
+    // Set new password with requireChange flag
+    const result = await db.setPassword(targetUserId, tempPassword, true);
+    if (!result.success) {
+      return res.status(500).json({ error: result.error || 'Failed to reset password' });
+    }
+
+    // Clear account lockouts
+    db.clearFailedLogins(targetUser.handle);
+    if (targetUser.email) db.clearFailedLogins(targetUser.email);
+
+    // Log the action
+    if (db.logModerationAction) {
+      db.logModerationAction(admin.id, 'password_reset', 'user', targetUserId, 'Admin password reset');
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'admin_password_reset', 'user', targetUserId, { ...getRequestMeta(req), emailSent: shouldSendEmail && targetUser.email });
+
+    // Optionally send email with temporary password
+    let emailSent = false;
+    if (shouldSendEmail && targetUser.email) {
+      const emailService = getEmailService();
+      if (emailService.isConfigured()) {
+        const emailResult = await emailService.sendTempPasswordEmail(targetUser.email, tempPassword, admin.displayName || admin.handle);
+        emailSent = emailResult.success;
+        if (!emailSent) {
+          console.warn(`Failed to send temp password email to ${targetUser.email}: ${emailResult.error}`);
+        }
+      }
+    }
+
+    console.log(`Admin ${admin.handle} reset password for user ${targetUser.handle}`);
+
+    res.json({
+      success: true,
+      temporaryPassword: shouldSendEmail ? undefined : tempPassword, // Only return password if not emailed
+      emailSent,
+      message: emailSent
+        ? 'Password reset. User will receive an email with their temporary password.'
+        : 'Password reset. User will be required to change password on next login.'
+    });
+  } catch (err) {
+    console.error('Admin password reset error:', err);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// Force logout all sessions for a user (admin only)
+app.post('/api/admin/users/:id/force-logout', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!admin || !admin.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const targetUserId = sanitizeInput(req.params.id);
+    const targetUser = db.findUserById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update user status to offline
+    db.updateUserStatus(targetUserId, 'offline');
+
+    // Note: True session invalidation would require token version tracking or token blacklisting
+    // For now, we just update status. The user's existing tokens remain valid until expiry.
+    // Full implementation would need a tokenVersion field in users table that gets checked on every request.
+
+    // Log the action
+    if (db.logModerationAction) {
+      db.logModerationAction(admin.id, 'force_logout', 'user', targetUserId, 'Admin forced logout');
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'admin_force_logout', 'user', targetUserId, getRequestMeta(req));
+
+    console.log(`Admin ${admin.handle} forced logout for user ${targetUser.handle}`);
+
+    res.json({
+      success: true,
+      message: 'User status set to offline. Note: Existing tokens remain valid until expiry.'
+    });
+  } catch (err) {
+    console.error('Force logout error:', err);
+    res.status(500).json({ error: 'Failed to force logout' });
+  }
+});
+
+// Disable MFA for a user (admin only - emergency lockout recovery)
+app.post('/api/admin/users/:id/disable-mfa', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!admin || !admin.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const targetUserId = sanitizeInput(req.params.id);
+    const targetUser = db.findUserById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Don't allow disabling your own MFA this way
+    if (targetUserId === admin.id) {
+      return res.status(400).json({ error: 'Cannot disable your own MFA via admin panel' });
+    }
+
+    // Disable all MFA methods
+    if (db.disableTotp) db.disableTotp(targetUserId);
+    if (db.disableEmailMfa) db.disableEmailMfa(targetUserId);
+
+    // Clear recovery codes
+    if (db.storeRecoveryCodes) db.storeRecoveryCodes(targetUserId, []);
+
+    // Log the action
+    if (db.logModerationAction) {
+      db.logModerationAction(admin.id, 'disable_mfa', 'user', targetUserId, 'Admin disabled MFA for lockout recovery');
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'admin_disable_mfa', 'user', targetUserId, getRequestMeta(req));
+
+    console.log(`Admin ${admin.handle} disabled MFA for user ${targetUser.handle}`);
+
+    res.json({
+      success: true,
+      message: 'MFA disabled for user. They can now log in with just their password.'
+    });
+  } catch (err) {
+    console.error('Admin disable MFA error:', err);
+    res.status(500).json({ error: 'Failed to disable MFA' });
+  }
 });
 
 // Get moderation log (admin only)
@@ -4597,6 +5542,86 @@ app.get('/api/admin/moderation-log/:targetType/:targetId', authenticateToken, (r
   const logs = db.getModerationLogForTarget(targetType, targetId);
 
   res.json({ logs, count: logs.length });
+});
+
+// Get activity log (admin only)
+app.get('/api/admin/activity-log', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!db.getActivityLog) {
+    return res.status(501).json({ error: 'Activity logging not available in this database mode' });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const offset = parseInt(req.query.offset) || 0;
+  const userId = req.query.userId ? sanitizeInput(req.query.userId) : null;
+  const actionType = req.query.actionType ? sanitizeInput(req.query.actionType) : null;
+  const startDate = req.query.startDate ? sanitizeInput(req.query.startDate) : null;
+  const endDate = req.query.endDate ? sanitizeInput(req.query.endDate) : null;
+
+  try {
+    const result = db.getActivityLog({
+      userId,
+      actionType,
+      startDate,
+      endDate,
+      limit,
+      offset
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Activity log error:', err);
+    res.status(500).json({ error: 'Failed to retrieve activity log' });
+  }
+});
+
+// Get activity stats (admin only)
+app.get('/api/admin/activity-stats', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!db.getActivityStats) {
+    return res.status(501).json({ error: 'Activity logging not available in this database mode' });
+  }
+
+  const days = Math.min(parseInt(req.query.days) || 7, 90);
+
+  try {
+    const stats = db.getActivityStats(days);
+    res.json(stats);
+  } catch (err) {
+    console.error('Activity stats error:', err);
+    res.status(500).json({ error: 'Failed to retrieve activity stats' });
+  }
+});
+
+// Get activity log for a specific user (admin only)
+app.get('/api/admin/activity-log/user/:userId', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!db.getUserActivityLog) {
+    return res.status(501).json({ error: 'Activity logging not available in this database mode' });
+  }
+
+  const targetUserId = sanitizeInput(req.params.userId);
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+  try {
+    const activities = db.getUserActivityLog(targetUserId, limit);
+    res.json({ activities, count: activities.length });
+  } catch (err) {
+    console.error('User activity log error:', err);
+    res.status(500).json({ error: 'Failed to retrieve user activity log' });
+  }
 });
 
 // ============ Federation Routes ============
@@ -6750,6 +7775,10 @@ app.post('/api/waves', authenticateToken, async (req, res) => {
   };
 
   broadcastToWave(wave.id, { type: 'wave_created', wave: result });
+
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'create_wave', 'wave', wave.id, { ...getRequestMeta(req), privacy, title });
+
   res.status(201).json(result);
 });
 
@@ -7013,6 +8042,9 @@ app.delete('/api/waves/:id', authenticateToken, (req, res) => {
     wave: result.wave
   });
 
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'delete_wave', 'wave', waveId, getRequestMeta(req));
+
   res.json({ success: true });
 });
 
@@ -7134,6 +8166,9 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
     }
   }
 
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'create_droplet', 'droplet', droplet.id, { ...getRequestMeta(req), waveId });
+
   res.status(201).json(droplet);
 });
 
@@ -7164,6 +8199,9 @@ app.put('/api/droplets/:id', authenticateToken, (req, res) => {
       console.error('Federation droplet edit delivery error:', err.message);
     });
   }
+
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'edit_droplet', 'droplet', dropletId, { ...getRequestMeta(req), waveId: droplet.waveId });
 
   res.json(updated);
 });
@@ -7207,6 +8245,9 @@ app.delete('/api/droplets/:id', authenticateToken, (req, res) => {
       console.error('Federation droplet delete delivery error:', err.message);
     });
   }
+
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'delete_droplet', 'droplet', dropletId, { ...getRequestMeta(req), waveId });
 
   res.json({ success: true });
 });
@@ -7530,7 +8571,7 @@ app.get('/api/search', authenticateToken, (req, res) => {
 
 // ============ Health Check ============
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.13.0', uptime: process.uptime() });
+  res.json({ status: 'ok', version: '1.14.0', uptime: process.uptime() });
 });
 
 // ============ Public Server Info ============
@@ -7551,7 +8592,7 @@ app.get('/api/server/info', (req, res) => {
 
   res.json({
     name: identity?.nodeName || null,
-    version: '1.13.0',
+    version: '1.14.0',
     federationEnabled: FEDERATION_ENABLED,
     stats: {
       users: stats.userCount,
@@ -7861,6 +8902,34 @@ if (FEDERATION_ENABLED) {
       console.log(`🧹 Cleaned up ${cleaned} old federation messages`);
     }
   }, 24 * 60 * 60 * 1000); // Daily
+}
+
+// Activity log cleanup (90-day retention)
+const ACTIVITY_LOG_RETENTION_DAYS = parseInt(process.env.ACTIVITY_LOG_RETENTION_DAYS) || 90;
+if (db.cleanupOldActivityLogs) {
+  // Run cleanup daily
+  setInterval(() => {
+    try {
+      const deleted = db.cleanupOldActivityLogs(ACTIVITY_LOG_RETENTION_DAYS);
+      if (deleted > 0) {
+        console.log(`🧹 Cleaned ${deleted} old activity log entries (>${ACTIVITY_LOG_RETENTION_DAYS} days)`);
+      }
+    } catch (err) {
+      console.error('Activity log cleanup error:', err);
+    }
+  }, 24 * 60 * 60 * 1000); // Daily
+
+  // Also run once on startup after a delay
+  setTimeout(() => {
+    try {
+      const deleted = db.cleanupOldActivityLogs(ACTIVITY_LOG_RETENTION_DAYS);
+      if (deleted > 0) {
+        console.log(`🧹 Startup cleanup: removed ${deleted} old activity log entries`);
+      }
+    } catch (err) {
+      console.error('Activity log startup cleanup error:', err);
+    }
+  }, 60000); // 1 minute after startup
 }
 
 // ============ Notification Creation Helpers ============
@@ -8190,7 +9259,7 @@ server.listen(PORT, () => {
 ║  ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗         ║
 ║  ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗        ║
 ║   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝        ║
-║  SECURE COMMUNICATIONS SYSTEM v1.13.0                      ║
+║  SECURE COMMUNICATIONS SYSTEM v1.14.0                      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  🔒 Security: Rate limiting, XSS protection, Helmet        ║
 ║  🌐 Federation: Server-to-server communication             ║

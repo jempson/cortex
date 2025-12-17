@@ -1,5 +1,5 @@
 -- Cortex SQLite Database Schema
--- Version 1.13.0
+-- Version 1.14.0
 
 -- ============ Users ============
 CREATE TABLE IF NOT EXISTS users (
@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL,
     last_seen TEXT,
     last_handle_change TEXT,
+    -- Security flags
+    require_password_change INTEGER DEFAULT 0,
     -- Preferences stored as JSON
     preferences TEXT DEFAULT '{"theme":"firefly","fontSize":"medium"}'
 );
@@ -218,6 +220,77 @@ CREATE TABLE IF NOT EXISTS moderation_log (
     details TEXT,
     created_at TEXT NOT NULL
 );
+
+-- ============ Account Security ============
+
+-- Account lockouts (persisted across restarts)
+CREATE TABLE IF NOT EXISTS account_lockouts (
+    handle TEXT PRIMARY KEY COLLATE NOCASE,
+    failed_attempts INTEGER DEFAULT 0,
+    locked_until TEXT,
+    last_attempt TEXT
+);
+
+-- Password reset tokens
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_reset_tokens_expires ON password_reset_tokens(expires_at);
+
+-- ============ Multi-Factor Authentication ============
+
+-- User MFA settings
+CREATE TABLE IF NOT EXISTS user_mfa (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    totp_secret TEXT,                    -- Encrypted TOTP secret
+    totp_enabled INTEGER DEFAULT 0,
+    email_mfa_enabled INTEGER DEFAULT 0,
+    recovery_codes TEXT,                 -- JSON array of hashed codes
+    recovery_codes_generated_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+);
+
+-- MFA challenge tokens (for login flow)
+CREATE TABLE IF NOT EXISTS mfa_challenges (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    challenge_type TEXT NOT NULL,        -- totp, email, recovery
+    code_hash TEXT,                      -- For email codes (hashed)
+    expires_at TEXT NOT NULL,
+    verified_at TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_mfa_challenges_user ON mfa_challenges(user_id);
+CREATE INDEX IF NOT EXISTS idx_mfa_challenges_expires ON mfa_challenges(expires_at);
+
+-- ============ Activity Log (v1.14.0) ============
+
+-- Activity log for security auditing
+CREATE TABLE IF NOT EXISTS activity_log (
+    id TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    action_type TEXT NOT NULL,           -- login, logout, password_change, etc.
+    resource_type TEXT,                  -- user, wave, droplet, etc.
+    resource_id TEXT,                    -- ID of the affected resource
+    ip_address TEXT,
+    user_agent TEXT,
+    metadata TEXT,                       -- JSON for additional context
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_log(action_type);
+CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_resource ON activity_log(resource_type, resource_id);
 
 -- ============ Indexes ============
 

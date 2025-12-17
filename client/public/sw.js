@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.13.0
+// Cortex Service Worker v1.14.0
 // Includes: Push notifications, offline caching, stale-while-revalidate
-// v1.13.0: Federation - Server-to-server communication
-const CACHE_NAME = 'cortex-v1.13.0';
+// v1.14.0: Security enhancements - Password recovery and account security
+const CACHE_NAME = 'cortex-v1.14.0';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,7 @@ const STATIC_ASSETS = [
 
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.13.0...');
+  console.log('[SW] Installing service worker v1.14.0...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');

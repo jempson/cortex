@@ -104,6 +104,29 @@ export class DatabaseSQLite {
 
     // Open database
     this.db = new Database(this.dbPath);
+
+    // Database encryption support (requires SQLCipher build of better-sqlite3)
+    // To enable: npm install @journeyapps/sqlcipher (instead of better-sqlite3)
+    // Then set DB_ENCRYPTION_KEY environment variable
+    const encryptionKey = process.env.DB_ENCRYPTION_KEY;
+    if (encryptionKey) {
+      try {
+        // Apply encryption key - this only works with SQLCipher
+        this.db.pragma(`key = '${encryptionKey}'`);
+        console.log('🔐 Database encryption enabled');
+      } catch (err) {
+        if (process.env.NODE_ENV === 'production') {
+          console.error('FATAL: DB_ENCRYPTION_KEY set but encryption failed. Install @journeyapps/sqlcipher for encryption support.');
+          process.exit(1);
+        } else {
+          console.warn('⚠️  DB_ENCRYPTION_KEY set but encryption not available. Install @journeyapps/sqlcipher for encryption.');
+        }
+      }
+    } else if (process.env.NODE_ENV === 'production' && process.env.REQUIRE_DB_ENCRYPTION === 'true') {
+      console.error('FATAL: REQUIRE_DB_ENCRYPTION is true but DB_ENCRYPTION_KEY is not set');
+      process.exit(1);
+    }
+
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
 
@@ -680,6 +703,112 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Contacts table migrated for federation support');
     }
+
+    // Check if v1.14.0 security tables exist
+    const accountLockoutsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='account_lockouts'
+    `).get();
+
+    if (!accountLockoutsExists) {
+      console.log('📝 Creating security tables (v1.14.0)...');
+      this.db.exec(`
+        -- Account lockout tracking (persistent rate limiting)
+        CREATE TABLE IF NOT EXISTS account_lockouts (
+          handle TEXT PRIMARY KEY,
+          failed_attempts INTEGER DEFAULT 0,
+          locked_until TEXT,
+          last_attempt TEXT
+        );
+
+        -- Password reset tokens
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          used_at TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id);
+        CREATE INDEX IF NOT EXISTS idx_reset_tokens_expires ON password_reset_tokens(expires_at);
+
+        -- Multi-Factor Authentication settings
+        CREATE TABLE IF NOT EXISTS user_mfa (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          totp_secret TEXT,
+          totp_enabled INTEGER DEFAULT 0,
+          email_mfa_enabled INTEGER DEFAULT 0,
+          recovery_codes TEXT,
+          recovery_codes_generated_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT
+        );
+
+        -- MFA challenge tracking for login flow
+        CREATE TABLE IF NOT EXISTS mfa_challenges (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          challenge_type TEXT NOT NULL,
+          code_hash TEXT,
+          expires_at TEXT NOT NULL,
+          verified_at TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mfa_challenges_user ON mfa_challenges(user_id);
+        CREATE INDEX IF NOT EXISTS idx_mfa_challenges_expires ON mfa_challenges(expires_at);
+
+        -- Activity log for security auditing
+        CREATE TABLE IF NOT EXISTS activity_log (
+          id TEXT PRIMARY KEY,
+          user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+          action_type TEXT NOT NULL,
+          resource_type TEXT,
+          resource_id TEXT,
+          ip_address TEXT,
+          user_agent TEXT,
+          metadata TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id);
+        CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_log(action_type);
+        CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at);
+        CREATE INDEX IF NOT EXISTS idx_activity_resource ON activity_log(resource_type, resource_id);
+      `);
+      console.log('✅ Security tables created (v1.14.0)');
+    }
+
+    // Fix user_mfa column name if incorrect (backup_codes_generated_at -> recovery_codes_generated_at)
+    const userMfaExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='user_mfa'
+    `).get();
+
+    if (userMfaExists) {
+      const mfaColumns = this.db.prepare(`PRAGMA table_info(user_mfa)`).all();
+      const hasBackupColumn = mfaColumns.some(c => c.name === 'backup_codes_generated_at');
+      const hasRecoveryColumn = mfaColumns.some(c => c.name === 'recovery_codes_generated_at');
+
+      if (hasBackupColumn && !hasRecoveryColumn) {
+        console.log('📝 Renaming backup_codes_generated_at to recovery_codes_generated_at...');
+        this.db.exec(`ALTER TABLE user_mfa RENAME COLUMN backup_codes_generated_at TO recovery_codes_generated_at`);
+        console.log('✅ Column renamed');
+      } else if (!hasBackupColumn && !hasRecoveryColumn) {
+        console.log('📝 Adding recovery_codes_generated_at column to user_mfa...');
+        this.db.exec(`ALTER TABLE user_mfa ADD COLUMN recovery_codes_generated_at TEXT`);
+        console.log('✅ Column added');
+      }
+    }
+
+    // Check if require_password_change column exists on users table (v1.14.0)
+    const userColumnsForPw = this.db.prepare(`PRAGMA table_info(users)`).all();
+    const hasRequirePasswordChange = userColumnsForPw.some(c => c.name === 'require_password_change');
+
+    if (!hasRequirePasswordChange) {
+      console.log('📝 Adding require_password_change column to users table (v1.14.0)...');
+      this.db.exec(`
+        ALTER TABLE users ADD COLUMN require_password_change INTEGER DEFAULT 0;
+      `);
+      console.log('✅ require_password_change column added');
+    }
   }
 
   prepareStatements() {
@@ -952,6 +1081,693 @@ export class DatabaseSQLite {
     return { success: true };
   }
 
+  // ============ Account Lockout Methods ============
+
+  /**
+   * Record a failed login attempt for rate limiting
+   * @param {string} handle - User handle or email
+   * @returns {{locked: boolean, attemptsRemaining: number, lockedUntil?: string}}
+   */
+  recordFailedLogin(handle) {
+    const now = new Date();
+    const normalizedHandle = handle.toLowerCase();
+
+    // Get current lockout status
+    let lockout = this.db.prepare('SELECT * FROM account_lockouts WHERE handle = ?').get(normalizedHandle);
+
+    // Check if currently locked
+    if (lockout?.locked_until && new Date(lockout.locked_until) > now) {
+      return {
+        locked: true,
+        attemptsRemaining: 0,
+        lockedUntil: lockout.locked_until
+      };
+    }
+
+    // If lock expired, reset
+    if (lockout?.locked_until && new Date(lockout.locked_until) <= now) {
+      this.db.prepare('DELETE FROM account_lockouts WHERE handle = ?').run(normalizedHandle);
+      lockout = null;
+    }
+
+    const failedAttempts = (lockout?.failed_attempts || 0) + 1;
+    const maxAttempts = 5;
+    const lockoutMinutes = 15;
+
+    if (failedAttempts >= maxAttempts) {
+      // Lock the account
+      const lockedUntil = new Date(now.getTime() + lockoutMinutes * 60 * 1000).toISOString();
+      this.db.prepare(`
+        INSERT OR REPLACE INTO account_lockouts (handle, failed_attempts, locked_until, last_attempt)
+        VALUES (?, ?, ?, ?)
+      `).run(normalizedHandle, failedAttempts, lockedUntil, now.toISOString());
+
+      return {
+        locked: true,
+        attemptsRemaining: 0,
+        lockedUntil
+      };
+    }
+
+    // Update failed attempts
+    this.db.prepare(`
+      INSERT OR REPLACE INTO account_lockouts (handle, failed_attempts, locked_until, last_attempt)
+      VALUES (?, ?, NULL, ?)
+    `).run(normalizedHandle, failedAttempts, now.toISOString());
+
+    return {
+      locked: false,
+      attemptsRemaining: maxAttempts - failedAttempts
+    };
+  }
+
+  /**
+   * Clear failed login attempts (on successful login)
+   * @param {string} handle - User handle or email
+   */
+  clearFailedLogins(handle) {
+    const normalizedHandle = handle.toLowerCase();
+    this.db.prepare('DELETE FROM account_lockouts WHERE handle = ?').run(normalizedHandle);
+  }
+
+  /**
+   * Check if an account is currently locked
+   * @param {string} handle - User handle or email
+   * @returns {{locked: boolean, lockedUntil?: string, attemptsRemaining: number}}
+   */
+  isAccountLocked(handle) {
+    const normalizedHandle = handle.toLowerCase();
+    const lockout = this.db.prepare('SELECT * FROM account_lockouts WHERE handle = ?').get(normalizedHandle);
+
+    if (!lockout) {
+      return { locked: false, attemptsRemaining: 5 };
+    }
+
+    const now = new Date();
+    if (lockout.locked_until && new Date(lockout.locked_until) > now) {
+      return {
+        locked: true,
+        lockedUntil: lockout.locked_until,
+        attemptsRemaining: 0
+      };
+    }
+
+    // Lock expired
+    if (lockout.locked_until && new Date(lockout.locked_until) <= now) {
+      this.db.prepare('DELETE FROM account_lockouts WHERE handle = ?').run(normalizedHandle);
+      return { locked: false, attemptsRemaining: 5 };
+    }
+
+    return {
+      locked: false,
+      attemptsRemaining: 5 - (lockout.failed_attempts || 0)
+    };
+  }
+
+  // ============ Password Reset Methods ============
+
+  /**
+   * Find user by email address
+   * @param {string} email - Email address
+   * @returns {Object|null} User object or null
+   */
+  findUserByEmail(email) {
+    const row = this.db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email);
+    if (!row) return null;
+    return this.rowToUser(row);
+  }
+
+  /**
+   * Create a password reset token
+   * @param {string} userId - User ID
+   * @param {string} tokenHash - Hashed token (store hash, not plaintext)
+   * @param {number} expiresInMinutes - Token validity in minutes (default: 60)
+   * @returns {{id: string, expiresAt: string}}
+   */
+  createPasswordResetToken(userId, tokenHash, expiresInMinutes = 60) {
+    const id = uuidv4();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + expiresInMinutes * 60 * 1000).toISOString();
+
+    // Invalidate any existing tokens for this user
+    this.db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
+
+    // Create new token
+    this.db.prepare(`
+      INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, userId, tokenHash, expiresAt, now.toISOString());
+
+    return { id, expiresAt };
+  }
+
+  /**
+   * Verify a password reset token
+   * @param {string} tokenHash - Hashed token to verify
+   * @returns {{valid: boolean, userId?: string, error?: string}}
+   */
+  verifyPasswordResetToken(tokenHash) {
+    const token = this.db.prepare(`
+      SELECT * FROM password_reset_tokens
+      WHERE token_hash = ? AND used_at IS NULL
+    `).get(tokenHash);
+
+    if (!token) {
+      return { valid: false, error: 'Invalid or expired reset token' };
+    }
+
+    if (new Date(token.expires_at) < new Date()) {
+      return { valid: false, error: 'Reset token has expired' };
+    }
+
+    return { valid: true, userId: token.user_id };
+  }
+
+  /**
+   * Mark a password reset token as used
+   * @param {string} tokenHash - Hashed token
+   */
+  markPasswordResetTokenUsed(tokenHash) {
+    this.db.prepare(`
+      UPDATE password_reset_tokens
+      SET used_at = ?
+      WHERE token_hash = ?
+    `).run(new Date().toISOString(), tokenHash);
+  }
+
+  /**
+   * Set password directly (used for password reset, admin reset)
+   * @param {string} userId - User ID
+   * @param {string} newPassword - New password (will be hashed)
+   * @param {boolean} requireChange - Force password change on next login
+   * @returns {{success: boolean, error?: string}}
+   */
+  async setPassword(userId, newPassword, requireChange = false) {
+    const user = this.findUserById(userId);
+    if (!user) return { success: false, error: 'User not found' };
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    this.db.prepare(`
+      UPDATE users SET password_hash = ?, require_password_change = ?
+      WHERE id = ?
+    `).run(newHash, requireChange ? 1 : 0, userId);
+
+    // Invalidate all reset tokens for this user
+    this.db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
+
+    return { success: true };
+  }
+
+  /**
+   * Check if user needs to change password
+   * @param {string} userId - User ID
+   * @returns {boolean}
+   */
+  requiresPasswordChange(userId) {
+    const row = this.db.prepare('SELECT require_password_change FROM users WHERE id = ?').get(userId);
+    return row?.require_password_change === 1;
+  }
+
+  /**
+   * Clear the password change requirement flag
+   * @param {string} userId - User ID
+   */
+  clearPasswordChangeRequirement(userId) {
+    this.db.prepare('UPDATE users SET require_password_change = 0 WHERE id = ?').run(userId);
+  }
+
+  /**
+   * Clean up expired password reset tokens
+   * @returns {number} Number of tokens deleted
+   */
+  cleanupExpiredResetTokens() {
+    const result = this.db.prepare(`
+      DELETE FROM password_reset_tokens
+      WHERE expires_at < datetime('now')
+    `).run();
+    return result.changes;
+  }
+
+  // ============ Multi-Factor Authentication Methods ============
+
+  /**
+   * Get MFA settings for a user
+   * @param {string} userId - User ID
+   * @returns {Object|null} MFA settings or null
+   */
+  getMfaSettings(userId) {
+    const row = this.db.prepare('SELECT * FROM user_mfa WHERE user_id = ?').get(userId);
+    if (!row) return null;
+    return {
+      userId: row.user_id,
+      totpEnabled: row.totp_enabled === 1,
+      emailMfaEnabled: row.email_mfa_enabled === 1,
+      hasRecoveryCodes: !!row.recovery_codes,
+      recoveryCodesGeneratedAt: row.recovery_codes_generated_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  /**
+   * Check if user has any MFA method enabled
+   * @param {string} userId - User ID
+   * @returns {boolean}
+   */
+  hasMfaEnabled(userId) {
+    const settings = this.getMfaSettings(userId);
+    if (!settings) return false;
+    return settings.totpEnabled || settings.emailMfaEnabled;
+  }
+
+  /**
+   * Get enabled MFA methods for a user
+   * @param {string} userId - User ID
+   * @returns {string[]} Array of enabled methods
+   */
+  getEnabledMfaMethods(userId) {
+    const settings = this.getMfaSettings(userId);
+    if (!settings) return [];
+    const methods = [];
+    if (settings.totpEnabled) methods.push('totp');
+    if (settings.emailMfaEnabled) methods.push('email');
+    if (settings.hasRecoveryCodes) methods.push('recovery');
+    return methods;
+  }
+
+  /**
+   * Store pending TOTP secret (before verification)
+   * @param {string} userId - User ID
+   * @param {string} encryptedSecret - Encrypted TOTP secret
+   */
+  storePendingTotpSecret(userId, encryptedSecret) {
+    const now = new Date().toISOString();
+    const existing = this.db.prepare('SELECT user_id FROM user_mfa WHERE user_id = ?').get(userId);
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE user_mfa SET totp_secret = ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(encryptedSecret, now, userId);
+    } else {
+      this.db.prepare(`
+        INSERT INTO user_mfa (user_id, totp_secret, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+      `).run(userId, encryptedSecret, now, now);
+    }
+  }
+
+  /**
+   * Get stored TOTP secret for verification
+   * @param {string} userId - User ID
+   * @returns {string|null} Encrypted TOTP secret
+   */
+  getTotpSecret(userId) {
+    const row = this.db.prepare('SELECT totp_secret FROM user_mfa WHERE user_id = ?').get(userId);
+    return row?.totp_secret || null;
+  }
+
+  /**
+   * Enable TOTP after successful verification
+   * @param {string} userId - User ID
+   */
+  enableTotp(userId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE user_mfa SET totp_enabled = 1, updated_at = ?
+      WHERE user_id = ?
+    `).run(now, userId);
+  }
+
+  /**
+   * Disable TOTP
+   * @param {string} userId - User ID
+   */
+  disableTotp(userId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE user_mfa SET totp_enabled = 0, totp_secret = NULL, updated_at = ?
+      WHERE user_id = ?
+    `).run(now, userId);
+  }
+
+  /**
+   * Enable email MFA
+   * @param {string} userId - User ID
+   */
+  enableEmailMfa(userId) {
+    const now = new Date().toISOString();
+    const existing = this.db.prepare('SELECT user_id FROM user_mfa WHERE user_id = ?').get(userId);
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE user_mfa SET email_mfa_enabled = 1, updated_at = ?
+        WHERE user_id = ?
+      `).run(now, userId);
+    } else {
+      this.db.prepare(`
+        INSERT INTO user_mfa (user_id, email_mfa_enabled, created_at, updated_at)
+        VALUES (?, 1, ?, ?)
+      `).run(userId, now, now);
+    }
+  }
+
+  /**
+   * Disable email MFA
+   * @param {string} userId - User ID
+   */
+  disableEmailMfa(userId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE user_mfa SET email_mfa_enabled = 0, updated_at = ?
+      WHERE user_id = ?
+    `).run(now, userId);
+  }
+
+  /**
+   * Store recovery codes (hashed)
+   * @param {string} userId - User ID
+   * @param {string[]} hashedCodes - Array of hashed recovery codes
+   */
+  storeRecoveryCodes(userId, hashedCodes) {
+    const now = new Date().toISOString();
+    const codesJson = JSON.stringify(hashedCodes);
+    const existing = this.db.prepare('SELECT user_id FROM user_mfa WHERE user_id = ?').get(userId);
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE user_mfa SET recovery_codes = ?, recovery_codes_generated_at = ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(codesJson, now, now, userId);
+    } else {
+      this.db.prepare(`
+        INSERT INTO user_mfa (user_id, recovery_codes, recovery_codes_generated_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(userId, codesJson, now, now, now);
+    }
+  }
+
+  /**
+   * Get recovery codes (hashed)
+   * @param {string} userId - User ID
+   * @returns {string[]} Array of hashed recovery codes
+   */
+  getRecoveryCodes(userId) {
+    const row = this.db.prepare('SELECT recovery_codes FROM user_mfa WHERE user_id = ?').get(userId);
+    if (!row?.recovery_codes) return [];
+    try {
+      return JSON.parse(row.recovery_codes);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Remove a used recovery code
+   * @param {string} userId - User ID
+   * @param {number} codeIndex - Index of the used code
+   */
+  markRecoveryCodeUsed(userId, codeIndex) {
+    const codes = this.getRecoveryCodes(userId);
+    if (codeIndex >= 0 && codeIndex < codes.length) {
+      codes.splice(codeIndex, 1);
+      const now = new Date().toISOString();
+      this.db.prepare(`
+        UPDATE user_mfa SET recovery_codes = ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(JSON.stringify(codes), now, userId);
+    }
+  }
+
+  /**
+   * Create an MFA challenge for login
+   * @param {string} userId - User ID
+   * @param {string} challengeType - Type of challenge (totp, email, recovery)
+   * @param {string} codeHash - Hashed code for email challenges
+   * @param {number} expiresInMinutes - Expiry time in minutes
+   * @returns {{id: string, expiresAt: string}}
+   */
+  createMfaChallenge(userId, challengeType, codeHash = null, expiresInMinutes = 10) {
+    const id = uuidv4();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + expiresInMinutes * 60 * 1000).toISOString();
+
+    // Clean up any existing challenges for this user
+    this.db.prepare('DELETE FROM mfa_challenges WHERE user_id = ?').run(userId);
+
+    this.db.prepare(`
+      INSERT INTO mfa_challenges (id, user_id, challenge_type, code_hash, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, userId, challengeType, codeHash, expiresAt, now.toISOString());
+
+    return { id, expiresAt };
+  }
+
+  /**
+   * Get MFA challenge by ID
+   * @param {string} challengeId - Challenge ID
+   * @returns {Object|null} Challenge details or null
+   */
+  getMfaChallenge(challengeId) {
+    // Defensive check for valid challengeId
+    if (!challengeId || typeof challengeId !== 'string') {
+      console.error('getMfaChallenge called with invalid challengeId:', challengeId);
+      return null;
+    }
+
+    const row = this.db.prepare(`
+      SELECT * FROM mfa_challenges
+      WHERE id = ? AND verified_at IS NULL
+    `).get(challengeId);
+
+    if (!row) return null;
+    if (new Date(row.expires_at) < new Date()) {
+      // Expired, clean up
+      this.db.prepare('DELETE FROM mfa_challenges WHERE id = ?').run(challengeId);
+      return null;
+    }
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      challengeType: row.challenge_type,
+      codeHash: row.code_hash,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at
+    };
+  }
+
+  /**
+   * Mark MFA challenge as verified
+   * @param {string} challengeId - Challenge ID
+   */
+  markMfaChallengeVerified(challengeId) {
+    this.db.prepare(`
+      UPDATE mfa_challenges SET verified_at = ?
+      WHERE id = ?
+    `).run(new Date().toISOString(), challengeId);
+  }
+
+  /**
+   * Delete MFA challenge
+   * @param {string} challengeId - Challenge ID
+   */
+  deleteMfaChallenge(challengeId) {
+    this.db.prepare('DELETE FROM mfa_challenges WHERE id = ?').run(challengeId);
+  }
+
+  /**
+   * Clean up expired MFA challenges
+   * @returns {number} Number of challenges deleted
+   */
+  cleanupExpiredMfaChallenges() {
+    const result = this.db.prepare(`
+      DELETE FROM mfa_challenges
+      WHERE expires_at < datetime('now')
+    `).run();
+    return result.changes;
+  }
+
+  // ============ Activity Log Methods ============
+
+  /**
+   * Log an activity event
+   * @param {string|null} userId - User ID (null for anonymous actions)
+   * @param {string} actionType - Type of action (login, logout, password_change, etc.)
+   * @param {string|null} resourceType - Type of resource (user, wave, droplet, etc.)
+   * @param {string|null} resourceId - ID of the affected resource
+   * @param {Object} metadata - Additional context (ip, userAgent, etc.)
+   * @returns {string} Activity log entry ID
+   */
+  logActivity(userId, actionType, resourceType = null, resourceId = null, metadata = {}) {
+    const id = `act-${uuidv4()}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO activity_log (id, user_id, action_type, resource_type, resource_id, ip_address, user_agent, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      userId,
+      actionType,
+      resourceType,
+      resourceId,
+      metadata.ip || null,
+      metadata.userAgent || null,
+      JSON.stringify(metadata),
+      now
+    );
+
+    return id;
+  }
+
+  /**
+   * Get activity log entries with filters
+   * @param {Object} filters - Filter options
+   * @param {string} filters.userId - Filter by user ID
+   * @param {string} filters.actionType - Filter by action type
+   * @param {string} filters.resourceType - Filter by resource type
+   * @param {string} filters.resourceId - Filter by resource ID
+   * @param {string} filters.startDate - Filter by start date (ISO string)
+   * @param {string} filters.endDate - Filter by end date (ISO string)
+   * @param {number} filters.limit - Max entries to return (default 100)
+   * @param {number} filters.offset - Offset for pagination (default 0)
+   * @returns {Object} { entries, total }
+   */
+  getActivityLog(filters = {}) {
+    const conditions = [];
+    const params = [];
+
+    if (filters.userId) {
+      conditions.push('user_id = ?');
+      params.push(filters.userId);
+    }
+    if (filters.actionType) {
+      conditions.push('action_type = ?');
+      params.push(filters.actionType);
+    }
+    if (filters.resourceType) {
+      conditions.push('resource_type = ?');
+      params.push(filters.resourceType);
+    }
+    if (filters.resourceId) {
+      conditions.push('resource_id = ?');
+      params.push(filters.resourceId);
+    }
+    if (filters.startDate) {
+      conditions.push('created_at >= ?');
+      params.push(filters.startDate);
+    }
+    if (filters.endDate) {
+      conditions.push('created_at <= ?');
+      params.push(filters.endDate);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = filters.limit || 100;
+    const offset = filters.offset || 0;
+
+    // Get total count
+    const countRow = this.db.prepare(`
+      SELECT COUNT(*) as count FROM activity_log ${whereClause}
+    `).get(...params);
+
+    // Get entries with user info
+    const entries = this.db.prepare(`
+      SELECT
+        a.*,
+        u.handle as user_handle,
+        u.display_name as user_display_name
+      FROM activity_log a
+      LEFT JOIN users u ON a.user_id = u.id
+      ${whereClause}
+      ORDER BY a.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    // Parse metadata JSON
+    return {
+      activities: entries.map(e => ({
+        ...e,
+        metadata: e.metadata ? JSON.parse(e.metadata) : {}
+      })),
+      total: countRow.count
+    };
+  }
+
+  /**
+   * Get activity log for a specific user
+   * @param {string} userId - User ID
+   * @param {number} limit - Max entries (default 50)
+   * @returns {Array} Activity entries
+   */
+  getUserActivityLog(userId, limit = 50) {
+    const entries = this.db.prepare(`
+      SELECT * FROM activity_log
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(userId, limit);
+
+    return entries.map(e => ({
+      ...e,
+      metadata: e.metadata ? JSON.parse(e.metadata) : {}
+    }));
+  }
+
+  /**
+   * Clean up old activity log entries
+   * @param {number} daysOld - Delete entries older than this many days (default 90)
+   * @returns {number} Number of entries deleted
+   */
+  cleanupOldActivityLogs(daysOld = 90) {
+    const result = this.db.prepare(`
+      DELETE FROM activity_log
+      WHERE created_at < datetime('now', '-' || ? || ' days')
+    `).run(daysOld);
+    return result.changes;
+  }
+
+  /**
+   * Get activity summary/statistics
+   * @param {number} days - Number of days to summarize (default 7)
+   * @returns {Object} Activity statistics
+   */
+  getActivityStats(days = 7) {
+    const stats = this.db.prepare(`
+      SELECT
+        action_type,
+        COUNT(*) as count
+      FROM activity_log
+      WHERE created_at >= datetime('now', '-' || ? || ' days')
+      GROUP BY action_type
+      ORDER BY count DESC
+    `).all(days);
+
+    const totalLogins = this.db.prepare(`
+      SELECT COUNT(*) as count FROM activity_log
+      WHERE action_type = 'login' AND created_at >= datetime('now', '-' || ? || ' days')
+    `).get(days);
+
+    const failedLogins = this.db.prepare(`
+      SELECT COUNT(*) as count FROM activity_log
+      WHERE action_type = 'login_failed' AND created_at >= datetime('now', '-' || ? || ' days')
+    `).get(days);
+
+    const uniqueUsers = this.db.prepare(`
+      SELECT COUNT(DISTINCT user_id) as count FROM activity_log
+      WHERE user_id IS NOT NULL AND created_at >= datetime('now', '-' || ? || ' days')
+    `).get(days);
+
+    return {
+      byActionType: stats,
+      totalLogins: totalLogins.count,
+      failedLogins: failedLogins.count,
+      uniqueActiveUsers: uniqueUsers.count,
+      periodDays: days
+    };
+  }
+
   requestHandleChange(userId, newHandle) {
     const user = this.findUserById(userId);
     if (!user) return { success: false, error: 'User not found' };
@@ -1066,6 +1882,36 @@ export class DatabaseSQLite {
       avatar: r.avatar,
       status: r.status,
       nodeName: r.node_name,
+    }));
+  }
+
+  // Admin user search - returns more details including email and MFA status
+  adminSearchUsers(query) {
+    if (!query || query.length < 1) return [];
+    const pattern = `%${query}%`;
+    const rows = this.db.prepare(`
+      SELECT u.id, u.handle, u.display_name, u.email, u.avatar, u.avatar_url, u.is_admin, u.created_at,
+             CASE WHEN m.totp_enabled = 1 OR m.email_mfa_enabled = 1 THEN 1 ELSE 0 END as mfa_enabled,
+             m.totp_enabled, m.email_mfa_enabled
+      FROM users u
+      LEFT JOIN user_mfa m ON u.id = m.user_id
+      WHERE u.handle LIKE ? OR u.email LIKE ? OR u.display_name LIKE ?
+      ORDER BY u.handle
+      LIMIT 20
+    `).all(pattern, pattern, pattern);
+
+    return rows.map(r => ({
+      id: r.id,
+      handle: r.handle,
+      displayName: r.display_name,
+      email: r.email,
+      avatar: r.avatar,
+      avatarUrl: r.avatar_url,
+      isAdmin: r.is_admin === 1,
+      createdAt: r.created_at,
+      mfaEnabled: r.mfa_enabled === 1,
+      totpEnabled: r.totp_enabled === 1,
+      emailMfaEnabled: r.email_mfa_enabled === 1,
     }));
   }
 
