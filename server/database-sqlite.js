@@ -1508,6 +1508,12 @@ export class DatabaseSQLite {
    * @returns {Object|null} Challenge details or null
    */
   getMfaChallenge(challengeId) {
+    // Defensive check for valid challengeId
+    if (!challengeId || typeof challengeId !== 'string') {
+      console.error('getMfaChallenge called with invalid challengeId:', challengeId);
+      return null;
+    }
+
     const row = this.db.prepare(`
       SELECT * FROM mfa_challenges
       WHERE id = ? AND verified_at IS NULL

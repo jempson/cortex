@@ -3692,6 +3692,11 @@ app.post('/api/auth/mfa/email/verify-setup', authenticateToken, mfaLimiter, (req
       return res.status(400).json({ error: 'Challenge ID and code are required' });
     }
 
+    // Validate challengeId is a string
+    if (typeof challengeId !== 'string') {
+      return res.status(400).json({ error: 'Invalid challenge ID format' });
+    }
+
     // Verify the challenge
     const challenge = db.getMfaChallenge(challengeId);
     if (!challenge || challenge.userId !== req.user.userId) {
@@ -3838,6 +3843,11 @@ app.post('/api/auth/mfa/send-email-code', mfaLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Challenge ID is required' });
     }
 
+    // Validate challengeId is a string
+    if (typeof challengeId !== 'string') {
+      return res.status(400).json({ error: 'Invalid challenge ID format' });
+    }
+
     // Get the challenge to find user
     const challenge = db.getMfaChallenge(challengeId);
     if (!challenge) {
@@ -3877,6 +3887,11 @@ app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
     const { challengeId, method, code } = req.body;
     if (!challengeId || !method || !code) {
       return res.status(400).json({ error: 'Challenge ID, method, and code are required' });
+    }
+
+    // Validate challengeId is a string
+    if (typeof challengeId !== 'string') {
+      return res.status(400).json({ error: 'Invalid challenge ID format' });
     }
 
     // Get the challenge
