@@ -2255,7 +2255,7 @@ const AboutServerPage = ({ onBack }) => {
 
 // ============ LOGIN SCREEN ============
 const LoginScreen = ({ onAbout }) => {
-  const { login, register } = useAuth();
+  const { login, completeMfaLogin, register } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [handle, setHandle] = useState('');
@@ -2267,6 +2267,13 @@ const LoginScreen = ({ onAbout }) => {
   const [loading, setLoading] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotStatus, setForgotStatus] = useState({ loading: false, message: '', error: '' });
+  // MFA state
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaChallenge, setMfaChallenge] = useState(null);
+  const [mfaMethods, setMfaMethods] = useState([]);
+  const [mfaMethod, setMfaMethod] = useState('totp');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaLoading, setMfaLoading] = useState(false);
   const { isMobile, isTablet, isDesktop } = useWindowSize();
 
   const handleForgotPassword = async (e) => {
@@ -2305,13 +2312,43 @@ const LoginScreen = ({ onAbout }) => {
 
     setLoading(true);
     try {
-      if (isRegistering) await register(handle, email, password, displayName);
-      else await login(handle, password);
+      if (isRegistering) {
+        await register(handle, email, password, displayName);
+      } else {
+        const result = await login(handle, password);
+        if (result?.mfaRequired) {
+          setMfaRequired(true);
+          setMfaChallenge(result.mfaChallenge);
+          setMfaMethods(result.mfaMethods || []);
+          setMfaMethod(result.mfaMethods?.[0] || 'totp');
+        }
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleMfaSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setMfaLoading(true);
+    try {
+      await completeMfaLogin(mfaChallenge, mfaMethod, mfaCode);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaCancel = () => {
+    setMfaRequired(false);
+    setMfaChallenge(null);
+    setMfaMethods([]);
+    setMfaCode('');
+    setError('');
   };
 
   const inputStyle = {
@@ -2337,6 +2374,78 @@ const LoginScreen = ({ onAbout }) => {
           <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '8px' }}>SECURE COMMUNICATIONS</div>
         </div>
 
+        {mfaRequired ? (
+          <div>
+            <div style={{ color: 'var(--accent-teal)', fontSize: '0.9rem', marginBottom: '24px', textAlign: 'center' }}>
+              🔐 Two-Factor Authentication Required
+            </div>
+
+            {mfaMethods.length > 1 && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                  VERIFICATION METHOD
+                </label>
+                <select
+                  value={mfaMethod}
+                  onChange={(e) => { setMfaMethod(e.target.value); setMfaCode(''); setError(''); }}
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                >
+                  {mfaMethods.includes('totp') && <option value="totp">Authenticator App</option>}
+                  {mfaMethods.includes('email') && <option value="email">Email Code</option>}
+                  {mfaMethods.includes('recovery') && <option value="recovery">Recovery Code</option>}
+                </select>
+              </div>
+            )}
+
+            <form onSubmit={handleMfaSubmit}>
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                  {mfaMethod === 'totp' ? 'AUTHENTICATOR CODE' : mfaMethod === 'email' ? 'EMAIL CODE' : 'RECOVERY CODE'}
+                </label>
+                <input
+                  type="text"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\s/g, ''))}
+                  placeholder={mfaMethod === 'totp' ? '6-digit code' : mfaMethod === 'email' ? '6-digit code' : '8-character code'}
+                  style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.2em', textAlign: 'center' }}
+                  autoFocus
+                  autoComplete="one-time-code"
+                />
+                {mfaMethod === 'totp' && (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '8px' }}>
+                    Enter the code from your authenticator app
+                  </div>
+                )}
+                {mfaMethod === 'recovery' && (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '8px' }}>
+                    Enter one of your recovery codes (each can only be used once)
+                  </div>
+                )}
+              </div>
+
+              {error && <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>{error}</div>}
+
+              <button type="submit" disabled={mfaLoading || !mfaCode} style={{
+                width: '100%', padding: '14px',
+                background: mfaLoading ? 'var(--border-subtle)' : 'var(--accent-teal)20',
+                border: `1px solid ${mfaLoading ? 'var(--border-primary)' : 'var(--accent-teal)'}`,
+                color: mfaLoading ? 'var(--text-muted)' : 'var(--accent-teal)',
+                cursor: mfaLoading || !mfaCode ? 'not-allowed' : 'pointer',
+                fontFamily: 'monospace', fontSize: '0.9rem',
+              }}>
+                {mfaLoading ? 'VERIFYING...' : 'VERIFY'}
+              </button>
+            </form>
+
+            <div style={{ textAlign: 'center', marginTop: '16px' }}>
+              <button onClick={handleMfaCancel}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                ← Cancel and try again
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
@@ -2446,6 +2555,8 @@ const LoginScreen = ({ onAbout }) => {
               ← Back to login
             </button>
           </div>
+        )}
+        </>
         )}
 
         {onAbout && (
@@ -8843,6 +8954,18 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [mutedUsers, setMutedUsers] = useState([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(storage.getPushEnabled());
+  // MFA state
+  const [showMfaSetup, setShowMfaSetup] = useState(false);
+  const [mfaStatus, setMfaStatus] = useState(null);
+  const [mfaSetupStep, setMfaSetupStep] = useState(null); // 'totp-setup', 'totp-verify', 'email-setup', 'email-verify'
+  const [totpSetupData, setTotpSetupData] = useState(null);
+  const [totpVerifyCode, setTotpVerifyCode] = useState('');
+  const [emailVerifyCode, setEmailVerifyCode] = useState('');
+  const [emailChallengeId, setEmailChallengeId] = useState(null);
+  const [recoveryCodes, setRecoveryCodes] = useState(null);
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaDisablePassword, setMfaDisablePassword] = useState('');
+  const [mfaDisableCode, setMfaDisableCode] = useState('');
   const fileInputRef = useRef(null);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -8869,6 +8992,142 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         .catch(err => console.error('Failed to load notification preferences:', err));
     }
   }, [showNotificationPrefs, notificationPrefs, fetchAPI]);
+
+  // Load MFA status when section is expanded
+  useEffect(() => {
+    if (showMfaSetup && !mfaStatus) {
+      fetchAPI('/auth/mfa/status')
+        .then(data => setMfaStatus(data))
+        .catch(err => console.error('Failed to load MFA status:', err));
+    }
+  }, [showMfaSetup, mfaStatus, fetchAPI]);
+
+  // MFA handler functions
+  const loadMfaStatus = async () => {
+    try {
+      const data = await fetchAPI('/auth/mfa/status');
+      setMfaStatus(data);
+    } catch (err) {
+      console.error('Failed to load MFA status:', err);
+    }
+  };
+
+  const handleStartTotpSetup = async () => {
+    setMfaLoading(true);
+    try {
+      const data = await fetchAPI('/auth/mfa/totp/setup', { method: 'POST' });
+      setTotpSetupData(data);
+      setMfaSetupStep('totp-verify');
+    } catch (err) {
+      showToast(err.message || 'Failed to start TOTP setup', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleVerifyTotp = async () => {
+    setMfaLoading(true);
+    try {
+      const data = await fetchAPI('/auth/mfa/totp/verify', { method: 'POST', body: { code: totpVerifyCode } });
+      setRecoveryCodes(data.recoveryCodes);
+      setMfaSetupStep(null);
+      setTotpSetupData(null);
+      setTotpVerifyCode('');
+      loadMfaStatus();
+      showToast('TOTP enabled successfully!', 'success');
+    } catch (err) {
+      showToast(err.message || 'Invalid code. Please try again.', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleDisableTotp = async () => {
+    if (!mfaDisablePassword || !mfaDisableCode) {
+      showToast('Password and code are required', 'error');
+      return;
+    }
+    setMfaLoading(true);
+    try {
+      await fetchAPI('/auth/mfa/totp/disable', { method: 'POST', body: { password: mfaDisablePassword, code: mfaDisableCode } });
+      setMfaDisablePassword('');
+      setMfaDisableCode('');
+      loadMfaStatus();
+      showToast('TOTP disabled successfully', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to disable TOTP', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleStartEmailMfa = async () => {
+    setMfaLoading(true);
+    try {
+      const data = await fetchAPI('/auth/mfa/email/enable', { method: 'POST' });
+      setEmailChallengeId(data.challengeId);
+      setMfaSetupStep('email-verify');
+      showToast('Verification code sent to your email', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to start email MFA setup', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleVerifyEmailMfa = async () => {
+    setMfaLoading(true);
+    try {
+      const data = await fetchAPI('/auth/mfa/email/verify-setup', { method: 'POST', body: { challengeId: emailChallengeId, code: emailVerifyCode } });
+      if (data.recoveryCodes) {
+        setRecoveryCodes(data.recoveryCodes);
+      }
+      setMfaSetupStep(null);
+      setEmailChallengeId(null);
+      setEmailVerifyCode('');
+      loadMfaStatus();
+      showToast('Email MFA enabled successfully!', 'success');
+    } catch (err) {
+      showToast(err.message || 'Invalid code. Please try again.', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleDisableEmailMfa = async () => {
+    if (!mfaDisablePassword) {
+      showToast('Password is required', 'error');
+      return;
+    }
+    setMfaLoading(true);
+    try {
+      await fetchAPI('/auth/mfa/email/disable', { method: 'POST', body: { password: mfaDisablePassword } });
+      setMfaDisablePassword('');
+      loadMfaStatus();
+      showToast('Email MFA disabled successfully', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to disable email MFA', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleRegenerateRecoveryCodes = async () => {
+    if (!mfaDisablePassword) {
+      showToast('Password is required', 'error');
+      return;
+    }
+    setMfaLoading(true);
+    try {
+      const body = { password: mfaDisablePassword };
+      if (mfaStatus?.totpEnabled) {
+        body.mfaMethod = 'totp';
+        body.mfaCode = mfaDisableCode;
+      }
+      const data = await fetchAPI('/auth/mfa/recovery/regenerate', { method: 'POST', body });
+      setRecoveryCodes(data.recoveryCodes);
+      setMfaDisablePassword('');
+      setMfaDisableCode('');
+      showToast('Recovery codes regenerated', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to regenerate recovery codes', 'error');
+    }
+    setMfaLoading(false);
+  };
 
   const handleUpdateNotificationPrefs = async (updates) => {
     try {
@@ -9156,6 +9415,233 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           color: currentPassword && newPassword ? 'var(--accent-orange)' : 'var(--text-muted)',
           cursor: currentPassword && newPassword ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
         }}>CHANGE PASSWORD</button>
+      </div>
+
+      {/* Two-Factor Authentication */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div
+          onClick={() => setShowMfaSetup(!showMfaSetup)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+        >
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>TWO-FACTOR AUTHENTICATION</div>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showMfaSetup ? '▼' : '▶'}</span>
+        </div>
+
+        {showMfaSetup && (
+          <div style={{ marginTop: '16px' }}>
+            {mfaStatus ? (
+              <>
+                {/* Recovery Codes Modal/Display */}
+                {recoveryCodes && (
+                  <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--accent-amber)10', border: '1px solid var(--accent-amber)', borderRadius: '4px' }}>
+                    <div style={{ color: 'var(--accent-amber)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px' }}>
+                      ⚠️ Save Your Recovery Codes
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '12px' }}>
+                      Store these codes in a safe place. Each code can only be used once. You won't be able to see them again!
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                      {recoveryCodes.map((code, i) => (
+                        <div key={i} style={{ padding: '8px', background: 'var(--bg-elevated)', fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-primary)', textAlign: 'center' }}>
+                          {code}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(recoveryCodes.join('\n'));
+                          showToast('Recovery codes copied to clipboard', 'success');
+                        }}
+                        style={{ padding: '8px 16px', background: 'var(--accent-teal)20', border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}
+                      >
+                        COPY CODES
+                      </button>
+                      <button
+                        onClick={() => setRecoveryCodes(null)}
+                        style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}
+                      >
+                        I'VE SAVED THEM
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* TOTP Setup UI */}
+                {mfaSetupStep === 'totp-verify' && totpSetupData && (
+                  <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border-primary)' }}>
+                    <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px' }}>
+                      Setup Authenticator App
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '16px' }}>
+                      Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+                    </div>
+                    <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                      <img src={totpSetupData.qrCodeDataUrl} alt="TOTP QR Code" style={{ maxWidth: '200px', border: '4px solid white' }} />
+                    </div>
+                    <div style={{ marginBottom: '16px' }}>
+                      <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '4px' }}>Or enter this key manually:</div>
+                      <div style={{ padding: '8px', background: 'var(--bg-base)', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--accent-amber)', wordBreak: 'break-all' }}>
+                        {totpSetupData.secret}
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                        Enter the 6-digit code from your app:
+                      </label>
+                      <input
+                        type="text"
+                        value={totpVerifyCode}
+                        onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        style={{ ...inputStyle, fontFamily: 'monospace', textAlign: 'center', letterSpacing: '0.3em' }}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={handleVerifyTotp}
+                        disabled={totpVerifyCode.length !== 6 || mfaLoading}
+                        style={{ padding: '10px 20px', background: totpVerifyCode.length === 6 ? 'var(--accent-green)20' : 'transparent', border: `1px solid ${totpVerifyCode.length === 6 ? 'var(--accent-green)' : 'var(--border-primary)'}`, color: totpVerifyCode.length === 6 ? 'var(--accent-green)' : 'var(--text-muted)', cursor: totpVerifyCode.length === 6 ? 'pointer' : 'not-allowed', fontFamily: 'monospace' }}
+                      >
+                        {mfaLoading ? 'VERIFYING...' : 'VERIFY & ENABLE'}
+                      </button>
+                      <button
+                        onClick={() => { setMfaSetupStep(null); setTotpSetupData(null); setTotpVerifyCode(''); }}
+                        style={{ padding: '10px 20px', background: 'transparent', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace' }}
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Email MFA Verify UI */}
+                {mfaSetupStep === 'email-verify' && (
+                  <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border-primary)' }}>
+                    <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px' }}>
+                      Verify Email MFA
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '16px' }}>
+                      Enter the 6-digit code we sent to your email address.
+                    </div>
+                    <div style={{ marginBottom: '16px' }}>
+                      <input
+                        type="text"
+                        value={emailVerifyCode}
+                        onChange={(e) => setEmailVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        style={{ ...inputStyle, fontFamily: 'monospace', textAlign: 'center', letterSpacing: '0.3em' }}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={handleVerifyEmailMfa}
+                        disabled={emailVerifyCode.length !== 6 || mfaLoading}
+                        style={{ padding: '10px 20px', background: emailVerifyCode.length === 6 ? 'var(--accent-green)20' : 'transparent', border: `1px solid ${emailVerifyCode.length === 6 ? 'var(--accent-green)' : 'var(--border-primary)'}`, color: emailVerifyCode.length === 6 ? 'var(--accent-green)' : 'var(--text-muted)', cursor: emailVerifyCode.length === 6 ? 'pointer' : 'not-allowed', fontFamily: 'monospace' }}
+                      >
+                        {mfaLoading ? 'VERIFYING...' : 'VERIFY & ENABLE'}
+                      </button>
+                      <button
+                        onClick={() => { setMfaSetupStep(null); setEmailChallengeId(null); setEmailVerifyCode(''); }}
+                        style={{ padding: '10px 20px', background: 'transparent', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace' }}
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* MFA Status Display */}
+                {!mfaSetupStep && (
+                  <>
+                    {/* TOTP Section */}
+                    <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-elevated)', border: `1px solid ${mfaStatus.totpEnabled ? 'var(--accent-green)' : 'var(--border-subtle)'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                          🔑 Authenticator App (TOTP)
+                        </div>
+                        <div style={{ color: mfaStatus.totpEnabled ? 'var(--accent-green)' : 'var(--text-muted)', fontSize: '0.75rem' }}>
+                          {mfaStatus.totpEnabled ? '✓ ENABLED' : 'NOT SET UP'}
+                        </div>
+                      </div>
+                      {mfaStatus.totpEnabled ? (
+                        <div style={{ marginTop: '12px' }}>
+                          <div style={{ marginBottom: '8px' }}>
+                            <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
+                            <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="TOTP Code" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+                          </div>
+                          <button onClick={handleDisableTotp} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {mfaLoading ? 'DISABLING...' : 'DISABLE TOTP'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={handleStartTotpSetup} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-teal)20', border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                          {mfaLoading ? 'LOADING...' : 'SETUP AUTHENTICATOR'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Email MFA Section */}
+                    <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-elevated)', border: `1px solid ${mfaStatus.emailMfaEnabled ? 'var(--accent-green)' : 'var(--border-subtle)'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                          ✉️ Email Verification
+                        </div>
+                        <div style={{ color: mfaStatus.emailMfaEnabled ? 'var(--accent-green)' : 'var(--text-muted)', fontSize: '0.75rem' }}>
+                          {mfaStatus.emailMfaEnabled ? '✓ ENABLED' : 'NOT SET UP'}
+                        </div>
+                      </div>
+                      {mfaStatus.emailMfaEnabled ? (
+                        <div style={{ marginTop: '12px' }}>
+                          <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
+                          <button onClick={handleDisableEmailMfa} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {mfaLoading ? 'DISABLING...' : 'DISABLE EMAIL MFA'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={handleStartEmailMfa} disabled={mfaLoading || !user?.email} style={{ padding: '8px 16px', background: user?.email ? 'var(--accent-teal)20' : 'transparent', border: `1px solid ${user?.email ? 'var(--accent-teal)' : 'var(--border-primary)'}`, color: user?.email ? 'var(--accent-teal)' : 'var(--text-muted)', cursor: user?.email ? 'pointer' : 'not-allowed', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                          {mfaLoading ? 'LOADING...' : user?.email ? 'SETUP EMAIL MFA' : 'EMAIL REQUIRED'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Recovery Codes Section */}
+                    {(mfaStatus.totpEnabled || mfaStatus.emailMfaEnabled) && (
+                      <div style={{ padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                            🔐 Recovery Codes
+                          </div>
+                          <div style={{ color: mfaStatus.hasRecoveryCodes ? 'var(--accent-green)' : 'var(--accent-orange)', fontSize: '0.75rem' }}>
+                            {mfaStatus.hasRecoveryCodes ? '✓ AVAILABLE' : '⚠️ NOT SET'}
+                          </div>
+                        </div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
+                          Recovery codes let you access your account if you lose your authentication device.
+                        </div>
+                        <div style={{ marginTop: '8px' }}>
+                          <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
+                          {mfaStatus.totpEnabled && (
+                            <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="TOTP Code" style={{ ...inputStyle, fontFamily: 'monospace', marginBottom: '8px' }} />
+                          )}
+                          <button onClick={handleRegenerateRecoveryCodes} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-amber)20', border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {mfaLoading ? 'GENERATING...' : 'REGENERATE CODES'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
+                Loading MFA settings...
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Display Preferences */}
@@ -10861,8 +11347,25 @@ function AuthProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Login failed');
+    // Check if MFA is required
+    if (data.mfaRequired) {
+      return { mfaRequired: true, mfaChallenge: data.mfaChallenge, mfaMethods: data.mfaMethods };
+    }
     storage.setToken(data.token); storage.setUser(data.user);
     setToken(data.token); setUser(data.user);
+    return { success: true };
+  };
+
+  const completeMfaLogin = async (challengeId, method, code) => {
+    const res = await fetch(`${API_URL}/auth/mfa/verify`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeId, method, code }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'MFA verification failed');
+    storage.setToken(data.token); storage.setUser(data.user);
+    setToken(data.token); setUser(data.user);
+    return { success: true };
   };
 
   const register = async (handle, email, password, displayName) => {
@@ -10890,7 +11393,7 @@ function AuthProvider({ children }) {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, login, completeMfaLogin, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

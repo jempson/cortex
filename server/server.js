@@ -16,6 +16,8 @@ import multer from 'multer';
 import sharp from 'sharp';
 import webpush from 'web-push';
 import crypto from 'crypto';
+import { authenticator } from 'otplib';
+import QRCode from 'qrcode';
 import { DatabaseSQLite } from './database-sqlite.js';
 import { getEmailService } from './email-service.js';
 
@@ -3268,6 +3270,22 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Check if MFA is enabled
+    const hasMfa = db.hasMfaEnabled && db.hasMfaEnabled(user.id);
+    if (hasMfa) {
+      // Create MFA challenge (5 minute expiry)
+      const mfaMethods = db.getEnabledMfaMethods(user.id);
+      const challengeId = db.createMfaChallenge(user.id, 'login', null);
+
+      console.log(`🔐 MFA required for user: ${handle}`);
+
+      return res.json({
+        mfaRequired: true,
+        mfaChallenge: challengeId,
+        mfaMethods // ['totp', 'email', 'recovery']
+      });
+    }
+
     clearFailedAttempts(handle);
     db.updateUserStatus(user.id, 'online');
 
@@ -3446,6 +3464,465 @@ app.post('/api/auth/clear-password-change', authenticateToken, (req, res) => {
   } catch (err) {
     console.error('Clear password change requirement error:', err);
     res.status(500).json({ error: 'Failed to clear password change requirement' });
+  }
+});
+
+// ============ MFA Routes ============
+
+// Rate limiter for MFA operations
+const mfaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window
+  message: { error: 'Too many MFA attempts, please try again later' }
+});
+
+// Get MFA status for current user
+app.get('/api/auth/mfa/status', authenticateToken, (req, res) => {
+  try {
+    const settings = db.getMfaSettings(req.user.userId);
+    const methods = db.getEnabledMfaMethods(req.user.userId);
+    res.json({
+      totpEnabled: settings?.totp_enabled === 1,
+      emailMfaEnabled: settings?.email_mfa_enabled === 1,
+      hasRecoveryCodes: settings?.recovery_codes ? JSON.parse(settings.recovery_codes).length > 0 : false,
+      enabledMethods: methods
+    });
+  } catch (err) {
+    console.error('MFA status error:', err);
+    res.status(500).json({ error: 'Failed to get MFA status' });
+  }
+});
+
+// Begin TOTP setup - generate secret and QR code
+app.post('/api/auth/mfa/totp/setup', authenticateToken, async (req, res) => {
+  try {
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Check if TOTP is already enabled
+    const settings = db.getMfaSettings(req.user.userId);
+    if (settings?.totp_enabled === 1) {
+      return res.status(400).json({ error: 'TOTP is already enabled' });
+    }
+
+    // Generate new TOTP secret
+    const secret = authenticator.generateSecret();
+
+    // Store pending secret (not enabled yet)
+    db.storePendingTotpSecret(req.user.userId, secret);
+
+    // Generate otpauth URI for authenticator apps
+    const appName = 'Cortex';
+    const otpauthUrl = authenticator.keyuri(user.handle, appName, secret);
+
+    // Generate QR code as data URL
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    res.json({
+      secret,
+      qrCodeDataUrl,
+      manualEntryKey: secret,
+      otpauthUrl
+    });
+  } catch (err) {
+    console.error('TOTP setup error:', err);
+    res.status(500).json({ error: 'Failed to setup TOTP' });
+  }
+});
+
+// Verify TOTP code and enable
+app.post('/api/auth/mfa/totp/verify', authenticateToken, mfaLimiter, (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ error: 'Code is required' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Get pending secret
+    const secret = db.getTotpSecret(req.user.userId);
+    if (!secret) {
+      return res.status(400).json({ error: 'No TOTP setup in progress. Please start setup first.' });
+    }
+
+    // Verify the code
+    const isValid = authenticator.verify({ token: code, secret });
+    if (!isValid) {
+      return res.status(400).json({ error: 'Invalid code. Please try again.' });
+    }
+
+    // Enable TOTP
+    db.enableTotp(req.user.userId, secret);
+
+    // Generate recovery codes (10 codes)
+    const recoveryCodes = [];
+    for (let i = 0; i < 10; i++) {
+      const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+      recoveryCodes.push(code);
+    }
+
+    // Store hashed recovery codes
+    db.storeRecoveryCodes(req.user.userId, recoveryCodes);
+
+    res.json({
+      success: true,
+      message: 'TOTP enabled successfully',
+      recoveryCodes // Return plaintext codes once (user must save them)
+    });
+  } catch (err) {
+    console.error('TOTP verify error:', err);
+    res.status(500).json({ error: 'Failed to verify TOTP' });
+  }
+});
+
+// Disable TOTP (requires password and current TOTP code)
+app.post('/api/auth/mfa/totp/disable', authenticateToken, mfaLimiter, async (req, res) => {
+  try {
+    const { password, code } = req.body;
+    if (!password || !code) {
+      return res.status(400).json({ error: 'Password and code are required' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Verify password
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Verify TOTP code
+    const secret = db.getTotpSecret(req.user.userId);
+    if (!secret) {
+      return res.status(400).json({ error: 'TOTP is not enabled' });
+    }
+
+    const isValid = authenticator.verify({ token: code, secret });
+    if (!isValid) {
+      return res.status(400).json({ error: 'Invalid TOTP code' });
+    }
+
+    // Disable TOTP
+    db.disableTotp(req.user.userId);
+
+    res.json({ success: true, message: 'TOTP disabled successfully' });
+  } catch (err) {
+    console.error('TOTP disable error:', err);
+    res.status(500).json({ error: 'Failed to disable TOTP' });
+  }
+});
+
+// Enable email MFA
+app.post('/api/auth/mfa/email/enable', authenticateToken, async (req, res) => {
+  try {
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (!user.email) {
+      return res.status(400).json({ error: 'No email address on file. Please add an email first.' });
+    }
+
+    // Check if email MFA is already enabled
+    const settings = db.getMfaSettings(req.user.userId);
+    if (settings?.email_mfa_enabled === 1) {
+      return res.status(400).json({ error: 'Email MFA is already enabled' });
+    }
+
+    // Send test code to verify email works
+    const testCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const emailService = getEmailService();
+
+    if (emailService.configured) {
+      await emailService.sendMFACode(user.email, testCode);
+    }
+
+    // Create MFA challenge for verification
+    const challengeId = db.createMfaChallenge(req.user.userId, 'email_enable', testCode);
+
+    res.json({
+      success: true,
+      message: 'Verification code sent to your email',
+      challengeId
+    });
+  } catch (err) {
+    console.error('Email MFA enable error:', err);
+    res.status(500).json({ error: 'Failed to enable email MFA' });
+  }
+});
+
+// Verify email MFA setup
+app.post('/api/auth/mfa/email/verify-setup', authenticateToken, mfaLimiter, (req, res) => {
+  try {
+    const { challengeId, code } = req.body;
+    if (!challengeId || !code) {
+      return res.status(400).json({ error: 'Challenge ID and code are required' });
+    }
+
+    // Verify the challenge
+    const challenge = db.getMfaChallenge(challengeId);
+    if (!challenge || challenge.user_id !== req.user.userId) {
+      return res.status(400).json({ error: 'Invalid or expired challenge' });
+    }
+
+    if (challenge.challenge_type !== 'email_enable') {
+      return res.status(400).json({ error: 'Invalid challenge type' });
+    }
+
+    // Check expiration
+    if (new Date(challenge.expires_at) < new Date()) {
+      db.deleteMfaChallenge(challengeId);
+      return res.status(400).json({ error: 'Code has expired. Please request a new one.' });
+    }
+
+    // Verify code (stored as hash)
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+    if (challenge.code_hash !== codeHash) {
+      return res.status(400).json({ error: 'Invalid code' });
+    }
+
+    // Enable email MFA
+    db.enableEmailMfa(req.user.userId);
+    db.markMfaChallengeVerified(challengeId);
+
+    // Generate recovery codes if not already present
+    const settings = db.getMfaSettings(req.user.userId);
+    let recoveryCodes = null;
+    if (!settings?.recovery_codes || JSON.parse(settings.recovery_codes).length === 0) {
+      recoveryCodes = [];
+      for (let i = 0; i < 10; i++) {
+        const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+        recoveryCodes.push(code);
+      }
+      db.storeRecoveryCodes(req.user.userId, recoveryCodes);
+    }
+
+    res.json({
+      success: true,
+      message: 'Email MFA enabled successfully',
+      recoveryCodes // Only returned if newly generated
+    });
+  } catch (err) {
+    console.error('Email MFA verify setup error:', err);
+    res.status(500).json({ error: 'Failed to verify email MFA setup' });
+  }
+});
+
+// Disable email MFA (requires password)
+app.post('/api/auth/mfa/email/disable', authenticateToken, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Verify password
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Disable email MFA
+    db.disableEmailMfa(req.user.userId);
+
+    res.json({ success: true, message: 'Email MFA disabled successfully' });
+  } catch (err) {
+    console.error('Email MFA disable error:', err);
+    res.status(500).json({ error: 'Failed to disable email MFA' });
+  }
+});
+
+// Regenerate recovery codes (requires password + one MFA method)
+app.post('/api/auth/mfa/recovery/regenerate', authenticateToken, mfaLimiter, async (req, res) => {
+  try {
+    const { password, mfaCode, mfaMethod } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Verify password
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Verify MFA if enabled
+    const hasMfa = db.hasMfaEnabled(req.user.userId);
+    if (hasMfa) {
+      if (!mfaCode || !mfaMethod) {
+        return res.status(400).json({ error: 'MFA verification required' });
+      }
+
+      if (mfaMethod === 'totp') {
+        const secret = db.getTotpSecret(req.user.userId);
+        const isValid = authenticator.verify({ token: mfaCode, secret });
+        if (!isValid) {
+          return res.status(400).json({ error: 'Invalid TOTP code' });
+        }
+      } else {
+        return res.status(400).json({ error: 'Invalid MFA method for this operation' });
+      }
+    }
+
+    // Generate new recovery codes
+    const recoveryCodes = [];
+    for (let i = 0; i < 10; i++) {
+      const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+      recoveryCodes.push(code);
+    }
+
+    // Store new hashed codes (replaces old ones)
+    db.storeRecoveryCodes(req.user.userId, recoveryCodes);
+
+    res.json({
+      success: true,
+      message: 'Recovery codes regenerated',
+      recoveryCodes // Return plaintext codes once (user must save them)
+    });
+  } catch (err) {
+    console.error('Recovery codes regenerate error:', err);
+    res.status(500).json({ error: 'Failed to regenerate recovery codes' });
+  }
+});
+
+// Send email MFA code for login
+app.post('/api/auth/mfa/send-email-code', mfaLimiter, async (req, res) => {
+  try {
+    const { challengeId } = req.body;
+    if (!challengeId) {
+      return res.status(400).json({ error: 'Challenge ID is required' });
+    }
+
+    // Get the challenge to find user
+    const challenge = db.getMfaChallenge(challengeId);
+    if (!challenge) {
+      return res.status(400).json({ error: 'Invalid challenge' });
+    }
+
+    const user = db.findUserById(challenge.user_id);
+    if (!user || !user.email) {
+      return res.status(400).json({ error: 'Cannot send email code' });
+    }
+
+    // Generate and send code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Update challenge with new code
+    const newChallengeId = db.createMfaChallenge(challenge.user_id, 'email', code);
+
+    const emailService = getEmailService();
+    if (emailService.configured) {
+      await emailService.sendMFACode(user.email, code);
+    }
+
+    res.json({
+      success: true,
+      message: 'Code sent to your email',
+      challengeId: newChallengeId
+    });
+  } catch (err) {
+    console.error('Send email MFA code error:', err);
+    res.status(500).json({ error: 'Failed to send email code' });
+  }
+});
+
+// Verify MFA during login
+app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
+  try {
+    const { challengeId, method, code } = req.body;
+    if (!challengeId || !method || !code) {
+      return res.status(400).json({ error: 'Challenge ID, method, and code are required' });
+    }
+
+    // Get the challenge
+    const challenge = db.getMfaChallenge(challengeId);
+    if (!challenge) {
+      return res.status(400).json({ error: 'Invalid or expired challenge' });
+    }
+
+    // Check expiration
+    if (new Date(challenge.expires_at) < new Date()) {
+      db.deleteMfaChallenge(challengeId);
+      return res.status(400).json({ error: 'Challenge has expired. Please log in again.' });
+    }
+
+    const user = db.findUserById(challenge.user_id);
+    if (!user) {
+      return res.status(400).json({ error: 'User not found' });
+    }
+
+    let verified = false;
+
+    if (method === 'totp') {
+      const secret = db.getTotpSecret(challenge.user_id);
+      if (secret) {
+        verified = authenticator.verify({ token: code, secret });
+      }
+    } else if (method === 'email') {
+      // For email, we need to check the code_hash on the challenge
+      const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+      if (challenge.code_hash === codeHash) {
+        verified = true;
+      }
+    } else if (method === 'recovery') {
+      // Verify recovery code
+      const codes = db.getRecoveryCodes(challenge.user_id);
+      if (codes) {
+        const codeHash = crypto.createHash('sha256').update(code.toUpperCase()).digest('hex');
+        const matchingCode = codes.find(c => c.hash === codeHash && !c.used);
+        if (matchingCode) {
+          db.markRecoveryCodeUsed(challenge.user_id, code.toUpperCase());
+          verified = true;
+        }
+      }
+    }
+
+    if (!verified) {
+      return res.status(400).json({ error: 'Invalid code' });
+    }
+
+    // Mark challenge as verified
+    db.markMfaChallengeVerified(challengeId);
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user.id, handle: user.handle },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    // Clear any failed login attempts
+    if (db.clearFailedLogins) {
+      db.clearFailedLogins(user.handle);
+    }
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        handle: user.handle,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        avatarUrl: user.avatarUrl || null,
+        role: user.role,
+        preferences: user.preferences,
+        bio: user.bio,
+        email: user.email,
+        requirePasswordChange: user.require_password_change === 1
+      }
+    });
+  } catch (err) {
+    console.error('MFA verify error:', err);
+    res.status(500).json({ error: 'Failed to verify MFA' });
   }
 });
 

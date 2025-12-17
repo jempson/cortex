@@ -55,6 +55,10 @@ The following features have been implemented and are no longer outstanding:
 | **Password Reset** | v1.14.0 | Token-based recovery flow |
 | **Admin Password Reset** | v1.14.0 | Admin can reset user passwords |
 | **Persistent Lockouts** | v1.14.0 | Database-backed rate limiting |
+| **TOTP MFA** | v1.14.0 | Authenticator app support (Google Authenticator, Authy) |
+| **Email MFA** | v1.14.0 | Email-based verification codes |
+| **Recovery Codes** | v1.14.0 | 10 one-time backup codes |
+| **MFA Login Flow** | v1.14.0 | Challenge-response during login |
 
 ---
 

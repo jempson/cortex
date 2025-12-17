@@ -26,10 +26,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `POST /api/admin/users/:id/reset-password` - Admin reset user password
 - `POST /api/admin/users/:id/force-logout` - Force user logout
 
+#### Multi-Factor Authentication (MFA)
+- **TOTP Support**: Setup authenticator apps (Google Authenticator, Authy, etc.) with QR code
+- **Email MFA**: Email-based 6-digit verification codes as alternative to TOTP
+- **Recovery Codes**: 10 one-time backup codes generated on MFA setup
+- **MFA Challenge Flow**: Login returns challenge when MFA is enabled, requiring second factor
+
+#### MFA Endpoints
+- `GET /api/auth/mfa/status` - Get MFA status for current user
+- `POST /api/auth/mfa/totp/setup` - Begin TOTP setup (returns QR code)
+- `POST /api/auth/mfa/totp/verify` - Verify TOTP code and enable
+- `POST /api/auth/mfa/totp/disable` - Disable TOTP (requires password + code)
+- `POST /api/auth/mfa/email/enable` - Begin email MFA setup
+- `POST /api/auth/mfa/email/verify-setup` - Verify email code and enable
+- `POST /api/auth/mfa/email/disable` - Disable email MFA
+- `POST /api/auth/mfa/recovery/regenerate` - Generate new recovery codes
+- `POST /api/auth/mfa/send-email-code` - Send email code during login
+- `POST /api/auth/mfa/verify` - Verify MFA during login
+
 #### Client UI
 - Forgot password link on login screen
 - Password reset page with token validation
 - Confirm password field for registration
+- MFA challenge screen during login (TOTP, email, or recovery code)
+- MFA setup panel in Profile Settings (Two-Factor Authentication section)
+- QR code display for authenticator app setup
+- Recovery codes display with copy-to-clipboard functionality
 
 ### Security
 - JWT_SECRET now required in production (server exits if not set)
@@ -40,6 +62,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `account_lockouts` table for persistent rate limiting
 - Added `password_reset_tokens` table for secure token storage
 - Added `require_password_change` flag to users table
+- Added `user_mfa` table for MFA settings (TOTP secret, email MFA, recovery codes)
+- Added `mfa_challenges` table for login challenge tracking
+
+### Dependencies
+- Added `otplib` for TOTP generation/verification
+- Added `qrcode` for QR code generation
 
 ---
 

@@ -244,6 +244,34 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_reset_tokens_expires ON password_reset_tokens(expires_at);
 
+-- ============ Multi-Factor Authentication ============
+
+-- User MFA settings
+CREATE TABLE IF NOT EXISTS user_mfa (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    totp_secret TEXT,                    -- Encrypted TOTP secret
+    totp_enabled INTEGER DEFAULT 0,
+    email_mfa_enabled INTEGER DEFAULT 0,
+    recovery_codes TEXT,                 -- JSON array of hashed codes
+    recovery_codes_generated_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+);
+
+-- MFA challenge tokens (for login flow)
+CREATE TABLE IF NOT EXISTS mfa_challenges (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    challenge_type TEXT NOT NULL,        -- totp, email, recovery
+    code_hash TEXT,                      -- For email codes (hashed)
+    expires_at TEXT NOT NULL,
+    verified_at TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_mfa_challenges_user ON mfa_challenges(user_id);
+CREATE INDEX IF NOT EXISTS idx_mfa_challenges_expires ON mfa_challenges(expires_at);
+
 -- ============ Indexes ============
 
 -- User lookups

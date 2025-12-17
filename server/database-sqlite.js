@@ -1179,6 +1179,280 @@ export class DatabaseSQLite {
     return result.changes;
   }
 
+  // ============ Multi-Factor Authentication Methods ============
+
+  /**
+   * Get MFA settings for a user
+   * @param {string} userId - User ID
+   * @returns {Object|null} MFA settings or null
+   */
+  getMfaSettings(userId) {
+    const row = this.db.prepare('SELECT * FROM user_mfa WHERE user_id = ?').get(userId);
+    if (!row) return null;
+    return {
+      userId: row.user_id,
+      totpEnabled: row.totp_enabled === 1,
+      emailMfaEnabled: row.email_mfa_enabled === 1,
+      hasRecoveryCodes: !!row.recovery_codes,
+      recoveryCodesGeneratedAt: row.recovery_codes_generated_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  /**
+   * Check if user has any MFA method enabled
+   * @param {string} userId - User ID
+   * @returns {boolean}
+   */
+  hasMfaEnabled(userId) {
+    const settings = this.getMfaSettings(userId);
+    if (!settings) return false;
+    return settings.totpEnabled || settings.emailMfaEnabled;
+  }
+
+  /**
+   * Get enabled MFA methods for a user
+   * @param {string} userId - User ID
+   * @returns {string[]} Array of enabled methods
+   */
+  getEnabledMfaMethods(userId) {
+    const settings = this.getMfaSettings(userId);
+    if (!settings) return [];
+    const methods = [];
+    if (settings.totpEnabled) methods.push('totp');
+    if (settings.emailMfaEnabled) methods.push('email');
+    if (settings.hasRecoveryCodes) methods.push('recovery');
+    return methods;
+  }
+
+  /**
+   * Store pending TOTP secret (before verification)
+   * @param {string} userId - User ID
+   * @param {string} encryptedSecret - Encrypted TOTP secret
+   */
+  storePendingTotpSecret(userId, encryptedSecret) {
+    const now = new Date().toISOString();
+    const existing = this.db.prepare('SELECT user_id FROM user_mfa WHERE user_id = ?').get(userId);
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE user_mfa SET totp_secret = ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(encryptedSecret, now, userId);
+    } else {
+      this.db.prepare(`
+        INSERT INTO user_mfa (user_id, totp_secret, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+      `).run(userId, encryptedSecret, now, now);
+    }
+  }
+
+  /**
+   * Get stored TOTP secret for verification
+   * @param {string} userId - User ID
+   * @returns {string|null} Encrypted TOTP secret
+   */
+  getTotpSecret(userId) {
+    const row = this.db.prepare('SELECT totp_secret FROM user_mfa WHERE user_id = ?').get(userId);
+    return row?.totp_secret || null;
+  }
+
+  /**
+   * Enable TOTP after successful verification
+   * @param {string} userId - User ID
+   */
+  enableTotp(userId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE user_mfa SET totp_enabled = 1, updated_at = ?
+      WHERE user_id = ?
+    `).run(now, userId);
+  }
+
+  /**
+   * Disable TOTP
+   * @param {string} userId - User ID
+   */
+  disableTotp(userId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE user_mfa SET totp_enabled = 0, totp_secret = NULL, updated_at = ?
+      WHERE user_id = ?
+    `).run(now, userId);
+  }
+
+  /**
+   * Enable email MFA
+   * @param {string} userId - User ID
+   */
+  enableEmailMfa(userId) {
+    const now = new Date().toISOString();
+    const existing = this.db.prepare('SELECT user_id FROM user_mfa WHERE user_id = ?').get(userId);
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE user_mfa SET email_mfa_enabled = 1, updated_at = ?
+        WHERE user_id = ?
+      `).run(now, userId);
+    } else {
+      this.db.prepare(`
+        INSERT INTO user_mfa (user_id, email_mfa_enabled, created_at, updated_at)
+        VALUES (?, 1, ?, ?)
+      `).run(userId, now, now);
+    }
+  }
+
+  /**
+   * Disable email MFA
+   * @param {string} userId - User ID
+   */
+  disableEmailMfa(userId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE user_mfa SET email_mfa_enabled = 0, updated_at = ?
+      WHERE user_id = ?
+    `).run(now, userId);
+  }
+
+  /**
+   * Store recovery codes (hashed)
+   * @param {string} userId - User ID
+   * @param {string[]} hashedCodes - Array of hashed recovery codes
+   */
+  storeRecoveryCodes(userId, hashedCodes) {
+    const now = new Date().toISOString();
+    const codesJson = JSON.stringify(hashedCodes);
+    const existing = this.db.prepare('SELECT user_id FROM user_mfa WHERE user_id = ?').get(userId);
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE user_mfa SET recovery_codes = ?, recovery_codes_generated_at = ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(codesJson, now, now, userId);
+    } else {
+      this.db.prepare(`
+        INSERT INTO user_mfa (user_id, recovery_codes, recovery_codes_generated_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(userId, codesJson, now, now, now);
+    }
+  }
+
+  /**
+   * Get recovery codes (hashed)
+   * @param {string} userId - User ID
+   * @returns {string[]} Array of hashed recovery codes
+   */
+  getRecoveryCodes(userId) {
+    const row = this.db.prepare('SELECT recovery_codes FROM user_mfa WHERE user_id = ?').get(userId);
+    if (!row?.recovery_codes) return [];
+    try {
+      return JSON.parse(row.recovery_codes);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Remove a used recovery code
+   * @param {string} userId - User ID
+   * @param {number} codeIndex - Index of the used code
+   */
+  markRecoveryCodeUsed(userId, codeIndex) {
+    const codes = this.getRecoveryCodes(userId);
+    if (codeIndex >= 0 && codeIndex < codes.length) {
+      codes.splice(codeIndex, 1);
+      const now = new Date().toISOString();
+      this.db.prepare(`
+        UPDATE user_mfa SET recovery_codes = ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(JSON.stringify(codes), now, userId);
+    }
+  }
+
+  /**
+   * Create an MFA challenge for login
+   * @param {string} userId - User ID
+   * @param {string} challengeType - Type of challenge (totp, email, recovery)
+   * @param {string} codeHash - Hashed code for email challenges
+   * @param {number} expiresInMinutes - Expiry time in minutes
+   * @returns {{id: string, expiresAt: string}}
+   */
+  createMfaChallenge(userId, challengeType, codeHash = null, expiresInMinutes = 10) {
+    const id = uuidv4();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + expiresInMinutes * 60 * 1000).toISOString();
+
+    // Clean up any existing challenges for this user
+    this.db.prepare('DELETE FROM mfa_challenges WHERE user_id = ?').run(userId);
+
+    this.db.prepare(`
+      INSERT INTO mfa_challenges (id, user_id, challenge_type, code_hash, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, userId, challengeType, codeHash, expiresAt, now.toISOString());
+
+    return { id, expiresAt };
+  }
+
+  /**
+   * Get MFA challenge by ID
+   * @param {string} challengeId - Challenge ID
+   * @returns {Object|null} Challenge details or null
+   */
+  getMfaChallenge(challengeId) {
+    const row = this.db.prepare(`
+      SELECT * FROM mfa_challenges
+      WHERE id = ? AND verified_at IS NULL
+    `).get(challengeId);
+
+    if (!row) return null;
+    if (new Date(row.expires_at) < new Date()) {
+      // Expired, clean up
+      this.db.prepare('DELETE FROM mfa_challenges WHERE id = ?').run(challengeId);
+      return null;
+    }
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      challengeType: row.challenge_type,
+      codeHash: row.code_hash,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at
+    };
+  }
+
+  /**
+   * Mark MFA challenge as verified
+   * @param {string} challengeId - Challenge ID
+   */
+  markMfaChallengeVerified(challengeId) {
+    this.db.prepare(`
+      UPDATE mfa_challenges SET verified_at = ?
+      WHERE id = ?
+    `).run(new Date().toISOString(), challengeId);
+  }
+
+  /**
+   * Delete MFA challenge
+   * @param {string} challengeId - Challenge ID
+   */
+  deleteMfaChallenge(challengeId) {
+    this.db.prepare('DELETE FROM mfa_challenges WHERE id = ?').run(challengeId);
+  }
+
+  /**
+   * Clean up expired MFA challenges
+   * @returns {number} Number of challenges deleted
+   */
+  cleanupExpiredMfaChallenges() {
+    const result = this.db.prepare(`
+      DELETE FROM mfa_challenges
+      WHERE expires_at < datetime('now')
+    `).run();
+    return result.changes;
+  }
+
   requestHandleChange(userId, newHandle) {
     const user = this.findUserById(userId);
     if (!user) return { success: false, error: 'User not found' };
