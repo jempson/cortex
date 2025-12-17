@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL,
     last_seen TEXT,
     last_handle_change TEXT,
+    -- Security flags
+    require_password_change INTEGER DEFAULT 0,
     -- Preferences stored as JSON
     preferences TEXT DEFAULT '{"theme":"firefly","fontSize":"medium"}'
 );
@@ -218,6 +220,29 @@ CREATE TABLE IF NOT EXISTS moderation_log (
     details TEXT,
     created_at TEXT NOT NULL
 );
+
+-- ============ Account Security ============
+
+-- Account lockouts (persisted across restarts)
+CREATE TABLE IF NOT EXISTS account_lockouts (
+    handle TEXT PRIMARY KEY COLLATE NOCASE,
+    failed_attempts INTEGER DEFAULT 0,
+    locked_until TEXT,
+    last_attempt TEXT
+);
+
+-- Password reset tokens
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_reset_tokens_expires ON password_reset_tokens(expires_at);
 
 -- ============ Indexes ============
 

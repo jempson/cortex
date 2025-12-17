@@ -2257,17 +2257,52 @@ const AboutServerPage = ({ onBack }) => {
 const LoginScreen = ({ onAbout }) => {
   const { login, register } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [handle, setHandle] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStatus, setForgotStatus] = useState({ loading: false, message: '', error: '' });
   const { isMobile, isTablet, isDesktop } = useWindowSize();
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!forgotEmail || !forgotEmail.includes('@')) {
+      setForgotStatus({ loading: false, message: '', error: 'Please enter a valid email address' });
+      return;
+    }
+    setForgotStatus({ loading: true, message: '', error: '' });
+    try {
+      const res = await fetch(`${API_URL}/api/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setForgotStatus({ loading: false, message: data.message || 'Check your email for reset instructions.', error: '' });
+      } else {
+        setForgotStatus({ loading: false, message: '', error: data.error || 'Failed to send reset email' });
+      }
+    } catch (err) {
+      setForgotStatus({ loading: false, message: '', error: 'Network error. Please try again.' });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Validate password confirmation during registration
+    if (isRegistering && password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
     setLoading(true);
     try {
       if (isRegistering) await register(handle, email, password, displayName);
@@ -2326,11 +2361,19 @@ const LoginScreen = ({ onAbout }) => {
             </>
           )}
 
-          <div style={{ marginBottom: '24px' }}>
+          <div style={{ marginBottom: isRegistering ? '16px' : '24px' }}>
             <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PASSWORD</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder={isRegistering ? 'Min 8 chars, upper, lower, number' : 'Enter password'} style={inputStyle} />
           </div>
+
+          {isRegistering && (
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CONFIRM PASSWORD</label>
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password" style={inputStyle} />
+            </div>
+          )}
 
           {error && <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>{error}</div>}
 
@@ -2347,17 +2390,218 @@ const LoginScreen = ({ onAbout }) => {
         </form>
 
         <div style={{ textAlign: 'center', marginTop: '24px' }}>
-          <button onClick={() => { setIsRegistering(!isRegistering); setError(''); }}
+          <button onClick={() => { setIsRegistering(!isRegistering); setError(''); setConfirmPassword(''); setShowForgotPassword(false); }}
             style={{ background: 'none', border: 'none', color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem' }}>
             {isRegistering ? '← BACK TO LOGIN' : 'NEW USER? CREATE ACCOUNT →'}
           </button>
         </div>
+
+        {!isRegistering && !showForgotPassword && (
+          <div style={{ textAlign: 'center', marginTop: '12px' }}>
+            <button onClick={() => { setShowForgotPassword(true); setError(''); setForgotStatus({ loading: false, message: '', error: '' }); }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+              Forgot password?
+            </button>
+          </div>
+        )}
+
+        {showForgotPassword && (
+          <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--border-subtle)' }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px' }}>
+              Enter your email address and we'll send you a link to reset your password.
+            </div>
+            <form onSubmit={handleForgotPassword}>
+              <div style={{ marginBottom: '16px' }}>
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  style={inputStyle}
+                />
+              </div>
+              {forgotStatus.error && (
+                <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
+                  {forgotStatus.error}
+                </div>
+              )}
+              {forgotStatus.message && (
+                <div style={{ color: 'var(--accent-green)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-green)10', border: '1px solid var(--accent-green)30' }}>
+                  {forgotStatus.message}
+                </div>
+              )}
+              <button type="submit" disabled={forgotStatus.loading} style={{
+                width: '100%', padding: '12px',
+                background: forgotStatus.loading ? 'var(--border-subtle)' : 'var(--accent-teal)20',
+                border: `1px solid ${forgotStatus.loading ? 'var(--border-primary)' : 'var(--accent-teal)'}`,
+                color: forgotStatus.loading ? 'var(--text-muted)' : 'var(--accent-teal)',
+                cursor: forgotStatus.loading ? 'not-allowed' : 'pointer',
+                fontFamily: 'monospace', fontSize: '0.9rem',
+              }}>
+                {forgotStatus.loading ? 'SENDING...' : 'SEND RESET LINK'}
+              </button>
+            </form>
+            <button onClick={() => { setShowForgotPassword(false); setForgotStatus({ loading: false, message: '', error: '' }); }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem', marginTop: '12px', display: 'block', width: '100%', textAlign: 'center' }}>
+              ← Back to login
+            </button>
+          </div>
+        )}
 
         {onAbout && (
           <div style={{ textAlign: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
             <button onClick={onAbout}
               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
               About this server ◇
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============ RESET PASSWORD PAGE ============
+const ResetPasswordPage = ({ onBack }) => {
+  const [token, setToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [status, setStatus] = useState({ loading: true, valid: null, error: '', success: false });
+  const { isMobile } = useWindowSize();
+
+  // Extract token from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('token');
+    if (!urlToken) {
+      setStatus({ loading: false, valid: false, error: 'No reset token provided', success: false });
+      return;
+    }
+    setToken(urlToken);
+
+    // Verify token with server
+    fetch(`${API_URL}/api/auth/reset-password/${urlToken}`)
+      .then(res => res.json())
+      .then(data => {
+        setStatus({ loading: false, valid: data.valid, error: data.error || '', success: false });
+      })
+      .catch(() => {
+        setStatus({ loading: false, valid: false, error: 'Failed to verify token', success: false });
+      });
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setStatus(s => ({ ...s, error: 'Passwords do not match' }));
+      return;
+    }
+    if (newPassword.length < 8) {
+      setStatus(s => ({ ...s, error: 'Password must be at least 8 characters' }));
+      return;
+    }
+
+    setStatus(s => ({ ...s, loading: true, error: '' }));
+    try {
+      const res = await fetch(`${API_URL}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, newPassword, confirmPassword }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setStatus({ loading: false, valid: true, error: '', success: true });
+      } else {
+        setStatus(s => ({ ...s, loading: false, error: data.error || 'Failed to reset password' }));
+      }
+    } catch (err) {
+      setStatus(s => ({ ...s, loading: false, error: 'Network error. Please try again.' }));
+    }
+  };
+
+  const inputStyle = {
+    width: '100%', padding: '12px 16px', boxSizing: 'border-box',
+    background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+    color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'inherit',
+  };
+
+  return (
+    <div style={{
+      minHeight: '100vh', background: 'linear-gradient(180deg, var(--bg-surface), var(--bg-base))',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: "'Courier New', monospace", padding: isMobile ? '20px' : '0',
+    }}>
+      <ScanLines />
+      <div style={{
+        width: '100%', maxWidth: '400px', padding: isMobile ? '24px' : '40px',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '2px solid var(--accent-amber)40',
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>CORTEX</GlowText>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '8px' }}>PASSWORD RESET</div>
+        </div>
+
+        {status.loading && !status.success && (
+          <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Verifying reset token...</div>
+        )}
+
+        {!status.loading && !status.valid && !status.success && (
+          <div>
+            <div style={{ color: 'var(--accent-orange)', fontSize: '0.9rem', marginBottom: '24px', padding: '12px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30', textAlign: 'center' }}>
+              {status.error || 'Invalid or expired reset link'}
+            </div>
+            <button onClick={onBack} style={{
+              width: '100%', padding: '12px',
+              background: 'var(--accent-teal)20', border: '1px solid var(--accent-teal)',
+              color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.9rem',
+            }}>
+              BACK TO LOGIN
+            </button>
+          </div>
+        )}
+
+        {!status.loading && status.valid && !status.success && (
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>NEW PASSWORD</label>
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min 8 chars, upper, lower, number" style={inputStyle} />
+            </div>
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CONFIRM PASSWORD</label>
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password" style={inputStyle} />
+            </div>
+            {status.error && (
+              <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '16px', padding: '10px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
+                {status.error}
+              </div>
+            )}
+            <button type="submit" disabled={status.loading} style={{
+              width: '100%', padding: '14px',
+              background: status.loading ? 'var(--border-subtle)' : 'var(--accent-amber)20',
+              border: `1px solid ${status.loading ? 'var(--border-primary)' : 'var(--accent-amber)'}`,
+              color: status.loading ? 'var(--text-muted)' : 'var(--accent-amber)',
+              cursor: status.loading ? 'not-allowed' : 'pointer',
+              fontFamily: 'monospace', fontSize: '0.9rem',
+            }}>
+              {status.loading ? 'RESETTING...' : 'RESET PASSWORD'}
+            </button>
+          </form>
+        )}
+
+        {status.success && (
+          <div>
+            <div style={{ color: 'var(--accent-green)', fontSize: '0.9rem', marginBottom: '24px', padding: '12px', background: 'var(--accent-green)10', border: '1px solid var(--accent-green)30', textAlign: 'center' }}>
+              Password reset successfully! You can now login with your new password.
+            </div>
+            <button onClick={onBack} style={{
+              width: '100%', padding: '14px',
+              background: 'var(--accent-green)20', border: '1px solid var(--accent-green)',
+              color: 'var(--accent-green)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.9rem',
+            }}>
+              GO TO LOGIN
             </button>
           </div>
         )}
@@ -10681,6 +10925,10 @@ function AppContent() {
   // Public routes (accessible without login)
   if (currentPath === '/about') {
     return <AboutServerPage onBack={() => navigate('/')} />;
+  }
+
+  if (currentPath === '/reset-password' || currentPath.startsWith('/reset-password?')) {
+    return <ResetPasswordPage onBack={() => navigate('/')} />;
   }
 
   return user ? <MainApp /> : <LoginScreen onAbout={() => navigate('/about')} />;

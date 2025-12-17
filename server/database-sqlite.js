@@ -952,6 +952,233 @@ export class DatabaseSQLite {
     return { success: true };
   }
 
+  // ============ Account Lockout Methods ============
+
+  /**
+   * Record a failed login attempt for rate limiting
+   * @param {string} handle - User handle or email
+   * @returns {{locked: boolean, attemptsRemaining: number, lockedUntil?: string}}
+   */
+  recordFailedLogin(handle) {
+    const now = new Date();
+    const normalizedHandle = handle.toLowerCase();
+
+    // Get current lockout status
+    let lockout = this.db.prepare('SELECT * FROM account_lockouts WHERE handle = ?').get(normalizedHandle);
+
+    // Check if currently locked
+    if (lockout?.locked_until && new Date(lockout.locked_until) > now) {
+      return {
+        locked: true,
+        attemptsRemaining: 0,
+        lockedUntil: lockout.locked_until
+      };
+    }
+
+    // If lock expired, reset
+    if (lockout?.locked_until && new Date(lockout.locked_until) <= now) {
+      this.db.prepare('DELETE FROM account_lockouts WHERE handle = ?').run(normalizedHandle);
+      lockout = null;
+    }
+
+    const failedAttempts = (lockout?.failed_attempts || 0) + 1;
+    const maxAttempts = 5;
+    const lockoutMinutes = 15;
+
+    if (failedAttempts >= maxAttempts) {
+      // Lock the account
+      const lockedUntil = new Date(now.getTime() + lockoutMinutes * 60 * 1000).toISOString();
+      this.db.prepare(`
+        INSERT OR REPLACE INTO account_lockouts (handle, failed_attempts, locked_until, last_attempt)
+        VALUES (?, ?, ?, ?)
+      `).run(normalizedHandle, failedAttempts, lockedUntil, now.toISOString());
+
+      return {
+        locked: true,
+        attemptsRemaining: 0,
+        lockedUntil
+      };
+    }
+
+    // Update failed attempts
+    this.db.prepare(`
+      INSERT OR REPLACE INTO account_lockouts (handle, failed_attempts, locked_until, last_attempt)
+      VALUES (?, ?, NULL, ?)
+    `).run(normalizedHandle, failedAttempts, now.toISOString());
+
+    return {
+      locked: false,
+      attemptsRemaining: maxAttempts - failedAttempts
+    };
+  }
+
+  /**
+   * Clear failed login attempts (on successful login)
+   * @param {string} handle - User handle or email
+   */
+  clearFailedLogins(handle) {
+    const normalizedHandle = handle.toLowerCase();
+    this.db.prepare('DELETE FROM account_lockouts WHERE handle = ?').run(normalizedHandle);
+  }
+
+  /**
+   * Check if an account is currently locked
+   * @param {string} handle - User handle or email
+   * @returns {{locked: boolean, lockedUntil?: string, attemptsRemaining: number}}
+   */
+  isAccountLocked(handle) {
+    const normalizedHandle = handle.toLowerCase();
+    const lockout = this.db.prepare('SELECT * FROM account_lockouts WHERE handle = ?').get(normalizedHandle);
+
+    if (!lockout) {
+      return { locked: false, attemptsRemaining: 5 };
+    }
+
+    const now = new Date();
+    if (lockout.locked_until && new Date(lockout.locked_until) > now) {
+      return {
+        locked: true,
+        lockedUntil: lockout.locked_until,
+        attemptsRemaining: 0
+      };
+    }
+
+    // Lock expired
+    if (lockout.locked_until && new Date(lockout.locked_until) <= now) {
+      this.db.prepare('DELETE FROM account_lockouts WHERE handle = ?').run(normalizedHandle);
+      return { locked: false, attemptsRemaining: 5 };
+    }
+
+    return {
+      locked: false,
+      attemptsRemaining: 5 - (lockout.failed_attempts || 0)
+    };
+  }
+
+  // ============ Password Reset Methods ============
+
+  /**
+   * Find user by email address
+   * @param {string} email - Email address
+   * @returns {Object|null} User object or null
+   */
+  findUserByEmail(email) {
+    const row = this.db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email);
+    if (!row) return null;
+    return this.rowToUser(row);
+  }
+
+  /**
+   * Create a password reset token
+   * @param {string} userId - User ID
+   * @param {string} tokenHash - Hashed token (store hash, not plaintext)
+   * @param {number} expiresInMinutes - Token validity in minutes (default: 60)
+   * @returns {{id: string, expiresAt: string}}
+   */
+  createPasswordResetToken(userId, tokenHash, expiresInMinutes = 60) {
+    const id = uuidv4();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + expiresInMinutes * 60 * 1000).toISOString();
+
+    // Invalidate any existing tokens for this user
+    this.db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
+
+    // Create new token
+    this.db.prepare(`
+      INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, userId, tokenHash, expiresAt, now.toISOString());
+
+    return { id, expiresAt };
+  }
+
+  /**
+   * Verify a password reset token
+   * @param {string} tokenHash - Hashed token to verify
+   * @returns {{valid: boolean, userId?: string, error?: string}}
+   */
+  verifyPasswordResetToken(tokenHash) {
+    const token = this.db.prepare(`
+      SELECT * FROM password_reset_tokens
+      WHERE token_hash = ? AND used_at IS NULL
+    `).get(tokenHash);
+
+    if (!token) {
+      return { valid: false, error: 'Invalid or expired reset token' };
+    }
+
+    if (new Date(token.expires_at) < new Date()) {
+      return { valid: false, error: 'Reset token has expired' };
+    }
+
+    return { valid: true, userId: token.user_id };
+  }
+
+  /**
+   * Mark a password reset token as used
+   * @param {string} tokenHash - Hashed token
+   */
+  markPasswordResetTokenUsed(tokenHash) {
+    this.db.prepare(`
+      UPDATE password_reset_tokens
+      SET used_at = ?
+      WHERE token_hash = ?
+    `).run(new Date().toISOString(), tokenHash);
+  }
+
+  /**
+   * Set password directly (used for password reset, admin reset)
+   * @param {string} userId - User ID
+   * @param {string} newPassword - New password (will be hashed)
+   * @param {boolean} requireChange - Force password change on next login
+   * @returns {{success: boolean, error?: string}}
+   */
+  async setPassword(userId, newPassword, requireChange = false) {
+    const user = this.findUserById(userId);
+    if (!user) return { success: false, error: 'User not found' };
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    this.db.prepare(`
+      UPDATE users SET password_hash = ?, require_password_change = ?
+      WHERE id = ?
+    `).run(newHash, requireChange ? 1 : 0, userId);
+
+    // Invalidate all reset tokens for this user
+    this.db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
+
+    return { success: true };
+  }
+
+  /**
+   * Check if user needs to change password
+   * @param {string} userId - User ID
+   * @returns {boolean}
+   */
+  requiresPasswordChange(userId) {
+    const row = this.db.prepare('SELECT require_password_change FROM users WHERE id = ?').get(userId);
+    return row?.require_password_change === 1;
+  }
+
+  /**
+   * Clear the password change requirement flag
+   * @param {string} userId - User ID
+   */
+  clearPasswordChangeRequirement(userId) {
+    this.db.prepare('UPDATE users SET require_password_change = 0 WHERE id = ?').run(userId);
+  }
+
+  /**
+   * Clean up expired password reset tokens
+   * @returns {number} Number of tokens deleted
+   */
+  cleanupExpiredResetTokens() {
+    const result = this.db.prepare(`
+      DELETE FROM password_reset_tokens
+      WHERE expires_at < datetime('now')
+    `).run();
+    return result.changes;
+  }
+
   requestHandleChange(userId, newHandle) {
     const user = this.findUserById(userId);
     if (!user) return { success: false, error: 'User not found' };

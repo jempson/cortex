@@ -17,6 +17,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
+    "nodemailer": "^6.9.16",
     "sanitize-html": "^2.13.0",
     "sharp": "^0.34.5",
     "uuid": "^10.0.0",
