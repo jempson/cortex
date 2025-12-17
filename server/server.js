@@ -5445,6 +5445,52 @@ app.post('/api/admin/users/:id/force-logout', authenticateToken, (req, res) => {
   }
 });
 
+// Disable MFA for a user (admin only - emergency lockout recovery)
+app.post('/api/admin/users/:id/disable-mfa', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!admin || !admin.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const targetUserId = sanitizeInput(req.params.id);
+    const targetUser = db.findUserById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Don't allow disabling your own MFA this way
+    if (targetUserId === admin.id) {
+      return res.status(400).json({ error: 'Cannot disable your own MFA via admin panel' });
+    }
+
+    // Disable all MFA methods
+    if (db.disableTotp) db.disableTotp(targetUserId);
+    if (db.disableEmailMfa) db.disableEmailMfa(targetUserId);
+
+    // Clear recovery codes
+    if (db.storeRecoveryCodes) db.storeRecoveryCodes(targetUserId, []);
+
+    // Log the action
+    if (db.logModerationAction) {
+      db.logModerationAction(admin.id, 'disable_mfa', 'user', targetUserId, 'Admin disabled MFA for lockout recovery');
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'admin_disable_mfa', 'user', targetUserId, getRequestMeta(req));
+
+    console.log(`Admin ${admin.handle} disabled MFA for user ${targetUser.handle}`);
+
+    res.json({
+      success: true,
+      message: 'MFA disabled for user. They can now log in with just their password.'
+    });
+  } catch (err) {
+    console.error('Admin disable MFA error:', err);
+    res.status(500).json({ error: 'Failed to disable MFA' });
+  }
+});
+
 // Get moderation log (admin only)
 app.get('/api/admin/moderation-log', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
