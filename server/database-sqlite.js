@@ -859,6 +859,11 @@ export class DatabaseSQLite {
     return { userCount, waveCount };
   }
 
+  getAdminUsers() {
+    const rows = this.db.prepare('SELECT * FROM users WHERE is_admin = 1').all();
+    return rows.map(r => this.rowToUser(r));
+  }
+
   createUser(userData) {
     const now = new Date().toISOString();
     const isFirstUser = this.stmts.countUsers.get().count === 0;

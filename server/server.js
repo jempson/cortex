@@ -5526,6 +5526,18 @@ app.post('/api/federation/inbox/request', federationRequestLimiter, async (req, 
   );
 
   console.log(`📨 Received federation request from ${fromNodeName}`);
+
+  // Notify admin users
+  broadcastToAdmins({
+    type: 'federation_request_received',
+    request: {
+      id: request.id,
+      fromNodeName,
+      message,
+      createdAt: request.createdAt
+    }
+  });
+
   res.json({ success: true, message: 'Federation request received', requestId: request.id });
 });
 
@@ -8029,6 +8041,12 @@ function broadcast(message, userIds = []) {
 
 function broadcastToUser(userId, message) {
   broadcast(message, [userId]);
+}
+
+function broadcastToAdmins(message) {
+  const admins = db.getAdminUsers();
+  const adminIds = admins.map(a => a.id);
+  broadcast(message, adminIds);
 }
 
 function broadcastToWave(waveId, message, excludeWs = null) {

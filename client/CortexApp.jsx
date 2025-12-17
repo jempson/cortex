@@ -7844,7 +7844,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
 };
 
 // ============ FEDERATION ADMIN PANEL ============
-const FederationAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
+const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0 }) => {
   const [status, setStatus] = useState(null);
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -7882,7 +7882,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
 
   useEffect(() => {
     loadFederationData();
-  }, [loadFederationData]);
+  }, [loadFederationData, refreshTrigger]);
 
   const handleSetupIdentity = async () => {
     if (!nodeName.trim() || nodeName.length < 3) {
@@ -9433,7 +9433,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
           <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
 
           {/* Federation Admin Panel */}
-          <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} />
         </div>
       )}
 
@@ -9869,6 +9869,7 @@ function MainApp() {
   const [mutedUsers, setMutedUsers] = useState([]); // Users muted by current user
   const [profileUserId, setProfileUserId] = useState(null); // User ID for profile modal
   const [federationEnabled, setFederationEnabled] = useState(false); // Whether federation is enabled on server
+  const [federationRequestsRefresh, setFederationRequestsRefresh] = useState(0); // Increment to refresh federation requests
   const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0); // Increment to refresh notifications
   const [waveNotifications, setWaveNotifications] = useState({}); // Notification counts/types by wave ID
   const typingTimeoutsRef = useRef({});
@@ -10044,6 +10045,13 @@ function MainApp() {
       fetchAPI('/notifications/by-wave').then(result => {
         setWaveNotifications(result.countsByWave || {});
       }).catch(e => console.error('Failed to update wave notifications:', e));
+    } else if (data.type === 'federation_request_received') {
+      // New federation request received (admin only)
+      console.log('📨 Federation request received:', data.request?.fromNodeName);
+      setFederationRequestsRefresh(prev => prev + 1);
+      if (user?.isAdmin) {
+        showToastMsg(`Federation request from ${data.request?.fromNodeName || 'unknown server'}`, 'info');
+      }
     }
   }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView, fetchAPI]);
 
