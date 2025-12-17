@@ -8173,7 +8173,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
     if (!searchQuery.trim()) return;
     setSearching(true);
     try {
-      const data = await fetchAPI(`/users/search?q=${encodeURIComponent(searchQuery)}`);
+      const data = await fetchAPI(`/admin/users/search?q=${encodeURIComponent(searchQuery)}`);
       setSearchResults(data.users || []);
     } catch (err) {
       showToast('Failed to search users', 'error');

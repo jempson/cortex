@@ -1885,6 +1885,36 @@ export class DatabaseSQLite {
     }));
   }
 
+  // Admin user search - returns more details including email and MFA status
+  adminSearchUsers(query) {
+    if (!query || query.length < 1) return [];
+    const pattern = `%${query}%`;
+    const rows = this.db.prepare(`
+      SELECT u.id, u.handle, u.display_name, u.email, u.avatar, u.avatar_url, u.is_admin, u.created_at,
+             CASE WHEN m.totp_enabled = 1 OR m.email_mfa_enabled = 1 THEN 1 ELSE 0 END as mfa_enabled,
+             m.totp_enabled, m.email_mfa_enabled
+      FROM users u
+      LEFT JOIN user_mfa m ON u.id = m.user_id
+      WHERE u.handle LIKE ? OR u.email LIKE ? OR u.display_name LIKE ?
+      ORDER BY u.handle
+      LIMIT 20
+    `).all(pattern, pattern, pattern);
+
+    return rows.map(r => ({
+      id: r.id,
+      handle: r.handle,
+      displayName: r.display_name,
+      email: r.email,
+      avatar: r.avatar,
+      avatarUrl: r.avatar_url,
+      isAdmin: r.is_admin === 1,
+      createdAt: r.created_at,
+      mfaEnabled: r.mfa_enabled === 1,
+      totpEnabled: r.totp_enabled === 1,
+      emailMfaEnabled: r.email_mfa_enabled === 1,
+    }));
+  }
+
   // === Contact Methods ===
   getContactsForUser(userId) {
     // Get local user contacts

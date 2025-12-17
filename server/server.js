@@ -5329,6 +5329,23 @@ app.get('/api/admin/users/:id/warnings', authenticateToken, (req, res) => {
   res.json({ warnings, count: warnings.length });
 });
 
+// Admin user search (admin only)
+// Returns users with admin-level details including email, isAdmin, and MFA status
+app.get('/api/admin/users/search', authenticateToken, (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const query = sanitizeInput(req.query.q);
+  if (!query || query.length < 1) {
+    return res.json({ users: [] });
+  }
+
+  const users = db.adminSearchUsers(query);
+  res.json({ users });
+});
+
 // Admin password reset (admin only)
 // Allows admins to reset a user's password and optionally send them a temporary password
 app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, res) => {
