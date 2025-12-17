@@ -1687,7 +1687,7 @@ export class DatabaseSQLite {
 
     // Parse metadata JSON
     return {
-      entries: entries.map(e => ({
+      activities: entries.map(e => ({
         ...e,
         metadata: e.metadata ? JSON.parse(e.metadata) : {}
       })),
