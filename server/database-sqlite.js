@@ -739,7 +739,7 @@ export class DatabaseSQLite {
           totp_enabled INTEGER DEFAULT 0,
           email_mfa_enabled INTEGER DEFAULT 0,
           recovery_codes TEXT,
-          backup_codes_generated_at TEXT,
+          recovery_codes_generated_at TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT
         );
@@ -775,6 +775,27 @@ export class DatabaseSQLite {
         CREATE INDEX IF NOT EXISTS idx_activity_resource ON activity_log(resource_type, resource_id);
       `);
       console.log('✅ Security tables created (v1.14.0)');
+    }
+
+    // Fix user_mfa column name if incorrect (backup_codes_generated_at -> recovery_codes_generated_at)
+    const userMfaExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='user_mfa'
+    `).get();
+
+    if (userMfaExists) {
+      const mfaColumns = this.db.prepare(`PRAGMA table_info(user_mfa)`).all();
+      const hasBackupColumn = mfaColumns.some(c => c.name === 'backup_codes_generated_at');
+      const hasRecoveryColumn = mfaColumns.some(c => c.name === 'recovery_codes_generated_at');
+
+      if (hasBackupColumn && !hasRecoveryColumn) {
+        console.log('📝 Renaming backup_codes_generated_at to recovery_codes_generated_at...');
+        this.db.exec(`ALTER TABLE user_mfa RENAME COLUMN backup_codes_generated_at TO recovery_codes_generated_at`);
+        console.log('✅ Column renamed');
+      } else if (!hasBackupColumn && !hasRecoveryColumn) {
+        console.log('📝 Adding recovery_codes_generated_at column to user_mfa...');
+        this.db.exec(`ALTER TABLE user_mfa ADD COLUMN recovery_codes_generated_at TEXT`);
+        console.log('✅ Column added');
+      }
     }
 
     // Check if require_password_change column exists on users table (v1.14.0)
