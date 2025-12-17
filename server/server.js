@@ -3973,10 +3973,28 @@ app.put('/api/profile', authenticateToken, (req, res) => {
   if (req.body.avatar) updates.avatar = sanitizeInput(req.body.avatar).slice(0, 2);
   if (req.body.bio !== undefined) updates.bio = req.body.bio ? sanitizeInput(req.body.bio).slice(0, 500) : null;
 
+  // Email update with validation
+  if (req.body.email !== undefined) {
+    const email = req.body.email ? sanitizeInput(req.body.email).trim().toLowerCase() : null;
+    if (email) {
+      // Basic email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+      // Check if email is already taken by another user
+      const existingUser = db.findUserByEmail ? db.findUserByEmail(email) : db.findUserByHandle(email);
+      if (existingUser && existingUser.id !== req.user.userId) {
+        return res.status(400).json({ error: 'Email already in use' });
+      }
+    }
+    updates.email = email;
+  }
+
   const user = db.updateUser(req.user.userId, updates);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  res.json({ id: user.id, handle: user.handle, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, preferences: user.preferences, bio: user.bio });
+  res.json({ id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, preferences: user.preferences, bio: user.bio });
 });
 
 // Get public profile for any user (local or federated)

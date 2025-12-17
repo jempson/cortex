@@ -9167,6 +9167,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
 // ============ PROFILE SETTINGS ============
 const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, federationRequestsRefresh }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [email, setEmail] = useState(user?.email || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || null);
   const [bio, setBio] = useState(user?.bio || '');
@@ -9388,7 +9389,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
   const handleSaveProfile = async () => {
     try {
-      const updated = await fetchAPI('/profile', { method: 'PUT', body: { displayName, avatar, bio } });
+      const updated = await fetchAPI('/profile', { method: 'PUT', body: { displayName, email, avatar, bio } });
       showToast('Profile updated', 'success');
       onUserUpdate?.(updated);
     } catch (err) {
@@ -9570,6 +9571,14 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>DISPLAY NAME</label>
           <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={inputStyle} />
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>EMAIL</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" style={inputStyle} />
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '4px' }}>
+            Used for password recovery and email-based MFA.
+          </div>
         </div>
 
         <div style={{ marginBottom: '16px' }}>
