@@ -3694,23 +3694,23 @@ app.post('/api/auth/mfa/email/verify-setup', authenticateToken, mfaLimiter, (req
 
     // Verify the challenge
     const challenge = db.getMfaChallenge(challengeId);
-    if (!challenge || challenge.user_id !== req.user.userId) {
+    if (!challenge || challenge.userId !== req.user.userId) {
       return res.status(400).json({ error: 'Invalid or expired challenge' });
     }
 
-    if (challenge.challenge_type !== 'email_enable') {
+    if (challenge.challengeType !== 'email_enable') {
       return res.status(400).json({ error: 'Invalid challenge type' });
     }
 
     // Check expiration
-    if (new Date(challenge.expires_at) < new Date()) {
+    if (new Date(challenge.expiresAt) < new Date()) {
       db.deleteMfaChallenge(challengeId);
       return res.status(400).json({ error: 'Code has expired. Please request a new one.' });
     }
 
     // Verify code (stored as hash)
     const codeHash = crypto.createHash('sha256').update(code).digest('hex');
-    if (challenge.code_hash !== codeHash) {
+    if (challenge.codeHash !== codeHash) {
       return res.status(400).json({ error: 'Invalid code' });
     }
 
@@ -3844,7 +3844,7 @@ app.post('/api/auth/mfa/send-email-code', mfaLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Invalid challenge' });
     }
 
-    const user = db.findUserById(challenge.user_id);
+    const user = db.findUserById(challenge.userId);
     if (!user || !user.email) {
       return res.status(400).json({ error: 'Cannot send email code' });
     }
@@ -3853,7 +3853,7 @@ app.post('/api/auth/mfa/send-email-code', mfaLimiter, async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
     // Update challenge with new code
-    const newChallengeId = db.createMfaChallenge(challenge.user_id, 'email', code);
+    const newChallengeId = db.createMfaChallenge(challenge.userId, 'email', code);
 
     const emailService = getEmailService();
     if (emailService.configured) {
@@ -3886,12 +3886,12 @@ app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
     }
 
     // Check expiration
-    if (new Date(challenge.expires_at) < new Date()) {
+    if (new Date(challenge.expiresAt) < new Date()) {
       db.deleteMfaChallenge(challengeId);
       return res.status(400).json({ error: 'Challenge has expired. Please log in again.' });
     }
 
-    const user = db.findUserById(challenge.user_id);
+    const user = db.findUserById(challenge.userId);
     if (!user) {
       return res.status(400).json({ error: 'User not found' });
     }
@@ -3899,24 +3899,24 @@ app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
     let verified = false;
 
     if (method === 'totp') {
-      const secret = db.getTotpSecret(challenge.user_id);
+      const secret = db.getTotpSecret(challenge.userId);
       if (secret) {
         verified = authenticator.verify({ token: code, secret });
       }
     } else if (method === 'email') {
-      // For email, we need to check the code_hash on the challenge
+      // For email, we need to check the codeHash on the challenge
       const codeHash = crypto.createHash('sha256').update(code).digest('hex');
-      if (challenge.code_hash === codeHash) {
+      if (challenge.codeHash === codeHash) {
         verified = true;
       }
     } else if (method === 'recovery') {
       // Verify recovery code
-      const codes = db.getRecoveryCodes(challenge.user_id);
+      const codes = db.getRecoveryCodes(challenge.userId);
       if (codes) {
         const codeHash = crypto.createHash('sha256').update(code.toUpperCase()).digest('hex');
         const matchingCode = codes.find(c => c.hash === codeHash && !c.used);
         if (matchingCode) {
-          db.markRecoveryCodeUsed(challenge.user_id, code.toUpperCase());
+          db.markRecoveryCodeUsed(challenge.userId, code.toUpperCase());
           verified = true;
         }
       }
