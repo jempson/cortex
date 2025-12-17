@@ -1650,7 +1650,7 @@ export class DatabaseSQLite {
       SELECT
         a.*,
         u.handle as user_handle,
-        u.displayName as user_display_name
+        u.display_name as user_display_name
       FROM activity_log a
       LEFT JOIN users u ON a.user_id = u.id
       ${whereClause}
