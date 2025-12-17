@@ -5,6 +5,44 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2025-12-17
+
+### Added
+
+#### Security Enhancements - Password Recovery
+- **Email Service**: Configurable email delivery supporting SMTP, SendGrid, and Mailgun
+- **Password Reset Flow**: Forgot password, token verification, and reset endpoints
+- **Admin Password Reset**: Admins can reset user passwords with optional email notification
+- **Force Logout**: Admin endpoint to force user logout
+- **Account Lockout Persistence**: Failed login attempts now stored in database (survives restarts)
+
+#### Password Reset Endpoints
+- `POST /api/auth/forgot-password` - Request password reset (rate-limited)
+- `GET /api/auth/reset-password/:token` - Verify reset token
+- `POST /api/auth/reset-password` - Complete password reset
+- `POST /api/auth/clear-password-change` - Clear forced password change flag
+
+#### Admin Security Endpoints
+- `POST /api/admin/users/:id/reset-password` - Admin reset user password
+- `POST /api/admin/users/:id/force-logout` - Force user logout
+
+#### Client UI
+- Forgot password link on login screen
+- Password reset page with token validation
+- Confirm password field for registration
+
+### Security
+- JWT_SECRET now required in production (server exits if not set)
+- CORS production warning when ALLOWED_ORIGINS not configured
+- Avatar URL validation to prevent path traversal attacks
+
+### Database
+- Added `account_lockouts` table for persistent rate limiting
+- Added `password_reset_tokens` table for secure token storage
+- Added `require_password_change` flag to users table
+
+---
+
 ## [1.13.0] - 2025-12-15
 
 ### Added

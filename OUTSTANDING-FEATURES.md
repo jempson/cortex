@@ -1,13 +1,13 @@
 # Cortex - Outstanding Features & Future Roadmap
 
-**Last Updated:** December 15, 2025
-**Current Version:** v1.13.0
+**Last Updated:** December 17, 2025
+**Current Version:** v1.14.0
 
 This document tracks planned but not-yet-implemented features for future releases.
 
 ---
 
-## Completed Features (v1.5.0 - v1.13.0)
+## Completed Features (v1.5.0 - v1.14.0)
 
 The following features have been implemented and are no longer outstanding:
 
@@ -51,6 +51,10 @@ The following features have been implemented and are no longer outstanding:
 | **Federated Users** | v1.13.0 | @handle@server.com format |
 | **Message Queue** | v1.13.0 | Exponential backoff retries |
 | **Federation Admin** | v1.13.0 | Node management panel |
+| **Email Service** | v1.14.0 | SMTP, SendGrid, Mailgun support |
+| **Password Reset** | v1.14.0 | Token-based recovery flow |
+| **Admin Password Reset** | v1.14.0 | Admin can reset user passwords |
+| **Persistent Lockouts** | v1.14.0 | Database-backed rate limiting |
 
 ---
 

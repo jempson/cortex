@@ -7837,7 +7837,7 @@ app.get('/api/search', authenticateToken, (req, res) => {
 
 // ============ Health Check ============
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.13.0', uptime: process.uptime() });
+  res.json({ status: 'ok', version: '1.14.0', uptime: process.uptime() });
 });
 
 // ============ Public Server Info ============
@@ -7858,7 +7858,7 @@ app.get('/api/server/info', (req, res) => {
 
   res.json({
     name: identity?.nodeName || null,
-    version: '1.13.0',
+    version: '1.14.0',
     federationEnabled: FEDERATION_ENABLED,
     stats: {
       users: stats.userCount,
@@ -8497,7 +8497,7 @@ server.listen(PORT, () => {
 ║  ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗         ║
 ║  ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗        ║
 ║   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝        ║
-║  SECURE COMMUNICATIONS SYSTEM v1.13.0                      ║
+║  SECURE COMMUNICATIONS SYSTEM v1.14.0                      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  🔒 Security: Rate limiting, XSS protection, Helmet        ║
 ║  🌐 Federation: Server-to-server communication             ║

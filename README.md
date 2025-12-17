@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 1.13.0** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 1.14.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
 ## Quick Start
 
