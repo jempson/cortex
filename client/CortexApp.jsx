@@ -2286,7 +2286,7 @@ const LoginScreen = ({ onAbout }) => {
     }
     setForgotStatus({ loading: true, message: '', error: '' });
     try {
-      const res = await fetch(`${API_URL}/api/auth/forgot-password`, {
+      const res = await fetch(`${API_URL}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail }),
@@ -2656,7 +2656,7 @@ const ResetPasswordPage = ({ onBack }) => {
     setToken(urlToken);
 
     // Verify token with server
-    fetch(`${API_URL}/api/auth/reset-password/${urlToken}`)
+    fetch(`${API_URL}/auth/reset-password/${urlToken}`)
       .then(res => res.json())
       .then(data => {
         setStatus({ loading: false, valid: data.valid, error: data.error || '', success: false });
@@ -2679,7 +2679,7 @@ const ResetPasswordPage = ({ onBack }) => {
 
     setStatus(s => ({ ...s, loading: true, error: '' }));
     try {
-      const res = await fetch(`${API_URL}/api/auth/reset-password`, {
+      const res = await fetch(`${API_URL}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, newPassword, confirmPassword }),
@@ -8195,24 +8195,23 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
       let url = `/admin/activity-log?limit=${LIMIT}&offset=${newOffset}`;
       if (selectedAction) url += `&actionType=${selectedAction}`;
 
-      const res = await fetchAPI(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (newOffset === 0) {
-          setActivities(data.activities || []);
-        } else {
-          setActivities(prev => [...prev, ...(data.activities || [])]);
-        }
-        setTotal(data.total || 0);
-        setHasMore((data.activities || []).length === LIMIT);
-        setOffset(newOffset);
-      } else if (res.status === 501) {
-        // Activity logging not available
+      const data = await fetchAPI(url);
+      if (newOffset === 0) {
+        setActivities(data.activities || []);
+      } else {
+        setActivities(prev => [...prev, ...(data.activities || [])]);
+      }
+      setTotal(data.total || 0);
+      setHasMore((data.activities || []).length === LIMIT);
+      setOffset(newOffset);
+    } catch (err) {
+      // Check if it's a 501 (not implemented) error
+      if (err.message?.includes('501')) {
         setActivities([]);
         setTotal(0);
+      } else {
+        showToast('Failed to load activity log', 'error');
       }
-    } catch (err) {
-      showToast('Failed to load activity log', 'error');
     } finally {
       setLoading(false);
     }
@@ -8220,11 +8219,8 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
 
   const loadStats = useCallback(async () => {
     try {
-      const res = await fetchAPI('/admin/activity-stats?days=7');
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
-      }
+      const data = await fetchAPI('/admin/activity-stats?days=7');
+      setStats(data);
     } catch {
       // Stats not critical, ignore errors
     }
