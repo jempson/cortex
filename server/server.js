@@ -7490,6 +7490,128 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', version: '1.13.0', uptime: process.uptime() });
 });
 
+// ============ Public Server Info ============
+
+// Get public server information (no auth required)
+app.get('/api/server/info', (req, res) => {
+  const stats = db.getPublicStats();
+  const identity = FEDERATION_ENABLED ? db.getServerIdentity() : null;
+
+  // Get active federation partners (names only)
+  let partners = [];
+  let partnerCount = 0;
+  if (FEDERATION_ENABLED) {
+    const nodes = db.getFederationNodes({ status: 'active' });
+    partners = nodes.map(n => n.nodeName);
+    partnerCount = partners.length;
+  }
+
+  res.json({
+    name: identity?.nodeName || null,
+    version: '1.13.0',
+    federationEnabled: FEDERATION_ENABLED,
+    stats: {
+      users: stats.userCount,
+      waves: stats.waveCount,
+      uptime: Math.floor(process.uptime())
+    },
+    federation: FEDERATION_ENABLED ? {
+      configured: !!identity,
+      partners,
+      partnerCount
+    } : null
+  });
+});
+
+// Rate limiter for public federation requests
+const publicFederationRequestLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 requests per hour per IP
+  message: { error: 'Too many federation requests. Try again later.' }
+});
+
+// Public endpoint to request federation from this server
+app.post('/api/server/federation-request', publicFederationRequestLimiter, async (req, res) => {
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+  if (!ourIdentity) {
+    return res.status(400).json({ error: 'This server has not configured federation yet' });
+  }
+
+  const { serverUrl, message } = req.body;
+  if (!serverUrl) {
+    return res.status(400).json({ error: 'serverUrl is required' });
+  }
+
+  // Normalize URL
+  const normalizedUrl = serverUrl.replace(/\/+$/, '');
+
+  try {
+    // Fetch the requesting server's identity
+    const identityUrl = `${normalizedUrl}/api/federation/identity`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(identityUrl, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+      }
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return res.status(400).json({
+        error: 'Could not reach the specified server',
+        details: `HTTP ${response.status}`
+      });
+    }
+
+    const remoteIdentity = await response.json();
+    if (!remoteIdentity.nodeName || !remoteIdentity.publicKey) {
+      return res.status(400).json({ error: 'Invalid response from remote server - is it a Cortex server?' });
+    }
+
+    // Check if already federated
+    const existingNode = db.getFederationNodeByName(remoteIdentity.nodeName);
+    if (existingNode && existingNode.status === 'active') {
+      return res.json({ success: true, message: 'Already federated with this server', alreadyFederated: true });
+    }
+
+    // Check for existing pending request
+    const existingRequest = db.getPendingRequestFromNode(remoteIdentity.nodeName);
+    if (existingRequest) {
+      return res.json({ success: true, message: 'Request already pending', duplicate: true });
+    }
+
+    // Create the federation request (as if they sent it to us)
+    const request = db.createFederationRequest(
+      remoteIdentity.nodeName,
+      normalizedUrl,
+      remoteIdentity.publicKey,
+      ourIdentity.nodeName,
+      message || null
+    );
+
+    console.log(`📨 Public federation request from ${remoteIdentity.nodeName} via web form`);
+    res.json({
+      success: true,
+      message: 'Federation request submitted. The server admin will need to accept your request.',
+      requestId: request.id
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(400).json({ error: 'Connection timed out - is the server URL correct?' });
+    }
+    console.error('Public federation request error:', error.message);
+    res.status(400).json({ error: 'Could not connect to the specified server', details: error.message });
+  }
+});
+
 // ============ WebSocket Setup ============
 const server = createServer(app);
 const wss = new WebSocketServer({ server });

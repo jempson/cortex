@@ -2076,8 +2076,289 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// ============ ABOUT SERVER PAGE ============
+const AboutServerPage = ({ onBack }) => {
+  const [info, setInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [serverUrl, setServerUrl] = useState('');
+  const [message, setMessage] = useState('');
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [requestResult, setRequestResult] = useState(null);
+  const { isMobile } = useWindowSize();
+
+  useEffect(() => {
+    fetch(`${API_URL}/server/info`)
+      .then(res => res.json())
+      .then(data => {
+        setInfo(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  const handleRequestFederation = async () => {
+    if (!serverUrl.trim()) return;
+    setRequestLoading(true);
+    setRequestResult(null);
+    try {
+      const res = await fetch(`${API_URL}/server/federation-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverUrl: serverUrl.trim(), message: message.trim() || null })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRequestResult({ success: true, message: data.message });
+        setServerUrl('');
+        setMessage('');
+      } else {
+        setRequestResult({ success: false, message: data.error || 'Request failed' });
+      }
+    } catch (err) {
+      setRequestResult({ success: false, message: err.message });
+    }
+    setRequestLoading(false);
+  };
+
+  const formatUptime = (seconds) => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+  };
+
+  const containerStyle = {
+    minHeight: '100vh',
+    background: 'linear-gradient(180deg, var(--bg-surface), var(--bg-base))',
+    padding: isMobile ? '20px' : '40px',
+  };
+
+  const cardStyle = {
+    maxWidth: '600px',
+    margin: '0 auto',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-primary)',
+  };
+
+  const sectionStyle = {
+    padding: isMobile ? '16px' : '20px',
+    borderBottom: '1px solid var(--border-subtle)',
+  };
+
+  if (loading) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>
+            Loading server info...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--status-error)' }}>
+            Error: {error}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={containerStyle}>
+      <div style={cardStyle}>
+        {/* Header */}
+        <div style={{
+          ...sectionStyle,
+          background: 'var(--bg-elevated)',
+          textAlign: 'center',
+        }}>
+          <div style={{
+            fontSize: isMobile ? '1.5rem' : '1.8rem',
+            color: 'var(--accent-teal)',
+            fontFamily: 'monospace',
+            marginBottom: '8px',
+          }}>
+            {info.federationEnabled && <span style={{ marginRight: '10px' }}>◇</span>}
+            {info.name || 'Cortex Server'}
+          </div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+            Cortex v{info.version}
+            {info.federationEnabled && (
+              <span style={{
+                marginLeft: '12px',
+                padding: '2px 8px',
+                background: 'var(--accent-purple)20',
+                color: 'var(--accent-purple)',
+                fontSize: '0.75rem',
+              }}>
+                FEDERATION ENABLED
+              </span>
+            )}
+          </div>
+          {onBack && (
+            <button
+              onClick={onBack}
+              style={{
+                marginTop: '16px',
+                padding: '8px 16px',
+                background: 'transparent',
+                border: '1px solid var(--border-primary)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.8rem',
+              }}
+            >
+              ← Back to Login
+            </button>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div style={sectionStyle}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
+            Statistics
+          </div>
+          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', color: 'var(--text-secondary)' }}>
+            <span>Users: <strong style={{ color: 'var(--text-primary)' }}>{info.stats?.users || 0}</strong></span>
+            <span>Waves: <strong style={{ color: 'var(--text-primary)' }}>{info.stats?.waves || 0}</strong></span>
+            <span>Uptime: <strong style={{ color: 'var(--accent-green)' }}>{formatUptime(info.stats?.uptime || 0)}</strong></span>
+          </div>
+        </div>
+
+        {/* Federation Partners */}
+        {info.federationEnabled && info.federation?.configured && (
+          <div style={sectionStyle}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
+              Federated Servers ({info.federation.partnerCount})
+            </div>
+            {info.federation.partners.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {info.federation.partners.map((partner, i) => (
+                  <div key={i} style={{
+                    padding: '8px 12px',
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--accent-purple)',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                  }}>
+                    ◇ {partner}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No federation partners yet
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Request Federation */}
+        {info.federationEnabled && info.federation?.configured && (
+          <div style={{ ...sectionStyle, borderBottom: 'none' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
+              Request Federation
+            </div>
+            <div style={{ marginBottom: '12px' }}>
+              <input
+                type="text"
+                value={serverUrl}
+                onChange={(e) => setServerUrl(e.target.value)}
+                placeholder="Your server URL (e.g., https://your-cortex.com)"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem',
+                  marginBottom: '8px',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Optional message (e.g., Hi, we'd like to federate!)"
+                rows={2}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            <button
+              onClick={handleRequestFederation}
+              disabled={requestLoading || !serverUrl.trim()}
+              style={{
+                padding: '12px 20px',
+                background: 'var(--accent-purple)20',
+                border: '1px solid var(--accent-purple)',
+                color: 'var(--accent-purple)',
+                cursor: requestLoading || !serverUrl.trim() ? 'not-allowed' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                opacity: requestLoading || !serverUrl.trim() ? 0.6 : 1,
+              }}
+            >
+              {requestLoading ? 'SUBMITTING...' : 'REQUEST FEDERATION'}
+            </button>
+            <div style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+              The server admin will need to accept your request.
+            </div>
+            {requestResult && (
+              <div style={{
+                marginTop: '12px',
+                padding: '10px',
+                background: requestResult.success ? 'var(--accent-green)10' : 'var(--status-error)10',
+                border: `1px solid ${requestResult.success ? 'var(--accent-green)' : 'var(--status-error)'}40`,
+                color: requestResult.success ? 'var(--accent-green)' : 'var(--status-error)',
+                fontSize: '0.85rem',
+              }}>
+                {requestResult.message}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{
+          padding: '16px',
+          textAlign: 'center',
+          color: 'var(--text-muted)',
+          fontSize: '0.75rem',
+          borderTop: '1px solid var(--border-subtle)',
+        }}>
+          Powered by <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-teal)' }}>Cortex</a>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ============ LOGIN SCREEN ============
-const LoginScreen = () => {
+const LoginScreen = ({ onAbout }) => {
   const { login, register } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [handle, setHandle] = useState('');
@@ -2175,6 +2456,15 @@ const LoginScreen = () => {
             {isRegistering ? '← BACK TO LOGIN' : 'NEW USER? CREATE ACCOUNT →'}
           </button>
         </div>
+
+        {onAbout && (
+          <div style={{ textAlign: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
+            <button onClick={onAbout}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+              About this server ◇
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -10469,5 +10759,25 @@ export default function CortexApp() {
 
 function AppContent() {
   const { user } = useAuth();
-  return user ? <MainApp /> : <LoginScreen />;
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => setCurrentPath(window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Navigate function for internal links
+  const navigate = (path) => {
+    window.history.pushState({}, '', path);
+    setCurrentPath(path);
+  };
+
+  // Public routes (accessible without login)
+  if (currentPath === '/about') {
+    return <AboutServerPage onBack={() => navigate('/')} />;
+  }
+
+  return user ? <MainApp /> : <LoginScreen onAbout={() => navigate('/about')} />;
 }

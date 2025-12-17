@@ -828,6 +828,12 @@ export class DatabaseSQLite {
     return rows.map(r => this.rowToUser(r));
   }
 
+  getPublicStats() {
+    const userCount = this.db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    const waveCount = this.db.prepare('SELECT COUNT(*) as count FROM waves').get().count;
+    return { userCount, waveCount };
+  }
+
   createUser(userData) {
     const now = new Date().toISOString();
     const isFirstUser = this.stmts.countUsers.get().count === 0;
