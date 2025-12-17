@@ -5738,6 +5738,14 @@ app.post('/api/federation/inbox/accept', federationRequestLimiter, authenticateF
   });
   db.recordFederationContact(node.id, true);
 
+  // TODO: Federation catch-up/backfill mechanism
+  // When federation is re-established after a disconnection, droplets created during
+  // the downtime are not synced. For robustness (e.g., server failure recovery), consider:
+  // 1. Sync on reconnection - request droplets newer than last sync point for shared waves
+  // 2. Admin resync button - manual option to request full wave resync
+  // 3. Version vectors - track last-seen droplet timestamps per wave per node
+  // This would require a new endpoint like GET /api/federation/waves/:id/sync?since=timestamp
+
   console.log(`✅ Federation request to ${sourceNode.nodeName} was accepted`);
   res.json({ success: true, message: 'Acceptance acknowledged' });
 });
