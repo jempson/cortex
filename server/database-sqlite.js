@@ -703,6 +703,91 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Contacts table migrated for federation support');
     }
+
+    // Check if v1.14.0 security tables exist
+    const accountLockoutsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='account_lockouts'
+    `).get();
+
+    if (!accountLockoutsExists) {
+      console.log('📝 Creating security tables (v1.14.0)...');
+      this.db.exec(`
+        -- Account lockout tracking (persistent rate limiting)
+        CREATE TABLE IF NOT EXISTS account_lockouts (
+          handle TEXT PRIMARY KEY,
+          failed_attempts INTEGER DEFAULT 0,
+          locked_until TEXT,
+          last_attempt TEXT
+        );
+
+        -- Password reset tokens
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          used_at TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id);
+        CREATE INDEX IF NOT EXISTS idx_reset_tokens_expires ON password_reset_tokens(expires_at);
+
+        -- Multi-Factor Authentication settings
+        CREATE TABLE IF NOT EXISTS user_mfa (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          totp_secret TEXT,
+          totp_enabled INTEGER DEFAULT 0,
+          email_mfa_enabled INTEGER DEFAULT 0,
+          recovery_codes TEXT,
+          backup_codes_generated_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT
+        );
+
+        -- MFA challenge tracking for login flow
+        CREATE TABLE IF NOT EXISTS mfa_challenges (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          challenge_type TEXT NOT NULL,
+          code_hash TEXT,
+          expires_at TEXT NOT NULL,
+          verified_at TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mfa_challenges_user ON mfa_challenges(user_id);
+        CREATE INDEX IF NOT EXISTS idx_mfa_challenges_expires ON mfa_challenges(expires_at);
+
+        -- Activity log for security auditing
+        CREATE TABLE IF NOT EXISTS activity_log (
+          id TEXT PRIMARY KEY,
+          user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+          action_type TEXT NOT NULL,
+          resource_type TEXT,
+          resource_id TEXT,
+          ip_address TEXT,
+          user_agent TEXT,
+          metadata TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id);
+        CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_log(action_type);
+        CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at);
+        CREATE INDEX IF NOT EXISTS idx_activity_resource ON activity_log(resource_type, resource_id);
+      `);
+      console.log('✅ Security tables created (v1.14.0)');
+    }
+
+    // Check if require_password_change column exists on users table (v1.14.0)
+    const userColumnsForPw = this.db.prepare(`PRAGMA table_info(users)`).all();
+    const hasRequirePasswordChange = userColumnsForPw.some(c => c.name === 'require_password_change');
+
+    if (!hasRequirePasswordChange) {
+      console.log('📝 Adding require_password_change column to users table (v1.14.0)...');
+      this.db.exec(`
+        ALTER TABLE users ADD COLUMN require_password_change INTEGER DEFAULT 0;
+      `);
+      console.log('✅ require_password_change column added');
+    }
   }
 
   prepareStatements() {
