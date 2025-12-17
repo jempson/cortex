@@ -475,6 +475,211 @@ export class DatabaseSQLite {
         console.log('✅ Push subscriptions table recreated with UNIQUE constraint');
       }
     }
+
+    // Check if federation tables exist (v1.13.0)
+    const serverIdentityExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='server_identity'
+    `).get();
+
+    if (!serverIdentityExists) {
+      console.log('📝 Creating federation tables (v1.13.0)...');
+      this.db.exec(`
+        -- Server's own identity and keypair (singleton table)
+        CREATE TABLE IF NOT EXISTS server_identity (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            node_name TEXT NOT NULL,
+            public_key TEXT NOT NULL,
+            private_key TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Trusted federation partners (allowlist)
+        CREATE TABLE IF NOT EXISTS federation_nodes (
+            id TEXT PRIMARY KEY,
+            node_name TEXT NOT NULL UNIQUE,
+            base_url TEXT NOT NULL,
+            public_key TEXT,
+            status TEXT DEFAULT 'pending',
+            added_by TEXT REFERENCES users(id),
+            last_contact_at TEXT,
+            failure_count INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Incoming federation requests from other servers
+        CREATE TABLE IF NOT EXISTS federation_requests (
+            id TEXT PRIMARY KEY,
+            from_node_name TEXT NOT NULL,
+            from_base_url TEXT NOT NULL,
+            from_public_key TEXT NOT NULL,
+            to_node_name TEXT NOT NULL,
+            message TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            responded_at TEXT
+        );
+
+        -- Cached profiles from federated servers
+        CREATE TABLE IF NOT EXISTS remote_users (
+            id TEXT PRIMARY KEY,
+            node_name TEXT NOT NULL,
+            handle TEXT NOT NULL,
+            display_name TEXT,
+            avatar TEXT,
+            avatar_url TEXT,
+            bio TEXT,
+            cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(node_name, handle)
+        );
+
+        -- Track which nodes are participating in our waves
+        CREATE TABLE IF NOT EXISTS wave_federation (
+            wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+            node_name TEXT NOT NULL,
+            status TEXT DEFAULT 'active',
+            added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (wave_id, node_name)
+        );
+
+        -- Cached droplets from federated servers
+        CREATE TABLE IF NOT EXISTS remote_droplets (
+            id TEXT PRIMARY KEY,
+            wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+            origin_wave_id TEXT NOT NULL,
+            origin_node TEXT NOT NULL,
+            author_id TEXT NOT NULL,
+            author_node TEXT NOT NULL,
+            parent_id TEXT,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            edited_at TEXT,
+            deleted INTEGER DEFAULT 0,
+            reactions TEXT DEFAULT '{}',
+            cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Outbound federation message queue
+        CREATE TABLE IF NOT EXISTS federation_queue (
+            id TEXT PRIMARY KEY,
+            target_node TEXT NOT NULL,
+            message_type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            attempts INTEGER DEFAULT 0,
+            max_attempts INTEGER DEFAULT 5,
+            next_retry_at TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            delivered_at TEXT,
+            last_error TEXT
+        );
+
+        -- Inbound message log (for idempotency)
+        CREATE TABLE IF NOT EXISTS federation_inbox_log (
+            id TEXT PRIMARY KEY,
+            source_node TEXT NOT NULL,
+            message_type TEXT NOT NULL,
+            received_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            processed_at TEXT,
+            status TEXT DEFAULT 'received'
+        );
+
+        -- Federation indexes
+        CREATE INDEX IF NOT EXISTS idx_federation_nodes_status ON federation_nodes(status);
+        CREATE INDEX IF NOT EXISTS idx_federation_nodes_name ON federation_nodes(node_name);
+        CREATE INDEX IF NOT EXISTS idx_federation_requests_status ON federation_requests(status);
+        CREATE INDEX IF NOT EXISTS idx_federation_requests_from_node ON federation_requests(from_node_name);
+        CREATE INDEX IF NOT EXISTS idx_remote_users_node ON remote_users(node_name);
+        CREATE INDEX IF NOT EXISTS idx_remote_users_handle ON remote_users(node_name, handle);
+        CREATE INDEX IF NOT EXISTS idx_wave_federation_wave ON wave_federation(wave_id);
+        CREATE INDEX IF NOT EXISTS idx_wave_federation_node ON wave_federation(node_name);
+        CREATE INDEX IF NOT EXISTS idx_remote_droplets_wave ON remote_droplets(wave_id);
+        CREATE INDEX IF NOT EXISTS idx_remote_droplets_origin ON remote_droplets(origin_node, origin_wave_id);
+        CREATE INDEX IF NOT EXISTS idx_remote_droplets_author ON remote_droplets(author_node, author_id);
+        CREATE INDEX IF NOT EXISTS idx_federation_queue_status ON federation_queue(status, next_retry_at);
+        CREATE INDEX IF NOT EXISTS idx_federation_queue_node ON federation_queue(target_node);
+        CREATE INDEX IF NOT EXISTS idx_federation_inbox_source ON federation_inbox_log(source_node);
+        CREATE INDEX IF NOT EXISTS idx_federation_inbox_status ON federation_inbox_log(status);
+      `);
+      console.log('✅ Federation tables created');
+    }
+
+    // Check if federation_requests table exists (added after initial federation release)
+    const fedRequestsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='federation_requests'
+    `).get();
+
+    if (!fedRequestsExists) {
+      console.log('📝 Creating federation_requests table...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS federation_requests (
+            id TEXT PRIMARY KEY,
+            from_node_name TEXT NOT NULL,
+            from_base_url TEXT NOT NULL,
+            from_public_key TEXT NOT NULL,
+            to_node_name TEXT NOT NULL,
+            message TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            responded_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_federation_requests_status ON federation_requests(status);
+        CREATE INDEX IF NOT EXISTS idx_federation_requests_from_node ON federation_requests(from_node_name);
+      `);
+      console.log('✅ Federation requests table created');
+    }
+
+    // Check if wave federation columns exist (v1.13.0)
+    const waveColumnsForFed = this.db.prepare(`PRAGMA table_info(waves)`).all();
+    const hasFederationState = waveColumnsForFed.some(c => c.name === 'federation_state');
+
+    if (!hasFederationState) {
+      console.log('📝 Adding federation columns to waves table (v1.13.0)...');
+      this.db.exec(`
+        ALTER TABLE waves ADD COLUMN federation_state TEXT DEFAULT 'local';
+        ALTER TABLE waves ADD COLUMN origin_node TEXT;
+        ALTER TABLE waves ADD COLUMN origin_wave_id TEXT;
+        CREATE INDEX IF NOT EXISTS idx_waves_federation_state ON waves(federation_state);
+        CREATE INDEX IF NOT EXISTS idx_waves_origin_node ON waves(origin_node);
+      `);
+      console.log('✅ Wave federation columns added');
+    }
+
+    // Migrate contacts table to remove FK constraint on contact_id (v1.13.0)
+    // This allows storing remote user IDs for federated follows
+    const contactsInfo = this.db.prepare(`PRAGMA table_info(contacts)`).all();
+    const contactsFKs = this.db.prepare(`PRAGMA foreign_key_list(contacts)`).all();
+    const hasContactIdFK = contactsFKs.some(fk => fk.from === 'contact_id' && fk.table === 'users');
+
+    if (hasContactIdFK) {
+      console.log('📝 Migrating contacts table to support federated follows (v1.13.0)...');
+      this.db.exec(`
+        -- Temporarily disable foreign keys for migration
+        PRAGMA foreign_keys = OFF;
+
+        -- Create new contacts table without FK on contact_id
+        CREATE TABLE contacts_new (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          contact_id TEXT NOT NULL,
+          added_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, contact_id)
+        );
+
+        -- Copy existing data
+        INSERT INTO contacts_new SELECT * FROM contacts;
+
+        -- Drop old table and rename new one
+        DROP TABLE contacts;
+        ALTER TABLE contacts_new RENAME TO contacts;
+
+        -- Re-enable foreign keys
+        PRAGMA foreign_keys = ON;
+      `);
+      console.log('✅ Contacts table migrated for federation support');
+    }
   }
 
   prepareStatements() {
@@ -641,6 +846,22 @@ export class DatabaseSQLite {
     if (!id) return null;
     const row = this.stmts.findUserById.get(id);
     return this.rowToUser(row);
+  }
+
+  getAllUsers() {
+    const rows = this.db.prepare('SELECT * FROM users ORDER BY created_at ASC').all();
+    return rows.map(r => this.rowToUser(r));
+  }
+
+  getPublicStats() {
+    const userCount = this.db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    const waveCount = this.db.prepare('SELECT COUNT(*) as count FROM waves').get().count;
+    return { userCount, waveCount };
+  }
+
+  getAdminUsers() {
+    const rows = this.db.prepare('SELECT * FROM users WHERE is_admin = 1').all();
+    return rows.map(r => this.rowToUser(r));
   }
 
   createUser(userData) {
@@ -850,20 +1071,33 @@ export class DatabaseSQLite {
 
   // === Contact Methods ===
   getContactsForUser(userId) {
-    const rows = this.db.prepare(`
-      SELECT u.id, u.handle, u.display_name, u.avatar, u.status, u.node_name
+    // Get local user contacts
+    const localRows = this.db.prepare(`
+      SELECT u.id, u.handle, u.display_name, u.avatar, u.avatar_url, u.status, NULL as node_name
       FROM contacts c
       JOIN users u ON c.contact_id = u.id
       WHERE c.user_id = ?
     `).all(userId);
 
-    return rows.map(r => ({
+    // Get remote user contacts (federated follows)
+    const remoteRows = this.db.prepare(`
+      SELECT ru.id, ru.handle, ru.display_name, ru.avatar, ru.avatar_url, 'online' as status, ru.node_name
+      FROM contacts c
+      JOIN remote_users ru ON c.contact_id = ru.id
+      WHERE c.user_id = ?
+    `).all(userId);
+
+    const allRows = [...localRows, ...remoteRows];
+
+    return allRows.map(r => ({
       id: r.id,
       handle: r.handle,
       name: r.display_name,
       avatar: r.avatar,
+      avatarUrl: r.avatar_url,
       status: r.status,
-      nodeName: r.node_name,
+      nodeName: r.node_name || null,
+      isRemote: !!r.node_name,
     }));
   }
 
@@ -1284,8 +1518,11 @@ export class DatabaseSQLite {
   // === Moderation Methods ===
   blockUser(userId, blockedUserId) {
     const user = this.findUserById(userId);
-    const blockedUser = this.findUserById(blockedUserId);
-    if (!user || !blockedUser) return false;
+    if (!user) return false;
+
+    // Check if target is local user or remote user
+    const blockedUser = this.findUserById(blockedUserId) || this.getRemoteUser(blockedUserId);
+    if (!blockedUser) return false;
 
     try {
       this.db.prepare('INSERT INTO blocks (id, user_id, blocked_user_id, blocked_at) VALUES (?, ?, ?, ?)').run(uuidv4(), userId, blockedUserId, new Date().toISOString());
@@ -1301,19 +1538,31 @@ export class DatabaseSQLite {
   }
 
   getBlockedUsers(userId) {
-    const rows = this.db.prepare(`
-      SELECT b.*, u.handle, u.display_name FROM blocks b
+    // Get locally blocked users
+    const localRows = this.db.prepare(`
+      SELECT b.*, u.handle, u.display_name, NULL as node_name FROM blocks b
       JOIN users u ON b.blocked_user_id = u.id
       WHERE b.user_id = ?
     `).all(userId);
 
-    return rows.map(r => ({
+    // Get blocked remote users
+    const remoteRows = this.db.prepare(`
+      SELECT b.*, ru.handle, ru.display_name, ru.node_name FROM blocks b
+      JOIN remote_users ru ON b.blocked_user_id = ru.id
+      WHERE b.user_id = ?
+    `).all(userId);
+
+    const allRows = [...localRows, ...remoteRows];
+
+    return allRows.map(r => ({
       id: r.id,
       userId: r.user_id,
       blockedUserId: r.blocked_user_id,
       blockedAt: r.blocked_at,
       handle: r.handle,
       displayName: r.display_name,
+      nodeName: r.node_name || null,
+      isRemote: !!r.node_name,
     }));
   }
 
@@ -1327,8 +1576,11 @@ export class DatabaseSQLite {
 
   muteUser(userId, mutedUserId) {
     const user = this.findUserById(userId);
-    const mutedUser = this.findUserById(mutedUserId);
-    if (!user || !mutedUser) return false;
+    if (!user) return false;
+
+    // Check if target is local user or remote user
+    const mutedUser = this.findUserById(mutedUserId) || this.getRemoteUser(mutedUserId);
+    if (!mutedUser) return false;
 
     try {
       this.db.prepare('INSERT INTO mutes (id, user_id, muted_user_id, muted_at) VALUES (?, ?, ?, ?)').run(uuidv4(), userId, mutedUserId, new Date().toISOString());
@@ -1344,19 +1596,31 @@ export class DatabaseSQLite {
   }
 
   getMutedUsers(userId) {
-    const rows = this.db.prepare(`
-      SELECT m.*, u.handle, u.display_name FROM mutes m
+    // Get locally muted users
+    const localRows = this.db.prepare(`
+      SELECT m.*, u.handle, u.display_name, NULL as node_name FROM mutes m
       JOIN users u ON m.muted_user_id = u.id
       WHERE m.user_id = ?
     `).all(userId);
 
-    return rows.map(r => ({
+    // Get muted remote users
+    const remoteRows = this.db.prepare(`
+      SELECT m.*, ru.handle, ru.display_name, ru.node_name FROM mutes m
+      JOIN remote_users ru ON m.muted_user_id = ru.id
+      WHERE m.user_id = ?
+    `).all(userId);
+
+    const allRows = [...localRows, ...remoteRows];
+
+    return allRows.map(r => ({
       id: r.id,
       userId: r.user_id,
       mutedUserId: r.muted_user_id,
       mutedAt: r.muted_at,
       handle: r.handle,
       displayName: r.display_name,
+      nodeName: r.node_name || null,
+      isRemote: !!r.node_name,
     }));
   }
 
@@ -1639,6 +1903,7 @@ export class DatabaseSQLite {
     const mutedIds = this.db.prepare('SELECT muted_user_id FROM mutes WHERE user_id = ?').all(userId).map(r => r.muted_user_id);
 
     // Build wave query
+    // Note: federated participant waves (crossServer with federation_state='participant') are shown to all local users
     let sql = `
       SELECT w.*, wp.archived, wp.last_read,
         u.display_name as creator_name, u.avatar as creator_avatar, u.handle as creator_handle,
@@ -1651,6 +1916,10 @@ export class DatabaseSQLite {
       WHERE (
         w.privacy = 'public'
         OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
+        OR (w.privacy = 'crossServer' AND wp.user_id IS NOT NULL)
+        OR (w.privacy = 'cross-server' AND wp.user_id IS NOT NULL)
+        OR (w.privacy = 'crossServer' AND w.federation_state = 'participant')
+        OR (w.privacy = 'cross-server' AND w.federation_state = 'participant')
         OR (w.privacy = 'group' AND w.group_id IN (${userGroupIds.map(() => '?').join(',') || 'NULL'}))
       )
     `;
@@ -1697,12 +1966,15 @@ export class DatabaseSQLite {
         is_participant: r.archived !== null,
         is_archived: r.archived === 1,
         group_name: r.group_name,
+        federationState: r.federation_state || 'local',
+        originNode: r.origin_node || null,
+        originWaveId: r.origin_wave_id || null,
       };
     });
   }
 
-  getWave(waveId) {
-    const row = this.db.prepare('SELECT * FROM waves WHERE id = ?').get(waveId);
+  // Helper to convert wave row to object
+  rowToWave(row) {
     if (!row) return null;
     return {
       id: row.id,
@@ -1716,7 +1988,16 @@ export class DatabaseSQLite {
       rootDropletId: row.root_droplet_id,
       brokenOutFrom: row.broken_out_from,
       breakoutChain: row.breakout_chain ? JSON.parse(row.breakout_chain) : null,
+      // Federation fields
+      federationState: row.federation_state || 'local',
+      originNode: row.origin_node || null,
+      originWaveId: row.origin_wave_id || null,
     };
+  }
+
+  getWave(waveId) {
+    const row = this.db.prepare('SELECT * FROM waves WHERE id = ?').get(waveId);
+    return this.rowToWave(row);
   }
 
   getWaveParticipants(waveId) {
@@ -1748,6 +2029,11 @@ export class DatabaseSQLite {
     if (!wave) return false;
 
     if (wave.privacy === 'public') return true;
+
+    // Federated participant waves are accessible to all local users
+    if ((wave.privacy === 'crossServer' || wave.privacy === 'cross-server') && wave.federationState === 'participant') {
+      return true;
+    }
 
     if (wave.privacy === 'group' && wave.groupId) {
       return this.isGroupMember(wave.groupId, userId);
@@ -2098,7 +2384,7 @@ export class DatabaseSQLite {
 
     const rows = this.db.prepare(sql).all(...params);
 
-    return rows.map(d => {
+    const localDroplets = rows.map(d => {
       // Check if user has read this droplet
       const hasRead = userId ? !!this.db.prepare('SELECT 1 FROM droplet_read_by WHERE droplet_id = ? AND user_id = ?').get(d.id, userId) : false;
       const isUnread = d.deleted ? false : (userId ? !hasRead && d.author_id !== userId : false);
@@ -2133,8 +2419,51 @@ export class DatabaseSQLite {
         is_unread: isUnread,
         brokenOutTo: d.broken_out_to,
         brokenOutToTitle: d.broken_out_to_title,
+        isRemote: false,
       };
     });
+
+    // Also get remote droplets for federated waves
+    const remoteDroplets = this.getRemoteDropletsForWave(waveId).map(rd => ({
+      id: rd.id,
+      waveId: rd.waveId,
+      parentId: rd.parentId,
+      authorId: rd.authorId,
+      content: rd.content,
+      privacy: null,
+      version: 1,
+      createdAt: rd.createdAt,
+      editedAt: rd.editedAt,
+      deleted: rd.deleted,
+      deletedAt: null,
+      reactions: rd.reactions || {},
+      readBy: [],
+      sender_name: rd.authorDisplayName || 'Unknown',
+      sender_avatar: rd.authorAvatar || '?',
+      sender_avatar_url: rd.authorAvatarUrl,
+      sender_handle: `${rd.authorId}@${rd.authorNode}`,
+      author_id: rd.authorId,
+      parent_id: rd.parentId,
+      wave_id: rd.waveId,
+      created_at: rd.createdAt,
+      edited_at: rd.editedAt,
+      deleted_at: null,
+      is_unread: false, // Remote droplets don't track read status locally
+      brokenOutTo: null,
+      brokenOutToTitle: null,
+      isRemote: true,
+      originNode: rd.originNode,
+      authorNode: rd.authorNode,
+    }));
+
+    // Merge and deduplicate by ID (prefer local over remote)
+    const seenIds = new Set(localDroplets.map(d => d.id));
+    const uniqueRemoteDroplets = remoteDroplets.filter(rd => !seenIds.has(rd.id));
+
+    const allDroplets = [...localDroplets, ...uniqueRemoteDroplets];
+    allDroplets.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    return allDroplets;
   }
 
   // Backward compatibility alias
@@ -2783,6 +3112,627 @@ export class DatabaseSQLite {
       default:
         return true;
     }
+  }
+
+  // ============ Federation - Server Identity Methods ============
+
+  getServerIdentity() {
+    const row = this.db.prepare('SELECT * FROM server_identity WHERE id = 1').get();
+    if (!row) return null;
+    return {
+      nodeName: row.node_name,
+      publicKey: row.public_key,
+      privateKey: row.private_key,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  setServerIdentity({ nodeName, publicKey, privateKey }) {
+    const now = new Date().toISOString();
+    const existing = this.getServerIdentity();
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE server_identity
+        SET node_name = ?, public_key = ?, private_key = ?, updated_at = ?
+        WHERE id = 1
+      `).run(nodeName, publicKey, privateKey, now);
+    } else {
+      this.db.prepare(`
+        INSERT INTO server_identity (id, node_name, public_key, private_key, created_at, updated_at)
+        VALUES (1, ?, ?, ?, ?, ?)
+      `).run(nodeName, publicKey, privateKey, now, now);
+    }
+
+    return this.getServerIdentity();
+  }
+
+  hasServerIdentity() {
+    const row = this.db.prepare('SELECT COUNT(*) as count FROM server_identity').get();
+    return row.count > 0;
+  }
+
+  // ============ Federation - Trusted Nodes Methods ============
+
+  getFederationNodes({ status = null } = {}) {
+    let query = 'SELECT * FROM federation_nodes';
+    const params = [];
+
+    if (status) {
+      query += ' WHERE status = ?';
+      params.push(status);
+    }
+
+    query += ' ORDER BY created_at DESC';
+
+    const rows = this.db.prepare(query).all(...params);
+    return rows.map(r => ({
+      id: r.id,
+      nodeName: r.node_name,
+      baseUrl: r.base_url,
+      publicKey: r.public_key,
+      status: r.status,
+      addedBy: r.added_by,
+      lastContactAt: r.last_contact_at,
+      failureCount: r.failure_count,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at
+    }));
+  }
+
+  getFederationNode(nodeId) {
+    const row = this.db.prepare('SELECT * FROM federation_nodes WHERE id = ?').get(nodeId);
+    if (!row) return null;
+    return {
+      id: row.id,
+      nodeName: row.node_name,
+      baseUrl: row.base_url,
+      publicKey: row.public_key,
+      status: row.status,
+      addedBy: row.added_by,
+      lastContactAt: row.last_contact_at,
+      failureCount: row.failure_count,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  getFederationNodeByName(nodeName) {
+    const row = this.db.prepare('SELECT * FROM federation_nodes WHERE node_name = ?').get(nodeName);
+    if (!row) return null;
+    return {
+      id: row.id,
+      nodeName: row.node_name,
+      baseUrl: row.base_url,
+      publicKey: row.public_key,
+      status: row.status,
+      addedBy: row.added_by,
+      lastContactAt: row.last_contact_at,
+      failureCount: row.failure_count,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  addFederationNode({ nodeName, baseUrl, publicKey = null, status = 'pending', addedBy }) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO federation_nodes (id, node_name, base_url, public_key, status, added_by, failure_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(id, nodeName, baseUrl, publicKey, status, addedBy, now, now);
+
+    return this.getFederationNode(id);
+  }
+
+  updateFederationNode(nodeId, updates) {
+    const now = new Date().toISOString();
+    const node = this.getFederationNode(nodeId);
+    if (!node) return null;
+
+    const allowedFields = ['nodeName', 'baseUrl', 'publicKey', 'status', 'lastContactAt', 'failureCount'];
+    const dbFields = {
+      nodeName: 'node_name',
+      baseUrl: 'base_url',
+      publicKey: 'public_key',
+      status: 'status',
+      lastContactAt: 'last_contact_at',
+      failureCount: 'failure_count'
+    };
+
+    const setClauses = [];
+    const params = [];
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (allowedFields.includes(key) && dbFields[key]) {
+        setClauses.push(`${dbFields[key]} = ?`);
+        params.push(value);
+      }
+    }
+
+    if (setClauses.length === 0) return node;
+
+    setClauses.push('updated_at = ?');
+    params.push(now);
+    params.push(nodeId);
+
+    this.db.prepare(`
+      UPDATE federation_nodes SET ${setClauses.join(', ')} WHERE id = ?
+    `).run(...params);
+
+    return this.getFederationNode(nodeId);
+  }
+
+  deleteFederationNode(nodeId) {
+    const result = this.db.prepare('DELETE FROM federation_nodes WHERE id = ?').run(nodeId);
+    return result.changes > 0;
+  }
+
+  recordFederationContact(nodeId, success = true) {
+    const now = new Date().toISOString();
+
+    if (success) {
+      this.db.prepare(`
+        UPDATE federation_nodes
+        SET last_contact_at = ?, failure_count = 0, updated_at = ?
+        WHERE id = ?
+      `).run(now, now, nodeId);
+    } else {
+      this.db.prepare(`
+        UPDATE federation_nodes
+        SET failure_count = failure_count + 1, updated_at = ?
+        WHERE id = ?
+      `).run(now, nodeId);
+    }
+  }
+
+  // ============ Federation - Request Methods ============
+
+  createFederationRequest(fromNodeName, fromBaseUrl, fromPublicKey, toNodeName, message = null) {
+    const id = `fedreq-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO federation_requests (id, from_node_name, from_base_url, from_public_key, to_node_name, message, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+    `).run(id, fromNodeName, fromBaseUrl, fromPublicKey, toNodeName, message, now);
+
+    return this.getFederationRequest(id);
+  }
+
+  getFederationRequest(requestId) {
+    const row = this.db.prepare('SELECT * FROM federation_requests WHERE id = ?').get(requestId);
+    if (!row) return null;
+    return {
+      id: row.id,
+      fromNodeName: row.from_node_name,
+      fromBaseUrl: row.from_base_url,
+      fromPublicKey: row.from_public_key,
+      toNodeName: row.to_node_name,
+      message: row.message,
+      status: row.status,
+      createdAt: row.created_at,
+      respondedAt: row.responded_at
+    };
+  }
+
+  getPendingFederationRequests() {
+    const rows = this.db.prepare(`
+      SELECT * FROM federation_requests WHERE status = 'pending' ORDER BY created_at DESC
+    `).all();
+
+    return rows.map(row => ({
+      id: row.id,
+      fromNodeName: row.from_node_name,
+      fromBaseUrl: row.from_base_url,
+      fromPublicKey: row.from_public_key,
+      toNodeName: row.to_node_name,
+      message: row.message,
+      status: row.status,
+      createdAt: row.created_at,
+      respondedAt: row.responded_at
+    }));
+  }
+
+  getPendingRequestFromNode(fromNodeName) {
+    const row = this.db.prepare(`
+      SELECT * FROM federation_requests WHERE from_node_name = ? AND status = 'pending'
+    `).get(fromNodeName);
+    if (!row) return null;
+    return {
+      id: row.id,
+      fromNodeName: row.from_node_name,
+      fromBaseUrl: row.from_base_url,
+      fromPublicKey: row.from_public_key,
+      toNodeName: row.to_node_name,
+      message: row.message,
+      status: row.status,
+      createdAt: row.created_at,
+      respondedAt: row.responded_at
+    };
+  }
+
+  acceptFederationRequest(requestId) {
+    const request = this.getFederationRequest(requestId);
+    if (!request) return null;
+    if (request.status !== 'pending') return null;
+
+    const now = new Date().toISOString();
+
+    // Update request status
+    this.db.prepare(`
+      UPDATE federation_requests SET status = 'accepted', responded_at = ? WHERE id = ?
+    `).run(now, requestId);
+
+    // Create federation node entry (or update if exists)
+    const existingNode = this.getFederationNodeByName(request.fromNodeName);
+    if (existingNode) {
+      this.updateFederationNode(existingNode.id, {
+        publicKey: request.fromPublicKey,
+        status: 'active',
+        baseUrl: request.fromBaseUrl
+      });
+    } else {
+      const nodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      this.db.prepare(`
+        INSERT INTO federation_nodes (id, node_name, base_url, public_key, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'active', ?, ?)
+      `).run(nodeId, request.fromNodeName, request.fromBaseUrl, request.fromPublicKey, now, now);
+    }
+
+    return this.getFederationRequest(requestId);
+  }
+
+  declineFederationRequest(requestId) {
+    const request = this.getFederationRequest(requestId);
+    if (!request) return null;
+    if (request.status !== 'pending') return null;
+
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      UPDATE federation_requests SET status = 'declined', responded_at = ? WHERE id = ?
+    `).run(now, requestId);
+
+    return this.getFederationRequest(requestId);
+  }
+
+  // ============ Federation - Remote Users Methods ============
+
+  getRemoteUser(id) {
+    const row = this.db.prepare('SELECT * FROM remote_users WHERE id = ?').get(id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      nodeName: row.node_name,
+      handle: row.handle,
+      displayName: row.display_name,
+      avatar: row.avatar,
+      avatarUrl: row.avatar_url,
+      bio: row.bio,
+      cachedAt: row.cached_at,
+      updatedAt: row.updated_at,
+      isRemote: true
+    };
+  }
+
+  getRemoteUserByHandle(nodeName, handle) {
+    const row = this.db.prepare('SELECT * FROM remote_users WHERE node_name = ? AND handle = ?').get(nodeName, handle);
+    if (!row) return null;
+    return {
+      id: row.id,
+      nodeName: row.node_name,
+      handle: row.handle,
+      displayName: row.display_name,
+      avatar: row.avatar,
+      avatarUrl: row.avatar_url,
+      bio: row.bio,
+      cachedAt: row.cached_at,
+      updatedAt: row.updated_at,
+      isRemote: true
+    };
+  }
+
+  cacheRemoteUser({ id, nodeName, handle, displayName, avatar, avatarUrl, bio }) {
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO remote_users (id, node_name, handle, display_name, avatar, avatar_url, bio, cached_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (node_name, handle) DO UPDATE SET
+        id = excluded.id,
+        display_name = excluded.display_name,
+        avatar = excluded.avatar,
+        avatar_url = excluded.avatar_url,
+        bio = excluded.bio,
+        updated_at = excluded.updated_at
+    `).run(id, nodeName, handle, displayName || null, avatar || null, avatarUrl || null, bio || null, now, now);
+
+    return this.getRemoteUser(id);
+  }
+
+  // ============ Federation - Wave Federation Methods ============
+
+  getWaveFederationNodes(waveId) {
+    const rows = this.db.prepare(`
+      SELECT wf.*, fn.base_url, fn.public_key, fn.status as node_status
+      FROM wave_federation wf
+      JOIN federation_nodes fn ON wf.node_name = fn.node_name
+      WHERE wf.wave_id = ?
+    `).all(waveId);
+
+    return rows.map(r => ({
+      waveId: r.wave_id,
+      nodeName: r.node_name,
+      status: r.status,
+      addedAt: r.added_at,
+      baseUrl: r.base_url,
+      publicKey: r.public_key,
+      nodeStatus: r.node_status
+    }));
+  }
+
+  addWaveFederationNode(waveId, nodeName) {
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT OR IGNORE INTO wave_federation (wave_id, node_name, status, added_at)
+      VALUES (?, ?, 'active', ?)
+    `).run(waveId, nodeName, now);
+
+    return true;
+  }
+
+  removeWaveFederationNode(waveId, nodeName) {
+    const result = this.db.prepare(`
+      DELETE FROM wave_federation WHERE wave_id = ? AND node_name = ?
+    `).run(waveId, nodeName);
+    return result.changes > 0;
+  }
+
+  // Update wave to be a federated origin wave
+  setWaveAsOrigin(waveId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE waves SET federation_state = 'origin', updated_at = ? WHERE id = ?
+    `).run(now, waveId);
+    return this.getWave(waveId);
+  }
+
+  // Create a participant wave (copy of origin wave from another server)
+  createParticipantWave({ id, title, privacy, createdBy, originNode, originWaveId }) {
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO waves (id, title, privacy, created_by, created_at, updated_at, federation_state, origin_node, origin_wave_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'participant', ?, ?)
+    `).run(id, title, privacy, createdBy, now, now, originNode, originWaveId);
+
+    return this.getWave(id);
+  }
+
+  // Get federated waves where this server is origin
+  getOriginWaves() {
+    const rows = this.db.prepare(`
+      SELECT * FROM waves WHERE federation_state = 'origin'
+      ORDER BY updated_at DESC
+    `).all();
+
+    return rows.map(r => this.rowToWave(r));
+  }
+
+  // Get federated waves where this server is participant
+  getParticipantWaves() {
+    const rows = this.db.prepare(`
+      SELECT * FROM waves WHERE federation_state = 'participant'
+      ORDER BY updated_at DESC
+    `).all();
+
+    return rows.map(r => this.rowToWave(r));
+  }
+
+  // Get wave by origin identifiers (for incoming federated messages)
+  getWaveByOrigin(originNode, originWaveId) {
+    const row = this.db.prepare(`
+      SELECT * FROM waves WHERE origin_node = ? AND origin_wave_id = ?
+    `).get(originNode, originWaveId);
+
+    return row ? this.rowToWave(row) : null;
+  }
+
+  // ============ Federation - Remote Droplets Methods ============
+
+  getRemoteDroplet(id) {
+    const row = this.db.prepare('SELECT * FROM remote_droplets WHERE id = ?').get(id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      waveId: row.wave_id,
+      originWaveId: row.origin_wave_id,
+      originNode: row.origin_node,
+      authorId: row.author_id,
+      authorNode: row.author_node,
+      parentId: row.parent_id,
+      content: row.content,
+      createdAt: row.created_at,
+      editedAt: row.edited_at,
+      deleted: !!row.deleted,
+      reactions: JSON.parse(row.reactions || '{}'),
+      cachedAt: row.cached_at,
+      updatedAt: row.updated_at,
+      isRemote: true
+    };
+  }
+
+  getRemoteDropletsForWave(waveId) {
+    const rows = this.db.prepare(`
+      SELECT rd.*, ru.display_name as author_display_name, ru.avatar as author_avatar, ru.avatar_url as author_avatar_url
+      FROM remote_droplets rd
+      LEFT JOIN remote_users ru ON rd.author_id = ru.id
+      WHERE rd.wave_id = ? AND rd.deleted = 0
+      ORDER BY rd.created_at ASC
+    `).all(waveId);
+
+    return rows.map(r => ({
+      id: r.id,
+      waveId: r.wave_id,
+      originWaveId: r.origin_wave_id,
+      originNode: r.origin_node,
+      authorId: r.author_id,
+      authorNode: r.author_node,
+      authorDisplayName: r.author_display_name,
+      authorAvatar: r.author_avatar,
+      authorAvatarUrl: r.author_avatar_url,
+      parentId: r.parent_id,
+      content: r.content,
+      createdAt: r.created_at,
+      editedAt: r.edited_at,
+      deleted: !!r.deleted,
+      reactions: JSON.parse(r.reactions || '{}'),
+      cachedAt: r.cached_at,
+      updatedAt: r.updated_at,
+      isRemote: true
+    }));
+  }
+
+  cacheRemoteDroplet({ id, waveId, originWaveId, originNode, authorId, authorNode, parentId, content, createdAt, editedAt, reactions }) {
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO remote_droplets (id, wave_id, origin_wave_id, origin_node, author_id, author_node, parent_id, content, created_at, edited_at, reactions, cached_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET
+        content = excluded.content,
+        edited_at = excluded.edited_at,
+        reactions = excluded.reactions,
+        updated_at = excluded.updated_at
+    `).run(id, waveId, originWaveId, originNode, authorId, authorNode, parentId || null, content, createdAt, editedAt || null, JSON.stringify(reactions || {}), now, now);
+
+    return this.getRemoteDroplet(id);
+  }
+
+  markRemoteDropletDeleted(id) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE remote_droplets SET deleted = 1, updated_at = ? WHERE id = ?
+    `).run(now, id);
+    return result.changes > 0;
+  }
+
+  // ============ Federation - Message Queue Methods ============
+
+  queueFederationMessage({ targetNode, messageType, payload }) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO federation_queue (id, target_node, message_type, payload, status, attempts, created_at, next_retry_at)
+      VALUES (?, ?, ?, ?, 'pending', 0, ?, ?)
+    `).run(id, targetNode, messageType, JSON.stringify(payload), now, now);
+
+    return id;
+  }
+
+  getPendingFederationMessages(limit = 10) {
+    const now = new Date().toISOString();
+
+    const rows = this.db.prepare(`
+      SELECT * FROM federation_queue
+      WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= ?)
+      ORDER BY created_at ASC
+      LIMIT ?
+    `).all(now, limit);
+
+    return rows.map(r => ({
+      id: r.id,
+      targetNode: r.target_node,
+      messageType: r.message_type,
+      payload: JSON.parse(r.payload),
+      status: r.status,
+      attempts: r.attempts,
+      maxAttempts: r.max_attempts,
+      nextRetryAt: r.next_retry_at,
+      createdAt: r.created_at,
+      deliveredAt: r.delivered_at,
+      lastError: r.last_error
+    }));
+  }
+
+  markFederationMessageDelivered(messageId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE federation_queue SET status = 'delivered', delivered_at = ? WHERE id = ?
+    `).run(now, messageId);
+  }
+
+  markFederationMessageFailed(messageId, error) {
+    const now = new Date().toISOString();
+
+    // Get current attempt count
+    const msg = this.db.prepare('SELECT attempts, max_attempts FROM federation_queue WHERE id = ?').get(messageId);
+    if (!msg) return;
+
+    const newAttempts = msg.attempts + 1;
+
+    if (newAttempts >= msg.max_attempts) {
+      // Max retries exceeded, mark as permanently failed
+      this.db.prepare(`
+        UPDATE federation_queue SET status = 'failed', attempts = ?, last_error = ? WHERE id = ?
+      `).run(newAttempts, error, messageId);
+    } else {
+      // Calculate exponential backoff: 1min, 5min, 25min, 2hr, 10hr
+      const backoffMinutes = Math.pow(5, newAttempts);
+      const nextRetry = new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString();
+
+      this.db.prepare(`
+        UPDATE federation_queue SET attempts = ?, next_retry_at = ?, last_error = ? WHERE id = ?
+      `).run(newAttempts, nextRetry, error, messageId);
+    }
+  }
+
+  cleanupOldFederationMessages(daysOld = 7) {
+    const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = this.db.prepare(`
+      DELETE FROM federation_queue WHERE (status = 'delivered' OR status = 'failed') AND created_at < ?
+    `).run(cutoff);
+
+    return result.changes;
+  }
+
+  // ============ Federation - Inbox Log Methods (for idempotency) ============
+
+  hasReceivedFederationMessage(messageId) {
+    const row = this.db.prepare('SELECT id FROM federation_inbox_log WHERE id = ?').get(messageId);
+    return !!row;
+  }
+
+  logFederationInbox({ id, sourceNode, messageType }) {
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT OR IGNORE INTO federation_inbox_log (id, source_node, message_type, received_at, status)
+      VALUES (?, ?, ?, ?, 'received')
+    `).run(id, sourceNode, messageType, now);
+  }
+
+  markFederationInboxProcessed(messageId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE federation_inbox_log SET processed_at = ?, status = 'processed' WHERE id = ?
+    `).run(now, messageId);
+  }
+
+  cleanupOldInboxLog(daysOld = 30) {
+    const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = this.db.prepare(`
+      DELETE FROM federation_inbox_log WHERE received_at < ?
+    `).run(cutoff);
+
+    return result.changes;
   }
 
   // Placeholder for JSON compatibility - not needed with SQLite

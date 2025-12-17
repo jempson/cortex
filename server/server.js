@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import sharp from 'sharp';
 import webpush from 'web-push';
+import crypto from 'crypto';
 import { DatabaseSQLite } from './database-sqlite.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,6 +44,10 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   console.log('⚠️  Web Push disabled: Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in .env');
 }
 
+// Federation configuration
+const FEDERATION_ENABLED = process.env.FEDERATION_ENABLED === 'true';
+const FEDERATION_NODE_NAME = process.env.FEDERATION_NODE_NAME || null;
+
 // Database configuration - set USE_SQLITE=true to use SQLite instead of JSON files
 const USE_SQLITE = process.env.USE_SQLITE === 'true';
 
@@ -62,6 +67,7 @@ const DATA_FILES = {
   pushSubscriptions: path.join(DATA_DIR, 'push-subscriptions.json'),
   notifications: path.join(DATA_DIR, 'notifications.json'),
   waveNotificationSettings: path.join(DATA_DIR, 'wave-notification-settings.json'),
+  federation: path.join(DATA_DIR, 'federation.json'),
 };
 
 // Uploads directory for avatars
@@ -2592,6 +2598,496 @@ class Database {
       };
     }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Most recent first
   }
+
+  // ============ Federation - Server Identity Methods ============
+
+  getServerIdentity() {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+    return data.identity;
+  }
+
+  setServerIdentity({ nodeName, publicKey, privateKey }) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    data.identity = {
+      nodeName,
+      publicKey,
+      privateKey,
+      createdAt: data.identity?.createdAt || now,
+      updatedAt: now
+    };
+
+    this.saveFile(DATA_FILES.federation, data);
+    return data.identity;
+  }
+
+  hasServerIdentity() {
+    const identity = this.getServerIdentity();
+    return !!identity;
+  }
+
+  // ============ Federation - Trusted Nodes Methods ============
+
+  getFederationNodes({ status = null } = {}) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+    let nodes = data.nodes || [];
+
+    if (status) {
+      nodes = nodes.filter(n => n.status === status);
+    }
+
+    return nodes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
+  getFederationNode(nodeId) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+    return (data.nodes || []).find(n => n.id === nodeId) || null;
+  }
+
+  getFederationNodeByName(nodeName) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+    return (data.nodes || []).find(n => n.nodeName === nodeName) || null;
+  }
+
+  addFederationNode({ nodeName, baseUrl, publicKey = null, status = 'pending', addedBy }) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const node = {
+      id: uuidv4(),
+      nodeName,
+      baseUrl,
+      publicKey,
+      status,
+      addedBy,
+      lastContactAt: null,
+      failureCount: 0,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    data.nodes = data.nodes || [];
+    data.nodes.push(node);
+    this.saveFile(DATA_FILES.federation, data);
+
+    return node;
+  }
+
+  updateFederationNode(nodeId, updates) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const nodeIndex = (data.nodes || []).findIndex(n => n.id === nodeId);
+    if (nodeIndex === -1) return null;
+
+    const allowedFields = ['nodeName', 'baseUrl', 'publicKey', 'status', 'lastContactAt', 'failureCount'];
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (allowedFields.includes(key)) {
+        data.nodes[nodeIndex][key] = value;
+      }
+    }
+    data.nodes[nodeIndex].updatedAt = now;
+
+    this.saveFile(DATA_FILES.federation, data);
+    return data.nodes[nodeIndex];
+  }
+
+  deleteFederationNode(nodeId) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const originalLength = (data.nodes || []).length;
+    data.nodes = (data.nodes || []).filter(n => n.id !== nodeId);
+
+    if (data.nodes.length !== originalLength) {
+      this.saveFile(DATA_FILES.federation, data);
+      return true;
+    }
+    return false;
+  }
+
+  recordFederationContact(nodeId, success = true) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const nodeIndex = (data.nodes || []).findIndex(n => n.id === nodeId);
+    if (nodeIndex === -1) return;
+
+    if (success) {
+      data.nodes[nodeIndex].lastContactAt = now;
+      data.nodes[nodeIndex].failureCount = 0;
+    } else {
+      data.nodes[nodeIndex].failureCount = (data.nodes[nodeIndex].failureCount || 0) + 1;
+    }
+    data.nodes[nodeIndex].updatedAt = now;
+
+    this.saveFile(DATA_FILES.federation, data);
+  }
+
+  // ============ Federation - Remote Users Methods ============
+
+  getRemoteUser(id) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+    const user = (data.remoteUsers || []).find(u => u.id === id);
+    if (!user) return null;
+    return { ...user, isRemote: true };
+  }
+
+  getRemoteUserByHandle(nodeName, handle) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+    const user = (data.remoteUsers || []).find(u => u.nodeName === nodeName && u.handle === handle);
+    if (!user) return null;
+    return { ...user, isRemote: true };
+  }
+
+  cacheRemoteUser({ id, nodeName, handle, displayName, avatar, avatarUrl, bio }) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    data.remoteUsers = data.remoteUsers || [];
+    const existingIndex = data.remoteUsers.findIndex(u => u.nodeName === nodeName && u.handle === handle);
+
+    const user = {
+      id,
+      nodeName,
+      handle,
+      displayName: displayName || null,
+      avatar: avatar || null,
+      avatarUrl: avatarUrl || null,
+      bio: bio || null,
+      cachedAt: existingIndex === -1 ? now : data.remoteUsers[existingIndex].cachedAt,
+      updatedAt: now
+    };
+
+    if (existingIndex >= 0) {
+      data.remoteUsers[existingIndex] = user;
+    } else {
+      data.remoteUsers.push(user);
+    }
+
+    this.saveFile(DATA_FILES.federation, data);
+    return { ...user, isRemote: true };
+  }
+
+  // ============ Federation - Wave Federation Methods ============
+
+  getWaveFederationNodes(waveId) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const waveNodes = (data.waveFederation || []).filter(wf => wf.waveId === waveId);
+
+    return waveNodes.map(wn => {
+      const node = (data.nodes || []).find(n => n.nodeName === wn.nodeName);
+      return {
+        waveId: wn.waveId,
+        nodeName: wn.nodeName,
+        status: wn.status,
+        addedAt: wn.addedAt,
+        baseUrl: node?.baseUrl,
+        publicKey: node?.publicKey,
+        nodeStatus: node?.status
+      };
+    });
+  }
+
+  addWaveFederationNode(waveId, nodeName) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    data.waveFederation = data.waveFederation || [];
+
+    // Check if already exists
+    const exists = data.waveFederation.some(wf => wf.waveId === waveId && wf.nodeName === nodeName);
+    if (exists) return true;
+
+    data.waveFederation.push({
+      waveId,
+      nodeName,
+      status: 'active',
+      addedAt: now
+    });
+
+    this.saveFile(DATA_FILES.federation, data);
+    return true;
+  }
+
+  removeWaveFederationNode(waveId, nodeName) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const originalLength = (data.waveFederation || []).length;
+    data.waveFederation = (data.waveFederation || []).filter(wf => !(wf.waveId === waveId && wf.nodeName === nodeName));
+
+    if (data.waveFederation.length !== originalLength) {
+      this.saveFile(DATA_FILES.federation, data);
+      return true;
+    }
+    return false;
+  }
+
+  setWaveAsOrigin(waveId) {
+    const now = new Date().toISOString();
+    const wave = this.waves.waves.find(w => w.id === waveId);
+    if (wave) {
+      wave.federationState = 'origin';
+      wave.updatedAt = now;
+      this.saveWaves();
+    }
+    return wave || null;
+  }
+
+  createParticipantWave({ id, title, privacy, createdBy, originNode, originWaveId }) {
+    const now = new Date().toISOString();
+
+    const wave = {
+      id,
+      title,
+      privacy,
+      createdBy,
+      createdAt: now,
+      updatedAt: now,
+      federationState: 'participant',
+      originNode,
+      originWaveId
+    };
+
+    this.waves.waves.push(wave);
+    this.saveWaves();
+    return wave;
+  }
+
+  getOriginWaves() {
+    return this.waves.waves
+      .filter(w => w.federationState === 'origin')
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  }
+
+  getParticipantWaves() {
+    return this.waves.waves
+      .filter(w => w.federationState === 'participant')
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  }
+
+  getWaveByOrigin(originNode, originWaveId) {
+    return this.waves.waves.find(w => w.originNode === originNode && w.originWaveId === originWaveId) || null;
+  }
+
+  // ============ Federation - Remote Droplets Methods ============
+
+  getRemoteDroplet(id) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+    const droplet = (data.remoteDroplets || []).find(d => d.id === id);
+    if (!droplet) return null;
+    return { ...droplet, isRemote: true };
+  }
+
+  getRemoteDropletsForWave(waveId) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    return (data.remoteDroplets || [])
+      .filter(d => d.waveId === waveId && !d.deleted)
+      .map(d => {
+        const author = (data.remoteUsers || []).find(u => u.id === d.authorId);
+        return {
+          ...d,
+          authorDisplayName: author?.displayName,
+          authorAvatar: author?.avatar,
+          authorAvatarUrl: author?.avatarUrl,
+          isRemote: true
+        };
+      })
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  }
+
+  cacheRemoteDroplet({ id, waveId, originWaveId, originNode, authorId, authorNode, parentId, content, createdAt, editedAt, reactions }) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    data.remoteDroplets = data.remoteDroplets || [];
+    const existingIndex = data.remoteDroplets.findIndex(d => d.id === id);
+
+    const droplet = {
+      id,
+      waveId,
+      originWaveId,
+      originNode,
+      authorId,
+      authorNode,
+      parentId: parentId || null,
+      content,
+      createdAt,
+      editedAt: editedAt || null,
+      reactions: reactions || {},
+      deleted: false,
+      cachedAt: existingIndex === -1 ? now : data.remoteDroplets[existingIndex].cachedAt,
+      updatedAt: now
+    };
+
+    if (existingIndex >= 0) {
+      data.remoteDroplets[existingIndex] = droplet;
+    } else {
+      data.remoteDroplets.push(droplet);
+    }
+
+    this.saveFile(DATA_FILES.federation, data);
+    return { ...droplet, isRemote: true };
+  }
+
+  markRemoteDropletDeleted(id) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const dropletIndex = (data.remoteDroplets || []).findIndex(d => d.id === id);
+    if (dropletIndex === -1) return false;
+
+    data.remoteDroplets[dropletIndex].deleted = true;
+    data.remoteDroplets[dropletIndex].updatedAt = now;
+
+    this.saveFile(DATA_FILES.federation, data);
+    return true;
+  }
+
+  // ============ Federation - Message Queue Methods ============
+
+  queueFederationMessage({ targetNode, messageType, payload }) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    data.queue = data.queue || [];
+    data.queue.push({
+      id,
+      targetNode,
+      messageType,
+      payload,
+      status: 'pending',
+      attempts: 0,
+      maxAttempts: 5,
+      nextRetryAt: now,
+      createdAt: now,
+      deliveredAt: null,
+      lastError: null
+    });
+
+    this.saveFile(DATA_FILES.federation, data);
+    return id;
+  }
+
+  getPendingFederationMessages(limit = 10) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    return (data.queue || [])
+      .filter(m => m.status === 'pending' && (!m.nextRetryAt || m.nextRetryAt <= now))
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      .slice(0, limit);
+  }
+
+  markFederationMessageDelivered(messageId) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const msgIndex = (data.queue || []).findIndex(m => m.id === messageId);
+    if (msgIndex === -1) return;
+
+    data.queue[msgIndex].status = 'delivered';
+    data.queue[msgIndex].deliveredAt = now;
+
+    this.saveFile(DATA_FILES.federation, data);
+  }
+
+  markFederationMessageFailed(messageId, error) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const msgIndex = (data.queue || []).findIndex(m => m.id === messageId);
+    if (msgIndex === -1) return;
+
+    const msg = data.queue[msgIndex];
+    const newAttempts = msg.attempts + 1;
+
+    if (newAttempts >= msg.maxAttempts) {
+      msg.status = 'failed';
+      msg.attempts = newAttempts;
+      msg.lastError = error;
+    } else {
+      // Calculate exponential backoff: 1min, 5min, 25min, 2hr, 10hr
+      const backoffMinutes = Math.pow(5, newAttempts);
+      msg.attempts = newAttempts;
+      msg.nextRetryAt = new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString();
+      msg.lastError = error;
+    }
+
+    this.saveFile(DATA_FILES.federation, data);
+  }
+
+  cleanupOldFederationMessages(daysOld = 7) {
+    const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const originalLength = (data.queue || []).length;
+    data.queue = (data.queue || []).filter(m =>
+      !((m.status === 'delivered' || m.status === 'failed') && m.createdAt < cutoff)
+    );
+
+    if (data.queue.length !== originalLength) {
+      this.saveFile(DATA_FILES.federation, data);
+    }
+    return originalLength - data.queue.length;
+  }
+
+  // ============ Federation - Inbox Log Methods (for idempotency) ============
+
+  hasReceivedFederationMessage(messageId) {
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+    return (data.inboxLog || []).some(m => m.id === messageId);
+  }
+
+  logFederationInbox({ id, sourceNode, messageType }) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    // Check if already logged
+    if ((data.inboxLog || []).some(m => m.id === id)) return;
+
+    data.inboxLog = data.inboxLog || [];
+    data.inboxLog.push({
+      id,
+      sourceNode,
+      messageType,
+      receivedAt: now,
+      processedAt: null,
+      status: 'received'
+    });
+
+    this.saveFile(DATA_FILES.federation, data);
+  }
+
+  markFederationInboxProcessed(messageId) {
+    const now = new Date().toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const msgIndex = (data.inboxLog || []).findIndex(m => m.id === messageId);
+    if (msgIndex === -1) return;
+
+    data.inboxLog[msgIndex].processedAt = now;
+    data.inboxLog[msgIndex].status = 'processed';
+
+    this.saveFile(DATA_FILES.federation, data);
+  }
+
+  cleanupOldInboxLog(daysOld = 30) {
+    const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+    const data = this.loadFile(DATA_FILES.federation, { identity: null, nodes: [], remoteUsers: [], waveFederation: [], remoteDroplets: [], queue: [], inboxLog: [] });
+
+    const originalLength = (data.inboxLog || []).length;
+    data.inboxLog = (data.inboxLog || []).filter(m => m.receivedAt >= cutoff);
+
+    if (data.inboxLog.length !== originalLength) {
+      this.saveFile(DATA_FILES.federation, data);
+    }
+    return originalLength - data.inboxLog.length;
+  }
 }
 
 // Initialize database - use SQLite or JSON based on USE_SQLITE environment variable
@@ -2779,21 +3275,41 @@ app.put('/api/profile', authenticateToken, (req, res) => {
   res.json({ id: user.id, handle: user.handle, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, preferences: user.preferences, bio: user.bio });
 });
 
-// Get public profile for any user
+// Get public profile for any user (local or federated)
 app.get('/api/users/:id/profile', authenticateToken, (req, res) => {
+  // First try to find local user
   const user = db.findUserById(req.params.id);
-  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user) {
+    // Return only public profile fields (no email, passwordHash, preferences, etc.)
+    return res.json({
+      id: user.id,
+      handle: user.handle,
+      displayName: user.displayName,
+      avatar: user.avatar,
+      avatarUrl: user.avatarUrl || null,
+      bio: user.bio || null,
+      createdAt: user.createdAt,
+      isRemote: false,
+    });
+  }
 
-  // Return only public profile fields (no email, passwordHash, preferences, etc.)
-  res.json({
-    id: user.id,
-    handle: user.handle,
-    displayName: user.displayName,
-    avatar: user.avatar,
-    avatarUrl: user.avatarUrl || null,
-    bio: user.bio || null,
-    createdAt: user.createdAt,
-  });
+  // Try to find remote/federated user
+  const remoteUser = db.getRemoteUser(req.params.id);
+  if (remoteUser) {
+    return res.json({
+      id: remoteUser.id,
+      handle: remoteUser.handle,
+      displayName: remoteUser.displayName,
+      avatar: remoteUser.avatar,
+      avatarUrl: remoteUser.avatarUrl || null,
+      bio: remoteUser.bio || null,
+      createdAt: remoteUser.cachedAt, // Use cache time as we don't know their actual join date
+      isRemote: true,
+      nodeName: remoteUser.nodeName,
+    });
+  }
+
+  return res.status(404).json({ error: 'User not found' });
 });
 
 // Upload profile avatar image
@@ -3312,6 +3828,57 @@ app.post('/api/contacts/request', authenticateToken, (req, res) => {
   }, [result.to_user_id]);
 
   res.status(201).json(result);
+});
+
+// Follow a federated user (direct add, no request flow)
+app.post('/api/contacts/follow', authenticateToken, (req, res) => {
+  const { userId } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  // Verify the target is a remote user
+  const remoteUser = db.getRemoteUser(userId);
+  if (!remoteUser) {
+    return res.status(400).json({ error: 'User not found or not a federated user' });
+  }
+
+  // Add as contact directly (one-way follow)
+  const success = db.addContact(req.user.userId, userId);
+  if (!success) {
+    return res.status(400).json({ error: 'Already following this user' });
+  }
+
+  res.json({
+    success: true,
+    contact: {
+      id: remoteUser.id,
+      handle: remoteUser.handle,
+      name: remoteUser.displayName,
+      avatar: remoteUser.avatar,
+      avatarUrl: remoteUser.avatarUrl,
+      nodeName: remoteUser.nodeName,
+      isRemote: true,
+    }
+  });
+});
+
+// Unfollow a federated user
+app.delete('/api/contacts/follow/:userId', authenticateToken, (req, res) => {
+  const targetUserId = sanitizeInput(req.params.userId);
+
+  // Verify the target is a remote user
+  const remoteUser = db.getRemoteUser(targetUserId);
+  if (!remoteUser) {
+    return res.status(400).json({ error: 'User not found or not a federated user' });
+  }
+
+  const success = db.removeContact(req.user.userId, targetUserId);
+  if (!success) {
+    return res.status(400).json({ error: 'Not following this user' });
+  }
+
+  res.json({ success: true });
 });
 
 // Get received pending contact requests
@@ -4032,6 +4599,1794 @@ app.get('/api/admin/moderation-log/:targetType/:targetId', authenticateToken, (r
   res.json({ logs, count: logs.length });
 });
 
+// ============ Federation Routes ============
+
+// Helper function to generate RSA keypair for federation
+function generateFederationKeypair() {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: {
+      type: 'spki',
+      format: 'pem'
+    },
+    privateKeyEncoding: {
+      type: 'pkcs8',
+      format: 'pem'
+    }
+  });
+  return { publicKey, privateKey };
+}
+
+// HTTP Signature utilities for server-to-server authentication
+// Format: Signature: keyId="https://server/api/federation/identity#main-key",
+//                    algorithm="rsa-sha256",
+//                    headers="(request-target) host date digest",
+//                    signature="base64sig"
+
+function createHttpSignature(method, url, body, privateKey, nodeName) {
+  // For backward compatibility, stringify the body if it's an object
+  const bodyString = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : '';
+  return createHttpSignatureFromString(method, url, bodyString || null, privateKey, nodeName);
+}
+
+// Create HTTP signature from an already-stringified body
+function createHttpSignatureFromString(method, url, bodyString, privateKey, nodeName) {
+  const parsedUrl = new URL(url);
+  const date = new Date().toUTCString();
+  const requestTarget = `${method.toLowerCase()} ${parsedUrl.pathname}`;
+
+  // Create digest of body (SHA-256)
+  const digest = bodyString
+    ? `SHA-256=${crypto.createHash('sha256').update(bodyString).digest('base64')}`
+    : '';
+
+  // Build signing string
+  const headers = ['(request-target)', 'host', 'date'];
+  if (digest) headers.push('digest');
+
+  const signingParts = [
+    `(request-target): ${requestTarget}`,
+    `host: ${parsedUrl.host}`,
+    `date: ${date}`,
+  ];
+  if (digest) signingParts.push(`digest: ${digest}`);
+
+  const signingString = signingParts.join('\n');
+
+  // Sign with RSA-SHA256
+  const sign = crypto.createSign('RSA-SHA256');
+  sign.update(signingString);
+  const signature = sign.sign(privateKey, 'base64');
+
+  // Build Signature header
+  const keyId = `https://${nodeName}/api/federation/identity#main-key`;
+  const signatureHeader = `keyId="${keyId}",algorithm="rsa-sha256",headers="${headers.join(' ')}",signature="${signature}"`;
+
+  return {
+    'Date': date,
+    'Digest': digest || undefined,
+    'Signature': signatureHeader,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+}
+
+function parseHttpSignature(signatureHeader) {
+  if (!signatureHeader) return null;
+
+  const parts = {};
+  // Parse: keyId="...",algorithm="...",headers="...",signature="..."
+  const regex = /(\w+)="([^"]+)"/g;
+  let match;
+  while ((match = regex.exec(signatureHeader)) !== null) {
+    parts[match[1]] = match[2];
+  }
+
+  if (!parts.keyId || !parts.signature || !parts.headers) {
+    return null;
+  }
+
+  return parts;
+}
+
+function verifyHttpSignature(req, publicKey) {
+  const signatureParts = parseHttpSignature(req.headers['signature']);
+  if (!signatureParts) return false;
+
+  const headersList = signatureParts.headers.split(' ');
+
+  // Reconstruct signing string
+  const signingParts = headersList.map(header => {
+    if (header === '(request-target)') {
+      return `(request-target): ${req.method.toLowerCase()} ${req.path}`;
+    }
+    const value = req.headers[header.toLowerCase()];
+    if (!value) return null;
+    return `${header}: ${value}`;
+  });
+
+  if (signingParts.some(p => p === null)) return false;
+
+  const signingString = signingParts.join('\n');
+
+  // Verify signature
+  try {
+    const verify = crypto.createVerify('RSA-SHA256');
+    verify.update(signingString);
+    return verify.verify(publicKey, signatureParts.signature, 'base64');
+  } catch (err) {
+    console.error('Signature verification error:', err.message);
+    return false;
+  }
+}
+
+// Middleware to authenticate federation requests (server-to-server)
+// Factory function to create auth middleware with allowed statuses
+function createFederationAuthMiddleware(allowedStatuses = ['active']) {
+  return function(req, res, next) {
+    if (!FEDERATION_ENABLED) {
+      return res.status(404).json({ error: 'Federation is not enabled' });
+    }
+
+    const signatureHeader = req.headers['signature'];
+    if (!signatureHeader) {
+      return res.status(401).json({ error: 'Missing Signature header' });
+    }
+
+    const signatureParts = parseHttpSignature(signatureHeader);
+    if (!signatureParts) {
+      return res.status(401).json({ error: 'Invalid Signature header format' });
+    }
+
+    // Extract node name from keyId
+    // Format: https://nodename/api/federation/identity#main-key
+    const keyIdMatch = signatureParts.keyId.match(/https?:\/\/([^\/]+)\//);
+    if (!keyIdMatch) {
+      return res.status(401).json({ error: 'Invalid keyId format' });
+    }
+
+    const nodeName = keyIdMatch[1];
+
+    // Look up the node
+    const node = db.getFederationNodeByName(nodeName);
+    if (!node) {
+      return res.status(403).json({ error: 'Unknown federation node' });
+    }
+
+    if (!allowedStatuses.includes(node.status)) {
+      return res.status(403).json({ error: `Federation node is ${node.status}` });
+    }
+
+    if (!node.publicKey) {
+      return res.status(403).json({ error: 'No public key for this node' });
+    }
+
+    // Verify digest if present
+    if (req.headers['digest']) {
+      const bodyString = JSON.stringify(req.body);
+      const expectedDigest = `SHA-256=${crypto.createHash('sha256').update(bodyString).digest('base64')}`;
+      if (req.headers['digest'] !== expectedDigest) {
+        return res.status(401).json({ error: 'Digest mismatch' });
+      }
+    }
+
+    // Verify signature
+    if (!verifyHttpSignature(req, node.publicKey)) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    // Check date is within acceptable window (5 minutes)
+    const requestDate = new Date(req.headers['date']);
+    const now = new Date();
+    const diffMinutes = Math.abs(now - requestDate) / (1000 * 60);
+    if (diffMinutes > 5) {
+      return res.status(401).json({ error: 'Request date too old or in future' });
+    }
+
+    // Attach node info to request
+    req.federationNode = node;
+
+    // Record successful contact (only for active nodes)
+    if (node.status === 'active') {
+      db.recordFederationContact(node.id, true);
+    }
+
+    next();
+  };
+}
+
+// Default middleware for active nodes only
+const authenticateFederationRequest = createFederationAuthMiddleware(['active']);
+
+// Middleware that also allows outbound_pending (for accept/decline responses)
+const authenticateFederationResponse = createFederationAuthMiddleware(['active', 'outbound_pending']);
+
+// Helper to send signed federation requests
+async function sendSignedFederationRequest(targetNode, method, path, body = null) {
+  const ourIdentity = db.getServerIdentity();
+  if (!ourIdentity) {
+    throw new Error('Server identity not configured');
+  }
+
+  const url = `${targetNode.baseUrl}${path}`;
+
+  // Stringify body once and use the same string for both signature and request
+  // Guard against double-stringify: if body is already a string, don't stringify again
+  let bodyString = null;
+  if (body) {
+    if (typeof body === 'string') {
+      bodyString = body;
+    } else {
+      bodyString = JSON.stringify(body);
+    }
+  }
+
+  // Pass the stringified body to createHttpSignature for consistent digest calculation
+  const headers = createHttpSignatureFromString(method, url, bodyString, ourIdentity.privateKey, ourIdentity.nodeName);
+
+  // Remove undefined headers
+  Object.keys(headers).forEach(key => headers[key] === undefined && delete headers[key]);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: bodyString || undefined,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    return response;
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
+  }
+}
+
+// Helper to send wave invite to a federated server
+// Called when creating a wave with federated participants or adding federated participants to an existing wave
+// Uses optimistic send (try immediately) with queue fallback on failure
+async function sendWaveInvite(targetNode, wave, participants, invitedUserHandle) {
+  const messageId = `wave-invite-${uuidv4()}`;
+  const ourIdentity = db.getServerIdentity();
+
+  // Build participant list with node info
+  const participantList = participants.map(p => ({
+    id: p.id,
+    handle: p.handle,
+    displayName: p.displayName || p.name,
+    avatar: p.avatar,
+    avatarUrl: p.avatarUrl,
+    nodeName: p.nodeName || ourIdentity?.nodeName, // Local users have our node
+  }));
+
+  const payload = {
+    id: messageId,
+    type: 'wave_invite',
+    payload: {
+      wave: {
+        id: wave.id,
+        title: wave.title,
+        privacy: wave.privacy || 'cross-server',
+        createdBy: wave.createdBy,
+        createdAt: wave.createdAt,
+      },
+      participants: participantList,
+      invitedUserHandle,
+    }
+  };
+
+  try {
+    // Try to send immediately (optimistic)
+    const response = await sendSignedFederationRequest(targetNode, 'POST', '/api/federation/inbox', payload);
+
+    if (response.ok) {
+      console.log(`✅ Wave invite sent to ${targetNode.nodeName} for @${invitedUserHandle}`);
+      return true;
+    } else {
+      const errorText = await response.text();
+      console.error(`❌ Wave invite to ${targetNode.nodeName} failed: ${response.status} - ${errorText}`);
+      // Queue for retry
+      db.queueFederationMessage({
+        targetNode: targetNode.nodeName,
+        messageType: 'wave_invite',
+        payload,
+      });
+      console.log(`📥 Queued wave_invite for retry to ${targetNode.nodeName}`);
+      return false;
+    }
+  } catch (error) {
+    console.error(`❌ Wave invite to ${targetNode.nodeName} error:`, error.message);
+    // Queue for retry
+    db.queueFederationMessage({
+      targetNode: targetNode.nodeName,
+      messageType: 'wave_invite',
+      payload,
+    });
+    console.log(`📥 Queued wave_invite for retry to ${targetNode.nodeName}`);
+    return false;
+  }
+}
+
+// Helper to parse federated user identifier
+// Returns { handle, nodeName } or null if not federated
+function parseFederatedIdentifier(identifier) {
+  const match = identifier.match(/^@?([^@]+)@(.+)$/);
+  if (match) {
+    return { handle: match[1], nodeName: match[2] };
+  }
+  return null;
+}
+
+// Helper to send a droplet to all federated nodes on a wave
+// Called when a droplet is created, edited, or deleted on an origin wave
+// Uses optimistic send (try immediately) with queue fallback on failure
+async function sendDropletToFederatedNodes(waveId, messageType, payload) {
+  if (!FEDERATION_ENABLED) return;
+
+  // Get all federated nodes for this wave
+  const federationNodes = db.getWaveFederationNodes(waveId);
+  if (!federationNodes || federationNodes.length === 0) return;
+
+  const messageId = `${messageType}-${payload.droplet?.id || payload.dropletId}-${Date.now()}`;
+
+  for (const fed of federationNodes) {
+    const node = db.getFederationNodeByName(fed.nodeName);
+    if (!node || node.status !== 'active') {
+      console.warn(`⚠️ Skipping ${messageType} to ${fed.nodeName}: node not found or not active`);
+      continue;
+    }
+
+    const fullPayload = {
+      id: messageId,
+      type: messageType,
+      payload,
+    };
+
+    try {
+      // Try to send immediately (optimistic)
+      const response = await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', fullPayload);
+
+      if (response.ok) {
+        console.log(`✅ ${messageType} sent to ${node.nodeName}`);
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ ${messageType} to ${node.nodeName} failed: ${response.status} - ${errorText}`);
+        // Queue for retry
+        db.queueFederationMessage({
+          targetNode: fed.nodeName,
+          messageType,
+          payload: fullPayload,
+        });
+        console.log(`📥 Queued ${messageType} for retry to ${fed.nodeName}`);
+      }
+    } catch (error) {
+      console.error(`❌ ${messageType} to ${node.nodeName} error:`, error.message);
+      // Queue for retry
+      db.queueFederationMessage({
+        targetNode: fed.nodeName,
+        messageType,
+        payload: fullPayload,
+      });
+      console.log(`📥 Queued ${messageType} for retry to ${fed.nodeName}`);
+    }
+  }
+}
+
+// Rate limiter for federation inbox (higher limits for server-to-server)
+const federationInboxLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 500, // 500 requests per minute (for bulk message delivery)
+  message: { error: 'Too many federation requests' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Public endpoint: Get this server's federation identity (no auth required)
+// Other servers call this to get our public key during handshake
+app.get('/api/federation/identity', (req, res) => {
+  if (!FEDERATION_ENABLED) {
+    return res.status(404).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const identity = db.getServerIdentity();
+  if (!identity) {
+    return res.status(404).json({ error: 'Server identity not configured' });
+  }
+
+  // Return public identity only (never expose private key)
+  res.json({
+    nodeName: identity.nodeName,
+    publicKey: identity.publicKey,
+    createdAt: identity.createdAt
+  });
+});
+
+// Get federation status (admin only)
+app.get('/api/admin/federation/status', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const identity = db.getServerIdentity();
+  const nodes = db.getFederationNodes();
+
+  res.json({
+    enabled: FEDERATION_ENABLED,
+    configured: !!identity,
+    nodeName: identity?.nodeName || FEDERATION_NODE_NAME || null,
+    hasKeypair: !!identity?.publicKey,
+    trustedNodes: nodes.length,
+    activeNodes: nodes.filter(n => n.status === 'active').length
+  });
+});
+
+// Initialize or update server identity (admin only)
+// TODO: UUID collision risk when cloning databases
+// If a production database is cloned to set up a new server, all UUIDs (users, waves,
+// droplets) will be identical on both servers. The federation design assumes UUIDs are
+// globally unique - collisions would cause:
+// - User ID conflicts (same UUID = different people on different servers)
+// - Wave ID conflicts (federation state confusion)
+// - Droplet deduplication failures or incorrect message merging
+// Potential safeguards:
+// 1. Document: "Don't clone databases between federated servers"
+// 2. Add validation: refuse to federate if remote has matching origin_wave_ids
+// 3. Provide ID regeneration script for setting up new servers from backups
+// 4. Include node name in UUID generation (would require migration)
+app.post('/api/admin/federation/identity', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const nodeName = sanitizeInput(req.body.nodeName);
+  if (!nodeName || nodeName.length < 3) {
+    return res.status(400).json({ error: 'Node name must be at least 3 characters' });
+  }
+
+  // Validate node name format (domain-like)
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$/.test(nodeName)) {
+    return res.status(400).json({ error: 'Node name must be a valid domain format (e.g., cortex.example.com)' });
+  }
+
+  const existingIdentity = db.getServerIdentity();
+  let publicKey, privateKey;
+
+  if (req.body.regenerateKeys || !existingIdentity) {
+    // Generate new keypair
+    const keypair = generateFederationKeypair();
+    publicKey = keypair.publicKey;
+    privateKey = keypair.privateKey;
+    console.log(`🔑 Generated new federation keypair for ${nodeName}`);
+  } else {
+    // Keep existing keypair
+    publicKey = existingIdentity.publicKey;
+    privateKey = existingIdentity.privateKey;
+  }
+
+  const identity = db.setServerIdentity({ nodeName, publicKey, privateKey });
+
+  res.json({
+    success: true,
+    nodeName: identity.nodeName,
+    publicKey: identity.publicKey,
+    createdAt: identity.createdAt,
+    updatedAt: identity.updatedAt
+  });
+});
+
+// List trusted federation nodes (admin only)
+app.get('/api/admin/federation/nodes', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const status = req.query.status ? sanitizeInput(req.query.status) : null;
+  const nodes = db.getFederationNodes({ status });
+
+  res.json({ nodes, count: nodes.length });
+});
+
+// Add a trusted federation node (admin only)
+app.post('/api/admin/federation/nodes', authenticateToken, async (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const nodeName = sanitizeInput(req.body.nodeName);
+  const baseUrl = sanitizeInput(req.body.baseUrl);
+
+  if (!nodeName || nodeName.length < 3) {
+    return res.status(400).json({ error: 'Node name must be at least 3 characters' });
+  }
+
+  if (!baseUrl || !baseUrl.startsWith('http')) {
+    return res.status(400).json({ error: 'Valid base URL is required (must start with http:// or https://)' });
+  }
+
+  // Check if node already exists
+  const existingNode = db.getFederationNodeByName(nodeName);
+  if (existingNode) {
+    return res.status(409).json({ error: 'Node with this name already exists' });
+  }
+
+  const node = db.addFederationNode({
+    nodeName,
+    baseUrl: baseUrl.replace(/\/$/, ''), // Remove trailing slash
+    status: 'pending',
+    addedBy: req.user.userId
+  });
+
+  res.status(201).json({ success: true, node });
+});
+
+// Get a specific federation node (admin only)
+app.get('/api/admin/federation/nodes/:id', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const nodeId = sanitizeInput(req.params.id);
+  const node = db.getFederationNode(nodeId);
+
+  if (!node) {
+    return res.status(404).json({ error: 'Federation node not found' });
+  }
+
+  res.json({ node });
+});
+
+// Update a federation node (admin only)
+app.put('/api/admin/federation/nodes/:id', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const nodeId = sanitizeInput(req.params.id);
+  const updates = {};
+
+  if (req.body.baseUrl) {
+    updates.baseUrl = sanitizeInput(req.body.baseUrl).replace(/\/$/, '');
+  }
+  if (req.body.status && ['pending', 'active', 'suspended', 'blocked'].includes(req.body.status)) {
+    updates.status = req.body.status;
+  }
+
+  const node = db.updateFederationNode(nodeId, updates);
+  if (!node) {
+    return res.status(404).json({ error: 'Federation node not found' });
+  }
+
+  res.json({ success: true, node });
+});
+
+// Delete a federation node (admin only)
+app.delete('/api/admin/federation/nodes/:id', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const nodeId = sanitizeInput(req.params.id);
+  const deleted = db.deleteFederationNode(nodeId);
+
+  if (!deleted) {
+    return res.status(404).json({ error: 'Federation node not found' });
+  }
+
+  res.json({ success: true });
+});
+
+// Initiate handshake with a federation node (admin only)
+// Fetches the remote server's public key
+app.post('/api/admin/federation/nodes/:id/handshake', authenticateToken, async (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+  if (!ourIdentity) {
+    return res.status(400).json({ error: 'Server identity not configured. Set up federation identity first.' });
+  }
+
+  const nodeId = sanitizeInput(req.params.id);
+  const node = db.getFederationNode(nodeId);
+
+  if (!node) {
+    return res.status(404).json({ error: 'Federation node not found' });
+  }
+
+  try {
+    // Fetch the remote server's identity
+    const identityUrl = `${node.baseUrl}/api/federation/identity`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    const response = await fetch(identityUrl, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+      }
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      db.recordFederationContact(nodeId, false);
+      return res.status(502).json({
+        error: 'Failed to reach remote server',
+        details: `HTTP ${response.status}: ${errorText.substring(0, 100)}`
+      });
+    }
+
+    const remoteIdentity = await response.json();
+
+    if (!remoteIdentity.nodeName || !remoteIdentity.publicKey) {
+      db.recordFederationContact(nodeId, false);
+      return res.status(502).json({ error: 'Invalid response from remote server' });
+    }
+
+    // Verify the node name matches
+    if (remoteIdentity.nodeName !== node.nodeName) {
+      db.recordFederationContact(nodeId, false);
+      return res.status(400).json({
+        error: 'Node name mismatch',
+        details: `Expected ${node.nodeName}, got ${remoteIdentity.nodeName}`
+      });
+    }
+
+    // Update our record with the remote server's public key and mark as active
+    const updatedNode = db.updateFederationNode(nodeId, {
+      publicKey: remoteIdentity.publicKey,
+      status: 'active'
+    });
+    db.recordFederationContact(nodeId, true);
+
+    res.json({
+      success: true,
+      message: 'Handshake successful',
+      node: updatedNode,
+      remoteIdentity: {
+        nodeName: remoteIdentity.nodeName,
+        publicKey: remoteIdentity.publicKey.substring(0, 100) + '...'
+      }
+    });
+  } catch (error) {
+    db.recordFederationContact(nodeId, false);
+
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ error: 'Connection timed out' });
+    }
+
+    console.error(`Federation handshake failed for ${node.nodeName}:`, error.message);
+    res.status(502).json({
+      error: 'Failed to connect to remote server',
+      details: error.message
+    });
+  }
+});
+
+// ============ Federation Request System ============
+
+// Rate limiter for federation request endpoint (stricter than general inbox)
+const federationRequestLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // 10 requests per hour per IP
+  message: { error: 'Too many federation requests. Try again later.' }
+});
+
+// Send a federation request to another server (admin only)
+app.post('/api/admin/federation/request', authenticateToken, async (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+  if (!ourIdentity) {
+    return res.status(400).json({ error: 'Server identity not configured. Set up federation identity first.' });
+  }
+
+  const { baseUrl, message } = req.body;
+  if (!baseUrl) {
+    return res.status(400).json({ error: 'baseUrl is required' });
+  }
+
+  // Normalize base URL (remove trailing slash)
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+
+  try {
+    // Step 1: Fetch the remote server's identity
+    const identityUrl = `${normalizedBaseUrl}/api/federation/identity`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const identityResponse = await fetch(identityUrl, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+      }
+    });
+    clearTimeout(timeout);
+
+    if (!identityResponse.ok) {
+      const errorText = await identityResponse.text();
+      return res.status(502).json({
+        error: 'Failed to reach remote server',
+        details: `HTTP ${identityResponse.status}: ${errorText.substring(0, 100)}`
+      });
+    }
+
+    const remoteIdentity = await identityResponse.json();
+    if (!remoteIdentity.nodeName || !remoteIdentity.publicKey) {
+      return res.status(502).json({ error: 'Invalid response from remote server - missing identity' });
+    }
+
+    // Check if we already have a relationship with this server
+    const existingNode = db.getFederationNodeByName(remoteIdentity.nodeName);
+    if (existingNode) {
+      if (existingNode.status === 'active') {
+        return res.status(400).json({ error: 'Already federated with this server' });
+      }
+      if (existingNode.status === 'outbound_pending') {
+        return res.status(400).json({ error: 'Federation request already pending for this server' });
+      }
+    }
+
+    // Check if they have a pending request to us (auto-accept scenario)
+    const incomingRequest = db.getPendingRequestFromNode(remoteIdentity.nodeName);
+    if (incomingRequest) {
+      // They already requested us - auto-accept their request instead
+      const accepted = db.acceptFederationRequest(incomingRequest.id);
+      if (accepted) {
+        // Send acceptance notification back to them
+        try {
+          const acceptBody = {
+            type: 'federation_accepted',
+            requestId: incomingRequest.id,
+            acceptorNodeName: ourIdentity.nodeName,
+            acceptorPublicKey: ourIdentity.publicKey
+          };
+          const targetNode = { baseUrl: incomingRequest.fromBaseUrl, nodeName: incomingRequest.fromNodeName };
+          await sendSignedFederationRequest(targetNode, 'POST', '/api/federation/inbox/accept', acceptBody);
+        } catch (notifyErr) {
+          console.error('Failed to notify acceptance:', notifyErr.message);
+        }
+        return res.json({
+          success: true,
+          message: 'They had a pending request to us - auto-accepted and federation is now active',
+          node: db.getFederationNodeByName(remoteIdentity.nodeName)
+        });
+      }
+    }
+
+    // Step 2: Send signed federation request to remote server
+    const requestBody = {
+      type: 'federation_request',
+      fromNodeName: ourIdentity.nodeName,
+      fromBaseUrl: `${req.protocol}://${req.get('host')}`, // Our server's URL
+      fromPublicKey: ourIdentity.publicKey,
+      message: message || null
+    };
+
+    // Build signature for the request using our private key
+    const requestUrl = `${normalizedBaseUrl}/api/federation/inbox/request`;
+    const bodyString = JSON.stringify(requestBody);
+    const headers = createHttpSignatureFromString('POST', requestUrl, bodyString, ourIdentity.privateKey, ourIdentity.nodeName);
+
+    const controller2 = new AbortController();
+    const timeout2 = setTimeout(() => controller2.abort(), 15000);
+
+    const requestResponse = await fetch(requestUrl, {
+      method: 'POST',
+      signal: controller2.signal,
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json'
+      },
+      body: bodyString
+    });
+    clearTimeout(timeout2);
+
+    if (!requestResponse.ok) {
+      const errorText = await requestResponse.text();
+      return res.status(502).json({
+        error: 'Remote server rejected our request',
+        details: `HTTP ${requestResponse.status}: ${errorText.substring(0, 200)}`
+      });
+    }
+
+    // Step 3: Create local node entry with outbound_pending status
+    const nodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+    db.addFederationNode({
+      nodeName: remoteIdentity.nodeName,
+      baseUrl: normalizedBaseUrl,
+      addedBy: user.id
+    });
+    // Update to outbound_pending and store their public key
+    const node = db.getFederationNodeByName(remoteIdentity.nodeName);
+    if (node) {
+      db.updateFederationNode(node.id, {
+        status: 'outbound_pending',
+        publicKey: remoteIdentity.publicKey
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Federation request sent successfully',
+      remoteNode: {
+        nodeName: remoteIdentity.nodeName,
+        status: 'outbound_pending'
+      }
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ error: 'Connection timed out' });
+    }
+    console.error('Federation request failed:', error.message);
+    res.status(502).json({
+      error: 'Failed to send federation request',
+      details: error.message
+    });
+  }
+});
+
+// Receive a federation request from another server (public, but signed)
+app.post('/api/federation/inbox/request', federationRequestLimiter, async (req, res) => {
+  if (!FEDERATION_ENABLED) {
+    return res.status(404).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+  if (!ourIdentity) {
+    return res.status(404).json({ error: 'Server identity not configured' });
+  }
+
+  const { type, fromNodeName, fromBaseUrl, fromPublicKey, message } = req.body;
+
+  if (type !== 'federation_request') {
+    return res.status(400).json({ error: 'Invalid request type' });
+  }
+
+  if (!fromNodeName || !fromBaseUrl || !fromPublicKey) {
+    return res.status(400).json({ error: 'Missing required fields: fromNodeName, fromBaseUrl, fromPublicKey' });
+  }
+
+  // Verify the HTTP signature using the provided public key (bootstrap trust)
+  const signatureHeader = req.headers['signature'];
+  if (!signatureHeader) {
+    return res.status(401).json({ error: 'Missing Signature header' });
+  }
+
+  // Parse and verify signature
+  const parsed = parseHttpSignature(signatureHeader);
+  if (!parsed || !parsed.signature) {
+    return res.status(401).json({ error: 'Invalid Signature header format' });
+  }
+
+  // Verify keyId matches the claimed node name
+  const keyIdMatch = parsed.keyId?.match(/https?:\/\/([^\/]+)\//);
+  if (!keyIdMatch || keyIdMatch[1] !== fromNodeName) {
+    return res.status(401).json({ error: 'Signature keyId does not match fromNodeName' });
+  }
+
+  // Verify the signature using the provided public key
+  try {
+    const isValid = verifyHttpSignature(req, fromPublicKey);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+  } catch (err) {
+    console.error('Signature verification error:', err.message);
+    return res.status(401).json({ error: 'Signature verification failed' });
+  }
+
+  // Check if we're already federated with this node
+  const existingNode = db.getFederationNodeByName(fromNodeName);
+  if (existingNode && existingNode.status === 'active') {
+    return res.json({ success: true, message: 'Already federated', alreadyFederated: true });
+  }
+
+  // Check if we have an outbound_pending request to them (mutual request scenario)
+  if (existingNode && existingNode.status === 'outbound_pending') {
+    // They're requesting us while we're waiting for them - auto-accept!
+    db.updateFederationNode(existingNode.id, {
+      status: 'active',
+      publicKey: fromPublicKey
+    });
+
+    // Send acceptance notification back
+    try {
+      const acceptBody = {
+        type: 'federation_accepted',
+        acceptorNodeName: ourIdentity.nodeName,
+        acceptorPublicKey: ourIdentity.publicKey
+      };
+      const targetNode = { baseUrl: fromBaseUrl, nodeName: fromNodeName };
+      await sendSignedFederationRequest(targetNode, 'POST', '/api/federation/inbox/accept', acceptBody);
+    } catch (notifyErr) {
+      console.error('Failed to send acceptance notification:', notifyErr.message);
+    }
+
+    return res.json({ success: true, message: 'Mutual request - auto-accepted', autoAccepted: true });
+  }
+
+  // Check for existing pending request from this node
+  const existingRequest = db.getPendingRequestFromNode(fromNodeName);
+  if (existingRequest) {
+    return res.json({ success: true, message: 'Request already pending', duplicate: true });
+  }
+
+  // Create the federation request
+  const request = db.createFederationRequest(
+    fromNodeName,
+    fromBaseUrl,
+    fromPublicKey,
+    ourIdentity.nodeName,
+    message
+  );
+
+  console.log(`📨 Received federation request from ${fromNodeName}`);
+
+  // Notify admin users
+  broadcastToAdmins({
+    type: 'federation_request_received',
+    request: {
+      id: request.id,
+      fromNodeName,
+      message,
+      createdAt: request.createdAt
+    }
+  });
+
+  res.json({ success: true, message: 'Federation request received', requestId: request.id });
+});
+
+// Get pending federation requests (admin only)
+app.get('/api/admin/federation/requests', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const requests = db.getPendingFederationRequests();
+  res.json({ requests, count: requests.length });
+});
+
+// Accept a federation request (admin only)
+app.post('/api/admin/federation/requests/:id/accept', authenticateToken, async (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+  if (!ourIdentity) {
+    return res.status(400).json({ error: 'Server identity not configured' });
+  }
+
+  const requestId = sanitizeInput(req.params.id);
+  const request = db.getFederationRequest(requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: 'Federation request not found' });
+  }
+
+  if (request.status !== 'pending') {
+    return res.status(400).json({ error: `Request already ${request.status}` });
+  }
+
+  try {
+    // Verify the requesting server's identity by fetching their current public key
+    const identityUrl = `${request.fromBaseUrl}/api/federation/identity`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const identityResponse = await fetch(identityUrl, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+      }
+    });
+    clearTimeout(timeout);
+
+    if (!identityResponse.ok) {
+      return res.status(502).json({ error: 'Could not verify remote server identity' });
+    }
+
+    const remoteIdentity = await identityResponse.json();
+
+    // Verify public key matches what was in the request (prevent bait-and-switch)
+    if (remoteIdentity.publicKey !== request.fromPublicKey) {
+      return res.status(400).json({
+        error: 'Public key mismatch',
+        details: 'The remote server\'s public key has changed since the request was made. Please decline and have them re-request.'
+      });
+    }
+
+    // Accept the request (creates federation_nodes entry)
+    const accepted = db.acceptFederationRequest(requestId);
+    if (!accepted) {
+      return res.status(500).json({ error: 'Failed to accept request' });
+    }
+
+    // Send acceptance notification to the requesting server
+    const acceptBody = {
+      type: 'federation_accepted',
+      requestId: requestId,
+      acceptorNodeName: ourIdentity.nodeName,
+      acceptorPublicKey: ourIdentity.publicKey
+    };
+
+    const targetNode = { baseUrl: request.fromBaseUrl, nodeName: request.fromNodeName };
+
+    try {
+      await sendSignedFederationRequest(targetNode, 'POST', '/api/federation/inbox/accept', acceptBody);
+    } catch (notifyErr) {
+      console.error('Failed to notify requesting server of acceptance:', notifyErr.message);
+      // Continue anyway - they can retry their handshake
+    }
+
+    const node = db.getFederationNodeByName(request.fromNodeName);
+    console.log(`✅ Accepted federation request from ${request.fromNodeName}`);
+
+    res.json({
+      success: true,
+      message: 'Federation request accepted',
+      node
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ error: 'Connection timed out while verifying remote server' });
+    }
+    console.error('Accept federation request failed:', error.message);
+    res.status(500).json({ error: 'Failed to accept federation request', details: error.message });
+  }
+});
+
+// Decline a federation request (admin only)
+app.post('/api/admin/federation/requests/:id/decline', authenticateToken, async (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+
+  const requestId = sanitizeInput(req.params.id);
+  const request = db.getFederationRequest(requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: 'Federation request not found' });
+  }
+
+  if (request.status !== 'pending') {
+    return res.status(400).json({ error: `Request already ${request.status}` });
+  }
+
+  // Decline the request
+  const declined = db.declineFederationRequest(requestId);
+  if (!declined) {
+    return res.status(500).json({ error: 'Failed to decline request' });
+  }
+
+  // Notify the requesting server (best effort)
+  if (ourIdentity) {
+    try {
+      const declineBody = {
+        type: 'federation_declined',
+        fromNodeName: request.fromNodeName
+      };
+      const targetNode = { baseUrl: request.fromBaseUrl, nodeName: request.fromNodeName };
+      await sendSignedFederationRequest(targetNode, 'POST', '/api/federation/inbox/decline', declineBody);
+    } catch (notifyErr) {
+      console.error('Failed to notify requesting server of decline:', notifyErr.message);
+      // Continue anyway
+    }
+  }
+
+  console.log(`❌ Declined federation request from ${request.fromNodeName}`);
+  res.json({ success: true, message: 'Federation request declined' });
+});
+
+// Receive acceptance notification from a server we requested
+app.post('/api/federation/inbox/accept', federationRequestLimiter, authenticateFederationResponse, (req, res) => {
+  const { type, acceptorNodeName, acceptorPublicKey } = req.body;
+  const sourceNode = req.federationNode;
+
+  if (type !== 'federation_accepted') {
+    return res.status(400).json({ error: 'Invalid message type' });
+  }
+
+  // Find our outbound pending node for this server
+  const node = db.getFederationNodeByName(sourceNode.nodeName);
+  if (!node) {
+    return res.status(404).json({ error: 'No pending request found for this server' });
+  }
+
+  if (node.status !== 'outbound_pending') {
+    return res.json({ success: true, message: 'Already processed' });
+  }
+
+  // Update to active status
+  db.updateFederationNode(node.id, {
+    status: 'active',
+    publicKey: acceptorPublicKey || node.publicKey
+  });
+  db.recordFederationContact(node.id, true);
+
+  // TODO: Federation catch-up/backfill mechanism
+  // When federation is re-established after a disconnection, droplets created during
+  // the downtime are not synced. For robustness (e.g., server failure recovery), consider:
+  // 1. Sync on reconnection - request droplets newer than last sync point for shared waves
+  // 2. Admin resync button - manual option to request full wave resync
+  // 3. Version vectors - track last-seen droplet timestamps per wave per node
+  // This would require a new endpoint like GET /api/federation/waves/:id/sync?since=timestamp
+
+  console.log(`✅ Federation request to ${sourceNode.nodeName} was accepted`);
+  res.json({ success: true, message: 'Acceptance acknowledged' });
+});
+
+// Receive decline notification from a server we requested
+app.post('/api/federation/inbox/decline', federationRequestLimiter, authenticateFederationResponse, (req, res) => {
+  const { type, fromNodeName } = req.body;
+  const sourceNode = req.federationNode;
+
+  if (type !== 'federation_declined') {
+    return res.status(400).json({ error: 'Invalid message type' });
+  }
+
+  // Find our outbound pending node for this server
+  const node = db.getFederationNodeByName(sourceNode.nodeName);
+  if (!node) {
+    return res.status(404).json({ error: 'No pending request found for this server' });
+  }
+
+  if (node.status !== 'outbound_pending') {
+    return res.json({ success: true, message: 'Already processed' });
+  }
+
+  // Update to declined status or delete the node entry
+  db.updateFederationNode(node.id, { status: 'declined' });
+
+  console.log(`❌ Federation request to ${sourceNode.nodeName} was declined`);
+  res.json({ success: true, message: 'Decline acknowledged' });
+});
+
+// ============ End Federation Request System ============
+
+// Federation inbox - receives signed messages from other servers
+// This is the main entry point for federated content delivery
+app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederationRequest, async (req, res) => {
+  const { id, type, payload } = req.body;
+  const sourceNode = req.federationNode;
+
+  if (!id || !type) {
+    return res.status(400).json({ error: 'Missing id or type' });
+  }
+
+  // Check for duplicate (idempotency)
+  if (db.hasReceivedFederationMessage(id)) {
+    // Already processed, return success (idempotent)
+    return res.json({ success: true, duplicate: true });
+  }
+
+  // Log the incoming message
+  db.logFederationInbox({ id, sourceNode: sourceNode.nodeName, messageType: type });
+
+  // Process based on message type
+  try {
+    switch (type) {
+      case 'wave_invite': {
+        // Handle wave invitation from origin server
+        // payload: { wave, participants, invitedUserHandle }
+        console.log(`📨 Received wave_invite from ${sourceNode.nodeName}`);
+
+        const { wave, participants, invitedUserHandle } = payload;
+        if (!wave || !invitedUserHandle) {
+          console.error('Invalid wave_invite payload');
+          break;
+        }
+
+        // Find the local user being invited
+        const invitedUser = db.findUserByHandle(invitedUserHandle);
+        if (!invitedUser) {
+          console.error(`wave_invite: User @${invitedUserHandle} not found locally`);
+          break;
+        }
+
+        // Check if we already have this wave as a participant
+        let localWave = db.getWaveByOrigin(sourceNode.nodeName, wave.id);
+
+        if (!localWave) {
+          // Create participant wave
+          const participantWaveId = uuidv4();
+          localWave = db.createParticipantWave({
+            id: participantWaveId,
+            title: wave.title,
+            privacy: wave.privacy || 'cross-server',
+            createdBy: invitedUser.id, // Local user as creator reference
+            originNode: sourceNode.nodeName,
+            originWaveId: wave.id,
+          });
+
+          // Cache any remote participants
+          if (participants) {
+            for (const p of participants) {
+              if (p.nodeName && p.nodeName !== db.getServerIdentity()?.nodeName) {
+                // Remote user, cache them
+                db.cacheRemoteUser({
+                  id: p.id,
+                  nodeName: p.nodeName,
+                  handle: p.handle,
+                  displayName: p.displayName,
+                  avatar: p.avatar,
+                  avatarUrl: p.avatarUrl,
+                  bio: p.bio,
+                });
+              }
+            }
+          }
+        }
+
+        // Add local user as participant
+        db.addWaveParticipant(localWave.id, invitedUser.id);
+
+        // Track that this node is participating
+        db.addWaveFederationNode(localWave.id, sourceNode.nodeName);
+
+        // Notify the local user via WebSocket
+        const wsClients = clients.get(invitedUser.id);
+        if (wsClients) {
+          const notification = {
+            type: 'wave_invite_received',
+            wave: {
+              id: localWave.id,
+              title: localWave.title,
+              privacy: localWave.privacy,
+              federationState: 'participant',
+              originNode: sourceNode.nodeName,
+              originWaveId: wave.id,
+            },
+            fromNode: sourceNode.nodeName,
+          };
+          wsClients.forEach(client => {
+            if (client.readyState === 1) {
+              client.send(JSON.stringify(notification));
+            }
+          });
+        }
+
+        console.log(`✅ Created participant wave ${localWave.id} for @${invitedUserHandle}`);
+        break;
+      }
+
+      case 'wave_broadcast': {
+        // Handle public/cross-server wave broadcast from origin server
+        // This creates a participant wave visible to all users on this server
+        // payload: { wave, participants, droplets }
+        console.log(`📢 Received wave_broadcast from ${sourceNode.nodeName}`);
+
+        const { wave, participants, droplets } = payload;
+        if (!wave) {
+          console.error('Invalid wave_broadcast payload');
+          break;
+        }
+
+        // Check if we already have this wave as a participant
+        let localWave = db.getWaveByOrigin(sourceNode.nodeName, wave.id);
+
+        if (!localWave) {
+          // Create participant wave with privacy set to crossServer
+          // This allows any local user to see it
+          const participantWaveId = `wave-${uuidv4()}`;
+
+          // We need a local user to be the "reference" creator
+          // Use the first admin or fall back to first active user
+          const adminUser = db.getAllUsers().find(u => u.role === 'admin');
+          const fallbackUser = db.getAllUsers()[0];
+          const referenceUser = adminUser || fallbackUser;
+
+          if (!referenceUser) {
+            console.error('wave_broadcast: No local users to reference as participant wave owner');
+            break;
+          }
+
+          localWave = db.createParticipantWave({
+            id: participantWaveId,
+            title: wave.title,
+            privacy: 'crossServer',
+            createdBy: referenceUser.id,
+            originNode: sourceNode.nodeName,
+            originWaveId: wave.id,
+          });
+
+          // Cache any remote participants
+          if (participants) {
+            for (const p of participants) {
+              if (p.nodeName && p.nodeName !== db.getServerIdentity()?.nodeName) {
+                db.cacheRemoteUser({
+                  id: p.id,
+                  nodeName: p.nodeName,
+                  handle: p.handle,
+                  displayName: p.displayName,
+                  avatar: p.avatar,
+                  avatarUrl: p.avatarUrl,
+                });
+              }
+            }
+          }
+
+          // Cache existing droplets from the broadcast
+          if (droplets && Array.isArray(droplets)) {
+            console.log(`📥 Caching ${droplets.length} existing droplets from wave broadcast`);
+            for (const d of droplets) {
+              // Cache the droplet author if remote
+              if (d.author && d.author.nodeName) {
+                db.cacheRemoteUser({
+                  id: d.author.id,
+                  nodeName: d.author.nodeName,
+                  handle: d.author.handle,
+                  displayName: d.author.displayName,
+                  avatar: d.author.avatar,
+                  avatarUrl: d.author.avatarUrl,
+                });
+              }
+
+              // Ensure reactions is an object (may be string if corrupted)
+              let reactions = d.reactions || {};
+              if (typeof reactions === 'string') {
+                try { reactions = JSON.parse(reactions); } catch { reactions = {}; }
+              }
+
+              // Cache the droplet
+              db.cacheRemoteDroplet({
+                id: d.id,
+                waveId: localWave.id,
+                originWaveId: wave.id,
+                originNode: d.author?.nodeName || sourceNode.nodeName,
+                authorId: d.author?.id || d.authorId,
+                authorNode: d.author?.nodeName || sourceNode.nodeName,
+                parentId: d.parentId,
+                content: d.content,
+                createdAt: d.createdAt,
+                editedAt: d.editedAt,
+                reactions,
+              });
+            }
+          }
+
+          // Broadcast to all connected local users
+          const allUsers = db.getAllUsers();
+          for (const user of allUsers) {
+            const wsClients = clients.get(user.id);
+            if (wsClients) {
+              const notification = {
+                type: 'wave_broadcast_received',
+                wave: {
+                  id: localWave.id,
+                  title: localWave.title,
+                  privacy: localWave.privacy,
+                  federationState: 'participant',
+                  originNode: sourceNode.nodeName,
+                  originWaveId: wave.id,
+                },
+                fromNode: sourceNode.nodeName,
+              };
+              wsClients.forEach(client => {
+                if (client.readyState === 1) {
+                  client.send(JSON.stringify(notification));
+                }
+              });
+            }
+          }
+
+          console.log(`✅ Created public participant wave ${localWave.id} from broadcast`);
+        } else {
+          console.log(`ℹ️ Wave broadcast already exists as ${localWave.id}`);
+        }
+        break;
+      }
+
+      case 'new_droplet': {
+        // Handle new droplet from federated wave
+        // payload: { droplet, originWaveId, author }
+        console.log(`📨 Received new_droplet from ${sourceNode.nodeName}`);
+
+        const { droplet, originWaveId, author } = payload;
+        if (!droplet || !originWaveId) {
+          console.error('Invalid new_droplet payload');
+          break;
+        }
+
+        // Find the local wave - could be participant wave OR origin wave
+        // First try: this server is participant, sourceNode is origin
+        let localWave = db.getWaveByOrigin(sourceNode.nodeName, originWaveId);
+        let isOriginServer = false;
+
+        // Second try: this server is origin, sourceNode is participant
+        if (!localWave) {
+          const maybeOriginWave = db.getWave(originWaveId);
+          if (maybeOriginWave && maybeOriginWave.federationState === 'origin') {
+            localWave = maybeOriginWave;
+            isOriginServer = true;
+          }
+        }
+
+        if (!localWave) {
+          console.error(`new_droplet: No local wave found for origin ${originWaveId} from ${sourceNode.nodeName}`);
+          break;
+        }
+
+        // Cache the author if remote
+        if (author && author.nodeName) {
+          db.cacheRemoteUser({
+            id: author.id,
+            nodeName: author.nodeName,
+            handle: author.handle,
+            displayName: author.displayName,
+            avatar: author.avatar,
+            avatarUrl: author.avatarUrl,
+            bio: author.bio,
+          });
+        }
+
+        // Cache the remote droplet
+        const cachedDroplet = db.cacheRemoteDroplet({
+          id: droplet.id,
+          waveId: localWave.id,
+          originWaveId,
+          originNode: author?.nodeName || sourceNode.nodeName,
+          authorId: author?.id || droplet.authorId,
+          authorNode: author?.nodeName || sourceNode.nodeName,
+          parentId: droplet.parentId,
+          content: droplet.content,
+          createdAt: droplet.createdAt,
+          editedAt: droplet.editedAt,
+          reactions: droplet.reactions,
+        });
+
+        // Broadcast to local WebSocket clients on this wave
+        broadcastToWave(localWave.id, {
+          type: 'new_droplet',
+          droplet: {
+            ...cachedDroplet,
+            sender_name: author?.displayName || 'Unknown',
+            sender_handle: author?.handle || 'unknown',
+            sender_avatar: author?.avatar || '?',
+            sender_avatar_url: author?.avatarUrl,
+          },
+          isRemote: true,
+        });
+
+        console.log(`✅ Cached remote droplet ${droplet.id} in wave ${localWave.id} (origin=${isOriginServer})`);
+
+        // If this is the origin server, relay the droplet to other participant nodes
+        if (isOriginServer) {
+          const federationNodes = db.getWaveFederationNodes(localWave.id);
+          for (const fed of federationNodes) {
+            // Don't send back to the node that sent it
+            if (fed.nodeName === sourceNode.nodeName) continue;
+
+            const node = db.getFederationNodeByName(fed.nodeName);
+            if (!node || node.status !== 'active') continue;
+
+            const relayPayload = {
+              id: `relay-${droplet.id}-${Date.now()}`,
+              type: 'new_droplet',
+              payload: { droplet, originWaveId, author },
+            };
+
+            sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', relayPayload)
+              .then(res => {
+                if (res.ok) console.log(`✅ Relayed droplet to ${node.nodeName}`);
+                else console.error(`❌ Relay to ${node.nodeName} failed: ${res.status}`);
+              })
+              .catch(err => console.error(`❌ Relay error to ${node.nodeName}:`, err.message));
+          }
+        }
+
+        break;
+      }
+
+      case 'droplet_edited': {
+        // Handle droplet edit from origin server
+        // payload: { dropletId, originWaveId, content, editedAt, version }
+        console.log(`📨 Received droplet_edited from ${sourceNode.nodeName}`);
+
+        const { dropletId, originWaveId: editOriginWaveId, content, editedAt, version } = payload;
+        if (!dropletId || !editOriginWaveId) {
+          console.error('Invalid droplet_edited payload');
+          break;
+        }
+
+        // Find the local participant wave
+        const editLocalWave = db.getWaveByOrigin(sourceNode.nodeName, editOriginWaveId);
+        if (!editLocalWave) {
+          console.error(`droplet_edited: No local wave found for origin ${editOriginWaveId}`);
+          break;
+        }
+
+        // Check if we have this droplet cached
+        const existingDroplet = db.getRemoteDroplet(dropletId);
+        if (existingDroplet) {
+          // Update via cacheRemoteDroplet (upsert)
+          db.cacheRemoteDroplet({
+            id: dropletId,
+            waveId: editLocalWave.id,
+            originWaveId: editOriginWaveId,
+            originNode: sourceNode.nodeName,
+            authorId: existingDroplet.authorId,
+            authorNode: existingDroplet.authorNode,
+            parentId: existingDroplet.parentId,
+            content,
+            createdAt: existingDroplet.createdAt,
+            editedAt,
+            reactions: existingDroplet.reactions,
+          });
+
+          // Broadcast to local clients
+          broadcastToWave(editLocalWave.id, {
+            type: 'droplet_edited',
+            dropletId,
+            waveId: editLocalWave.id,
+            content,
+            editedAt,
+            version,
+            isRemote: true,
+          });
+
+          console.log(`✅ Updated remote droplet ${dropletId}`);
+        }
+        break;
+      }
+
+      case 'droplet_deleted': {
+        // Handle droplet deletion from origin server
+        // payload: { dropletId, originWaveId }
+        console.log(`📨 Received droplet_deleted from ${sourceNode.nodeName}`);
+
+        const { dropletId: deleteDropletId, originWaveId: deleteOriginWaveId } = payload;
+        if (!deleteDropletId || !deleteOriginWaveId) {
+          console.error('Invalid droplet_deleted payload');
+          break;
+        }
+
+        // Find the local participant wave
+        const deleteLocalWave = db.getWaveByOrigin(sourceNode.nodeName, deleteOriginWaveId);
+        if (!deleteLocalWave) {
+          console.error(`droplet_deleted: No local wave found for origin ${deleteOriginWaveId}`);
+          break;
+        }
+
+        // Mark as deleted
+        if (db.markRemoteDropletDeleted(deleteDropletId)) {
+          // Broadcast to local clients
+          broadcastToWave(deleteLocalWave.id, {
+            type: 'droplet_deleted',
+            dropletId: deleteDropletId,
+            waveId: deleteLocalWave.id,
+            isRemote: true,
+          });
+
+          console.log(`✅ Marked remote droplet ${deleteDropletId} as deleted`);
+        }
+        break;
+      }
+
+      case 'user_profile':
+        // Handle user profile update/request
+        // payload: { user }
+        console.log(`📨 Received user_profile from ${sourceNode.nodeName}`);
+        if (payload?.user) {
+          db.cacheRemoteUser({
+            id: payload.user.id,
+            nodeName: sourceNode.nodeName,
+            handle: payload.user.handle,
+            displayName: payload.user.displayName,
+            avatar: payload.user.avatar,
+            avatarUrl: payload.user.avatarUrl,
+            bio: payload.user.bio,
+          });
+        }
+        break;
+
+      case 'ping':
+        // Simple connectivity test
+        console.log(`📨 Received ping from ${sourceNode.nodeName}`);
+        break;
+
+      default:
+        console.log(`📨 Unknown federation message type: ${type} from ${sourceNode.nodeName}`);
+    }
+
+    // Mark as processed
+    db.markFederationInboxProcessed(id);
+
+    res.json({ success: true, processed: true });
+  } catch (error) {
+    console.error(`Federation inbox error processing ${type}:`, error.message);
+    res.status(500).json({ error: 'Failed to process message' });
+  }
+});
+
+// Fetch a user's public profile (for remote user resolution)
+// Called by other servers to get user info
+app.get('/api/federation/users/:handle', federationInboxLimiter, authenticateFederationRequest, (req, res) => {
+  const handle = sanitizeInput(req.params.handle);
+  const user = db.findUserByHandle(handle);
+
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  // Return public profile only
+  res.json({
+    user: {
+      id: user.id,
+      handle: user.handle,
+      displayName: user.displayName,
+      avatar: user.avatar,
+      avatarUrl: user.avatarUrl,
+      bio: user.bio,
+      createdAt: user.createdAt,
+    }
+  });
+});
+
+// Resolve a user identifier - supports both local and federated users
+// Format: "handle" for local, "@handle@server.com" for federated
+// Authenticated endpoint for local users to look up federated users
+app.get('/api/users/resolve/:identifier', authenticateToken, async (req, res) => {
+  const identifier = sanitizeInput(req.params.identifier);
+
+  // Parse federated identifier: @handle@server.com or handle@server.com
+  const federatedMatch = identifier.match(/^@?([^@]+)@(.+)$/);
+
+  if (!federatedMatch) {
+    // Local user lookup
+    const user = db.findUserByHandle(identifier);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    return res.json({
+      user: {
+        id: user.id,
+        handle: user.handle,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        avatarUrl: user.avatarUrl,
+        bio: user.bio,
+        isLocal: true,
+        nodeName: null,
+      }
+    });
+  }
+
+  // Federated user lookup
+  const [, handle, nodeName] = federatedMatch;
+
+  // Check cache first
+  const cachedUser = db.getRemoteUserByHandle(nodeName, handle);
+  if (cachedUser) {
+    // Check if cache is fresh (less than 1 hour old)
+    const cacheAge = Date.now() - new Date(cachedUser.cachedAt).getTime();
+    if (cacheAge < 60 * 60 * 1000) {
+      return res.json({
+        user: {
+          ...cachedUser,
+          isLocal: false,
+          federatedHandle: `@${handle}@${nodeName}`,
+        }
+      });
+    }
+  }
+
+  // Need to fetch from remote server
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled' });
+  }
+
+  // Find the federation node
+  const node = db.getFederationNodeByName(nodeName);
+  if (!node) {
+    return res.status(404).json({ error: 'Unknown federation server' });
+  }
+
+  if (node.status !== 'active') {
+    return res.status(400).json({ error: `Federation with ${nodeName} is not active` });
+  }
+
+  try {
+    const response = await sendSignedFederationRequest(node, 'GET', `/api/federation/users/${encodeURIComponent(handle)}`);
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return res.status(404).json({ error: 'User not found on remote server' });
+      }
+      throw new Error(`Remote server returned ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.user) {
+      return res.status(502).json({ error: 'Invalid response from remote server' });
+    }
+
+    // Cache the user
+    const remoteUser = db.cacheRemoteUser({
+      id: data.user.id,
+      nodeName,
+      handle: data.user.handle,
+      displayName: data.user.displayName,
+      avatar: data.user.avatar,
+      avatarUrl: data.user.avatarUrl,
+      bio: data.user.bio,
+    });
+
+    res.json({
+      user: {
+        ...remoteUser,
+        isLocal: false,
+        federatedHandle: `@${handle}@${nodeName}`,
+      }
+    });
+  } catch (error) {
+    console.error(`Failed to resolve federated user @${handle}@${nodeName}:`, error.message);
+    db.recordFederationContact(node.id, false);
+
+    // Return cached data if available (even if stale)
+    if (cachedUser) {
+      return res.json({
+        user: {
+          ...cachedUser,
+          isLocal: false,
+          federatedHandle: `@${handle}@${nodeName}`,
+          stale: true,
+        }
+      });
+    }
+
+    res.status(502).json({ error: 'Failed to reach remote server' });
+  }
+});
+
 // ============ Group Routes ============
 app.get('/api/groups', authenticateToken, (req, res) => {
   res.json(db.getGroupsForUser(req.user.userId));
@@ -4301,13 +6656,13 @@ app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
   });
 });
 
-app.post('/api/waves', authenticateToken, (req, res) => {
+app.post('/api/waves', authenticateToken, async (req, res) => {
   const title = sanitizeInput(req.body.title);
   if (!title) return res.status(400).json({ error: 'Title is required' });
-  
-  const privacy = ['private', 'group', 'crossServer', 'public'].includes(req.body.privacy) 
+
+  const privacy = ['private', 'group', 'crossServer', 'public'].includes(req.body.privacy)
     ? req.body.privacy : 'private';
-  
+
   // Validate group access for group waves
   if (privacy === 'group') {
     const groupId = sanitizeInput(req.body.groupId);
@@ -4317,13 +6672,72 @@ app.post('/api/waves', authenticateToken, (req, res) => {
     }
   }
 
+  // Separate local and federated participants
+  const localParticipantIds = [];
+  const federatedParticipants = []; // { handle, nodeName, node }
+
+  if (req.body.participants && Array.isArray(req.body.participants)) {
+    for (const participant of req.body.participants) {
+      const federated = parseFederatedIdentifier(participant);
+      if (federated && FEDERATION_ENABLED) {
+        // Federated participant - look up the node
+        const node = db.getFederationNodeByName(federated.nodeName);
+        if (node && node.status === 'active') {
+          federatedParticipants.push({ ...federated, node });
+        } else {
+          console.warn(`Skipping federated participant @${federated.handle}@${federated.nodeName}: node not found or not active`);
+        }
+      } else if (!federated) {
+        // Local participant - could be user ID or handle
+        const user = db.findUserById(participant) || db.findUserByHandle(participant);
+        if (user) {
+          localParticipantIds.push(user.id);
+        }
+      }
+    }
+  }
+
+  // Determine if this is a federated wave
+  const hasFederatedParticipants = federatedParticipants.length > 0;
+
   const wave = db.createWave({
     title,
-    privacy,
+    privacy: hasFederatedParticipants ? 'crossServer' : privacy, // Force cross-server if federated
     groupId: privacy === 'group' ? sanitizeInput(req.body.groupId) : null,
     createdBy: req.user.userId,
-    participants: req.body.participants,
+    participants: localParticipantIds,
   });
+
+  // If federated, mark as origin and send invites
+  if (hasFederatedParticipants) {
+    db.setWaveAsOrigin(wave.id);
+
+    // Get creator info for participant list
+    const creator = db.findUserById(req.user.userId);
+    const localParticipants = db.getWaveParticipants(wave.id);
+
+    // Send wave invites to each federated node
+    // Group by node to send one invite per node
+    const nodeInvites = new Map();
+    for (const fp of federatedParticipants) {
+      const nodeKey = fp.nodeName;
+      if (!nodeInvites.has(nodeKey)) {
+        nodeInvites.set(nodeKey, { node: fp.node, handles: [] });
+      }
+      nodeInvites.get(nodeKey).handles.push(fp.handle);
+    }
+
+    // Send invites asynchronously (don't block response)
+    for (const [nodeName, { node, handles }] of nodeInvites) {
+      for (const handle of handles) {
+        sendWaveInvite(node, wave, localParticipants, handle).catch(err => {
+          console.error(`Failed to send wave invite to ${nodeName}:`, err.message);
+        });
+      }
+      // Track federation relationship
+      db.addWaveFederationNode(wave.id, nodeName);
+    }
+  }
 
   const result = {
     ...wave,
@@ -4331,21 +6745,26 @@ app.post('/api/waves', authenticateToken, (req, res) => {
     creator_handle: db.findUserById(req.user.userId)?.handle || 'unknown',
     participants: db.getWaveParticipants(wave.id),
     message_count: 0,
+    federationState: hasFederatedParticipants ? 'origin' : 'local',
+    federatedNodes: hasFederatedParticipants ? federatedParticipants.map(fp => fp.nodeName) : [],
   };
 
   broadcastToWave(wave.id, { type: 'wave_created', wave: result });
   res.status(201).json(result);
 });
 
-app.put('/api/waves/:id', authenticateToken, (req, res) => {
+app.put('/api/waves/:id', authenticateToken, async (req, res) => {
   const waveId = sanitizeInput(req.params.id);
-  const wave = db.getWave(waveId);
+  let wave = db.getWave(waveId);
   if (!wave) return res.status(404).json({ error: 'Wave not found' });
   if (wave.createdBy !== req.user.userId) {
     return res.status(403).json({ error: 'Only wave creator can modify' });
   }
 
   const privacy = req.body.privacy;
+  const wasLocal = wave.federationState === 'local' || !wave.federationState;
+  const changingToCrossServer = privacy === 'crossServer' && wave.privacy !== 'crossServer';
+
   if (privacy && ['private', 'group', 'crossServer', 'public'].includes(privacy)) {
     let groupId = null;
     if (privacy === 'group') {
@@ -4363,8 +6782,193 @@ app.put('/api/waves/:id', authenticateToken, (req, res) => {
     db.saveWaves();
   }
 
+  // If wave is being promoted to crossServer and federation is enabled, broadcast to all trusted nodes
+  if (FEDERATION_ENABLED && changingToCrossServer && wasLocal) {
+    // Mark wave as origin
+    db.setWaveAsOrigin(waveId);
+
+    // Get all active trusted nodes
+    const trustedNodes = db.getFederationNodes().filter(n => n.status === 'active');
+
+    if (trustedNodes.length > 0) {
+      // Get current participants for the wave invite
+      const localParticipants = db.getWaveParticipants(waveId);
+
+      // Get existing droplets to include in broadcast
+      const existingDroplets = db.getDropletsForWave(waveId);
+      const ourNodeName = db.getServerIdentity()?.nodeName;
+
+      // Broadcast wave to all trusted nodes
+      // We use a special "broadcast" flag indicating this is a public wave broadcast
+      for (const node of trustedNodes) {
+        // Track federation relationship
+        db.addWaveFederationNode(waveId, node.nodeName);
+
+        // Send wave broadcast (invites all users on the remote node)
+        const broadcastPayload = {
+          id: `wave-broadcast-${uuidv4()}`,
+          type: 'wave_broadcast',
+          payload: {
+            wave: {
+              id: wave.id,
+              title: wave.title,
+              privacy: 'crossServer',
+              createdBy: wave.createdBy,
+              createdAt: wave.createdAt,
+            },
+            participants: localParticipants.map(p => ({
+              id: p.id,
+              handle: p.handle,
+              displayName: p.name,
+              avatar: p.avatar,
+              nodeName: ourNodeName,
+            })),
+            // Include existing droplets so federated servers have history
+            droplets: existingDroplets.map(d => {
+              // Ensure reactions is an object (may be string from DB)
+              let reactions = d.reactions || {};
+              if (typeof reactions === 'string') {
+                try { reactions = JSON.parse(reactions); } catch { reactions = {}; }
+              }
+              return {
+                id: d.id,
+                parentId: d.parentId || d.parent_id,
+                content: d.content,
+                createdAt: d.createdAt || d.created_at,
+                editedAt: d.editedAt || d.edited_at,
+                reactions,
+                author: {
+                  id: d.authorId || d.author_id,
+                  handle: d.sender_handle,
+                  displayName: d.sender_name,
+                  avatar: d.sender_avatar,
+                  avatarUrl: d.sender_avatar_url,
+                  nodeName: ourNodeName,
+                },
+              };
+            }),
+          },
+        };
+
+        sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', broadcastPayload)
+          .then(response => {
+            if (response.ok) {
+              console.log(`✅ Wave broadcast sent to ${node.nodeName}`);
+            } else {
+              console.error(`❌ Wave broadcast to ${node.nodeName} failed: ${response.status}`);
+            }
+          })
+          .catch(err => {
+            console.error(`❌ Wave broadcast to ${node.nodeName} error:`, err.message);
+          });
+      }
+
+      console.log(`📢 Broadcasting wave ${waveId} to ${trustedNodes.length} federated nodes`);
+    }
+  }
+
+  // Re-fetch wave to get updated state
+  wave = db.getWave(waveId);
+
   broadcastToWave(waveId, { type: 'wave_updated', wave });
   res.json(wave);
+});
+
+// Invite federated participants to an existing wave
+app.post('/api/waves/:id/invite-federated', authenticateToken, async (req, res) => {
+  if (!FEDERATION_ENABLED) {
+    return res.status(501).json({ error: 'Federation not enabled' });
+  }
+
+  const waveId = sanitizeInput(req.params.id);
+  const wave = db.getWave(waveId);
+  if (!wave) return res.status(404).json({ error: 'Wave not found' });
+  if (wave.createdBy !== req.user.userId) {
+    return res.status(403).json({ error: 'Only wave creator can invite federated participants' });
+  }
+
+  const { participants } = req.body;
+  if (!participants || !Array.isArray(participants) || participants.length === 0) {
+    return res.status(400).json({ error: 'participants array required' });
+  }
+
+  // Parse federated identifiers
+  const federatedParticipants = [];
+  for (const participant of participants) {
+    const federated = parseFederatedIdentifier(participant);
+    if (federated) {
+      const node = db.getFederationNodeByName(federated.nodeName);
+      if (node && node.status === 'active') {
+        federatedParticipants.push({ ...federated, node });
+      } else {
+        console.warn(`Skipping federated participant @${federated.handle}@${federated.nodeName}: node not found or not active`);
+      }
+    }
+  }
+
+  if (federatedParticipants.length === 0) {
+    return res.status(400).json({ error: 'No valid federated participants found' });
+  }
+
+  // Update wave to crossServer if not already federated
+  if (wave.privacy !== 'crossServer' && wave.privacy !== 'cross-server') {
+    db.updateWavePrivacy(waveId, 'crossServer', null);
+    wave.privacy = 'crossServer';
+  }
+
+  // Mark wave as origin if not already
+  if (wave.federationState !== 'origin') {
+    db.setWaveAsOrigin(waveId);
+    wave.federationState = 'origin';
+  }
+
+  // Get current local participants for the invite
+  const localParticipants = db.getWaveParticipants(waveId);
+
+  // Group invites by node
+  const nodeInvites = new Map();
+  for (const fp of federatedParticipants) {
+    const nodeKey = fp.nodeName;
+    if (!nodeInvites.has(nodeKey)) {
+      nodeInvites.set(nodeKey, { node: fp.node, handles: [] });
+    }
+    nodeInvites.get(nodeKey).handles.push(fp.handle);
+  }
+
+  // Send invites and track federation relationships
+  const results = { invited: [], failed: [] };
+  for (const [nodeName, { node, handles }] of nodeInvites) {
+    // Track federation relationship if not already
+    db.addWaveFederationNode(waveId, nodeName);
+
+    for (const handle of handles) {
+      try {
+        const success = await sendWaveInvite(node, wave, localParticipants, handle);
+        if (success) {
+          results.invited.push(`@${handle}@${nodeName}`);
+        } else {
+          results.failed.push(`@${handle}@${nodeName}`);
+        }
+      } catch (err) {
+        console.error(`Failed to send wave invite to ${nodeName}:`, err.message);
+        results.failed.push(`@${handle}@${nodeName}`);
+      }
+    }
+  }
+
+  // Broadcast update to local users
+  broadcastToWave(waveId, { type: 'wave_updated', wave });
+
+  res.json({
+    success: true,
+    wave: {
+      id: wave.id,
+      title: wave.title,
+      privacy: wave.privacy,
+      federationState: wave.federationState,
+    },
+    results,
+  });
 });
 
 app.post('/api/waves/:id/archive', authenticateToken, (req, res) => {
@@ -4478,6 +7082,58 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
   // Also broadcast legacy event for backward compatibility
   broadcastToWave(waveId, { type: 'new_message', data: droplet });
 
+  // Federation: Send droplet to federated nodes
+  if (FEDERATION_ENABLED && (wave.federationState === 'origin' || wave.federationState === 'participant')) {
+    const ourIdentity = db.getServerIdentity();
+    const dropletPayload = {
+      droplet: {
+        id: droplet.id,
+        parentId: droplet.parentId,
+        content: droplet.content,
+        createdAt: droplet.createdAt,
+        editedAt: droplet.editedAt,
+        reactions: droplet.reactions,
+      },
+      originWaveId: wave.federationState === 'origin' ? waveId : wave.originWaveId,
+      author: author ? {
+        id: author.id,
+        handle: author.handle,
+        displayName: author.displayName,
+        avatar: author.avatar,
+        avatarUrl: author.avatarUrl,
+        bio: author.bio,
+        nodeName: ourIdentity?.nodeName,
+      } : null,
+    };
+
+    if (wave.federationState === 'origin') {
+      // Origin server: send to all participant nodes
+      sendDropletToFederatedNodes(waveId, 'new_droplet', dropletPayload).catch(err => {
+        console.error('Federation droplet delivery error:', err.message);
+      });
+    } else if (wave.federationState === 'participant' && wave.originNode) {
+      // Participant server: send back to origin node
+      const originNode = db.getFederationNodeByName(wave.originNode);
+      if (originNode && originNode.status === 'active') {
+        const messageId = `new_droplet-${droplet.id}-${Date.now()}`;
+        const fullPayload = { id: messageId, type: 'new_droplet', payload: dropletPayload };
+        sendSignedFederationRequest(originNode, 'POST', '/api/federation/inbox', fullPayload)
+          .then(response => {
+            if (response.ok) {
+              console.log(`✅ new_droplet sent to origin ${originNode.nodeName}`);
+            } else {
+              console.error(`❌ new_droplet to origin failed: ${response.status}`);
+              db.queueFederationMessage({ targetNode: originNode.nodeName, messageType: 'new_droplet', payload: fullPayload });
+            }
+          })
+          .catch(err => {
+            console.error(`❌ new_droplet to origin error:`, err.message);
+            db.queueFederationMessage({ targetNode: originNode.nodeName, messageType: 'new_droplet', payload: fullPayload });
+          });
+      }
+    }
+  }
+
   res.status(201).json(droplet);
 });
 
@@ -4494,6 +7150,21 @@ app.put('/api/droplets/:id', authenticateToken, (req, res) => {
   const updated = db.updateMessage(dropletId, content);
   broadcastToWave(droplet.waveId, { type: 'droplet_edited', data: updated });
   broadcastToWave(droplet.waveId, { type: 'message_edited', data: updated }); // Legacy
+
+  // Federation: If this is an origin wave, send edit to federated nodes
+  const wave = db.getWave(droplet.waveId);
+  if (FEDERATION_ENABLED && wave?.federationState === 'origin') {
+    sendDropletToFederatedNodes(droplet.waveId, 'droplet_edited', {
+      dropletId: dropletId,
+      originWaveId: droplet.waveId,
+      content: updated.content,
+      editedAt: updated.editedAt,
+      version: updated.version,
+    }).catch(err => {
+      console.error('Federation droplet edit delivery error:', err.message);
+    });
+  }
+
   res.json(updated);
 });
 
@@ -4506,6 +7177,10 @@ app.delete('/api/droplets/:id', authenticateToken, (req, res) => {
   if (droplet.authorId !== req.user.userId) {
     return res.status(403).json({ error: 'Only droplet author can delete' });
   }
+
+  // Save wave ID before deletion for federation
+  const waveId = droplet.waveId;
+  const wave = db.getWave(waveId);
 
   const result = db.deleteMessage(dropletId, req.user.userId);
   if (!result.success) return res.status(400).json({ error: result.error });
@@ -4522,6 +7197,16 @@ app.delete('/api/droplets/:id', authenticateToken, (req, res) => {
     messageId: result.dropletId || result.messageId,
     waveId: result.waveId
   });
+
+  // Federation: If this is an origin wave, send deletion to federated nodes
+  if (FEDERATION_ENABLED && wave?.federationState === 'origin') {
+    sendDropletToFederatedNodes(waveId, 'droplet_deleted', {
+      dropletId: dropletId,
+      originWaveId: waveId,
+    }).catch(err => {
+      console.error('Federation droplet delete delivery error:', err.message);
+    });
+  }
 
   res.json({ success: true });
 });
@@ -4845,7 +7530,129 @@ app.get('/api/search', authenticateToken, (req, res) => {
 
 // ============ Health Check ============
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.3.1', uptime: process.uptime() });
+  res.json({ status: 'ok', version: '1.13.0', uptime: process.uptime() });
+});
+
+// ============ Public Server Info ============
+
+// Get public server information (no auth required)
+app.get('/api/server/info', (req, res) => {
+  const stats = db.getPublicStats();
+  const identity = FEDERATION_ENABLED ? db.getServerIdentity() : null;
+
+  // Get active federation partners (names only)
+  let partners = [];
+  let partnerCount = 0;
+  if (FEDERATION_ENABLED) {
+    const nodes = db.getFederationNodes({ status: 'active' });
+    partners = nodes.map(n => n.nodeName);
+    partnerCount = partners.length;
+  }
+
+  res.json({
+    name: identity?.nodeName || null,
+    version: '1.13.0',
+    federationEnabled: FEDERATION_ENABLED,
+    stats: {
+      users: stats.userCount,
+      waves: stats.waveCount,
+      uptime: Math.floor(process.uptime())
+    },
+    federation: FEDERATION_ENABLED ? {
+      configured: !!identity,
+      partners,
+      partnerCount
+    } : null
+  });
+});
+
+// Rate limiter for public federation requests
+const publicFederationRequestLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 requests per hour per IP
+  message: { error: 'Too many federation requests. Try again later.' }
+});
+
+// Public endpoint to request federation from this server
+app.post('/api/server/federation-request', publicFederationRequestLimiter, async (req, res) => {
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled on this server' });
+  }
+
+  const ourIdentity = db.getServerIdentity();
+  if (!ourIdentity) {
+    return res.status(400).json({ error: 'This server has not configured federation yet' });
+  }
+
+  const { serverUrl, message } = req.body;
+  if (!serverUrl) {
+    return res.status(400).json({ error: 'serverUrl is required' });
+  }
+
+  // Normalize URL
+  const normalizedUrl = serverUrl.replace(/\/+$/, '');
+
+  try {
+    // Fetch the requesting server's identity
+    const identityUrl = `${normalizedUrl}/api/federation/identity`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(identityUrl, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+      }
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return res.status(400).json({
+        error: 'Could not reach the specified server',
+        details: `HTTP ${response.status}`
+      });
+    }
+
+    const remoteIdentity = await response.json();
+    if (!remoteIdentity.nodeName || !remoteIdentity.publicKey) {
+      return res.status(400).json({ error: 'Invalid response from remote server - is it a Cortex server?' });
+    }
+
+    // Check if already federated
+    const existingNode = db.getFederationNodeByName(remoteIdentity.nodeName);
+    if (existingNode && existingNode.status === 'active') {
+      return res.json({ success: true, message: 'Already federated with this server', alreadyFederated: true });
+    }
+
+    // Check for existing pending request
+    const existingRequest = db.getPendingRequestFromNode(remoteIdentity.nodeName);
+    if (existingRequest) {
+      return res.json({ success: true, message: 'Request already pending', duplicate: true });
+    }
+
+    // Create the federation request (as if they sent it to us)
+    const request = db.createFederationRequest(
+      remoteIdentity.nodeName,
+      normalizedUrl,
+      remoteIdentity.publicKey,
+      ourIdentity.nodeName,
+      message || null
+    );
+
+    console.log(`📨 Public federation request from ${remoteIdentity.nodeName} via web form`);
+    res.json({
+      success: true,
+      message: 'Federation request submitted. The server admin will need to accept your request.',
+      requestId: request.id
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(400).json({ error: 'Connection timed out - is the server URL correct?' });
+    }
+    console.error('Public federation request error:', error.message);
+    res.status(400).json({ error: 'Could not connect to the specified server', details: error.message });
+  }
 });
 
 // ============ WebSocket Setup ============
@@ -4968,6 +7775,93 @@ const heartbeatInterval = setInterval(() => {
 wss.on('close', () => {
   clearInterval(heartbeatInterval);
 });
+
+// ============ Federation Queue Processor ============
+
+// Process federation queue every 30 seconds (when enabled)
+let federationQueueInterval = null;
+
+async function processFederationQueue() {
+  if (!FEDERATION_ENABLED) return;
+
+  // Get pending messages that are ready for retry
+  const pendingMessages = db.getPendingFederationMessages(10);
+  if (pendingMessages.length === 0) return;
+
+  console.log(`📤 Processing ${pendingMessages.length} federation queue messages...`);
+
+  for (const msg of pendingMessages) {
+    const node = db.getFederationNodeByName(msg.targetNode);
+    if (!node || node.status !== 'active') {
+      console.warn(`⚠️  Skipping message ${msg.id}: node ${msg.targetNode} not found or not active`);
+      db.markFederationMessageFailed(msg.id, 'Target node not found or not active');
+      continue;
+    }
+
+    // Handle corrupted queue entries where payload might be a string
+    let payload = msg.payload;
+    if (typeof payload === 'string') {
+      console.warn(`⚠️  Queue message ${msg.id} has string payload, attempting to parse`);
+      try {
+        payload = JSON.parse(payload);
+      } catch (e) {
+        console.error(`❌ Failed to parse queue message ${msg.id}, marking as failed`);
+        db.markFederationMessageFailed(msg.id, 'Corrupted payload');
+        continue;
+      }
+    }
+
+    try {
+      const response = await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
+
+      if (response.ok) {
+        db.markFederationMessageDelivered(msg.id);
+        console.log(`✅ Delivered ${msg.messageType} to ${msg.targetNode}`);
+      } else {
+        const errorText = await response.text();
+        const errorMsg = `HTTP ${response.status}: ${errorText.substring(0, 200)}`;
+        db.markFederationMessageFailed(msg.id, errorMsg);
+        console.error(`❌ Failed to deliver ${msg.messageType} to ${msg.targetNode}: ${errorMsg}`);
+      }
+    } catch (error) {
+      db.markFederationMessageFailed(msg.id, error.message);
+      console.error(`❌ Error delivering ${msg.messageType} to ${msg.targetNode}:`, error.message);
+    }
+  }
+}
+
+// Queue a message for federation delivery with automatic retries
+function queueFederationDelivery(targetNodeName, messageType, payload) {
+  if (!FEDERATION_ENABLED) return null;
+
+  // Create a full message payload with ID
+  const messageId = `${messageType}-${payload.droplet?.id || payload.dropletId || payload.wave?.id || uuidv4()}-${Date.now()}`;
+  const fullPayload = {
+    id: messageId,
+    type: messageType,
+    payload,
+  };
+
+  return db.queueFederationMessage({
+    targetNode: targetNodeName,
+    messageType,
+    payload: fullPayload,
+  });
+}
+
+// Start federation queue processor if enabled
+if (FEDERATION_ENABLED) {
+  federationQueueInterval = setInterval(processFederationQueue, 30000);
+  console.log('📤 Federation queue processor started (30s interval)');
+
+  // Also cleanup old messages daily
+  setInterval(() => {
+    const cleaned = db.cleanupOldFederationMessages(7);
+    if (cleaned > 0) {
+      console.log(`🧹 Cleaned up ${cleaned} old federation messages`);
+    }
+  }, 24 * 60 * 60 * 1000); // Daily
+}
 
 // ============ Notification Creation Helpers ============
 
@@ -5180,6 +8074,12 @@ function broadcastToUser(userId, message) {
   broadcast(message, [userId]);
 }
 
+function broadcastToAdmins(message) {
+  const admins = db.getAdminUsers();
+  const adminIds = admins.map(a => a.id);
+  broadcast(message, adminIds);
+}
+
 function broadcastToWave(waveId, message, excludeWs = null) {
   const wave = db.getWave(waveId);
   if (!wave) return;
@@ -5290,17 +8190,17 @@ server.listen(PORT, () => {
 ║  ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗         ║
 ║  ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗        ║
 ║   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝        ║
-║  SECURE COMMUNICATIONS SYSTEM v1.12.2                      ║
+║  SECURE COMMUNICATIONS SYSTEM v1.13.0                      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  🔒 Security: Rate limiting, XSS protection, Helmet        ║
-║  📁 Data: Separated files (users, waves, messages, groups) ║
+║  🌐 Federation: Server-to-server communication             ║
 ║  👥 Groups: Create groups, manage members, group waves     ║
 ║  🆔 Identity: UUID-based with changeable handles           ║
 ║  📝 Profiles: Change password, display name, avatar        ║
 ║  📦 Archives: Personal wave archiving                      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  PORT=${PORT} | JWT=${JWT_SECRET === 'cortex-default-secret-CHANGE-ME' ? '⚠️ DEFAULT' : '✅ Custom'} | CORS=${ALLOWED_ORIGINS ? '✅' : '⚠️ All'}
-║  DEMO_DATA=${demoEnabled ? '✅' : '❌'} | Server: http://localhost:${PORT}
+║  FEDERATION=${process.env.FEDERATION_ENABLED === 'true' ? '✅' : '❌'} | Server: http://localhost:${PORT}
 ╚════════════════════════════════════════════════════════════╝
 `);
 });

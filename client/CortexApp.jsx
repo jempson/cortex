@@ -2076,8 +2076,185 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// ============ ABOUT SERVER PAGE ============
+const AboutServerPage = ({ onBack }) => {
+  const [info, setInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const { isMobile } = useWindowSize();
+
+  useEffect(() => {
+    fetch(`${API_URL}/server/info`)
+      .then(res => res.json())
+      .then(data => {
+        setInfo(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  const formatUptime = (seconds) => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+  };
+
+  const containerStyle = {
+    minHeight: '100vh',
+    background: 'linear-gradient(180deg, var(--bg-surface), var(--bg-base))',
+    padding: isMobile ? '20px' : '40px',
+  };
+
+  const cardStyle = {
+    maxWidth: '600px',
+    margin: '0 auto',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-primary)',
+  };
+
+  const sectionStyle = {
+    padding: isMobile ? '16px' : '20px',
+    borderBottom: '1px solid var(--border-subtle)',
+  };
+
+  if (loading) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>
+            Loading server info...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--status-error)' }}>
+            Error: {error}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={containerStyle}>
+      <div style={cardStyle}>
+        {/* Header */}
+        <div style={{
+          ...sectionStyle,
+          background: 'var(--bg-elevated)',
+          textAlign: 'center',
+        }}>
+          <div style={{
+            fontSize: isMobile ? '1.5rem' : '1.8rem',
+            color: 'var(--accent-teal)',
+            fontFamily: 'monospace',
+            marginBottom: '8px',
+          }}>
+            {info.federationEnabled && <span style={{ marginRight: '10px' }}>◇</span>}
+            {info.name || 'Cortex Server'}
+          </div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+            Cortex v{info.version}
+            {info.federationEnabled && (
+              <span style={{
+                marginLeft: '12px',
+                padding: '2px 8px',
+                background: 'var(--accent-purple)20',
+                color: 'var(--accent-purple)',
+                fontSize: '0.75rem',
+              }}>
+                FEDERATION ENABLED
+              </span>
+            )}
+          </div>
+          {onBack && (
+            <button
+              onClick={onBack}
+              style={{
+                marginTop: '16px',
+                padding: '8px 16px',
+                background: 'transparent',
+                border: '1px solid var(--border-primary)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.8rem',
+              }}
+            >
+              ← Back to Login
+            </button>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div style={sectionStyle}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
+            Statistics
+          </div>
+          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', color: 'var(--text-secondary)' }}>
+            <span>Users: <strong style={{ color: 'var(--text-primary)' }}>{info.stats?.users || 0}</strong></span>
+            <span>Waves: <strong style={{ color: 'var(--text-primary)' }}>{info.stats?.waves || 0}</strong></span>
+            <span>Uptime: <strong style={{ color: 'var(--accent-green)' }}>{formatUptime(info.stats?.uptime || 0)}</strong></span>
+          </div>
+        </div>
+
+        {/* Federation Partners */}
+        {info.federationEnabled && info.federation?.configured && (
+          <div style={sectionStyle}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
+              Federated Servers ({info.federation.partnerCount})
+            </div>
+            {info.federation.partners.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {info.federation.partners.map((partner, i) => (
+                  <div key={i} style={{
+                    padding: '8px 12px',
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--accent-purple)',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                  }}>
+                    ◇ {partner}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No federation partners yet
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{
+          padding: '16px',
+          textAlign: 'center',
+          color: 'var(--text-muted)',
+          fontSize: '0.75rem',
+          borderTop: '1px solid var(--border-subtle)',
+        }}>
+          Powered by <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-teal)' }}>Cortex</a>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ============ LOGIN SCREEN ============
-const LoginScreen = () => {
+const LoginScreen = ({ onAbout }) => {
   const { login, register } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [handle, setHandle] = useState('');
@@ -2175,6 +2352,15 @@ const LoginScreen = () => {
             {isRegistering ? '← BACK TO LOGIN' : 'NEW USER? CREATE ACCOUNT →'}
           </button>
         </div>
+
+        {onAbout && (
+          <div style={{ textAlign: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
+            <button onClick={onAbout}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+              About this server ◇
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2874,7 +3060,7 @@ const DeleteConfirmModal = ({ isOpen, onClose, waveTitle, onConfirm, isMobile })
 };
 
 // ============ USER PROFILE MODAL ============
-const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, showToast, contacts, blockedUsers, mutedUsers, onAddContact, onBlock, onMute, isMobile }) => {
+const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, showToast, contacts, blockedUsers, mutedUsers, onAddContact, onBlock, onMute, onFollow, onUnfollow, isMobile }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -2895,6 +3081,7 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
 
   const isCurrentUser = userId === currentUser?.id;
   const isContact = contacts?.some(c => c.id === userId);
+  const isFollowing = contacts?.some(c => c.id === userId && c.isRemote);
   const isBlocked = blockedUsers?.some(u => u.blockedUserId === userId);
   const isMuted = mutedUsers?.some(u => u.mutedUserId === userId);
 
@@ -2927,14 +3114,29 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
               }}>✕</button>
             </div>
 
+            {/* Federated user indicator */}
+            {profile.isRemote && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                marginBottom: '16px', padding: '8px 12px',
+                background: 'var(--accent-purple)15', border: '1px solid var(--accent-purple)50',
+                fontSize: '0.75rem', color: 'var(--accent-purple)',
+              }}>
+                <span>◇</span>
+                <span>Federated User from <strong>{profile.nodeName}</strong></span>
+              </div>
+            )}
+
             {/* Avatar and basic info */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <Avatar letter={profile.avatar || profile.displayName?.[0] || '?'} color="var(--accent-amber)" size={80} imageUrl={profile.avatarUrl} />
+              <Avatar letter={profile.avatar || profile.displayName?.[0] || '?'} color={profile.isRemote ? 'var(--accent-purple)' : 'var(--accent-amber)'} size={80} imageUrl={profile.avatarUrl} />
               <div>
                 <div style={{ color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 600 }}>{profile.displayName}</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>@{profile.handle}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  @{profile.handle}{profile.isRemote && <span style={{ color: 'var(--accent-purple)' }}>@{profile.nodeName}</span>}
+                </div>
                 <div style={{ color: 'var(--border-secondary)', fontSize: '0.75rem', marginTop: '4px' }}>
-                  Joined {formatDate(profile.createdAt)}
+                  {profile.isRemote ? `Cached ${formatDate(profile.createdAt)}` : `Joined ${formatDate(profile.createdAt)}`}
                 </div>
               </div>
             </div>
@@ -2952,8 +3154,8 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
               </div>
             )}
 
-            {/* Action buttons (not shown for current user) */}
-            {!isCurrentUser && (
+            {/* Action buttons (not shown for current user or federated users) */}
+            {!isCurrentUser && !profile.isRemote && (
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {!isContact && !isBlocked && onAddContact && (
                   <button onClick={() => { onAddContact(userId, profile.displayName); onClose(); }} style={{
@@ -2968,6 +3170,58 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
                   <div style={{ color: 'var(--accent-green)', fontSize: '0.8rem', padding: '8px 14px', background: 'var(--accent-green)10', border: '1px solid var(--accent-green)40' }}>
                     ✓ Contact
                   </div>
+                )}
+                {!isBlocked && onBlock && (
+                  <button onClick={() => { onBlock(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'transparent', border: '1px solid var(--accent-orange)',
+                    color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>BLOCK</button>
+                )}
+                {isBlocked && (
+                  <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', padding: '8px 14px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)40' }}>
+                    Blocked
+                  </div>
+                )}
+                {!isMuted && !isBlocked && onMute && (
+                  <button onClick={() => { onMute(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'transparent', border: '1px solid var(--accent-amber)',
+                    color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>MUTE</button>
+                )}
+                {isMuted && (
+                  <div style={{ color: 'var(--accent-amber)', fontSize: '0.8rem', padding: '8px 14px', background: 'var(--accent-amber)10', border: '1px solid var(--accent-amber)40' }}>
+                    Muted
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Action buttons for federated users */}
+            {!isCurrentUser && profile.isRemote && (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {!isFollowing && !isBlocked && onFollow && (
+                  <button onClick={() => { onFollow(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'var(--accent-purple)20', border: '1px solid var(--accent-purple)',
+                    color: 'var(--accent-purple)', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>◇ FOLLOW</button>
+                )}
+                {isFollowing && onUnfollow && (
+                  <button onClick={() => { onUnfollow(userId, profile.displayName); onClose(); }} style={{
+                    padding: isMobile ? '10px 16px' : '8px 14px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'var(--accent-purple)10', border: '1px solid var(--accent-purple)40',
+                    color: 'var(--accent-purple)', cursor: 'pointer', fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  }}>✓ FOLLOWING</button>
                 )}
                 {!isBlocked && onBlock && (
                   <button onClick={() => { onBlock(userId, profile.displayName); onClose(); }} style={{
@@ -4133,7 +4387,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 };
 
 // ============ WAVE VIEW (Mobile Responsive) ============
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave, scrollToDropletId, onScrollToDropletComplete }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave, scrollToDropletId, onScrollToDropletComplete, federationEnabled }) => {
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -4166,6 +4420,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [loadingMore, setLoadingMore] = useState(false);
   const [reportTarget, setReportTarget] = useState(null); // { type, targetId, targetPreview }
   const [rippleTarget, setRippleTarget] = useState(null); // droplet to ripple
+  const [showFederateModal, setShowFederateModal] = useState(false);
   const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For ripple activity badges
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -5162,6 +5417,29 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             </button>
           )}
 
+          {/* Federate Button - visible to wave owner when federation enabled */}
+          {federationEnabled && waveData?.createdBy === currentUser?.id && waveData?.federationState !== 'participant' && (
+            <button
+              onClick={() => setShowFederateModal(true)}
+              style={{
+                padding: isMobile ? '8px 12px' : '6px 10px',
+                background: waveData?.federationState === 'origin' ? 'var(--accent-teal)20' : 'transparent',
+                border: `1px solid ${waveData?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+                color: waveData?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--text-dim)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title={waveData?.federationState === 'origin' ? 'Add more federated participants' : 'Federate this wave to other servers'}
+            >
+              <span>◇</span>
+              {waveData?.federationState === 'origin' ? 'FEDERATED' : 'FEDERATE'}
+            </button>
+          )}
+
           {/* Thread Collapse/Expand Buttons */}
           {total > 0 && (
             <>
@@ -5753,6 +6031,17 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             // Navigate to the new wave
             onNavigateToWave?.(newWave);
           }}
+        />
+      )}
+
+      {showFederateModal && waveData && (
+        <InviteFederatedModal
+          isOpen={showFederateModal}
+          onClose={() => setShowFederateModal(false)}
+          wave={waveData}
+          fetchAPI={fetchAPI}
+          showToast={showToast}
+          isMobile={isMobile}
         />
       )}
     </div>
@@ -6926,7 +7215,8 @@ const FocusView = ({
 // ============ CONTACTS VIEW ============
 const ContactsView = ({
   contacts, fetchAPI, showToast, onContactsChange,
-  contactRequests, sentContactRequests, onRequestsChange
+  contactRequests, sentContactRequests, onRequestsChange,
+  onShowProfile
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -7056,12 +7346,30 @@ const ContactsView = ({
             {contacts.map(contact => (
               <div key={contact.id} style={{
                 padding: '16px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
-                border: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                border: `1px solid ${contact.isRemote ? 'var(--accent-purple)30' : 'var(--border-subtle)'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                  <Avatar letter={contact.avatar || contact.name[0]} color="var(--accent-amber)" size={44} status={contact.status} />
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, cursor: onShowProfile ? 'pointer' : 'default', flex: 1 }}
+                  onClick={onShowProfile ? () => onShowProfile(contact.id) : undefined}
+                  title={onShowProfile ? 'View profile' : undefined}
+                >
+                  <Avatar
+                    letter={contact.avatar || contact.name?.[0] || '?'}
+                    color={contact.isRemote ? 'var(--accent-purple)' : 'var(--accent-amber)'}
+                    size={44}
+                    status={contact.status}
+                    imageUrl={contact.avatarUrl}
+                  />
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</div>
+                    <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {contact.name}
+                    </div>
+                    {contact.isRemote && (
+                      <div style={{ color: 'var(--accent-purple)', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        @{contact.handle}@{contact.nodeName}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button onClick={() => handleRemoveContact(contact.id)} style={{
@@ -7431,6 +7739,737 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
   );
 };
 
+// ============ FEDERATION ADMIN PANEL ============
+const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0 }) => {
+  const [status, setStatus] = useState(null);
+  const [nodes, setNodes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [nodeName, setNodeName] = useState('');
+  const [showAddNode, setShowAddNode] = useState(false);
+  const [newNodeName, setNewNodeName] = useState('');
+  const [newNodeUrl, setNewNodeUrl] = useState('');
+  const [handshakeLoading, setHandshakeLoading] = useState(null);
+  // Federation request system
+  const [federationRequests, setFederationRequests] = useState([]);
+  const [requestUrl, setRequestUrl] = useState('');
+  const [requestMessage, setRequestMessage] = useState('');
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [acceptLoading, setAcceptLoading] = useState(null);
+
+  const loadFederationData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [statusData, nodesData, requestsData] = await Promise.all([
+        fetchAPI('/admin/federation/status'),
+        fetchAPI('/admin/federation/nodes'),
+        fetchAPI('/admin/federation/requests').catch(() => ({ requests: [] }))
+      ]);
+      setStatus(statusData);
+      setNodes(nodesData.nodes || []);
+      setFederationRequests(requestsData.requests || []);
+      if (statusData.nodeName) {
+        setNodeName(statusData.nodeName);
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to load federation data', 'error');
+    }
+    setLoading(false);
+  }, [fetchAPI, showToast]);
+
+  useEffect(() => {
+    loadFederationData();
+  }, [loadFederationData, refreshTrigger]);
+
+  const handleSetupIdentity = async () => {
+    if (!nodeName.trim() || nodeName.length < 3) {
+      showToast('Node name must be at least 3 characters', 'error');
+      return;
+    }
+    try {
+      await fetchAPI('/admin/federation/identity', {
+        method: 'POST',
+        body: { nodeName: nodeName.trim() }
+      });
+      showToast('Federation identity configured', 'success');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to configure identity', 'error');
+    }
+  };
+
+  const handleAddNode = async () => {
+    if (!newNodeName.trim() || !newNodeUrl.trim()) {
+      showToast('Node name and URL are required', 'error');
+      return;
+    }
+    try {
+      await fetchAPI('/admin/federation/nodes', {
+        method: 'POST',
+        body: { nodeName: newNodeName.trim(), baseUrl: newNodeUrl.trim() }
+      });
+      showToast('Node added successfully', 'success');
+      setNewNodeName('');
+      setNewNodeUrl('');
+      setShowAddNode(false);
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to add node', 'error');
+    }
+  };
+
+  const handleHandshake = async (nodeId) => {
+    setHandshakeLoading(nodeId);
+    try {
+      const result = await fetchAPI(`/admin/federation/nodes/${nodeId}/handshake`, {
+        method: 'POST'
+      });
+      showToast(result.message || 'Handshake successful', 'success');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Handshake failed', 'error');
+    }
+    setHandshakeLoading(null);
+  };
+
+  const handleDeleteNode = async (nodeId) => {
+    if (!confirm('Remove this federation node?')) return;
+    try {
+      await fetchAPI(`/admin/federation/nodes/${nodeId}`, { method: 'DELETE' });
+      showToast('Node removed', 'success');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to remove node', 'error');
+    }
+  };
+
+  const handleStatusChange = async (nodeId, newStatus) => {
+    try {
+      await fetchAPI(`/admin/federation/nodes/${nodeId}`, {
+        method: 'PUT',
+        body: { status: newStatus }
+      });
+      showToast(`Node ${newStatus}`, 'success');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to update status', 'error');
+    }
+  };
+
+  // Send federation request to another server
+  const handleSendRequest = async () => {
+    if (!requestUrl.trim()) {
+      showToast('Server URL is required', 'error');
+      return;
+    }
+    setRequestLoading(true);
+    try {
+      const result = await fetchAPI('/admin/federation/request', {
+        method: 'POST',
+        body: {
+          baseUrl: requestUrl.trim(),
+          message: requestMessage.trim() || null
+        }
+      });
+      showToast(result.message || 'Federation request sent!', 'success');
+      setRequestUrl('');
+      setRequestMessage('');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to send federation request', 'error');
+    }
+    setRequestLoading(false);
+  };
+
+  // Accept incoming federation request
+  const handleAcceptRequest = async (requestId) => {
+    setAcceptLoading(requestId);
+    try {
+      const result = await fetchAPI(`/admin/federation/requests/${requestId}/accept`, {
+        method: 'POST'
+      });
+      showToast(result.message || 'Federation request accepted!', 'success');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to accept request', 'error');
+    }
+    setAcceptLoading(null);
+  };
+
+  // Decline incoming federation request
+  const handleDeclineRequest = async (requestId) => {
+    if (!confirm('Decline this federation request?')) return;
+    setAcceptLoading(requestId);
+    try {
+      await fetchAPI(`/admin/federation/requests/${requestId}/decline`, {
+        method: 'POST'
+      });
+      showToast('Federation request declined', 'success');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to decline request', 'error');
+    }
+    setAcceptLoading(null);
+  };
+
+  const getStatusColor = (s) => {
+    switch (s) {
+      case 'active': return 'var(--accent-green)';
+      case 'pending': return 'var(--accent-amber)';
+      case 'outbound_pending': return 'var(--accent-teal)';
+      case 'suspended': return 'var(--accent-orange)';
+      case 'blocked': return 'var(--status-error)';
+      case 'declined': return 'var(--text-dim)';
+      default: return 'var(--text-dim)';
+    }
+  };
+
+  const getStatusLabel = (s) => {
+    switch (s) {
+      case 'outbound_pending': return 'AWAITING RESPONSE';
+      case 'declined': return 'DECLINED';
+      default: return s.toUpperCase();
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ marginTop: '24px' }}>
+        <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>Federation</GlowText>
+        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-dim)' }}>Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: '24px' }}>
+      <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>Federation</GlowText>
+
+      {/* Status Overview */}
+      <div style={{
+        marginTop: '16px',
+        padding: isMobile ? '14px' : '16px',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <span style={{ color: 'var(--text-secondary)', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>Status</span>
+          <span style={{
+            padding: '2px 10px',
+            background: status?.enabled ? 'var(--accent-green)20' : 'var(--text-dim)20',
+            color: status?.enabled ? 'var(--accent-green)' : 'var(--text-dim)',
+            fontSize: '0.75rem',
+            textTransform: 'uppercase',
+          }}>
+            {status?.enabled ? 'ENABLED' : 'DISABLED'}
+          </span>
+        </div>
+
+        {!status?.enabled && (
+          <div style={{
+            padding: '12px',
+            background: 'var(--accent-amber)10',
+            border: '1px solid var(--accent-amber)40',
+            color: 'var(--accent-amber)',
+            fontSize: isMobile ? '0.85rem' : '0.8rem',
+            marginBottom: '16px',
+          }}>
+            Set FEDERATION_ENABLED=true in server environment to enable federation.
+          </div>
+        )}
+
+        {/* Server Identity Setup */}
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px', textTransform: 'uppercase' }}>
+            Server Identity
+          </div>
+
+          {status?.configured ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={{ color: 'var(--accent-teal)', fontFamily: 'monospace', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
+                {status.nodeName}
+              </span>
+              <span style={{
+                padding: '2px 8px',
+                background: 'var(--accent-green)20',
+                color: 'var(--accent-green)',
+                fontSize: '0.7rem',
+              }}>
+                {status.hasKeypair ? 'KEYPAIR OK' : 'NO KEYPAIR'}
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                value={nodeName}
+                onChange={(e) => setNodeName(e.target.value)}
+                placeholder="cortex.example.com"
+                style={{
+                  flex: 1,
+                  minWidth: '200px',
+                  padding: isMobile ? '12px' : '10px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
+                }}
+              />
+              <button
+                onClick={handleSetupIdentity}
+                style={{
+                  padding: isMobile ? '12px 20px' : '10px 20px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: 'var(--accent-teal)20',
+                  border: '1px solid var(--accent-teal)',
+                  color: 'var(--accent-teal)',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.85rem' : '0.8rem',
+                }}
+              >
+                CONFIGURE
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div style={{ display: 'flex', gap: '24px', color: 'var(--text-dim)', fontSize: isMobile ? '0.85rem' : '0.8rem' }}>
+          <span>Trusted Nodes: <span style={{ color: 'var(--text-primary)' }}>{status?.trustedNodes || 0}</span></span>
+          <span>Active: <span style={{ color: 'var(--accent-green)' }}>{status?.activeNodes || 0}</span></span>
+        </div>
+      </div>
+
+      {/* Request Federation Section */}
+      {status?.configured && status?.enabled && (
+        <div style={{ marginTop: '16px' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
+            Request Federation
+          </div>
+          <div style={{
+            padding: isMobile ? '14px' : '16px',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--accent-purple)40',
+          }}>
+            <div style={{ marginBottom: '12px' }}>
+              <input
+                type="text"
+                value={requestUrl}
+                onChange={(e) => setRequestUrl(e.target.value)}
+                placeholder="Server URL (e.g., https://other-cortex.com)"
+                style={{
+                  width: '100%',
+                  padding: isMobile ? '12px' : '10px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  marginBottom: '8px',
+                }}
+              />
+              <textarea
+                value={requestMessage}
+                onChange={(e) => setRequestMessage(e.target.value)}
+                placeholder="Optional message (e.g., Hi, we'd like to federate!)"
+                rows={2}
+                style={{
+                  width: '100%',
+                  padding: isMobile ? '12px' : '10px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+            <button
+              onClick={handleSendRequest}
+              disabled={requestLoading || !requestUrl.trim()}
+              style={{
+                padding: isMobile ? '12px 20px' : '10px 20px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'var(--accent-purple)20',
+                border: '1px solid var(--accent-purple)',
+                color: 'var(--accent-purple)',
+                cursor: requestLoading || !requestUrl.trim() ? 'not-allowed' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.8rem',
+                opacity: requestLoading || !requestUrl.trim() ? 0.6 : 1,
+              }}
+            >
+              {requestLoading ? 'SENDING...' : 'REQUEST FEDERATION'}
+            </button>
+            <div style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+              Send a federation request to another Cortex server. They will need to accept your request.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Incoming Federation Requests */}
+      {federationRequests.length > 0 && (
+        <div style={{ marginTop: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+              Incoming Requests
+            </span>
+            <span style={{
+              padding: '2px 8px',
+              background: 'var(--accent-purple)20',
+              color: 'var(--accent-purple)',
+              fontSize: '0.7rem',
+              borderRadius: '10px',
+            }}>
+              {federationRequests.length}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {federationRequests.map((request) => (
+              <div
+                key={request.id}
+                style={{
+                  padding: isMobile ? '14px' : '12px 16px',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--accent-purple)40',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <div>
+                    <span style={{ color: 'var(--accent-purple)', fontFamily: 'monospace', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
+                      {request.fromNodeName}
+                    </span>
+                  </div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                    {new Date(request.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+
+                <div style={{ color: 'var(--text-dim)', fontSize: isMobile ? '0.8rem' : '0.75rem', marginBottom: '8px' }}>
+                  {request.fromBaseUrl}
+                </div>
+
+                {request.message && (
+                  <div style={{
+                    padding: '8px',
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-secondary)',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                    fontStyle: 'italic',
+                    marginBottom: '12px',
+                  }}>
+                    "{request.message}"
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => handleAcceptRequest(request.id)}
+                    disabled={acceptLoading === request.id}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 14px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: 'var(--accent-green)20',
+                      border: '1px solid var(--accent-green)',
+                      color: 'var(--accent-green)',
+                      cursor: acceptLoading === request.id ? 'wait' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.8rem' : '0.75rem',
+                      opacity: acceptLoading === request.id ? 0.6 : 1,
+                    }}
+                  >
+                    {acceptLoading === request.id ? 'ACCEPTING...' : 'ACCEPT'}
+                  </button>
+                  <button
+                    onClick={() => handleDeclineRequest(request.id)}
+                    disabled={acceptLoading === request.id}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 14px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: 'transparent',
+                      border: '1px solid var(--accent-orange)',
+                      color: 'var(--accent-orange)',
+                      cursor: acceptLoading === request.id ? 'wait' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.8rem' : '0.75rem',
+                      opacity: acceptLoading === request.id ? 0.6 : 1,
+                    }}
+                  >
+                    DECLINE
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Trusted Nodes */}
+      <div style={{ marginTop: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase' }}>Trusted Nodes</span>
+          <button
+            onClick={() => setShowAddNode(!showAddNode)}
+            style={{
+              padding: isMobile ? '8px 14px' : '6px 12px',
+              background: showAddNode ? 'var(--accent-teal)20' : 'transparent',
+              border: `1px solid ${showAddNode ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+              color: showAddNode ? 'var(--accent-teal)' : 'var(--text-dim)',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.8rem' : '0.75rem',
+            }}
+          >
+            {showAddNode ? 'CANCEL' : '+ ADD NODE'}
+          </button>
+        </div>
+
+        {/* Add Node Form */}
+        {showAddNode && (
+          <div style={{
+            padding: isMobile ? '14px' : '16px',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--accent-teal)40',
+            marginBottom: '12px',
+          }}>
+            <div style={{ marginBottom: '12px' }}>
+              <input
+                type="text"
+                value={newNodeName}
+                onChange={(e) => setNewNodeName(e.target.value)}
+                placeholder="Node name (e.g., other-cortex.com)"
+                style={{
+                  width: '100%',
+                  padding: isMobile ? '12px' : '10px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  marginBottom: '8px',
+                }}
+              />
+              <input
+                type="text"
+                value={newNodeUrl}
+                onChange={(e) => setNewNodeUrl(e.target.value)}
+                placeholder="Base URL (e.g., https://other-cortex.com)"
+                style={{
+                  width: '100%',
+                  padding: isMobile ? '12px' : '10px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.9rem' : '0.85rem',
+                }}
+              />
+            </div>
+            <button
+              onClick={handleAddNode}
+              style={{
+                padding: isMobile ? '12px 20px' : '10px 20px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'var(--accent-teal)20',
+                border: '1px solid var(--accent-teal)',
+                color: 'var(--accent-teal)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.8rem',
+              }}
+            >
+              ADD NODE
+            </button>
+          </div>
+        )}
+
+        {/* Node List */}
+        {nodes.length === 0 ? (
+          <div style={{
+            padding: '20px',
+            textAlign: 'center',
+            color: 'var(--text-dim)',
+            background: 'var(--bg-surface)',
+            border: '1px dashed var(--border-subtle)',
+            fontSize: isMobile ? '0.9rem' : '0.85rem',
+          }}>
+            No trusted nodes configured
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {nodes.map((node) => (
+              <div
+                key={node.id}
+                style={{
+                  padding: isMobile ? '14px' : '12px 16px',
+                  background: 'var(--bg-surface)',
+                  border: `1px solid ${node.status === 'active' ? 'var(--accent-green)40' : 'var(--border-subtle)'}`,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
+                      {node.nodeName}
+                    </span>
+                    <span style={{
+                      marginLeft: '10px',
+                      padding: '2px 8px',
+                      background: `${getStatusColor(node.status)}20`,
+                      color: getStatusColor(node.status),
+                      fontSize: '0.7rem',
+                    }}>
+                      {getStatusLabel(node.status)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteNode(node.id)}
+                    style={{
+                      padding: '4px 8px',
+                      background: 'transparent',
+                      border: '1px solid var(--accent-orange)40',
+                      color: 'var(--accent-orange)',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: '0.7rem',
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{ color: 'var(--text-dim)', fontSize: isMobile ? '0.8rem' : '0.75rem', marginBottom: '8px' }}>
+                  {node.baseUrl}
+                </div>
+
+                {node.lastContactAt && (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '8px' }}>
+                    Last contact: {new Date(node.lastContactAt).toLocaleString()}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {node.status === 'pending' && (
+                    <button
+                      onClick={() => handleHandshake(node.id)}
+                      disabled={handshakeLoading === node.id}
+                      style={{
+                        padding: isMobile ? '10px 16px' : '8px 14px',
+                        minHeight: isMobile ? '44px' : 'auto',
+                        background: 'var(--accent-teal)20',
+                        border: '1px solid var(--accent-teal)',
+                        color: 'var(--accent-teal)',
+                        cursor: handshakeLoading === node.id ? 'wait' : 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: isMobile ? '0.8rem' : '0.75rem',
+                        opacity: handshakeLoading === node.id ? 0.6 : 1,
+                      }}
+                    >
+                      {handshakeLoading === node.id ? 'CONNECTING...' : 'HANDSHAKE'}
+                    </button>
+                  )}
+
+                  {node.status === 'outbound_pending' && (
+                    <span style={{
+                      padding: isMobile ? '10px 16px' : '8px 14px',
+                      background: 'var(--accent-teal)10',
+                      color: 'var(--accent-teal)',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.8rem' : '0.75rem',
+                    }}>
+                      Waiting for their response...
+                    </span>
+                  )}
+
+                  {node.status === 'declined' && (
+                    <span style={{
+                      padding: isMobile ? '10px 16px' : '8px 14px',
+                      background: 'var(--text-dim)10',
+                      color: 'var(--text-dim)',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.8rem' : '0.75rem',
+                    }}>
+                      Request was declined
+                    </span>
+                  )}
+
+                  {node.status === 'active' && (
+                    <button
+                      onClick={() => handleStatusChange(node.id, 'suspended')}
+                      style={{
+                        padding: isMobile ? '10px 16px' : '8px 14px',
+                        minHeight: isMobile ? '44px' : 'auto',
+                        background: 'transparent',
+                        border: '1px solid var(--accent-orange)',
+                        color: 'var(--accent-orange)',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: isMobile ? '0.8rem' : '0.75rem',
+                      }}
+                    >
+                      SUSPEND
+                    </button>
+                  )}
+
+                  {node.status === 'suspended' && (
+                    <>
+                      <button
+                        onClick={() => handleHandshake(node.id)}
+                        disabled={handshakeLoading === node.id}
+                        style={{
+                          padding: isMobile ? '10px 16px' : '8px 14px',
+                          minHeight: isMobile ? '44px' : 'auto',
+                          background: 'var(--accent-green)20',
+                          border: '1px solid var(--accent-green)',
+                          color: 'var(--accent-green)',
+                          cursor: handshakeLoading === node.id ? 'wait' : 'pointer',
+                          fontFamily: 'monospace',
+                          fontSize: isMobile ? '0.8rem' : '0.75rem',
+                          opacity: handshakeLoading === node.id ? 0.6 : 1,
+                        }}
+                      >
+                        REACTIVATE
+                      </button>
+                      <button
+                        onClick={() => handleStatusChange(node.id, 'blocked')}
+                        style={{
+                          padding: isMobile ? '10px 16px' : '8px 14px',
+                          minHeight: isMobile ? '44px' : 'auto',
+                          background: 'transparent',
+                          border: '1px solid var(--status-error)',
+                          color: 'var(--status-error)',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                          fontSize: isMobile ? '0.8rem' : '0.75rem',
+                        }}
+                      >
+                        BLOCK
+                      </button>
+                    </>
+                  )}
+
+                  {node.publicKey && (
+                    <span style={{
+                      padding: '4px 8px',
+                      background: 'var(--accent-green)10',
+                      color: 'var(--accent-green)',
+                      fontSize: '0.7rem',
+                    }}>
+                      KEY OK
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ============ HANDLE REQUESTS LIST (ADMIN) ============
 const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
   const [requests, setRequests] = useState([]);
@@ -7544,7 +8583,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ PROFILE SETTINGS ============
-const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) => {
+const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, federationRequestsRefresh }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || null);
@@ -8288,6 +9327,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
 
           {/* Admin Reports Dashboard */}
           <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+
+          {/* Federation Admin Panel */}
+          <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} />
         </div>
       )}
 
@@ -8323,19 +9365,45 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) 
 };
 
 // ============ NEW WAVE MODAL ============
-const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
+const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups, federationEnabled }) => {
   const [title, setTitle] = useState('');
   const [privacy, setPrivacy] = useState('private');
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [federatedInput, setFederatedInput] = useState('');
+  const [federatedParticipants, setFederatedParticipants] = useState([]); // Array of "@handle@server" strings
 
   if (!isOpen) return null;
+
+  const handleAddFederated = () => {
+    const input = federatedInput.trim();
+    // Validate format: @handle@server or handle@server
+    const match = input.match(/^@?([^@\s]+)@([^@\s]+)$/);
+    if (match) {
+      const normalized = `@${match[1]}@${match[2]}`;
+      if (!federatedParticipants.includes(normalized)) {
+        setFederatedParticipants([...federatedParticipants, normalized]);
+        // Auto-switch to cross-server privacy when adding federated participant
+        if (privacy !== 'crossServer') {
+          setPrivacy('crossServer');
+        }
+      }
+      setFederatedInput('');
+    }
+  };
+
+  const handleRemoveFederated = (fp) => {
+    setFederatedParticipants(federatedParticipants.filter(f => f !== fp));
+  };
 
   const handleCreate = () => {
     if (!title.trim()) return;
     if (privacy === 'group' && !selectedGroup) return;
-    onCreate({ title, privacy, participants: selectedParticipants, groupId: privacy === 'group' ? selectedGroup : null });
+    // Combine local participant IDs with federated participant strings
+    const allParticipants = [...selectedParticipants, ...federatedParticipants];
+    onCreate({ title, privacy, participants: allParticipants, groupId: privacy === 'group' ? selectedGroup : null });
     setTitle(''); setPrivacy('private'); setSelectedParticipants([]); setSelectedGroup(null);
+    setFederatedInput(''); setFederatedParticipants([]);
     onClose();
   };
 
@@ -8406,7 +9474,7 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
 
         {privacy !== 'group' && privacy !== 'public' && contacts.length > 0 && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>ADD PARTICIPANTS</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>LOCAL CONTACTS</div>
             <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
               {contacts.map(c => (
                 <button key={c.id} onClick={() => setSelectedParticipants(p => p.includes(c.id) ? p.filter(x => x !== c.id) : [...p, c.id])}
@@ -8425,6 +9493,61 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
           </div>
         )}
 
+        {/* Federated participants section */}
+        {federationEnabled && privacy !== 'group' && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+              FEDERATED PARTICIPANTS <span style={{ color: 'var(--accent-teal)' }}>◇</span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              <input
+                type="text"
+                value={federatedInput}
+                onChange={(e) => setFederatedInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddFederated()}
+                placeholder="@handle@server.com"
+                style={{
+                  flex: 1, padding: '8px', boxSizing: 'border-box',
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem',
+                }}
+              />
+              <button
+                onClick={handleAddFederated}
+                disabled={!federatedInput.trim()}
+                style={{
+                  padding: '8px 12px', background: 'var(--accent-teal)20',
+                  border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)',
+                  cursor: federatedInput.trim() ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+                }}
+              >ADD</button>
+            </div>
+            {federatedParticipants.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {federatedParticipants.map(fp => (
+                  <div key={fp} style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '4px 8px', background: 'var(--accent-teal)15',
+                    border: '1px solid var(--accent-teal)40', fontSize: '0.8rem',
+                  }}>
+                    <span style={{ color: 'var(--accent-teal)' }}>{fp}</span>
+                    <button
+                      onClick={() => handleRemoveFederated(fp)}
+                      style={{
+                        background: 'none', border: 'none', color: 'var(--text-muted)',
+                        cursor: 'pointer', padding: '0 2px', fontSize: '0.9rem',
+                      }}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
+              Format: @handle@server.com (user on another Cortex server)
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: '12px' }}>
           <button onClick={onClose} style={{
             flex: 1, padding: '12px', background: 'transparent',
@@ -8437,6 +9560,158 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups }) => {
             color: canCreate ? 'var(--accent-amber)' : 'var(--text-muted)',
             cursor: canCreate ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
           }}>CREATE</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ INVITE FEDERATED MODAL ============
+const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMobile }) => {
+  const [federatedInput, setFederatedInput] = useState('');
+  const [federatedParticipants, setFederatedParticipants] = useState([]);
+  const [inviting, setInviting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setFederatedInput('');
+      setFederatedParticipants([]);
+    }
+  }, [isOpen]);
+
+  const handleAddFederated = () => {
+    const input = federatedInput.trim();
+    const match = input.match(/^@?([^@\s]+)@([^@\s]+)$/);
+    if (match) {
+      const normalized = `@${match[1]}@${match[2]}`;
+      if (!federatedParticipants.includes(normalized)) {
+        setFederatedParticipants([...federatedParticipants, normalized]);
+      }
+      setFederatedInput('');
+    }
+  };
+
+  const handleRemoveFederated = (fp) => {
+    setFederatedParticipants(federatedParticipants.filter(x => x !== fp));
+  };
+
+  const handleInvite = async () => {
+    if (federatedParticipants.length === 0) return;
+    setInviting(true);
+
+    try {
+      const res = await fetchAPI(`/waves/${wave.id}/invite-federated`, {
+        method: 'POST',
+        body: JSON.stringify({ participants: federatedParticipants }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const invited = data.results?.invited || [];
+        const failed = data.results?.failed || [];
+
+        if (invited.length > 0) {
+          showToast(`Invited: ${invited.join(', ')}`, 'success');
+        }
+        if (failed.length > 0) {
+          showToast(`Failed to invite: ${failed.join(', ')}`, 'error');
+        }
+        onClose();
+      } else {
+        const error = await res.json();
+        showToast(error.error || 'Failed to invite', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to invite federated participants', 'error');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'var(--overlay-amber)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: isMobile ? '16px' : 0,
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--bg-base)', border: '1px solid var(--accent-teal)',
+        padding: '24px', width: isMobile ? '100%' : '400px', maxWidth: '90vw',
+        maxHeight: '80vh', overflowY: 'auto',
+      }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ color: 'var(--accent-teal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '1.2rem' }}>◇</span> FEDERATE WAVE
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px' }}>
+          Invite users from other Cortex servers to join "{wave.title || wave.name}".
+        </p>
+
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+            ADD FEDERATED PARTICIPANTS
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+            <input
+              type="text"
+              value={federatedInput}
+              onChange={(e) => setFederatedInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddFederated()}
+              placeholder="@handle@server.com"
+              style={{
+                flex: 1, padding: '8px', boxSizing: 'border-box',
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: '0.85rem',
+              }}
+            />
+            <button
+              onClick={handleAddFederated}
+              disabled={!federatedInput.trim()}
+              style={{
+                padding: '8px 12px', background: 'var(--accent-teal)20',
+                border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)',
+                cursor: federatedInput.trim() ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+              }}
+            >ADD</button>
+          </div>
+          {federatedParticipants.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+              {federatedParticipants.map(fp => (
+                <div key={fp} style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '4px 8px', background: 'var(--accent-teal)15',
+                  border: '1px solid var(--accent-teal)40', fontSize: '0.8rem',
+                }}>
+                  <span style={{ color: 'var(--accent-teal)' }}>{fp}</span>
+                  <button
+                    onClick={() => handleRemoveFederated(fp)}
+                    style={{
+                      background: 'none', border: 'none', color: 'var(--text-muted)',
+                      cursor: 'pointer', padding: '0 2px', fontSize: '0.9rem',
+                    }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>
+            Format: @handle@server.com (user on another Cortex server)
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={onClose} style={{
+            flex: 1, padding: '12px', background: 'transparent',
+            border: '1px solid var(--border-primary)', color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace',
+          }}>CANCEL</button>
+          <button onClick={handleInvite} disabled={federatedParticipants.length === 0 || inviting} style={{
+            flex: 1, padding: '12px',
+            background: federatedParticipants.length > 0 ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${federatedParticipants.length > 0 ? 'var(--accent-teal)' : 'var(--text-muted)'}`,
+            color: federatedParticipants.length > 0 ? 'var(--accent-teal)' : 'var(--text-muted)',
+            cursor: federatedParticipants.length > 0 && !inviting ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+          }}>{inviting ? 'INVITING...' : 'INVITE'}</button>
         </div>
       </div>
     </div>
@@ -8489,6 +9764,8 @@ function MainApp() {
   const [blockedUsers, setBlockedUsers] = useState([]); // Users blocked by current user
   const [mutedUsers, setMutedUsers] = useState([]); // Users muted by current user
   const [profileUserId, setProfileUserId] = useState(null); // User ID for profile modal
+  const [federationEnabled, setFederationEnabled] = useState(false); // Whether federation is enabled on server
+  const [federationRequestsRefresh, setFederationRequestsRefresh] = useState(0); // Increment to refresh federation requests
   const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0); // Increment to refresh notifications
   const [waveNotifications, setWaveNotifications] = useState({}); // Notification counts/types by wave ID
   const typingTimeoutsRef = useRef({});
@@ -8531,7 +9808,8 @@ function MainApp() {
   }, [fetchAPI, showArchived]);
 
   const handleWSMessage = useCallback((data) => {
-    if (data.type === 'new_message' || data.type === 'message_edited' || data.type === 'message_deleted' || data.type === 'wave_created' || data.type === 'wave_updated' || data.type === 'message_reaction') {
+    // Handle both legacy (new_message) and new (new_droplet) event names
+    if (data.type === 'new_message' || data.type === 'new_droplet' || data.type === 'message_edited' || data.type === 'droplet_edited' || data.type === 'message_deleted' || data.type === 'droplet_deleted' || data.type === 'wave_created' || data.type === 'wave_updated' || data.type === 'message_reaction' || data.type === 'droplet_reaction' || data.type === 'wave_invite_received' || data.type === 'wave_broadcast_received') {
       loadWaves();
       // If the event is for the currently viewed wave, trigger a reload
       // Extract waveId from different event structures
@@ -8541,18 +9819,24 @@ function MainApp() {
         setWaveReloadTrigger(prev => prev + 1);
       }
 
-      // Desktop notifications for new messages
-      if (data.type === 'new_message' && data.data) {
+      // Desktop notifications for new messages/droplets
+      if ((data.type === 'new_message' || data.type === 'new_droplet') && (data.data || data.droplet)) {
+        // Handle both local (data.data) and federated (data.droplet) message structures
+        const msgData = data.data || data.droplet;
+        const authorId = msgData.author_id || msgData.authorId;
+        const senderName = msgData.sender_name || msgData.senderName || 'Unknown';
+        const content = msgData.content || '';
+
         const isViewingDifferentWave = !selectedWave || eventWaveId !== selectedWave.id;
         const isBackgrounded = document.visibilityState === 'hidden';
-        const isOwnMessage = data.data.author_id === user?.id;
+        const isOwnMessage = authorId === user?.id;
 
         // Show notification if viewing different wave or tab is in background
         if ((isViewingDifferentWave || isBackgrounded) && !isOwnMessage) {
           if ('Notification' in window && Notification.permission === 'granted') {
             const waveName = waves.find(w => w.id === eventWaveId)?.name || 'Unknown Wave';
             const notification = new Notification(`New droplet in ${waveName}`, {
-              body: `${data.data.sender_name}: ${data.data.content.substring(0, 100)}${data.data.content.length > 100 ? '...' : ''}`,
+              body: `${senderName}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
               icon: '/favicon.ico',
               tag: eventWaveId, // Group notifications by wave
               requireInteraction: false,
@@ -8657,6 +9941,13 @@ function MainApp() {
       fetchAPI('/notifications/by-wave').then(result => {
         setWaveNotifications(result.countsByWave || {});
       }).catch(e => console.error('Failed to update wave notifications:', e));
+    } else if (data.type === 'federation_request_received') {
+      // New federation request received (admin only)
+      console.log('📨 Federation request received:', data.request?.fromNodeName);
+      setFederationRequestsRefresh(prev => prev + 1);
+      if (user?.isAdmin) {
+        showToastMsg(`Federation request from ${data.request?.fromNodeName || 'unknown server'}`, 'info');
+      }
     }
   }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView, fetchAPI]);
 
@@ -8839,6 +10130,10 @@ function MainApp() {
     loadGroupInvitations();
     loadBlockedMutedUsers();
     loadWaveNotifications();
+    // Check if federation is enabled (public endpoint returns 404 if disabled)
+    fetch(`${API_URL}/federation/identity`)
+      .then(res => setFederationEnabled(res.ok))
+      .catch(() => setFederationEnabled(false));
   }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications]);
 
   // Listen for service worker messages (push notification clicks)
@@ -9005,7 +10300,7 @@ function MainApp() {
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.12.2</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.13.0</span>
           </div>
           {/* Status indicators */}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', fontSize: '0.55rem', fontFamily: 'monospace' }}>
@@ -9143,7 +10438,8 @@ function MainApp() {
                     onFocusDroplet={handleFocusDroplet}
                     onNavigateToWave={handleNavigateToWave}
                     scrollToDropletId={scrollToDropletId}
-                    onScrollToDropletComplete={() => setScrollToDropletId(null)} />
+                    onScrollToDropletComplete={() => setScrollToDropletId(null)}
+                    federationEnabled={federationEnabled} />
                 </ErrorBoundary>
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--border-primary)' }}>
@@ -9178,11 +10474,12 @@ function MainApp() {
             contactRequests={contactRequests}
             sentContactRequests={sentContactRequests}
             onRequestsChange={loadContactRequests}
+            onShowProfile={setProfileUserId}
           />
         )}
 
         {activeView === 'profile' && (
-          <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} onLogout={logout} />
+          <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} onLogout={logout} federationRequestsRefresh={federationRequestsRefresh} />
         )}
       </main>
 
@@ -9193,7 +10490,7 @@ function MainApp() {
           display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
         }}>
           <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ color: 'var(--border-primary)' }}>v1.12.2</span>
+            <span style={{ color: 'var(--border-primary)' }}>v1.13.0</span>
             <span><span style={{ color: 'var(--accent-green)' }}>●</span> ENCRYPTED</span>
             <span><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> LIVE</span>
@@ -9221,7 +10518,7 @@ function MainApp() {
       )}
 
       <NewWaveModal isOpen={showNewWave} onClose={() => setShowNewWave(false)}
-        onCreate={handleCreateWave} contacts={contacts} groups={groups} />
+        onCreate={handleCreateWave} contacts={contacts} groups={groups} federationEnabled={federationEnabled} />
 
       {showSearch && (
         <SearchModal
@@ -9260,6 +10557,24 @@ function MainApp() {
         onMute={async (userId, name) => {
           if (await handleMuteUser(userId)) {
             showToastMsg(`Muted ${name}`, 'success');
+          }
+        }}
+        onFollow={async (userId, name) => {
+          try {
+            await fetchAPI('/contacts/follow', { method: 'POST', body: { userId } });
+            showToastMsg(`Now following ${name}`, 'success');
+            loadContacts();
+          } catch (e) {
+            showToastMsg(e.message || 'Failed to follow user', 'error');
+          }
+        }}
+        onUnfollow={async (userId, name) => {
+          try {
+            await fetchAPI(`/contacts/follow/${userId}`, { method: 'DELETE' });
+            showToastMsg(`Unfollowed ${name}`, 'success');
+            loadContacts();
+          } catch (e) {
+            showToastMsg(e.message || 'Failed to unfollow user', 'error');
           }
         }}
         isMobile={isMobile}
@@ -9348,5 +10663,25 @@ export default function CortexApp() {
 
 function AppContent() {
   const { user } = useAuth();
-  return user ? <MainApp /> : <LoginScreen />;
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => setCurrentPath(window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Navigate function for internal links
+  const navigate = (path) => {
+    window.history.pushState({}, '', path);
+    setCurrentPath(path);
+  };
+
+  // Public routes (accessible without login)
+  if (currentPath === '/about') {
+    return <AboutServerPage onBack={() => navigate('/')} />;
+  }
+
+  return user ? <MainApp /> : <LoginScreen onAbout={() => navigate('/about')} />;
 }
