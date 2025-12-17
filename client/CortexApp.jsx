@@ -8583,7 +8583,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ PROFILE SETTINGS ============
-const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout }) => {
+const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, federationRequestsRefresh }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || null);
@@ -10479,7 +10479,7 @@ function MainApp() {
         )}
 
         {activeView === 'profile' && (
-          <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} onLogout={logout} />
+          <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} onLogout={logout} federationRequestsRefresh={federationRequestsRefresh} />
         )}
       </main>
 
