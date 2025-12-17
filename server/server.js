@@ -3871,14 +3871,16 @@ app.post('/api/auth/mfa/send-email-code', mfaLimiter, async (req, res) => {
     // Generate and send code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
+    const emailService = getEmailService();
+    if (!emailService.configured) {
+      return res.status(400).json({ error: 'Email service is not configured. Contact administrator.' });
+    }
+
     // Update challenge with new code (store hashed)
     const codeHash = crypto.createHash('sha256').update(code).digest('hex');
     const newChallenge = db.createMfaChallenge(challenge.userId, 'email', codeHash);
 
-    const emailService = getEmailService();
-    if (emailService.configured) {
-      await emailService.sendMFACode(user.email, code);
-    }
+    await emailService.sendMFACode(user.email, code);
 
     res.json({
       success: true,

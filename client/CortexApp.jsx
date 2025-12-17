@@ -2274,6 +2274,8 @@ const LoginScreen = ({ onAbout }) => {
   const [mfaMethod, setMfaMethod] = useState('totp');
   const [mfaCode, setMfaCode] = useState('');
   const [mfaLoading, setMfaLoading] = useState(false);
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
+  const [emailCodeSending, setEmailCodeSending] = useState(false);
   const { isMobile, isTablet, isDesktop } = useWindowSize();
 
   const handleForgotPassword = async (e) => {
@@ -2349,6 +2351,31 @@ const LoginScreen = ({ onAbout }) => {
     setMfaMethods([]);
     setMfaCode('');
     setError('');
+    setEmailCodeSent(false);
+    setEmailCodeSending(false);
+  };
+
+  const handleSendEmailCode = async () => {
+    setEmailCodeSending(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/auth/mfa/send-email-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: mfaChallenge }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMfaChallenge(data.challengeId); // Update to new challenge ID
+        setEmailCodeSent(true);
+      } else {
+        setError(data.error || 'Failed to send email code');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    } finally {
+      setEmailCodeSending(false);
+    }
   };
 
   const inputStyle = {
@@ -2387,7 +2414,7 @@ const LoginScreen = ({ onAbout }) => {
                 </label>
                 <select
                   value={mfaMethod}
-                  onChange={(e) => { setMfaMethod(e.target.value); setMfaCode(''); setError(''); }}
+                  onChange={(e) => { setMfaMethod(e.target.value); setMfaCode(''); setError(''); setEmailCodeSent(false); }}
                   style={{ ...inputStyle, cursor: 'pointer' }}
                 >
                   {mfaMethods.includes('totp') && <option value="totp">Authenticator App</option>}
@@ -2414,6 +2441,43 @@ const LoginScreen = ({ onAbout }) => {
                 {mfaMethod === 'totp' && (
                   <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '8px' }}>
                     Enter the code from your authenticator app
+                  </div>
+                )}
+                {mfaMethod === 'email' && (
+                  <div style={{ marginTop: '8px' }}>
+                    {!emailCodeSent ? (
+                      <button
+                        type="button"
+                        onClick={handleSendEmailCode}
+                        disabled={emailCodeSending}
+                        style={{
+                          width: '100%', padding: '10px',
+                          background: emailCodeSending ? 'var(--border-subtle)' : 'var(--accent-amber)20',
+                          border: `1px solid ${emailCodeSending ? 'var(--border-primary)' : 'var(--accent-amber)'}`,
+                          color: emailCodeSending ? 'var(--text-muted)' : 'var(--accent-amber)',
+                          cursor: emailCodeSending ? 'not-allowed' : 'pointer',
+                          fontFamily: 'monospace', fontSize: '0.8rem',
+                        }}
+                      >
+                        {emailCodeSending ? 'SENDING...' : '📧 SEND CODE TO EMAIL'}
+                      </button>
+                    ) : (
+                      <div style={{ color: 'var(--accent-green)', fontSize: '0.7rem' }}>
+                        ✓ Code sent! Check your email and enter the 6-digit code above.
+                        <button
+                          type="button"
+                          onClick={handleSendEmailCode}
+                          disabled={emailCodeSending}
+                          style={{
+                            background: 'none', border: 'none', color: 'var(--accent-amber)',
+                            cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem',
+                            marginLeft: '8px', textDecoration: 'underline',
+                          }}
+                        >
+                          {emailCodeSending ? 'Sending...' : 'Resend'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
                 {mfaMethod === 'recovery' && (
