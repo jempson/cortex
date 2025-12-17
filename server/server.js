@@ -289,6 +289,14 @@ function isValidAvatarFilename(filename) {
   return validPattern.test(filename);
 }
 
+// Get request metadata for activity logging
+function getRequestMeta(req) {
+  return {
+    ip: req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.connection?.remoteAddress,
+    userAgent: req.headers['user-agent'] || 'Unknown'
+  };
+}
+
 function detectAndEmbedMedia(content) {
   // First, auto-link plain URLs (that aren't already in HTML tags)
   // This regex avoids matching URLs inside existing HTML tags
@@ -3234,6 +3242,9 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
     const token = jwt.sign({ userId: id, handle: user.handle }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     console.log(`✅ New user registered: ${handle}`);
 
+    // Log registration
+    if (db.logActivity) db.logActivity(user.id, 'register', 'user', user.id, getRequestMeta(req));
+
     res.status(201).json({
       token,
       user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
@@ -3259,14 +3270,19 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     }
 
     const user = db.findUserByHandle(handle);
+    const meta = getRequestMeta(req);
     if (!user) {
       recordFailedAttempt(handle);
+      // Log failed login attempt (unknown user)
+      if (db.logActivity) db.logActivity(null, 'login_failed', 'user', null, { ...meta, reason: 'unknown_user', attemptedHandle: handle });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const validPassword = await bcrypt.compare(password, user.passwordHash);
     if (!validPassword) {
       recordFailedAttempt(handle);
+      // Log failed login attempt (wrong password)
+      if (db.logActivity) db.logActivity(user.id, 'login_failed', 'user', user.id, { ...meta, reason: 'invalid_password' });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -3295,6 +3311,9 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     console.log(`✅ User logged in: ${handle}`);
 
+    // Log successful login
+    if (db.logActivity) db.logActivity(user.id, 'login', 'user', user.id, meta);
+
     res.json({
       token,
       requirePasswordChange,
@@ -3314,6 +3333,8 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
   db.updateUserStatus(req.user.userId, 'offline');
+  // Log logout
+  if (db.logActivity) db.logActivity(req.user.userId, 'logout', 'user', req.user.userId, getRequestMeta(req));
   res.json({ success: true });
 });
 
@@ -3447,6 +3468,10 @@ app.post('/api/auth/reset-password', async (req, res) => {
     }
 
     console.log(`Password reset completed for user ${tokenResult.userId}`);
+
+    // Log password reset
+    if (db.logActivity) db.logActivity(tokenResult.userId, 'password_reset_complete', 'user', tokenResult.userId, getRequestMeta(req));
+
     res.json({ success: true, message: 'Password has been reset successfully' });
   } catch (err) {
     console.error('Password reset error:', err);
@@ -3566,6 +3591,9 @@ app.post('/api/auth/mfa/totp/verify', authenticateToken, mfaLimiter, (req, res) 
     // Store hashed recovery codes
     db.storeRecoveryCodes(req.user.userId, recoveryCodes);
 
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'mfa_enable', 'user', req.user.userId, { ...getRequestMeta(req), method: 'totp' });
+
     res.json({
       success: true,
       message: 'TOTP enabled successfully',
@@ -3607,6 +3635,9 @@ app.post('/api/auth/mfa/totp/disable', authenticateToken, mfaLimiter, async (req
 
     // Disable TOTP
     db.disableTotp(req.user.userId);
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'mfa_disable', 'user', req.user.userId, { ...getRequestMeta(req), method: 'totp' });
 
     res.json({ success: true, message: 'TOTP disabled successfully' });
   } catch (err) {
@@ -3687,6 +3718,9 @@ app.post('/api/auth/mfa/email/verify-setup', authenticateToken, mfaLimiter, (req
     db.enableEmailMfa(req.user.userId);
     db.markMfaChallengeVerified(challengeId);
 
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'mfa_enable', 'user', req.user.userId, { ...getRequestMeta(req), method: 'email' });
+
     // Generate recovery codes if not already present
     const settings = db.getMfaSettings(req.user.userId);
     let recoveryCodes = null;
@@ -3729,6 +3763,9 @@ app.post('/api/auth/mfa/email/disable', authenticateToken, async (req, res) => {
 
     // Disable email MFA
     db.disableEmailMfa(req.user.userId);
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'mfa_disable', 'user', req.user.userId, { ...getRequestMeta(req), method: 'email' });
 
     res.json({ success: true, message: 'Email MFA disabled successfully' });
   } catch (err) {
@@ -3903,6 +3940,9 @@ app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
     if (db.clearFailedLogins) {
       db.clearFailedLogins(user.handle);
     }
+
+    // Log successful MFA login
+    if (db.logActivity) db.logActivity(user.id, 'login', 'user', user.id, { ...getRequestMeta(req), mfaMethod: method });
 
     res.json({
       success: true,
@@ -4122,6 +4162,10 @@ app.post('/api/profile/password', authenticateToken, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const result = await db.changePassword(req.user.userId, currentPassword, newPassword);
   if (!result.success) return res.status(400).json({ error: result.error });
+
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'password_change', 'user', req.user.userId, getRequestMeta(req));
+
   res.json({ success: true });
 });
 
@@ -5214,6 +5258,9 @@ app.post('/api/admin/users/:id/warn', authenticateToken, (req, res) => {
     reportId ? sanitizeInput(reportId) : null
   );
 
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'admin_warn', 'user', targetUserId, { ...getRequestMeta(req), reason: sanitizeInput(reason), reportId });
+
   // Notify user via WebSocket
   broadcast({
     type: 'warning_received',
@@ -5282,6 +5329,9 @@ app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, r
       db.logModerationAction(admin.id, 'password_reset', 'user', targetUserId, 'Admin password reset');
     }
 
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'admin_password_reset', 'user', targetUserId, { ...getRequestMeta(req), emailSent: shouldSendEmail && targetUser.email });
+
     // Optionally send email with temporary password
     let emailSent = false;
     if (shouldSendEmail && targetUser.email) {
@@ -5337,6 +5387,9 @@ app.post('/api/admin/users/:id/force-logout', authenticateToken, (req, res) => {
       db.logModerationAction(admin.id, 'force_logout', 'user', targetUserId, 'Admin forced logout');
     }
 
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'admin_force_logout', 'user', targetUserId, getRequestMeta(req));
+
     console.log(`Admin ${admin.handle} forced logout for user ${targetUser.handle}`);
 
     res.json({
@@ -5381,6 +5434,86 @@ app.get('/api/admin/moderation-log/:targetType/:targetId', authenticateToken, (r
   const logs = db.getModerationLogForTarget(targetType, targetId);
 
   res.json({ logs, count: logs.length });
+});
+
+// Get activity log (admin only)
+app.get('/api/admin/activity-log', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!db.getActivityLog) {
+    return res.status(501).json({ error: 'Activity logging not available in this database mode' });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const offset = parseInt(req.query.offset) || 0;
+  const userId = req.query.userId ? sanitizeInput(req.query.userId) : null;
+  const actionType = req.query.actionType ? sanitizeInput(req.query.actionType) : null;
+  const startDate = req.query.startDate ? sanitizeInput(req.query.startDate) : null;
+  const endDate = req.query.endDate ? sanitizeInput(req.query.endDate) : null;
+
+  try {
+    const result = db.getActivityLog({
+      userId,
+      actionType,
+      startDate,
+      endDate,
+      limit,
+      offset
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Activity log error:', err);
+    res.status(500).json({ error: 'Failed to retrieve activity log' });
+  }
+});
+
+// Get activity stats (admin only)
+app.get('/api/admin/activity-stats', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!db.getActivityStats) {
+    return res.status(501).json({ error: 'Activity logging not available in this database mode' });
+  }
+
+  const days = Math.min(parseInt(req.query.days) || 7, 90);
+
+  try {
+    const stats = db.getActivityStats(days);
+    res.json(stats);
+  } catch (err) {
+    console.error('Activity stats error:', err);
+    res.status(500).json({ error: 'Failed to retrieve activity stats' });
+  }
+});
+
+// Get activity log for a specific user (admin only)
+app.get('/api/admin/activity-log/user/:userId', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  if (!db.getUserActivityLog) {
+    return res.status(501).json({ error: 'Activity logging not available in this database mode' });
+  }
+
+  const targetUserId = sanitizeInput(req.params.userId);
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+  try {
+    const activities = db.getUserActivityLog(targetUserId, limit);
+    res.json({ activities, count: activities.length });
+  } catch (err) {
+    console.error('User activity log error:', err);
+    res.status(500).json({ error: 'Failed to retrieve user activity log' });
+  }
 });
 
 // ============ Federation Routes ============
@@ -7534,6 +7667,10 @@ app.post('/api/waves', authenticateToken, async (req, res) => {
   };
 
   broadcastToWave(wave.id, { type: 'wave_created', wave: result });
+
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'create_wave', 'wave', wave.id, { ...getRequestMeta(req), privacy, title });
+
   res.status(201).json(result);
 });
 
@@ -7797,6 +7934,9 @@ app.delete('/api/waves/:id', authenticateToken, (req, res) => {
     wave: result.wave
   });
 
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'delete_wave', 'wave', waveId, getRequestMeta(req));
+
   res.json({ success: true });
 });
 
@@ -7918,6 +8058,9 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
     }
   }
 
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'create_droplet', 'droplet', droplet.id, { ...getRequestMeta(req), waveId });
+
   res.status(201).json(droplet);
 });
 
@@ -7948,6 +8091,9 @@ app.put('/api/droplets/:id', authenticateToken, (req, res) => {
       console.error('Federation droplet edit delivery error:', err.message);
     });
   }
+
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'edit_droplet', 'droplet', dropletId, { ...getRequestMeta(req), waveId: droplet.waveId });
 
   res.json(updated);
 });
@@ -7991,6 +8137,9 @@ app.delete('/api/droplets/:id', authenticateToken, (req, res) => {
       console.error('Federation droplet delete delivery error:', err.message);
     });
   }
+
+  // Log activity
+  if (db.logActivity) db.logActivity(req.user.userId, 'delete_droplet', 'droplet', dropletId, { ...getRequestMeta(req), waveId });
 
   res.json({ success: true });
 });
@@ -8645,6 +8794,34 @@ if (FEDERATION_ENABLED) {
       console.log(`🧹 Cleaned up ${cleaned} old federation messages`);
     }
   }, 24 * 60 * 60 * 1000); // Daily
+}
+
+// Activity log cleanup (90-day retention)
+const ACTIVITY_LOG_RETENTION_DAYS = parseInt(process.env.ACTIVITY_LOG_RETENTION_DAYS) || 90;
+if (db.cleanupOldActivityLogs) {
+  // Run cleanup daily
+  setInterval(() => {
+    try {
+      const deleted = db.cleanupOldActivityLogs(ACTIVITY_LOG_RETENTION_DAYS);
+      if (deleted > 0) {
+        console.log(`🧹 Cleaned ${deleted} old activity log entries (>${ACTIVITY_LOG_RETENTION_DAYS} days)`);
+      }
+    } catch (err) {
+      console.error('Activity log cleanup error:', err);
+    }
+  }, 24 * 60 * 60 * 1000); // Daily
+
+  // Also run once on startup after a delay
+  setTimeout(() => {
+    try {
+      const deleted = db.cleanupOldActivityLogs(ACTIVITY_LOG_RETENTION_DAYS);
+      if (deleted > 0) {
+        console.log(`🧹 Startup cleanup: removed ${deleted} old activity log entries`);
+      }
+    } catch (err) {
+      console.error('Activity log startup cleanup error:', err);
+    }
+  }, 60000); // 1 minute after startup
 }
 
 // ============ Notification Creation Helpers ============

@@ -59,6 +59,8 @@ The following features have been implemented and are no longer outstanding:
 | **Email MFA** | v1.14.0 | Email-based verification codes |
 | **Recovery Codes** | v1.14.0 | 10 one-time backup codes |
 | **MFA Login Flow** | v1.14.0 | Challenge-response during login |
+| **Activity Log** | v1.14.0 | Security and content event tracking with admin UI |
+| **Encryption at Rest** | v1.14.0 | SQLCipher database encryption support |
 
 ---
 

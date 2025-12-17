@@ -8094,6 +8094,233 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
   );
 };
 
+// ============ ACTIVITY LOG ADMIN PANEL ============
+const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState(null);
+  const [selectedAction, setSelectedAction] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const LIMIT = 50;
+
+  const ACTION_LABELS = {
+    login: { label: 'Login', color: 'var(--accent-green)' },
+    login_failed: { label: 'Login Failed', color: 'var(--accent-orange)' },
+    logout: { label: 'Logout', color: 'var(--text-dim)' },
+    register: { label: 'Registration', color: 'var(--accent-teal)' },
+    password_change: { label: 'Password Change', color: 'var(--accent-amber)' },
+    password_reset_complete: { label: 'Password Reset', color: 'var(--accent-amber)' },
+    mfa_enable: { label: 'MFA Enabled', color: 'var(--accent-green)' },
+    mfa_disable: { label: 'MFA Disabled', color: 'var(--accent-orange)' },
+    admin_warn: { label: 'Admin Warning', color: 'var(--accent-purple)' },
+    admin_password_reset: { label: 'Admin Password Reset', color: 'var(--accent-purple)' },
+    admin_force_logout: { label: 'Admin Force Logout', color: 'var(--accent-purple)' },
+    create_wave: { label: 'Wave Created', color: 'var(--accent-teal)' },
+    delete_wave: { label: 'Wave Deleted', color: 'var(--accent-orange)' },
+    create_droplet: { label: 'Droplet Created', color: 'var(--text-secondary)' },
+    edit_droplet: { label: 'Droplet Edited', color: 'var(--text-secondary)' },
+    delete_droplet: { label: 'Droplet Deleted', color: 'var(--accent-orange)' },
+  };
+
+  const loadActivities = useCallback(async (newOffset = 0) => {
+    setLoading(true);
+    try {
+      let url = `/admin/activity-log?limit=${LIMIT}&offset=${newOffset}`;
+      if (selectedAction) url += `&actionType=${selectedAction}`;
+
+      const res = await fetchAPI(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (newOffset === 0) {
+          setActivities(data.activities || []);
+        } else {
+          setActivities(prev => [...prev, ...(data.activities || [])]);
+        }
+        setTotal(data.total || 0);
+        setHasMore((data.activities || []).length === LIMIT);
+        setOffset(newOffset);
+      } else if (res.status === 501) {
+        // Activity logging not available
+        setActivities([]);
+        setTotal(0);
+      }
+    } catch (err) {
+      showToast('Failed to load activity log', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAPI, selectedAction, showToast]);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const res = await fetchAPI('/admin/activity-stats?days=7');
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch {
+      // Stats not critical, ignore errors
+    }
+  }, [fetchAPI]);
+
+  useEffect(() => {
+    loadActivities(0);
+    loadStats();
+  }, [loadActivities, loadStats]);
+
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    return date.toLocaleString();
+  };
+
+  const getActionStyle = (actionType) => {
+    const config = ACTION_LABELS[actionType] || { label: actionType, color: 'var(--text-dim)' };
+    return config;
+  };
+
+  return (
+    <div style={{ marginTop: '20px', padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '16px',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div style={{ color: 'var(--accent-teal)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+          📊 ACTIVITY LOG
+        </div>
+        {stats && (
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+            Last 7 days: {stats.totalActivities} events | {stats.uniqueUsers} users
+          </div>
+        )}
+      </div>
+
+      {/* Filter by action type */}
+      <div style={{ marginBottom: '16px' }}>
+        <select
+          value={selectedAction}
+          onChange={(e) => {
+            setSelectedAction(e.target.value);
+            setOffset(0);
+          }}
+          style={{
+            padding: '8px 12px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-secondary)',
+            color: 'var(--text-primary)',
+            fontFamily: 'monospace',
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            minWidth: '180px'
+          }}
+        >
+          <option value="">All Actions</option>
+          <option value="login">Logins</option>
+          <option value="login_failed">Failed Logins</option>
+          <option value="register">Registrations</option>
+          <option value="password_change">Password Changes</option>
+          <option value="mfa_enable">MFA Enabled</option>
+          <option value="mfa_disable">MFA Disabled</option>
+          <option value="admin_warn">Admin Warnings</option>
+          <option value="admin_password_reset">Admin Password Resets</option>
+          <option value="create_wave">Waves Created</option>
+          <option value="delete_wave">Waves Deleted</option>
+        </select>
+      </div>
+
+      {loading && activities.length === 0 ? (
+        <div style={{ color: 'var(--text-dim)', padding: '20px', textAlign: 'center' }}>Loading...</div>
+      ) : activities.length === 0 ? (
+        <div style={{ color: 'var(--text-dim)', padding: '20px', textAlign: 'center' }}>
+          No activity logs found. Activity logging may not be enabled.
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '8px' }}>
+            Showing {activities.length} of {total} entries
+          </div>
+          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            {activities.map((activity) => {
+              const actionConfig = getActionStyle(activity.action_type);
+              return (
+                <div
+                  key={activity.id}
+                  style={{
+                    padding: '10px 12px',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    gap: isMobile ? '6px' : '12px',
+                    alignItems: isMobile ? 'flex-start' : 'center',
+                  }}
+                >
+                  <span style={{
+                    fontSize: '0.7rem',
+                    padding: '2px 8px',
+                    background: actionConfig.color,
+                    color: 'var(--bg-base)',
+                    borderRadius: '2px',
+                    whiteSpace: 'nowrap',
+                    minWidth: isMobile ? 'auto' : '120px',
+                    textAlign: 'center',
+                  }}>
+                    {actionConfig.label}
+                  </span>
+                  <span style={{
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.8rem',
+                    flex: 1,
+                  }}>
+                    {activity.user_handle || activity.user_id || 'System'}
+                  </span>
+                  <span style={{
+                    color: 'var(--text-dim)',
+                    fontSize: '0.7rem',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {activity.ip_address || '-'}
+                  </span>
+                  <span style={{
+                    color: 'var(--text-muted)',
+                    fontSize: '0.7rem',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {formatDate(activity.created_at)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {hasMore && (
+            <button
+              onClick={() => loadActivities(offset + LIMIT)}
+              disabled={loading}
+              style={{
+                marginTop: '12px',
+                padding: '8px 16px',
+                background: 'transparent',
+                border: '1px solid var(--border-secondary)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.8rem',
+                width: '100%',
+              }}
+            >
+              {loading ? 'Loading...' : 'Load More'}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 // ============ FEDERATION ADMIN PANEL ============
 const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0 }) => {
   const [status, setStatus] = useState(null);
@@ -10057,6 +10284,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
           {/* Admin Reports Dashboard */}
           <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+
+          {/* Activity Log Panel */}
+          <ActivityLogPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
 
           {/* Federation Admin Panel */}
           <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} />

@@ -104,6 +104,29 @@ export class DatabaseSQLite {
 
     // Open database
     this.db = new Database(this.dbPath);
+
+    // Database encryption support (requires SQLCipher build of better-sqlite3)
+    // To enable: npm install @journeyapps/sqlcipher (instead of better-sqlite3)
+    // Then set DB_ENCRYPTION_KEY environment variable
+    const encryptionKey = process.env.DB_ENCRYPTION_KEY;
+    if (encryptionKey) {
+      try {
+        // Apply encryption key - this only works with SQLCipher
+        this.db.pragma(`key = '${encryptionKey}'`);
+        console.log('🔐 Database encryption enabled');
+      } catch (err) {
+        if (process.env.NODE_ENV === 'production') {
+          console.error('FATAL: DB_ENCRYPTION_KEY set but encryption failed. Install @journeyapps/sqlcipher for encryption support.');
+          process.exit(1);
+        } else {
+          console.warn('⚠️  DB_ENCRYPTION_KEY set but encryption not available. Install @journeyapps/sqlcipher for encryption.');
+        }
+      }
+    } else if (process.env.NODE_ENV === 'production' && process.env.REQUIRE_DB_ENCRYPTION === 'true') {
+      console.error('FATAL: REQUIRE_DB_ENCRYPTION is true but DB_ENCRYPTION_KEY is not set');
+      process.exit(1);
+    }
+
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
 
@@ -1451,6 +1474,186 @@ export class DatabaseSQLite {
       WHERE expires_at < datetime('now')
     `).run();
     return result.changes;
+  }
+
+  // ============ Activity Log Methods ============
+
+  /**
+   * Log an activity event
+   * @param {string|null} userId - User ID (null for anonymous actions)
+   * @param {string} actionType - Type of action (login, logout, password_change, etc.)
+   * @param {string|null} resourceType - Type of resource (user, wave, droplet, etc.)
+   * @param {string|null} resourceId - ID of the affected resource
+   * @param {Object} metadata - Additional context (ip, userAgent, etc.)
+   * @returns {string} Activity log entry ID
+   */
+  logActivity(userId, actionType, resourceType = null, resourceId = null, metadata = {}) {
+    const id = `act-${uuidv4()}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO activity_log (id, user_id, action_type, resource_type, resource_id, ip_address, user_agent, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      userId,
+      actionType,
+      resourceType,
+      resourceId,
+      metadata.ip || null,
+      metadata.userAgent || null,
+      JSON.stringify(metadata),
+      now
+    );
+
+    return id;
+  }
+
+  /**
+   * Get activity log entries with filters
+   * @param {Object} filters - Filter options
+   * @param {string} filters.userId - Filter by user ID
+   * @param {string} filters.actionType - Filter by action type
+   * @param {string} filters.resourceType - Filter by resource type
+   * @param {string} filters.resourceId - Filter by resource ID
+   * @param {string} filters.startDate - Filter by start date (ISO string)
+   * @param {string} filters.endDate - Filter by end date (ISO string)
+   * @param {number} filters.limit - Max entries to return (default 100)
+   * @param {number} filters.offset - Offset for pagination (default 0)
+   * @returns {Object} { entries, total }
+   */
+  getActivityLog(filters = {}) {
+    const conditions = [];
+    const params = [];
+
+    if (filters.userId) {
+      conditions.push('user_id = ?');
+      params.push(filters.userId);
+    }
+    if (filters.actionType) {
+      conditions.push('action_type = ?');
+      params.push(filters.actionType);
+    }
+    if (filters.resourceType) {
+      conditions.push('resource_type = ?');
+      params.push(filters.resourceType);
+    }
+    if (filters.resourceId) {
+      conditions.push('resource_id = ?');
+      params.push(filters.resourceId);
+    }
+    if (filters.startDate) {
+      conditions.push('created_at >= ?');
+      params.push(filters.startDate);
+    }
+    if (filters.endDate) {
+      conditions.push('created_at <= ?');
+      params.push(filters.endDate);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = filters.limit || 100;
+    const offset = filters.offset || 0;
+
+    // Get total count
+    const countRow = this.db.prepare(`
+      SELECT COUNT(*) as count FROM activity_log ${whereClause}
+    `).get(...params);
+
+    // Get entries with user info
+    const entries = this.db.prepare(`
+      SELECT
+        a.*,
+        u.handle as user_handle,
+        u.displayName as user_display_name
+      FROM activity_log a
+      LEFT JOIN users u ON a.user_id = u.id
+      ${whereClause}
+      ORDER BY a.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    // Parse metadata JSON
+    return {
+      entries: entries.map(e => ({
+        ...e,
+        metadata: e.metadata ? JSON.parse(e.metadata) : {}
+      })),
+      total: countRow.count
+    };
+  }
+
+  /**
+   * Get activity log for a specific user
+   * @param {string} userId - User ID
+   * @param {number} limit - Max entries (default 50)
+   * @returns {Array} Activity entries
+   */
+  getUserActivityLog(userId, limit = 50) {
+    const entries = this.db.prepare(`
+      SELECT * FROM activity_log
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(userId, limit);
+
+    return entries.map(e => ({
+      ...e,
+      metadata: e.metadata ? JSON.parse(e.metadata) : {}
+    }));
+  }
+
+  /**
+   * Clean up old activity log entries
+   * @param {number} daysOld - Delete entries older than this many days (default 90)
+   * @returns {number} Number of entries deleted
+   */
+  cleanupOldActivityLogs(daysOld = 90) {
+    const result = this.db.prepare(`
+      DELETE FROM activity_log
+      WHERE created_at < datetime('now', '-' || ? || ' days')
+    `).run(daysOld);
+    return result.changes;
+  }
+
+  /**
+   * Get activity summary/statistics
+   * @param {number} days - Number of days to summarize (default 7)
+   * @returns {Object} Activity statistics
+   */
+  getActivityStats(days = 7) {
+    const stats = this.db.prepare(`
+      SELECT
+        action_type,
+        COUNT(*) as count
+      FROM activity_log
+      WHERE created_at >= datetime('now', '-' || ? || ' days')
+      GROUP BY action_type
+      ORDER BY count DESC
+    `).all(days);
+
+    const totalLogins = this.db.prepare(`
+      SELECT COUNT(*) as count FROM activity_log
+      WHERE action_type = 'login' AND created_at >= datetime('now', '-' || ? || ' days')
+    `).get(days);
+
+    const failedLogins = this.db.prepare(`
+      SELECT COUNT(*) as count FROM activity_log
+      WHERE action_type = 'login_failed' AND created_at >= datetime('now', '-' || ? || ' days')
+    `).get(days);
+
+    const uniqueUsers = this.db.prepare(`
+      SELECT COUNT(DISTINCT user_id) as count FROM activity_log
+      WHERE user_id IS NOT NULL AND created_at >= datetime('now', '-' || ? || ' days')
+    `).get(days);
+
+    return {
+      byActionType: stats,
+      totalLogins: totalLogins.count,
+      failedLogins: failedLogins.count,
+      uniqueActiveUsers: uniqueUsers.count,
+      periodDays: days
+    };
   }
 
   requestHandleChange(userId, newHandle) {

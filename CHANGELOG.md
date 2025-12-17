@@ -64,6 +64,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `require_password_change` flag to users table
 - Added `user_mfa` table for MFA settings (TOTP secret, email MFA, recovery codes)
 - Added `mfa_challenges` table for login challenge tracking
+- Added `activity_log` table for security and content event tracking
+
+#### Activity Tracking & Audit Log
+- **Activity Log System**: Track security and content events for auditing
+- **90-Day Retention**: Automatic cleanup of old activity log entries
+- **Admin Activity Panel**: View and filter activity log in admin dashboard
+- **Action Types Tracked**: Logins, failed logins, registrations, password changes, MFA events, admin actions, wave/droplet operations
+
+#### Activity Log Endpoints
+- `GET /api/admin/activity-log` - Get paginated activity log with filters
+- `GET /api/admin/activity-stats` - Get activity statistics
+- `GET /api/admin/activity-log/user/:userId` - Get activity for specific user
+
+#### Encryption at Rest
+- **SQLCipher Support**: Database encryption using SQLCipher (optional)
+- **Environment Variables**: `DB_ENCRYPTION_KEY` to enable database encryption
+- **Production Mode**: `REQUIRE_DB_ENCRYPTION=true` to enforce encryption in production
+- **Backward Compatible**: Works with existing better-sqlite3 (encryption disabled)
 
 ### Dependencies
 - Added `otplib` for TOTP generation/verification

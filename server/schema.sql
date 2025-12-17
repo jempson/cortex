@@ -272,6 +272,26 @@ CREATE TABLE IF NOT EXISTS mfa_challenges (
 CREATE INDEX IF NOT EXISTS idx_mfa_challenges_user ON mfa_challenges(user_id);
 CREATE INDEX IF NOT EXISTS idx_mfa_challenges_expires ON mfa_challenges(expires_at);
 
+-- ============ Activity Log (v1.14.0) ============
+
+-- Activity log for security auditing
+CREATE TABLE IF NOT EXISTS activity_log (
+    id TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    action_type TEXT NOT NULL,           -- login, logout, password_change, etc.
+    resource_type TEXT,                  -- user, wave, droplet, etc.
+    resource_id TEXT,                    -- ID of the affected resource
+    ip_address TEXT,
+    user_agent TEXT,
+    metadata TEXT,                       -- JSON for additional context
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_log(action_type);
+CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_resource ON activity_log(resource_type, resource_id);
+
 -- ============ Indexes ============
 
 -- User lookups
