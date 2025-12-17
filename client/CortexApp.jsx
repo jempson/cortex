@@ -2359,7 +2359,7 @@ const LoginScreen = ({ onAbout }) => {
     setEmailCodeSending(true);
     setError('');
     try {
-      const res = await fetch(`${API_URL}/api/auth/mfa/send-email-code`, {
+      const res = await fetch(`${API_URL}/auth/mfa/send-email-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ challengeId: mfaChallenge }),
@@ -2372,6 +2372,7 @@ const LoginScreen = ({ onAbout }) => {
         setError(data.error || 'Failed to send email code');
       }
     } catch (err) {
+      console.error('Send email code error:', err);
       setError('Network error. Please try again.');
     } finally {
       setEmailCodeSending(false);
