@@ -3583,13 +3583,15 @@ app.post('/api/auth/mfa/totp/verify', authenticateToken, mfaLimiter, (req, res) 
 
     // Generate recovery codes (10 codes)
     const recoveryCodes = [];
+    const hashedCodes = [];
     for (let i = 0; i < 10; i++) {
       const code = crypto.randomBytes(4).toString('hex').toUpperCase();
       recoveryCodes.push(code);
+      hashedCodes.push(crypto.createHash('sha256').update(code).digest('hex'));
     }
 
     // Store hashed recovery codes
-    db.storeRecoveryCodes(req.user.userId, recoveryCodes);
+    db.storeRecoveryCodes(req.user.userId, hashedCodes);
 
     // Log activity
     if (db.logActivity) db.logActivity(req.user.userId, 'mfa_enable', 'user', req.user.userId, { ...getRequestMeta(req), method: 'totp' });
@@ -3666,9 +3668,11 @@ app.post('/api/auth/mfa/email/enable', authenticateToken, async (req, res) => {
     const testCode = Math.floor(100000 + Math.random() * 900000).toString();
     const emailService = getEmailService();
 
-    if (emailService.configured) {
-      await emailService.sendMFACode(user.email, testCode);
+    if (!emailService.configured) {
+      return res.status(400).json({ error: 'Email service is not configured. Contact administrator.' });
     }
+
+    await emailService.sendMFACode(user.email, testCode);
 
     // Create MFA challenge for verification (store hashed code)
     const codeHash = crypto.createHash('sha256').update(testCode).digest('hex');
@@ -3732,11 +3736,13 @@ app.post('/api/auth/mfa/email/verify-setup', authenticateToken, mfaLimiter, (req
     let recoveryCodes = null;
     if (!settings?.recovery_codes || JSON.parse(settings.recovery_codes).length === 0) {
       recoveryCodes = [];
+      const hashedCodes = [];
       for (let i = 0; i < 10; i++) {
         const code = crypto.randomBytes(4).toString('hex').toUpperCase();
         recoveryCodes.push(code);
+        hashedCodes.push(crypto.createHash('sha256').update(code).digest('hex'));
       }
-      db.storeRecoveryCodes(req.user.userId, recoveryCodes);
+      db.storeRecoveryCodes(req.user.userId, hashedCodes);
     }
 
     res.json({
@@ -3817,13 +3823,15 @@ app.post('/api/auth/mfa/recovery/regenerate', authenticateToken, mfaLimiter, asy
 
     // Generate new recovery codes
     const recoveryCodes = [];
+    const hashedCodes = [];
     for (let i = 0; i < 10; i++) {
       const code = crypto.randomBytes(4).toString('hex').toUpperCase();
       recoveryCodes.push(code);
+      hashedCodes.push(crypto.createHash('sha256').update(code).digest('hex'));
     }
 
     // Store new hashed codes (replaces old ones)
-    db.storeRecoveryCodes(req.user.userId, recoveryCodes);
+    db.storeRecoveryCodes(req.user.userId, hashedCodes);
 
     res.json({
       success: true,
@@ -3927,13 +3935,13 @@ app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
         verified = true;
       }
     } else if (method === 'recovery') {
-      // Verify recovery code
-      const codes = db.getRecoveryCodes(challenge.userId);
-      if (codes) {
+      // Verify recovery code (stored as array of hashed codes)
+      const hashedCodes = db.getRecoveryCodes(challenge.userId);
+      if (hashedCodes && hashedCodes.length > 0) {
         const codeHash = crypto.createHash('sha256').update(code.toUpperCase()).digest('hex');
-        const matchingCode = codes.find(c => c.hash === codeHash && !c.used);
-        if (matchingCode) {
-          db.markRecoveryCodeUsed(challenge.userId, code.toUpperCase());
+        const codeIndex = hashedCodes.findIndex(hash => hash === codeHash);
+        if (codeIndex !== -1) {
+          db.markRecoveryCodeUsed(challenge.userId, codeIndex);
           verified = true;
         }
       }
