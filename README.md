@@ -72,11 +72,15 @@ Demo accounts (password: `demo123`):
 
 ### Security
 - JWT authentication with 7-day tokens
+- **Multi-Factor Authentication** - TOTP and email-based 2FA (v1.14.0)
+- **Password Recovery** - Email-based password reset (v1.14.0)
+- **Activity Logging** - Security audit trail with 90-day retention (v1.14.0)
 - Rate limiting on all endpoints
-- Account lockout after failed attempts
+- Account lockout after failed attempts (persisted to database)
 - HTML sanitization for all user content
 - Helmet.js security headers
 - HTTP Signature verification for federation
+- Optional database encryption (SQLCipher)
 
 ---
 
@@ -124,6 +128,20 @@ VAPID_EMAIL=mailto:admin@example.com
 # Federation (optional) - see "Enabling Federation" below
 FEDERATION_ENABLED=false           # Enable server-to-server federation
 FEDERATION_NODE_NAME=cortex.example.com  # Your server's federation name
+
+# Email Service (optional) - see "Enabling Email Service" below
+EMAIL_PROVIDER=smtp                # smtp, sendgrid, or mailgun
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+EMAIL_FROM=noreply@yourdomain.com
+
+# Database Encryption (optional)
+DB_ENCRYPTION_KEY=your-32-byte-hex-key  # Requires SQLCipher build
+
+# Activity Log Retention
+ACTIVITY_LOG_RETENTION_DAYS=90     # Days to keep activity logs (default: 90)
 
 # Rate Limits (defaults shown)
 RATE_LIMIT_LOGIN_MAX=30            # Per 15 minutes
@@ -280,6 +298,131 @@ Once nodes are connected (status: "active"), users can:
 - **Trust is manual** - Only add servers you trust as federation partners
 - **Origin is authoritative** - The server where a wave was created is the source of truth
 - **Keys are permanent** - Regenerating your identity breaks existing federation relationships
+
+---
+
+## Enabling Email Service
+
+Email service is required for password recovery and email-based MFA. Without it, users cannot reset forgotten passwords.
+
+### Supported Providers
+
+Cortex supports three email providers:
+- **SMTP** - Any standard SMTP server (Gmail, Outlook, custom)
+- **SendGrid** - SendGrid API
+- **Mailgun** - Mailgun API
+
+### Option A: SMTP Configuration
+
+Add to your `server/.env`:
+
+```bash
+EMAIL_PROVIDER=smtp
+SMTP_HOST=smtp.gmail.com           # Your SMTP server
+SMTP_PORT=587                      # Usually 587 (TLS) or 465 (SSL)
+SMTP_SECURE=false                  # true for port 465, false for 587
+SMTP_USER=your-email@gmail.com     # SMTP username
+SMTP_PASS=your-app-password        # SMTP password or app password
+EMAIL_FROM=noreply@yourdomain.com  # Sender address
+```
+
+**Gmail Notes:**
+- Use an [App Password](https://support.google.com/accounts/answer/185833) instead of your regular password
+- Enable "Less secure app access" or use App Passwords with 2FA
+
+### Option B: SendGrid Configuration
+
+```bash
+EMAIL_PROVIDER=sendgrid
+SENDGRID_API_KEY=SG.your-api-key-here
+EMAIL_FROM=noreply@yourdomain.com
+```
+
+Get your API key from [SendGrid Dashboard](https://app.sendgrid.com/settings/api_keys).
+
+### Option C: Mailgun Configuration
+
+```bash
+EMAIL_PROVIDER=mailgun
+MAILGUN_API_KEY=your-api-key
+MAILGUN_DOMAIN=mg.yourdomain.com   # Your Mailgun domain
+EMAIL_FROM=noreply@yourdomain.com
+```
+
+### Verify Email is Working
+
+Restart the server. You should see:
+```
+✉️  Email service configured (smtp)
+```
+
+If email is not configured, you'll see:
+```
+⚠️  Email service not configured - password reset will not work
+```
+
+### Important Notes
+
+- **EMAIL_FROM must be verified** - SendGrid and Mailgun require sender verification
+- **Test with password reset** - Use "Forgot Password" to verify email delivery
+- **Check spam folders** - First emails may land in spam until reputation is established
+
+---
+
+## Multi-Factor Authentication (MFA)
+
+Cortex supports two MFA methods:
+- **TOTP** - Time-based codes from authenticator apps (Google Authenticator, Authy, etc.)
+- **Email** - 6-digit codes sent to user's email address
+
+### Requirements
+
+- **TOTP**: No additional server configuration required
+- **Email MFA**: Requires email service to be configured (see above)
+
+### User Setup
+
+Users can enable MFA in **Profile Settings** → **Two-Factor Authentication**:
+
+1. **TOTP Setup**:
+   - Click "Setup TOTP"
+   - Scan QR code with authenticator app
+   - Enter 6-digit code to verify
+   - Save recovery codes (10 one-time backup codes)
+
+2. **Email MFA Setup**:
+   - Must have email address in profile
+   - Click "Enable Email MFA"
+   - Enter code sent to email
+   - Save recovery codes
+
+### Login with MFA
+
+When MFA is enabled, login requires:
+1. Enter handle/email and password
+2. Choose MFA method (if multiple enabled)
+3. Enter code from authenticator app, email, or recovery code
+
+### Recovery Codes
+
+- 10 one-time backup codes generated on MFA setup
+- Each code can only be used once
+- Users can regenerate codes in Profile Settings (requires current password + MFA code)
+- **Store securely** - these are the only way to recover access if authenticator is lost
+
+### Admin Password Reset
+
+Admins can reset user passwords from the admin panel:
+1. Go to **Profile Settings** → **Admin Panel**
+2. Use "Reset Password" for the user
+3. Option to send temporary password via email
+4. User will be prompted to change password on next login
+
+### Important Notes
+
+- **Email MFA requires email service** - Users without email configured cannot use email MFA
+- **Recovery codes are critical** - Users who lose their authenticator AND recovery codes will need admin help
+- **MFA is per-user** - Each user manages their own MFA settings
 
 ---
 
