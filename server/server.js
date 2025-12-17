@@ -3670,8 +3670,9 @@ app.post('/api/auth/mfa/email/enable', authenticateToken, async (req, res) => {
       await emailService.sendMFACode(user.email, testCode);
     }
 
-    // Create MFA challenge for verification
-    const challenge = db.createMfaChallenge(req.user.userId, 'email_enable', testCode);
+    // Create MFA challenge for verification (store hashed code)
+    const codeHash = crypto.createHash('sha256').update(testCode).digest('hex');
+    const challenge = db.createMfaChallenge(req.user.userId, 'email_enable', codeHash);
 
     res.json({
       success: true,
@@ -3862,8 +3863,9 @@ app.post('/api/auth/mfa/send-email-code', mfaLimiter, async (req, res) => {
     // Generate and send code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Update challenge with new code
-    const newChallenge = db.createMfaChallenge(challenge.userId, 'email', code);
+    // Update challenge with new code (store hashed)
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+    const newChallenge = db.createMfaChallenge(challenge.userId, 'email', codeHash);
 
     const emailService = getEmailService();
     if (emailService.configured) {
