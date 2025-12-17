@@ -5,6 +5,87 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2025-12-17
+
+### Added
+
+#### Crawl Bar - Live News Ticker
+- **Crawl Bar Component**: Horizontal scrolling ticker displaying stocks, weather, and news
+- **CSS Animation**: Smooth continuous scroll with configurable speeds (slow/normal/fast)
+- **Pause on Interaction**: Ticker pauses on mouse hover or touch
+- **Gradient Fade**: Visual fade effect at left/right edges
+- **Theme Integration**: Full CSS variable support for all themes
+- **Responsive Design**: Adapts height and font size for mobile devices
+
+#### Stock Market Integration (Finnhub)
+- **Real-time Quotes**: Current price, change amount, and percent change
+- **Multiple Symbols**: Admin-configurable list of stock symbols
+- **Visual Indicators**: Green/red arrows for positive/negative changes
+- **60-Second Cache**: Respects Finnhub's rate limits (60 calls/min free tier)
+
+#### Weather Integration (OpenWeatherMap)
+- **Current Conditions**: Temperature, weather description, location name
+- **Weather Alerts**: Severe weather alerts displayed with warning icons
+- **IP Geolocation**: Automatic location detection via ip-api.com (free)
+- **User Override**: Users can set custom location in preferences
+- **Server Default**: Admin-configured fallback location
+- **5-Minute Cache**: ~288 calls/day within free tier limits
+
+#### News Integration (NewsAPI.org + GNews.io)
+- **Breaking Headlines**: Top news stories from multiple sources
+- **Dual Provider Support**: NewsAPI as primary, GNews as fallback
+- **3-Minute Cache**: Balances freshness with rate limit compliance
+- **Graceful Fallback**: Automatically switches to backup provider on failure
+
+#### User Preferences
+- **Enable/Disable Toggle**: Users can hide the crawl bar entirely
+- **Section Toggles**: Choose which content types to display (Stocks/Weather/News)
+- **Scroll Speed**: Slow (80s), Normal (50s), or Fast (30s) full-width scroll
+- **Location Override**: Set custom location name for weather data
+- **Preferences API**: `PUT /api/profile/crawl-preferences`
+
+#### Admin Configuration
+- **Server-wide Settings**: Global crawl bar configuration for all users
+- **Stock Symbols**: Configure which stocks to display (comma-separated)
+- **Default Location**: Fallback for IP geolocation failures
+- **Feature Toggles**: Enable/disable stocks, weather, or news globally
+- **Refresh Intervals**: Configure cache TTL for each data type
+- **API Key Status**: Dashboard shows which APIs are configured
+- **Admin Endpoints**: `GET/PUT /api/admin/crawl/config`
+
+#### API Endpoints
+- `GET /api/crawl/stocks` - Get stock quotes for configured symbols
+- `GET /api/crawl/weather` - Get weather for user's location
+- `GET /api/crawl/news` - Get news headlines
+- `GET /api/crawl/all` - Combined endpoint (recommended for efficiency)
+- `PUT /api/profile/crawl-preferences` - Update user crawl settings
+- `GET /api/admin/crawl/config` - Get server crawl configuration (admin)
+- `PUT /api/admin/crawl/config` - Update server crawl configuration (admin)
+
+### Database
+- Added `crawl_config` table - Server-wide crawl bar configuration (singleton)
+- Added `crawl_cache` table - External API response caching with TTL
+
+### Environment Variables
+- `FINNHUB_API_KEY` - Finnhub API key for stock quotes
+- `OPENWEATHERMAP_API_KEY` - OpenWeatherMap API key for weather data
+- `NEWSAPI_KEY` - NewsAPI.org API key for news (primary)
+- `GNEWS_API_KEY` - GNews.io API key for news (backup)
+- `IPINFO_TOKEN` - IPinfo.io token for enhanced geolocation (optional)
+- `RATE_LIMIT_CRAWL_MAX` - Crawl endpoint rate limit (default: 60/min)
+
+### Dependencies
+- No new dependencies required (uses native `fetch` for API calls)
+
+### Notes
+- Crawl bar only displays sections with configured API keys
+- No API keys = crawl bar hidden completely (graceful degradation)
+- NewsAPI.org free tier only works on localhost (use GNews for production)
+- OpenWeatherMap keys take up to 2 hours to activate after creation
+- IP geolocation uses ip-api.com (free, no key required, 45 req/min)
+
+---
+
 ## [1.14.0] - 2025-12-17
 
 ### Added

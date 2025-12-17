@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 1.14.0** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 1.15.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
 ## Quick Start
 
@@ -43,6 +43,7 @@ Demo accounts (password: `demo123`):
 - **Search** - Full-text search across all droplets (SQLite FTS)
 - **PWA** - Installable app with offline support and push notifications
 - **Federation** - Connect multiple Cortex servers to share waves (v1.13.0)
+- **Crawl Bar** - Live scrolling ticker with stocks, weather, and news (v1.15.0)
 
 ### Federation (v1.13.0)
 - **Server-to-Server** - Multiple Cortex instances can exchange droplets
@@ -51,6 +52,16 @@ Demo accounts (password: `demo123`):
 - **Trust Model** - Manual allowlist of trusted federation partners
 - **Message Queue** - Reliable delivery with exponential backoff retries
 - **Admin Panel** - Manage federation identity and trusted nodes
+
+### Crawl Bar (v1.15.0)
+- **Stock Ticker** - Real-time stock quotes from Finnhub API
+- **Weather Data** - Current conditions and alerts from OpenWeatherMap
+- **Breaking News** - Headlines from NewsAPI.org and GNews.io
+- **Auto-Scroll** - CSS animation with configurable speed (slow/normal/fast)
+- **Pause on Hover** - Touch or hover to pause scrolling
+- **User Preferences** - Toggle sections, customize speed, override location
+- **Admin Config** - Set stock symbols, default location, refresh intervals
+- **IP Geolocation** - Automatic location detection with user override
 
 ### Droplets Architecture (v1.10.0)
 - **Focus View** - View any droplet with replies as its own wave-like context
@@ -147,6 +158,13 @@ ACTIVITY_LOG_RETENTION_DAYS=90     # Days to keep activity logs (default: 90)
 RATE_LIMIT_LOGIN_MAX=30            # Per 15 minutes
 RATE_LIMIT_API_MAX=300             # Per minute
 RATE_LIMIT_OEMBED_MAX=30           # Per minute
+
+# Crawl Bar APIs (optional) - see "Enabling Crawl Bar" below
+FINNHUB_API_KEY=your-finnhub-key         # Stock quotes
+OPENWEATHERMAP_API_KEY=your-owm-key      # Weather data
+NEWSAPI_KEY=your-newsapi-key             # News headlines (primary)
+GNEWS_API_KEY=your-gnews-key             # News headlines (backup)
+RATE_LIMIT_CRAWL_MAX=60                  # Per minute (default)
 ```
 
 ---
@@ -426,6 +444,187 @@ Admins can reset user passwords from the admin panel:
 
 ---
 
+## Enabling Crawl Bar
+
+The Crawl Bar is a horizontal scrolling ticker that displays real-time stock quotes, weather data, and breaking news. Each data source requires its own API key. Missing API keys will simply hide that section - no errors occur.
+
+### Overview
+
+| Data Source | API Provider | Free Tier Limit | Cache Duration |
+|-------------|--------------|-----------------|----------------|
+| **Stocks** | Finnhub | 60 calls/minute | 60 seconds |
+| **Weather** | OpenWeatherMap | 1,000 calls/day | 5 minutes |
+| **News** | NewsAPI.org | 100 calls/day (dev) | 3 minutes |
+| **News (backup)** | GNews.io | 100 calls/day | 3 minutes |
+| **Location** | ip-api.com | 45 calls/minute | Per session |
+
+### Step 1: Get a Finnhub API Key (Stocks)
+
+Finnhub provides real-time stock market data for US exchanges.
+
+1. Go to [https://finnhub.io/](https://finnhub.io/)
+2. Click **"Get free API key"** (top right)
+3. Sign up with email or OAuth (Google/GitHub/Apple)
+4. Verify your email address
+5. Go to **Dashboard** → Your API key is displayed
+6. Copy the key (looks like: `c1234abcd5678efgh`)
+
+**Free tier limits:**
+- 60 API calls per minute
+- Real-time US stock quotes
+- Basic company profiles
+
+Add to your `server/.env`:
+```bash
+FINNHUB_API_KEY=your-finnhub-api-key
+```
+
+### Step 2: Get an OpenWeatherMap API Key (Weather)
+
+OpenWeatherMap provides current weather conditions and alerts.
+
+1. Go to [https://openweathermap.org/](https://openweathermap.org/)
+2. Click **"Sign In"** → **"Create an Account"**
+3. Fill out the registration form
+4. Verify your email address
+5. Go to your profile → **"My API Keys"**
+6. Copy your default key or generate a new one (looks like: `abc123def456ghi789`)
+
+**Important:** New API keys take **up to 2 hours** to activate!
+
+**Free tier limits:**
+- 1,000 API calls per day
+- Current weather data
+- 3-hour forecast
+
+Add to your `server/.env`:
+```bash
+OPENWEATHERMAP_API_KEY=your-openweathermap-api-key
+```
+
+### Step 3: Get a NewsAPI.org API Key (News - Primary)
+
+NewsAPI.org aggregates headlines from major news sources.
+
+1. Go to [https://newsapi.org/](https://newsapi.org/)
+2. Click **"Get API Key"**
+3. Sign up with name, email, and password
+4. Select use case: **"I am an individual"**
+5. Verify your email
+6. Your API key is shown on the dashboard (looks like: `abc123def456ghi789jkl012`)
+
+**Free tier limits:**
+- 100 requests per day
+- **Development only** - works on localhost but not production domains
+- For production, upgrade to paid plan ($449/month) or use GNews as primary
+
+Add to your `server/.env`:
+```bash
+NEWSAPI_KEY=your-newsapi-api-key
+```
+
+### Step 4: Get a GNews.io API Key (News - Backup/Alternative)
+
+GNews.io is a free alternative that works in production.
+
+1. Go to [https://gnews.io/](https://gnews.io/)
+2. Click **"Get API Key"**
+3. Sign up with email and password
+4. Verify your email
+5. Go to **Dashboard** to see your API key (looks like: `abc123def456ghi789`)
+
+**Free tier limits:**
+- 100 requests per day
+- Works in production (unlike NewsAPI free tier)
+- 10 articles per request
+
+Add to your `server/.env`:
+```bash
+GNEWS_API_KEY=your-gnews-api-key
+```
+
+**Tip:** Configure both NewsAPI and GNews - Cortex will use NewsAPI first and fall back to GNews if it fails.
+
+### Step 5: Restart Server
+
+Restart your server to load the new API keys. You should see in the logs:
+
+```
+📊 Crawl bar APIs: stocks=✓ weather=✓ news=✓
+```
+
+If any API is not configured:
+```
+📊 Crawl bar APIs: stocks=✗ weather=✓ news=✓
+```
+
+### Admin Configuration
+
+Admins can configure the crawl bar in **Profile Settings** → **Admin Panel** → **Crawl Bar Config**:
+
+- **Feature Toggles** - Enable/disable stocks, weather, or news globally
+- **Stock Symbols** - Comma-separated list of ticker symbols (e.g., `AAPL, GOOGL, MSFT, AMZN, TSLA`)
+- **Default Location** - Fallback location when IP geolocation fails (e.g., `New York, NY`)
+- **Refresh Intervals** - How often to refresh each data type (in seconds)
+
+### User Preferences
+
+Users can customize their crawl bar experience in **Profile Settings** → **Crawl Bar**:
+
+- **Enable/Disable** - Toggle the crawl bar on or off
+- **Content** - Choose which sections to show (Stocks, Weather, News)
+- **Scroll Speed** - Slow, Normal, or Fast
+- **Location Override** - Set a custom location for weather data
+
+### Location Detection
+
+Cortex automatically detects user location using IP geolocation (ip-api.com):
+
+1. **User Override** - If user sets a location in preferences, that's used
+2. **IP Geolocation** - Falls back to detecting location from IP address
+3. **Server Default** - If both fail, uses admin-configured default location
+
+### Graceful Degradation
+
+The crawl bar is designed to work with any combination of API keys:
+
+| APIs Configured | Behavior |
+|-----------------|----------|
+| All APIs | Full crawl bar with stocks, weather, news |
+| No Finnhub | Weather and news only, stocks section hidden |
+| No Weather API | Stocks and news only, weather section hidden |
+| No News APIs | Stocks and weather only, news section hidden |
+| No APIs | Crawl bar hidden entirely |
+
+### Rate Limiting
+
+The crawl bar has its own rate limiter (default: 60 requests/minute per user). This can be adjusted:
+
+```bash
+RATE_LIMIT_CRAWL_MAX=60  # Requests per minute
+```
+
+### Troubleshooting
+
+**"Stock data not configured"**
+- Check that `FINNHUB_API_KEY` is set correctly
+- Verify the key at [finnhub.io/dashboard](https://finnhub.io/dashboard)
+
+**Weather always shows default location**
+- New OpenWeatherMap keys take up to 2 hours to activate
+- Check that `OPENWEATHERMAP_API_KEY` is set correctly
+
+**News not loading**
+- NewsAPI.org free tier only works on localhost
+- For production, use GNews.io or upgrade NewsAPI plan
+
+**Crawl bar not appearing**
+- Check that `user.preferences.crawlBar.enabled` is not `false`
+- Verify at least one API key is configured
+- Check browser console for JavaScript errors
+
+---
+
 ## Deployment
 
 ### Production Server with PM2
@@ -575,6 +774,36 @@ server {
 ---
 
 ## Changelog
+
+### v1.15.0 (December 2025)
+- **Crawl Bar**: Live scrolling news ticker with stocks, weather, and news
+  - Finnhub integration for real-time stock quotes
+  - OpenWeatherMap integration for weather data and alerts
+  - NewsAPI.org and GNews.io for breaking news headlines
+  - IP geolocation with user override option
+  - CSS animation with configurable scroll speed (slow/normal/fast)
+  - Pause on hover/touch interaction
+  - Graceful degradation when APIs unavailable
+- **User Preferences**: Customize crawl bar in Profile Settings
+  - Enable/disable crawl bar
+  - Toggle individual sections (Stocks, Weather, News)
+  - Adjust scroll speed
+  - Override location for weather
+- **Admin Configuration**: Server-wide crawl bar settings
+  - Configure stock symbols to display
+  - Set default location fallback
+  - Enable/disable features globally
+  - Adjust refresh intervals
+  - View API key status
+- **Database Schema**: New crawl bar tables
+  - `crawl_config` - Server configuration (singleton)
+  - `crawl_cache` - API response caching
+- **Environment Variables**:
+  - `FINNHUB_API_KEY` - Stock quote API
+  - `OPENWEATHERMAP_API_KEY` - Weather data API
+  - `NEWSAPI_KEY` - News headlines (primary)
+  - `GNEWS_API_KEY` - News headlines (backup)
+  - `RATE_LIMIT_CRAWL_MAX` - Rate limit for crawl endpoints
 
 ### v1.13.0 (December 2025)
 - **Federation**: Server-to-server communication for cross-instance waves

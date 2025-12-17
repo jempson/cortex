@@ -1,6 +1,6 @@
 # Cortex REST API Documentation
 
-Version: 1.14.0
+Version: 1.15.0
 
 ## Overview
 
@@ -33,6 +33,7 @@ The Cortex API is a RESTful API that powers the Cortex federated communication p
    - [Admin](#admin-endpoints)
    - [Reports](#reports-endpoints)
    - [Federation](#federation-endpoints)
+   - [Crawl Bar](#crawl-bar-endpoints)
 5. [WebSocket API](#websocket-api)
 
 ---
@@ -3401,6 +3402,340 @@ curl -X POST https://other-server.com/api/federation/inbox \
 | `wave_federation` | Wave-to-node relationships |
 | `federation_queue` | Outbound message queue with retries |
 | `federation_inbox_log` | Inbound message deduplication |
+
+---
+
+## Crawl Bar Endpoints
+
+The Crawl Bar feature provides real-time stock quotes, weather data, and news headlines in a scrolling ticker. These endpoints require JWT authentication.
+
+### Rate Limiting
+
+| Endpoint | Limit |
+|----------|-------|
+| `/api/crawl/*` | 60 requests/minute (configurable via `RATE_LIMIT_CRAWL_MAX`) |
+
+---
+
+### GET /api/crawl/stocks
+
+Get stock quotes for configured symbols.
+
+**Authentication:** Required (JWT)
+
+**Response (200 OK):**
+
+```json
+{
+  "enabled": true,
+  "stocks": [
+    {
+      "symbol": "AAPL",
+      "price": 185.42,
+      "change": 2.15,
+      "changePercent": 1.17
+    },
+    {
+      "symbol": "GOOGL",
+      "price": 139.80,
+      "change": -0.45,
+      "changePercent": -0.32
+    }
+  ]
+}
+```
+
+**Response (501 Not Configured):**
+
+```json
+{
+  "enabled": false,
+  "stocks": [],
+  "error": "Stock data not configured"
+}
+```
+
+---
+
+### GET /api/crawl/weather
+
+Get weather data for user's location.
+
+**Authentication:** Required (JWT)
+
+**Location Priority:**
+1. User preference (`user.preferences.crawlBar.location`)
+2. IP geolocation (automatic)
+3. Server default location
+
+**Response (200 OK):**
+
+```json
+{
+  "enabled": true,
+  "weather": {
+    "temp": 72,
+    "description": "Partly cloudy",
+    "location": "New York, NY"
+  },
+  "alerts": [
+    {
+      "event": "Heat Advisory",
+      "sender": "NWS",
+      "description": "Heat advisory in effect until 8 PM EDT"
+    }
+  ]
+}
+```
+
+**Response (501 Not Configured):**
+
+```json
+{
+  "enabled": false,
+  "weather": null,
+  "alerts": [],
+  "error": "Weather data not configured"
+}
+```
+
+---
+
+### GET /api/crawl/news
+
+Get news headlines.
+
+**Authentication:** Required (JWT)
+
+**Response (200 OK):**
+
+```json
+{
+  "enabled": true,
+  "news": [
+    {
+      "title": "Breaking: Major announcement expected today",
+      "source": "Reuters",
+      "url": "https://example.com/article"
+    },
+    {
+      "title": "Markets surge on positive economic data",
+      "source": "Bloomberg",
+      "url": "https://example.com/article2"
+    }
+  ]
+}
+```
+
+**Response (501 Not Configured):**
+
+```json
+{
+  "enabled": false,
+  "news": [],
+  "error": "News data not configured"
+}
+```
+
+---
+
+### GET /api/crawl/all
+
+Get all crawl bar data in a single request (recommended for efficiency).
+
+**Authentication:** Required (JWT)
+
+**Response (200 OK):**
+
+```json
+{
+  "stocks": {
+    "enabled": true,
+    "stocks": [
+      { "symbol": "AAPL", "price": 185.42, "change": 2.15, "changePercent": 1.17 }
+    ]
+  },
+  "weather": {
+    "enabled": true,
+    "weather": { "temp": 72, "description": "Partly cloudy", "location": "New York, NY" },
+    "alerts": []
+  },
+  "news": {
+    "enabled": true,
+    "news": [
+      { "title": "Breaking news headline", "source": "Reuters", "url": "https://..." }
+    ]
+  }
+}
+```
+
+---
+
+### PUT /api/profile/crawl-preferences
+
+Update user's crawl bar preferences.
+
+**Authentication:** Required (JWT)
+
+**Request Body:**
+
+```json
+{
+  "crawlBar": {
+    "enabled": true,
+    "showStocks": true,
+    "showWeather": true,
+    "showNews": true,
+    "scrollSpeed": "normal",
+    "location": {
+      "lat": 40.7128,
+      "lon": -74.0060,
+      "name": "New York, NY"
+    }
+  }
+}
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Show/hide crawl bar |
+| `showStocks` | boolean | Show stock section |
+| `showWeather` | boolean | Show weather section |
+| `showNews` | boolean | Show news section |
+| `scrollSpeed` | string | "slow", "normal", or "fast" |
+| `location` | object | Custom location override (optional) |
+| `location.lat` | number | Latitude |
+| `location.lon` | number | Longitude |
+| `location.name` | string | Display name |
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "preferences": {
+    "theme": "firefly",
+    "fontSize": "medium",
+    "crawlBar": {
+      "enabled": true,
+      "showStocks": true,
+      "showWeather": true,
+      "showNews": true,
+      "scrollSpeed": "normal"
+    }
+  }
+}
+```
+
+---
+
+### GET /api/admin/crawl/config
+
+Get server-wide crawl bar configuration.
+
+**Authentication:** Required (Admin)
+
+**Response (200 OK):**
+
+```json
+{
+  "config": {
+    "stock_symbols": ["AAPL", "GOOGL", "MSFT", "AMZN", "TSLA"],
+    "news_sources": [],
+    "default_location": {
+      "lat": 40.7128,
+      "lon": -74.0060,
+      "name": "New York, NY"
+    },
+    "stock_refresh_interval": 60,
+    "weather_refresh_interval": 300,
+    "news_refresh_interval": 180,
+    "stocks_enabled": true,
+    "weather_enabled": true,
+    "news_enabled": true,
+    "apiKeys": {
+      "finnhub": true,
+      "openweathermap": true,
+      "newsapi": true,
+      "gnews": false
+    }
+  }
+}
+```
+
+---
+
+### PUT /api/admin/crawl/config
+
+Update server-wide crawl bar configuration.
+
+**Authentication:** Required (Admin)
+
+**Request Body (all fields optional):**
+
+```json
+{
+  "stock_symbols": ["AAPL", "GOOGL", "MSFT"],
+  "default_location": {
+    "lat": 34.0522,
+    "lon": -118.2437,
+    "name": "Los Angeles, CA"
+  },
+  "stock_refresh_interval": 60,
+  "weather_refresh_interval": 300,
+  "news_refresh_interval": 180,
+  "stocks_enabled": true,
+  "weather_enabled": true,
+  "news_enabled": true
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "config": {
+    "stock_symbols": ["AAPL", "GOOGL", "MSFT"],
+    "default_location": {
+      "lat": 34.0522,
+      "lon": -118.2437,
+      "name": "Los Angeles, CA"
+    },
+    "stocks_enabled": true,
+    "weather_enabled": true,
+    "news_enabled": true,
+    "apiKeys": {
+      "finnhub": true,
+      "openweathermap": true,
+      "newsapi": true,
+      "gnews": false
+    }
+  }
+}
+```
+
+---
+
+### Crawl Bar Database Tables
+
+| Table | Description |
+|-------|-------------|
+| `crawl_config` | Server-wide crawl bar configuration (singleton) |
+| `crawl_cache` | External API response caching with TTL |
+
+---
+
+### External API Integrations
+
+| Provider | Endpoint | Cache TTL | Free Tier |
+|----------|----------|-----------|-----------|
+| **Finnhub** | Stock quotes | 60 seconds | 60 calls/min |
+| **OpenWeatherMap** | Weather data | 5 minutes | 1,000 calls/day |
+| **NewsAPI.org** | News headlines | 3 minutes | 100 calls/day (dev only) |
+| **GNews.io** | News headlines (backup) | 3 minutes | 100 calls/day |
+| **ip-api.com** | IP geolocation | Per session | 45 calls/min |
 
 ---
 

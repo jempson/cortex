@@ -563,6 +563,43 @@ CREATE INDEX IF NOT EXISTS idx_federation_queue_node ON federation_queue(target_
 CREATE INDEX IF NOT EXISTS idx_federation_inbox_source ON federation_inbox_log(source_node);
 CREATE INDEX IF NOT EXISTS idx_federation_inbox_status ON federation_inbox_log(status);
 
+-- ============ Crawl Bar (v1.15.0) ============
+
+-- Server-wide crawl bar configuration (singleton)
+CREATE TABLE IF NOT EXISTS crawl_config (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    -- Stock symbols to display (JSON array)
+    stock_symbols TEXT DEFAULT '["AAPL","GOOGL","MSFT","AMZN","TSLA"]',
+    -- News sources configuration (JSON array of {type, url, name})
+    news_sources TEXT DEFAULT '[]',
+    -- Default location for weather (JSON: {lat, lon, name})
+    default_location TEXT DEFAULT '{"lat":40.7128,"lon":-74.0060,"name":"New York, NY"}',
+    -- Refresh intervals in seconds
+    stock_refresh_interval INTEGER DEFAULT 60,
+    weather_refresh_interval INTEGER DEFAULT 300,
+    news_refresh_interval INTEGER DEFAULT 180,
+    -- Feature toggles
+    stocks_enabled INTEGER DEFAULT 1,
+    weather_enabled INTEGER DEFAULT 1,
+    news_enabled INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+-- Cache for external API responses
+CREATE TABLE IF NOT EXISTS crawl_cache (
+    id TEXT PRIMARY KEY,
+    cache_type TEXT NOT NULL,  -- 'stocks', 'weather', 'news'
+    cache_key TEXT NOT NULL,   -- Symbol, location hash, or source URL
+    data TEXT NOT NULL,        -- JSON cached response
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (cache_type, cache_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_crawl_cache_type ON crawl_cache(cache_type);
+CREATE INDEX IF NOT EXISTS idx_crawl_cache_expires ON crawl_cache(expires_at);
+
 -- ============ Full-Text Search ============
 
 -- FTS5 virtual table for droplet content search

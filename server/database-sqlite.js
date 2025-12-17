@@ -4581,6 +4581,81 @@ export class DatabaseSQLite {
     return result.changes;
   }
 
+  // ============ Crawl Bar Config Methods ============
+
+  getCrawlConfig() {
+    // Ensure config exists (singleton pattern)
+    let config = this.db.prepare('SELECT * FROM crawl_config WHERE id = 1').get();
+
+    if (!config) {
+      const now = new Date().toISOString();
+      this.db.prepare(`
+        INSERT INTO crawl_config (id, created_at, updated_at)
+        VALUES (1, ?, ?)
+      `).run(now, now);
+      config = this.db.prepare('SELECT * FROM crawl_config WHERE id = 1').get();
+    }
+
+    return {
+      stockSymbols: JSON.parse(config.stock_symbols || '[]'),
+      newsSources: JSON.parse(config.news_sources || '[]'),
+      defaultLocation: JSON.parse(config.default_location || '{}'),
+      stockRefreshInterval: config.stock_refresh_interval,
+      weatherRefreshInterval: config.weather_refresh_interval,
+      newsRefreshInterval: config.news_refresh_interval,
+      stocksEnabled: !!config.stocks_enabled,
+      weatherEnabled: !!config.weather_enabled,
+      newsEnabled: !!config.news_enabled,
+      createdAt: config.created_at,
+      updatedAt: config.updated_at,
+    };
+  }
+
+  updateCrawlConfig(updates) {
+    const now = new Date().toISOString();
+    const config = this.getCrawlConfig();
+
+    const newConfig = {
+      stockSymbols: updates.stockSymbols !== undefined ? updates.stockSymbols : config.stockSymbols,
+      newsSources: updates.newsSources !== undefined ? updates.newsSources : config.newsSources,
+      defaultLocation: updates.defaultLocation !== undefined ? updates.defaultLocation : config.defaultLocation,
+      stockRefreshInterval: updates.stockRefreshInterval !== undefined ? updates.stockRefreshInterval : config.stockRefreshInterval,
+      weatherRefreshInterval: updates.weatherRefreshInterval !== undefined ? updates.weatherRefreshInterval : config.weatherRefreshInterval,
+      newsRefreshInterval: updates.newsRefreshInterval !== undefined ? updates.newsRefreshInterval : config.newsRefreshInterval,
+      stocksEnabled: updates.stocksEnabled !== undefined ? updates.stocksEnabled : config.stocksEnabled,
+      weatherEnabled: updates.weatherEnabled !== undefined ? updates.weatherEnabled : config.weatherEnabled,
+      newsEnabled: updates.newsEnabled !== undefined ? updates.newsEnabled : config.newsEnabled,
+    };
+
+    this.db.prepare(`
+      UPDATE crawl_config SET
+        stock_symbols = ?,
+        news_sources = ?,
+        default_location = ?,
+        stock_refresh_interval = ?,
+        weather_refresh_interval = ?,
+        news_refresh_interval = ?,
+        stocks_enabled = ?,
+        weather_enabled = ?,
+        news_enabled = ?,
+        updated_at = ?
+      WHERE id = 1
+    `).run(
+      JSON.stringify(newConfig.stockSymbols),
+      JSON.stringify(newConfig.newsSources),
+      JSON.stringify(newConfig.defaultLocation),
+      newConfig.stockRefreshInterval,
+      newConfig.weatherRefreshInterval,
+      newConfig.newsRefreshInterval,
+      newConfig.stocksEnabled ? 1 : 0,
+      newConfig.weatherEnabled ? 1 : 0,
+      newConfig.newsEnabled ? 1 : 0,
+      now
+    );
+
+    return this.getCrawlConfig();
+  }
+
   // Placeholder for JSON compatibility - not needed with SQLite
   saveUsers() {}
   saveWaves() {}

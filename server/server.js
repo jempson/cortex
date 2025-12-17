@@ -42,6 +42,18 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 // GIPHY API configuration
 const GIPHY_API_KEY = process.env.GIPHY_API_KEY || null;
 
+// Crawl Bar API configuration (v1.15.0)
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || null;
+const OPENWEATHERMAP_API_KEY = process.env.OPENWEATHERMAP_API_KEY || null;
+const NEWSAPI_KEY = process.env.NEWSAPI_KEY || null;
+const GNEWS_API_KEY = process.env.GNEWS_API_KEY || null;
+const IPINFO_TOKEN = process.env.IPINFO_TOKEN || null;
+
+// Log crawl bar configuration status
+if (FINNHUB_API_KEY) console.log('📈 Stock data enabled (Finnhub)');
+if (OPENWEATHERMAP_API_KEY) console.log('🌤️  Weather data enabled (OpenWeatherMap)');
+if (NEWSAPI_KEY || GNEWS_API_KEY) console.log('📰 News data enabled');
+
 // Web Push (VAPID) configuration
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || null;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || null;
@@ -191,6 +203,15 @@ const reportLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: RATE_LIMIT_REPORT_MAX,
   message: { error: 'Too many reports. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const RATE_LIMIT_CRAWL_MAX = parseInt(process.env.RATE_LIMIT_CRAWL_MAX) || 60;
+const crawlLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: RATE_LIMIT_CRAWL_MAX,
+  message: { error: 'Too many crawl bar requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -399,6 +420,251 @@ function setCachedOembed(url, data) {
     oembedCache.delete(oldest);
   }
   oembedCache.set(url, { data, timestamp: Date.now() });
+}
+
+// ============ Crawl Bar Caching & External API Functions ============
+const crawlCache = {
+  stocks: new Map(),    // key: symbol, value: {data, timestamp}
+  weather: new Map(),   // key: lat,lon, value: {data, timestamp}
+  news: new Map(),      // key: source, value: {data, timestamp}
+  geolocation: new Map(), // key: ip, value: {data, timestamp}
+};
+
+const CRAWL_CACHE_TTL = {
+  stocks: 60 * 1000,           // 1 minute
+  weather: 5 * 60 * 1000,      // 5 minutes
+  news: 3 * 60 * 1000,         // 3 minutes
+  geolocation: 24 * 60 * 60 * 1000, // 24 hours (IP location rarely changes)
+};
+
+function getCrawlCache(type, key) {
+  const cache = crawlCache[type];
+  if (!cache) return null;
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < CRAWL_CACHE_TTL[type]) {
+    return cached.data;
+  }
+  cache.delete(key);
+  return null;
+}
+
+function setCrawlCache(type, key, data) {
+  const cache = crawlCache[type];
+  if (!cache) return;
+  // Limit cache size
+  if (cache.size > 100) {
+    const oldest = cache.keys().next().value;
+    cache.delete(oldest);
+  }
+  cache.set(key, { data, timestamp: Date.now() });
+}
+
+// Fetch stock quote from Finnhub
+async function fetchStockQuote(symbol) {
+  if (!FINNHUB_API_KEY) return null;
+
+  const cached = getCrawlCache('stocks', symbol);
+  if (cached) return cached;
+
+  try {
+    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      console.error(`Finnhub API error for ${symbol}:`, response.status);
+      return null;
+    }
+
+    const data = await response.json();
+
+    // Check if we got valid data
+    if (data.c === 0 && data.d === null) {
+      console.warn(`No data available for symbol ${symbol}`);
+      return null;
+    }
+
+    const result = {
+      symbol,
+      price: data.c,           // Current price
+      change: data.d,          // Change
+      changePercent: data.dp,  // Change percent
+      high: data.h,            // Day high
+      low: data.l,             // Day low
+      previousClose: data.pc,  // Previous close
+      timestamp: Date.now(),
+    };
+
+    setCrawlCache('stocks', symbol, result);
+    return result;
+  } catch (err) {
+    console.error(`Stock fetch error for ${symbol}:`, err.message);
+    return null;
+  }
+}
+
+// Fetch weather from OpenWeatherMap
+async function fetchWeather(lat, lon) {
+  if (!OPENWEATHERMAP_API_KEY) return null;
+
+  const cacheKey = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+  const cached = getCrawlCache('weather', cacheKey);
+  if (cached) return cached;
+
+  try {
+    // Using current weather API (free tier friendly)
+    const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=${OPENWEATHERMAP_API_KEY}`;
+    const currentResponse = await fetch(currentUrl, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!currentResponse.ok) {
+      console.error(`OpenWeatherMap API error:`, currentResponse.status);
+      return null;
+    }
+
+    const currentData = await currentResponse.json();
+
+    // Try to get alerts from One Call API if available (may require subscription)
+    let alerts = [];
+    try {
+      const alertsUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely,hourly,daily&appid=${OPENWEATHERMAP_API_KEY}`;
+      const alertsResponse = await fetch(alertsUrl, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (alertsResponse.ok) {
+        const alertsData = await alertsResponse.json();
+        alerts = (alertsData.alerts || []).map(a => ({
+          event: a.event,
+          description: a.description?.substring(0, 200),
+          start: a.start,
+          end: a.end,
+        }));
+      }
+    } catch (alertErr) {
+      // Alerts API may not be available on free tier, continue without
+    }
+
+    const result = {
+      temp: Math.round(currentData.main.temp),
+      feelsLike: Math.round(currentData.main.feels_like),
+      description: currentData.weather[0]?.description || '',
+      icon: currentData.weather[0]?.icon || '',
+      humidity: currentData.main.humidity,
+      windSpeed: Math.round(currentData.wind?.speed || 0),
+      alerts,
+      timestamp: Date.now(),
+    };
+
+    setCrawlCache('weather', cacheKey, result);
+    return result;
+  } catch (err) {
+    console.error(`Weather fetch error:`, err.message);
+    return null;
+  }
+}
+
+// Fetch news headlines from NewsAPI or GNews
+async function fetchNews() {
+  const cached = getCrawlCache('news', 'headlines');
+  if (cached) return cached;
+
+  const headlines = [];
+
+  // Try NewsAPI first
+  if (NEWSAPI_KEY && headlines.length === 0) {
+    try {
+      const url = `https://newsapi.org/v2/top-headlines?country=us&apiKey=${NEWSAPI_KEY}`;
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        headlines.push(...(data.articles || []).slice(0, 10).map(a => ({
+          title: a.title,
+          source: a.source?.name || 'News',
+          url: a.url,
+          publishedAt: a.publishedAt,
+        })));
+      }
+    } catch (err) {
+      console.error('NewsAPI error:', err.message);
+    }
+  }
+
+  // Fallback to GNews if NewsAPI didn't return results
+  if (headlines.length === 0 && GNEWS_API_KEY) {
+    try {
+      const url = `https://gnews.io/api/v4/top-headlines?category=general&lang=en&country=us&max=10&apikey=${GNEWS_API_KEY}`;
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        headlines.push(...(data.articles || []).map(a => ({
+          title: a.title,
+          source: a.source?.name || 'News',
+          url: a.url,
+          publishedAt: a.publishedAt,
+        })));
+      }
+    } catch (err) {
+      console.error('GNews error:', err.message);
+    }
+  }
+
+  const result = { headlines, timestamp: Date.now() };
+  if (headlines.length > 0) {
+    setCrawlCache('news', 'headlines', result);
+  }
+  return result;
+}
+
+// IP Geolocation (using ip-api.com free service)
+async function getLocationFromIP(ip) {
+  // Skip for localhost/private IPs
+  if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
+    return null;
+  }
+
+  const cached = getCrawlCache('geolocation', ip);
+  if (cached) return cached;
+
+  try {
+    // Using ip-api.com (free, no key required, 45 requests/min)
+    const url = `http://ip-api.com/json/${ip}?fields=status,city,regionName,country,lat,lon`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(3000),
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (data.status !== 'success') return null;
+
+    const result = {
+      lat: data.lat,
+      lon: data.lon,
+      name: `${data.city}, ${data.regionName}`,
+    };
+
+    setCrawlCache('geolocation', ip, result);
+    return result;
+  } catch (err) {
+    console.error('IP geolocation error:', err.message);
+    return null;
+  }
+}
+
+// Get client IP from request (handles proxies)
+function getClientIP(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+         req.headers['x-real-ip'] ||
+         req.connection?.remoteAddress ||
+         req.ip;
 }
 
 // Detect embed URLs in content and return metadata
@@ -5025,6 +5291,279 @@ app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, r
     console.error('Trending GIFs error:', err);
     res.status(500).json({ error: 'Failed to fetch trending GIFs' });
   }
+});
+
+// ============ Crawl Bar Endpoints (v1.15.0) ============
+
+// Get crawl bar configuration (admin only)
+app.get('/api/admin/crawl/config', authenticateToken, (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const config = db.getCrawlConfig();
+  res.json({
+    config: {
+      ...config,
+      // Include API availability status for admin UI
+      apiKeys: {
+        finnhub: !!FINNHUB_API_KEY,
+        openweathermap: !!OPENWEATHERMAP_API_KEY,
+        newsapi: !!NEWSAPI_KEY,
+        gnews: !!GNEWS_API_KEY,
+      }
+    }
+  });
+});
+
+// Update crawl bar configuration (admin only)
+app.put('/api/admin/crawl/config', authenticateToken, (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  // Accept both snake_case and camelCase for flexibility
+  const {
+    stock_symbols, stockSymbols,
+    news_sources, newsSources,
+    default_location, defaultLocation,
+    stock_refresh_interval, stockRefreshInterval,
+    weather_refresh_interval, weatherRefreshInterval,
+    news_refresh_interval, newsRefreshInterval,
+    stocks_enabled, stocksEnabled,
+    weather_enabled, weatherEnabled,
+    news_enabled, newsEnabled
+  } = req.body;
+
+  const config = db.updateCrawlConfig({
+    stockSymbols: stock_symbols || stockSymbols,
+    newsSources: news_sources || newsSources,
+    defaultLocation: default_location || defaultLocation,
+    stockRefreshInterval: stock_refresh_interval || stockRefreshInterval,
+    weatherRefreshInterval: weather_refresh_interval || weatherRefreshInterval,
+    newsRefreshInterval: news_refresh_interval || newsRefreshInterval,
+    stocksEnabled: stocks_enabled !== undefined ? stocks_enabled : stocksEnabled,
+    weatherEnabled: weather_enabled !== undefined ? weather_enabled : weatherEnabled,
+    newsEnabled: news_enabled !== undefined ? news_enabled : newsEnabled
+  });
+
+  res.json({
+    config: {
+      ...config,
+      apiKeys: {
+        finnhub: !!FINNHUB_API_KEY,
+        openweathermap: !!OPENWEATHERMAP_API_KEY,
+        newsapi: !!NEWSAPI_KEY,
+        gnews: !!GNEWS_API_KEY,
+      }
+    }
+  });
+});
+
+// Get stock quotes
+app.get('/api/crawl/stocks', authenticateToken, crawlLimiter, async (req, res) => {
+  if (!FINNHUB_API_KEY) {
+    return res.json({
+      enabled: false,
+      stocks: [],
+      error: 'Stock data not configured'
+    });
+  }
+
+  const config = db.getCrawlConfig();
+  if (!config.stocksEnabled) {
+    return res.json({ enabled: false, stocks: [] });
+  }
+
+  const symbols = config.stockSymbols || [];
+
+  // Fetch quotes in parallel (limited to 10 to respect rate limits)
+  const quotes = await Promise.all(
+    symbols.slice(0, 10).map(s => fetchStockQuote(s))
+  );
+
+  res.json({
+    enabled: true,
+    stocks: quotes.filter(Boolean),
+    timestamp: Date.now(),
+  });
+});
+
+// Get weather data
+app.get('/api/crawl/weather', authenticateToken, crawlLimiter, async (req, res) => {
+  if (!OPENWEATHERMAP_API_KEY) {
+    return res.json({
+      enabled: false,
+      weather: null,
+      error: 'Weather data not configured'
+    });
+  }
+
+  const config = db.getCrawlConfig();
+  if (!config.weatherEnabled) {
+    return res.json({ enabled: false, weather: null });
+  }
+
+  const userId = req.user.userId;
+  const user = db.findUserById(userId);
+  const prefs = user?.preferences || {};
+  const crawlPrefs = prefs.crawlBar || {};
+
+  // Priority: user location > IP geolocation > server default
+  let location = crawlPrefs.location;
+
+  // Try IP geolocation if no user location
+  if (!location) {
+    const clientIP = getClientIP(req);
+    location = await getLocationFromIP(clientIP);
+  }
+
+  // Fall back to server default
+  if (!location) {
+    location = config.defaultLocation;
+  }
+
+  if (!location?.lat || !location?.lon) {
+    return res.json({
+      enabled: true,
+      weather: null,
+      error: 'Location not available'
+    });
+  }
+
+  const weather = await fetchWeather(location.lat, location.lon);
+
+  res.json({
+    enabled: true,
+    weather,
+    location: { name: location.name, lat: location.lat, lon: location.lon },
+    timestamp: Date.now(),
+  });
+});
+
+// Get news headlines
+app.get('/api/crawl/news', authenticateToken, crawlLimiter, async (req, res) => {
+  if (!NEWSAPI_KEY && !GNEWS_API_KEY) {
+    return res.json({
+      enabled: false,
+      headlines: [],
+      error: 'News data not configured'
+    });
+  }
+
+  const config = db.getCrawlConfig();
+  if (!config.newsEnabled) {
+    return res.json({ enabled: false, headlines: [] });
+  }
+
+  const news = await fetchNews();
+
+  res.json({
+    enabled: true,
+    headlines: news?.headlines || [],
+    timestamp: Date.now(),
+  });
+});
+
+// Combined endpoint for efficiency (preferred by client)
+app.get('/api/crawl/all', authenticateToken, crawlLimiter, async (req, res) => {
+  const config = db.getCrawlConfig();
+  const userId = req.user.userId;
+  const user = db.findUserById(userId);
+  const prefs = user?.preferences || {};
+  const crawlPrefs = prefs.crawlBar || {};
+
+  const result = {
+    timestamp: Date.now(),
+    stocks: { enabled: false, data: [] },
+    weather: { enabled: false, data: null, location: null },
+    news: { enabled: false, data: [] },
+  };
+
+  const promises = [];
+
+  // Stocks
+  if (FINNHUB_API_KEY && config.stocksEnabled && crawlPrefs.showStocks !== false) {
+    const symbols = config.stockSymbols || [];
+    promises.push(
+      Promise.all(symbols.slice(0, 10).map(s => fetchStockQuote(s)))
+        .then(quotes => {
+          result.stocks = { enabled: true, data: quotes.filter(Boolean) };
+        })
+        .catch(err => {
+          console.error('Crawl stocks error:', err.message);
+        })
+    );
+  }
+
+  // Weather
+  if (OPENWEATHERMAP_API_KEY && config.weatherEnabled && crawlPrefs.showWeather !== false) {
+    promises.push(
+      (async () => {
+        let location = crawlPrefs.location;
+        if (!location) {
+          const clientIP = getClientIP(req);
+          location = await getLocationFromIP(clientIP);
+        }
+        if (!location) {
+          location = config.defaultLocation;
+        }
+
+        if (location?.lat && location?.lon) {
+          const weather = await fetchWeather(location.lat, location.lon);
+          result.weather = {
+            enabled: true,
+            data: weather,
+            location: { name: location.name, lat: location.lat, lon: location.lon }
+          };
+        }
+      })().catch(err => {
+        console.error('Crawl weather error:', err.message);
+      })
+    );
+  }
+
+  // News
+  if ((NEWSAPI_KEY || GNEWS_API_KEY) && config.newsEnabled && crawlPrefs.showNews !== false) {
+    promises.push(
+      fetchNews()
+        .then(news => {
+          result.news = { enabled: true, data: news?.headlines || [] };
+        })
+        .catch(err => {
+          console.error('Crawl news error:', err.message);
+        })
+    );
+  }
+
+  await Promise.all(promises);
+
+  res.json(result);
+});
+
+// Update user's crawl bar preferences
+app.put('/api/profile/crawl-preferences', authenticateToken, (req, res) => {
+  const { enabled, location, showStocks, showWeather, showNews, scrollSpeed } = req.body;
+
+  const userId = req.user.userId;
+  const user = db.findUserById(userId);
+  const prefs = user?.preferences || {};
+
+  const crawlBar = {
+    enabled: enabled !== undefined ? enabled : (prefs.crawlBar?.enabled ?? true),
+    location: location !== undefined ? location : (prefs.crawlBar?.location ?? null),
+    showStocks: showStocks !== undefined ? showStocks : (prefs.crawlBar?.showStocks ?? true),
+    showWeather: showWeather !== undefined ? showWeather : (prefs.crawlBar?.showWeather ?? true),
+    showNews: showNews !== undefined ? showNews : (prefs.crawlBar?.showNews ?? true),
+    scrollSpeed: scrollSpeed || prefs.crawlBar?.scrollSpeed || 'normal',
+  };
+
+  const updatedPrefs = { ...prefs, crawlBar };
+  db.updateUserPreferences(userId, updatedPrefs);
+
+  res.json({ success: true, crawlBar });
 });
 
 // ============ Rich Media Embed Endpoints ============
