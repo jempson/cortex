@@ -5026,6 +5026,18 @@ app.get('/api/admin/federation/status', authenticateToken, (req, res) => {
 });
 
 // Initialize or update server identity (admin only)
+// TODO: UUID collision risk when cloning databases
+// If a production database is cloned to set up a new server, all UUIDs (users, waves,
+// droplets) will be identical on both servers. The federation design assumes UUIDs are
+// globally unique - collisions would cause:
+// - User ID conflicts (same UUID = different people on different servers)
+// - Wave ID conflicts (federation state confusion)
+// - Droplet deduplication failures or incorrect message merging
+// Potential safeguards:
+// 1. Document: "Don't clone databases between federated servers"
+// 2. Add validation: refuse to federate if remote has matching origin_wave_ids
+// 3. Provide ID regeneration script for setting up new servers from backups
+// 4. Include node name in UUID generation (would require migration)
 app.post('/api/admin/federation/identity', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
   if (!user || !user.isAdmin) {
