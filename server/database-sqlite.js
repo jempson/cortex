@@ -607,6 +607,31 @@ export class DatabaseSQLite {
       console.log('✅ Federation tables created');
     }
 
+    // Check if federation_requests table exists (added after initial federation release)
+    const fedRequestsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='federation_requests'
+    `).get();
+
+    if (!fedRequestsExists) {
+      console.log('📝 Creating federation_requests table...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS federation_requests (
+            id TEXT PRIMARY KEY,
+            from_node_name TEXT NOT NULL,
+            from_base_url TEXT NOT NULL,
+            from_public_key TEXT NOT NULL,
+            to_node_name TEXT NOT NULL,
+            message TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            responded_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_federation_requests_status ON federation_requests(status);
+        CREATE INDEX IF NOT EXISTS idx_federation_requests_from_node ON federation_requests(from_node_name);
+      `);
+      console.log('✅ Federation requests table created');
+    }
+
     // Check if wave federation columns exist (v1.13.0)
     const waveColumnsForFed = this.db.prepare(`PRAGMA table_info(waves)`).all();
     const hasFederationState = waveColumnsForFed.some(c => c.name === 'federation_state');
