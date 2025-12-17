@@ -8159,6 +8159,250 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
   );
 };
 
+// ============ USER MANAGEMENT ADMIN PANEL ============
+const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(null); // 'reset-password' | 'disable-mfa' | null
+
+  const searchUsers = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    try {
+      const data = await fetchAPI(`/users/search?q=${encodeURIComponent(searchQuery)}`);
+      setSearchResults(data.users || []);
+    } catch (err) {
+      showToast('Failed to search users', 'error');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleResetPassword = async (sendEmail) => {
+    if (!selectedUser) return;
+    setActionLoading(true);
+    try {
+      const data = await fetchAPI(`/admin/users/${selectedUser.id}/reset-password`, {
+        method: 'POST',
+        body: { sendEmail }
+      });
+      if (data.temporaryPassword) {
+        showToast(`Password reset. Temp password: ${data.temporaryPassword}`, 'success');
+      } else {
+        showToast(data.message || 'Password reset successfully', 'success');
+      }
+      setShowConfirm(null);
+      setSelectedUser(null);
+    } catch (err) {
+      showToast(err.message || 'Failed to reset password', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDisableMfa = async () => {
+    if (!selectedUser) return;
+    setActionLoading(true);
+    try {
+      await fetchAPI(`/admin/users/${selectedUser.id}/disable-mfa`, { method: 'POST' });
+      showToast('MFA disabled for user', 'success');
+      setShowConfirm(null);
+      setSelectedUser(null);
+    } catch (err) {
+      showToast(err.message || 'Failed to disable MFA', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const inputStyle = {
+    padding: '8px 12px',
+    background: 'var(--bg-elevated)',
+    border: '1px solid var(--border-secondary)',
+    color: 'var(--text-primary)',
+    fontFamily: 'monospace',
+    fontSize: '0.85rem',
+  };
+
+  const buttonStyle = {
+    padding: '8px 16px',
+    background: 'transparent',
+    border: '1px solid var(--border-primary)',
+    color: 'var(--text-dim)',
+    cursor: 'pointer',
+    fontFamily: 'monospace',
+    fontSize: '0.8rem',
+  };
+
+  return (
+    <div style={{ marginTop: '20px' }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          ...buttonStyle,
+          background: expanded ? 'var(--accent-purple)20' : 'transparent',
+          border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+          color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
+        }}
+      >
+        {expanded ? '▼' : '▶'} USER MANAGEMENT
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+          {/* Search */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
+              placeholder="Search by handle or email..."
+              style={{ ...inputStyle, flex: 1, minWidth: '200px' }}
+            />
+            <button
+              onClick={searchUsers}
+              disabled={searching || !searchQuery.trim()}
+              style={{
+                ...buttonStyle,
+                border: '1px solid var(--accent-teal)',
+                color: 'var(--accent-teal)',
+                opacity: searching || !searchQuery.trim() ? 0.5 : 1,
+              }}
+            >
+              {searching ? 'Searching...' : 'SEARCH'}
+            </button>
+          </div>
+
+          {/* Results */}
+          {searchResults.length > 0 && (
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                Found {searchResults.length} user(s)
+              </div>
+              {searchResults.map(u => (
+                <div
+                  key={u.id}
+                  onClick={() => setSelectedUser(selectedUser?.id === u.id ? null : u)}
+                  style={{
+                    padding: '10px 12px',
+                    marginBottom: '4px',
+                    background: selectedUser?.id === u.id ? 'var(--accent-purple)20' : 'var(--bg-elevated)',
+                    border: `1px solid ${selectedUser?.id === u.id ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{u.displayName || u.handle}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>@{u.handle}</div>
+                  </div>
+                  {u.isAdmin && (
+                    <span style={{ color: 'var(--accent-amber)', fontSize: '0.7rem', padding: '2px 6px', border: '1px solid var(--accent-amber)', borderRadius: '3px' }}>
+                      ADMIN
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Actions for selected user */}
+          {selectedUser && !showConfirm && (
+            <div style={{ padding: '12px', background: 'var(--bg-hover)', border: '1px solid var(--border-secondary)' }}>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '12px' }}>
+                Actions for <strong style={{ color: 'var(--text-primary)' }}>@{selectedUser.handle}</strong>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setShowConfirm('reset-password')}
+                  style={{ ...buttonStyle, border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)' }}
+                >
+                  RESET PASSWORD
+                </button>
+                <button
+                  onClick={() => setShowConfirm('disable-mfa')}
+                  style={{ ...buttonStyle, border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)' }}
+                >
+                  DISABLE MFA
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Confirmation dialogs */}
+          {showConfirm === 'reset-password' && (
+            <div style={{ padding: '16px', background: 'var(--accent-amber)10', border: '1px solid var(--accent-amber)40' }}>
+              <div style={{ color: 'var(--accent-amber)', marginBottom: '12px', fontSize: '0.85rem' }}>
+                Reset password for @{selectedUser.handle}?
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
+                User will be required to change password on next login.
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => handleResetPassword(true)}
+                  disabled={actionLoading}
+                  style={{ ...buttonStyle, border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+                >
+                  {actionLoading ? '...' : 'RESET & EMAIL USER'}
+                </button>
+                <button
+                  onClick={() => handleResetPassword(false)}
+                  disabled={actionLoading}
+                  style={{ ...buttonStyle, border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)' }}
+                >
+                  {actionLoading ? '...' : 'RESET (SHOW PASSWORD)'}
+                </button>
+                <button
+                  onClick={() => setShowConfirm(null)}
+                  disabled={actionLoading}
+                  style={buttonStyle}
+                >
+                  CANCEL
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showConfirm === 'disable-mfa' && (
+            <div style={{ padding: '16px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)40' }}>
+              <div style={{ color: 'var(--accent-orange)', marginBottom: '12px', fontSize: '0.85rem' }}>
+                Disable all MFA for @{selectedUser.handle}?
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
+                This will disable TOTP, email MFA, and remove all recovery codes.
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleDisableMfa}
+                  disabled={actionLoading}
+                  style={{ ...buttonStyle, border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)' }}
+                >
+                  {actionLoading ? '...' : 'DISABLE MFA'}
+                </button>
+                <button
+                  onClick={() => setShowConfirm(null)}
+                  disabled={actionLoading}
+                  style={buttonStyle}
+                >
+                  CANCEL
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ============ ACTIVITY LOG ADMIN PANEL ============
 const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
   const [activities, setActivities] = useState([]);
@@ -10354,6 +10598,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           </div>
 
           {showHandleRequests && <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />}
+
+          {/* User Management Panel */}
+          <UserManagementPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
 
           {/* Admin Reports Dashboard */}
           <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
