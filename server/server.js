@@ -3291,13 +3291,13 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     if (hasMfa) {
       // Create MFA challenge (5 minute expiry)
       const mfaMethods = db.getEnabledMfaMethods(user.id);
-      const challengeId = db.createMfaChallenge(user.id, 'login', null);
+      const challenge = db.createMfaChallenge(user.id, 'login', null);
 
       console.log(`🔐 MFA required for user: ${handle}`);
 
       return res.json({
         mfaRequired: true,
-        mfaChallenge: challengeId,
+        mfaChallenge: challenge.id,
         mfaMethods // ['totp', 'email', 'recovery']
       });
     }
@@ -3671,12 +3671,12 @@ app.post('/api/auth/mfa/email/enable', authenticateToken, async (req, res) => {
     }
 
     // Create MFA challenge for verification
-    const challengeId = db.createMfaChallenge(req.user.userId, 'email_enable', testCode);
+    const challenge = db.createMfaChallenge(req.user.userId, 'email_enable', testCode);
 
     res.json({
       success: true,
       message: 'Verification code sent to your email',
-      challengeId
+      challengeId: challenge.id
     });
   } catch (err) {
     console.error('Email MFA enable error:', err);
@@ -3863,7 +3863,7 @@ app.post('/api/auth/mfa/send-email-code', mfaLimiter, async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
     // Update challenge with new code
-    const newChallengeId = db.createMfaChallenge(challenge.userId, 'email', code);
+    const newChallenge = db.createMfaChallenge(challenge.userId, 'email', code);
 
     const emailService = getEmailService();
     if (emailService.configured) {
@@ -3873,7 +3873,7 @@ app.post('/api/auth/mfa/send-email-code', mfaLimiter, async (req, res) => {
     res.json({
       success: true,
       message: 'Code sent to your email',
-      challengeId: newChallengeId
+      challengeId: newChallenge.id
     });
   } catch (err) {
     console.error('Send email MFA code error:', err);
