@@ -44,15 +44,23 @@ const GIPHY_API_KEY = process.env.GIPHY_API_KEY || null;
 
 // Crawl Bar API configuration (v1.15.0)
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || null;
+// Weather providers (tried in order: OpenWeatherMap → WeatherAPI → Tomorrow.io)
 const OPENWEATHERMAP_API_KEY = process.env.OPENWEATHERMAP_API_KEY || null;
+const WEATHERAPI_KEY = process.env.WEATHERAPI_KEY || null;
+const TOMORROWIO_API_KEY = process.env.TOMORROWIO_API_KEY || null;
+// News providers (tried in order, results combined)
 const NEWSAPI_KEY = process.env.NEWSAPI_KEY || null;
 const GNEWS_API_KEY = process.env.GNEWS_API_KEY || null;
+const MEDIASTACK_API_KEY = process.env.MEDIASTACK_API_KEY || null;
+const NEWS_RSS_FEEDS = process.env.NEWS_RSS_FEEDS ? process.env.NEWS_RSS_FEEDS.split(',').map(s => s.trim()).filter(Boolean) : [];
 const IPINFO_TOKEN = process.env.IPINFO_TOKEN || null;
 
 // Log crawl bar configuration status
 if (FINNHUB_API_KEY) console.log('📈 Stock data enabled (Finnhub)');
-if (OPENWEATHERMAP_API_KEY) console.log('🌤️  Weather data enabled (OpenWeatherMap)');
-if (NEWSAPI_KEY || GNEWS_API_KEY) console.log('📰 News data enabled');
+const weatherProviders = [OPENWEATHERMAP_API_KEY && 'OpenWeatherMap', WEATHERAPI_KEY && 'WeatherAPI', TOMORROWIO_API_KEY && 'Tomorrow.io'].filter(Boolean);
+if (weatherProviders.length > 0) console.log(`🌤️  Weather data enabled (${weatherProviders.join(', ')})`);
+const newsProviders = [NEWSAPI_KEY && 'NewsAPI', GNEWS_API_KEY && 'GNews', MEDIASTACK_API_KEY && 'MediaStack', NEWS_RSS_FEEDS.length > 0 && `${NEWS_RSS_FEEDS.length} RSS feeds`].filter(Boolean);
+if (newsProviders.length > 0) console.log(`📰 News data enabled (${newsProviders.join(', ')})`);
 
 // Web Push (VAPID) configuration
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || null;
@@ -545,15 +553,10 @@ async function geocodeLocation(locationName) {
 }
 
 // Fetch weather from OpenWeatherMap
-async function fetchWeather(lat, lon) {
+async function fetchWeatherFromOpenWeatherMap(lat, lon) {
   if (!OPENWEATHERMAP_API_KEY) return null;
 
-  const cacheKey = `${lat.toFixed(2)},${lon.toFixed(2)}`;
-  const cached = getCrawlCache('weather', cacheKey);
-  if (cached) return cached;
-
   try {
-    // Using current weather API (free tier friendly)
     const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=${OPENWEATHERMAP_API_KEY}`;
     const currentResponse = await fetch(currentUrl, {
       signal: AbortSignal.timeout(5000),
@@ -586,7 +589,7 @@ async function fetchWeather(lat, lon) {
       // Alerts API may not be available on free tier, continue without
     }
 
-    const result = {
+    return {
       temp: Math.round(currentData.main.temp),
       feelsLike: Math.round(currentData.main.feels_like),
       description: currentData.weather[0]?.description || '',
@@ -594,67 +597,270 @@ async function fetchWeather(lat, lon) {
       humidity: currentData.main.humidity,
       windSpeed: Math.round(currentData.wind?.speed || 0),
       alerts,
+      provider: 'OpenWeatherMap',
       timestamp: Date.now(),
     };
-
-    setCrawlCache('weather', cacheKey, result);
-    return result;
   } catch (err) {
-    console.error(`Weather fetch error:`, err.message);
+    console.error(`OpenWeatherMap fetch error:`, err.message);
     return null;
   }
 }
 
-// Fetch news headlines from NewsAPI or GNews
+// Fetch weather from WeatherAPI.com
+async function fetchWeatherFromWeatherAPI(lat, lon) {
+  if (!WEATHERAPI_KEY) return null;
+
+  try {
+    const url = `https://api.weatherapi.com/v1/current.json?key=${WEATHERAPI_KEY}&q=${lat},${lon}&aqi=no`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      console.error(`WeatherAPI error:`, response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const current = data.current;
+
+    return {
+      temp: Math.round(current.temp_f),
+      feelsLike: Math.round(current.feelslike_f),
+      description: current.condition?.text || '',
+      icon: current.condition?.icon || '',
+      humidity: current.humidity,
+      windSpeed: Math.round(current.wind_mph),
+      alerts: [], // WeatherAPI alerts require paid tier
+      provider: 'WeatherAPI',
+      timestamp: Date.now(),
+    };
+  } catch (err) {
+    console.error(`WeatherAPI fetch error:`, err.message);
+    return null;
+  }
+}
+
+// Fetch weather from Tomorrow.io
+async function fetchWeatherFromTomorrowIO(lat, lon) {
+  if (!TOMORROWIO_API_KEY) return null;
+
+  try {
+    const url = `https://api.tomorrow.io/v4/weather/realtime?location=${lat},${lon}&units=imperial&apikey=${TOMORROWIO_API_KEY}`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      console.error(`Tomorrow.io API error:`, response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const values = data.data?.values;
+
+    if (!values) return null;
+
+    // Map weather code to description
+    const weatherCodes = {
+      0: 'Unknown', 1000: 'Clear', 1100: 'Mostly Clear', 1101: 'Partly Cloudy',
+      1102: 'Mostly Cloudy', 1001: 'Cloudy', 2000: 'Fog', 2100: 'Light Fog',
+      4000: 'Drizzle', 4001: 'Rain', 4200: 'Light Rain', 4201: 'Heavy Rain',
+      5000: 'Snow', 5001: 'Flurries', 5100: 'Light Snow', 5101: 'Heavy Snow',
+      6000: 'Freezing Drizzle', 6001: 'Freezing Rain', 6200: 'Light Freezing Rain',
+      6201: 'Heavy Freezing Rain', 7000: 'Ice Pellets', 7101: 'Heavy Ice Pellets',
+      7102: 'Light Ice Pellets', 8000: 'Thunderstorm',
+    };
+
+    return {
+      temp: Math.round(values.temperature),
+      feelsLike: Math.round(values.temperatureApparent),
+      description: weatherCodes[values.weatherCode] || 'Unknown',
+      icon: '', // Tomorrow.io uses weather codes, not icons
+      humidity: Math.round(values.humidity),
+      windSpeed: Math.round(values.windSpeed),
+      alerts: [], // Alerts require separate API call
+      provider: 'Tomorrow.io',
+      timestamp: Date.now(),
+    };
+  } catch (err) {
+    console.error(`Tomorrow.io fetch error:`, err.message);
+    return null;
+  }
+}
+
+// Main weather fetch - tries providers in order with fallback
+async function fetchWeather(lat, lon) {
+  const cacheKey = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+  const cached = getCrawlCache('weather', cacheKey);
+  if (cached) return cached;
+
+  // Try providers in order
+  let result = await fetchWeatherFromOpenWeatherMap(lat, lon);
+  if (!result) result = await fetchWeatherFromWeatherAPI(lat, lon);
+  if (!result) result = await fetchWeatherFromTomorrowIO(lat, lon);
+
+  if (result) {
+    setCrawlCache('weather', cacheKey, result);
+  }
+  return result;
+}
+
+// Fetch news from NewsAPI
+async function fetchNewsFromNewsAPI() {
+  if (!NEWSAPI_KEY) return [];
+
+  try {
+    const url = `https://newsapi.org/v2/top-headlines?country=us&apiKey=${NEWSAPI_KEY}`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return (data.articles || []).slice(0, 10).map(a => ({
+        title: a.title,
+        source: a.source?.name || 'NewsAPI',
+        url: a.url,
+        publishedAt: a.publishedAt,
+        provider: 'NewsAPI',
+      }));
+    }
+  } catch (err) {
+    console.error('NewsAPI error:', err.message);
+  }
+  return [];
+}
+
+// Fetch news from GNews
+async function fetchNewsFromGNews() {
+  if (!GNEWS_API_KEY) return [];
+
+  try {
+    const url = `https://gnews.io/api/v4/top-headlines?category=general&lang=en&country=us&max=10&apikey=${GNEWS_API_KEY}`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return (data.articles || []).map(a => ({
+        title: a.title,
+        source: a.source?.name || 'GNews',
+        url: a.url,
+        publishedAt: a.publishedAt,
+        provider: 'GNews',
+      }));
+    }
+  } catch (err) {
+    console.error('GNews error:', err.message);
+  }
+  return [];
+}
+
+// Fetch news from MediaStack
+async function fetchNewsFromMediaStack() {
+  if (!MEDIASTACK_API_KEY) return [];
+
+  try {
+    const url = `http://api.mediastack.com/v1/news?access_key=${MEDIASTACK_API_KEY}&languages=en&limit=10`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return (data.data || []).map(a => ({
+        title: a.title,
+        source: a.source || 'MediaStack',
+        url: a.url,
+        publishedAt: a.published_at,
+        provider: 'MediaStack',
+      }));
+    }
+  } catch (err) {
+    console.error('MediaStack error:', err.message);
+  }
+  return [];
+}
+
+// Fetch news from RSS feeds (simple XML parsing without external deps)
+async function fetchNewsFromRSS() {
+  if (NEWS_RSS_FEEDS.length === 0) return [];
+
+  const headlines = [];
+
+  for (const feedUrl of NEWS_RSS_FEEDS.slice(0, 5)) { // Limit to 5 feeds
+    try {
+      const response = await fetch(feedUrl, {
+        signal: AbortSignal.timeout(5000),
+        headers: { 'User-Agent': 'Cortex/1.15.0' },
+      });
+
+      if (!response.ok) continue;
+
+      const xml = await response.text();
+
+      // Simple regex-based RSS parsing (handles most common RSS/Atom formats)
+      const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>|<entry[^>]*>([\s\S]*?)<\/entry>/gi;
+      const titleRegex = /<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i;
+      const linkRegex = /<link[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>|<link[^>]*href=["']([^"']+)["']/i;
+      const pubDateRegex = /<pubDate[^>]*>([\s\S]*?)<\/pubDate>|<published[^>]*>([\s\S]*?)<\/published>/i;
+
+      // Get feed title for source name
+      const feedTitleMatch = xml.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
+      const feedTitle = feedTitleMatch ? feedTitleMatch[1].trim() : 'RSS';
+
+      let match;
+      let count = 0;
+      while ((match = itemRegex.exec(xml)) !== null && count < 5) {
+        const itemXml = match[1] || match[2];
+        const titleMatch = itemXml.match(titleRegex);
+        const linkMatch = itemXml.match(linkRegex);
+        const pubDateMatch = itemXml.match(pubDateRegex);
+
+        if (titleMatch) {
+          headlines.push({
+            title: titleMatch[1].trim().replace(/<[^>]+>/g, ''), // Strip any HTML
+            source: feedTitle,
+            url: linkMatch ? (linkMatch[1] || linkMatch[2]).trim() : feedUrl,
+            publishedAt: pubDateMatch ? (pubDateMatch[1] || pubDateMatch[2]).trim() : null,
+            provider: 'RSS',
+          });
+          count++;
+        }
+      }
+    } catch (err) {
+      console.error(`RSS feed error (${feedUrl}):`, err.message);
+    }
+  }
+
+  return headlines;
+}
+
+// Main news fetch - combines results from all configured providers
 async function fetchNews() {
   const cached = getCrawlCache('news', 'headlines');
   if (cached) return cached;
 
-  const headlines = [];
+  // Fetch from all providers in parallel
+  const [newsAPI, gNews, mediaStack, rss] = await Promise.all([
+    fetchNewsFromNewsAPI(),
+    fetchNewsFromGNews(),
+    fetchNewsFromMediaStack(),
+    fetchNewsFromRSS(),
+  ]);
 
-  // Try NewsAPI first
-  if (NEWSAPI_KEY && headlines.length === 0) {
-    try {
-      const url = `https://newsapi.org/v2/top-headlines?country=us&apiKey=${NEWSAPI_KEY}`;
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(5000),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        headlines.push(...(data.articles || []).slice(0, 10).map(a => ({
-          title: a.title,
-          source: a.source?.name || 'News',
-          url: a.url,
-          publishedAt: a.publishedAt,
-        })));
-      }
-    } catch (err) {
-      console.error('NewsAPI error:', err.message);
-    }
-  }
-
-  // Fallback to GNews if NewsAPI didn't return results
-  if (headlines.length === 0 && GNEWS_API_KEY) {
-    try {
-      const url = `https://gnews.io/api/v4/top-headlines?category=general&lang=en&country=us&max=10&apikey=${GNEWS_API_KEY}`;
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(5000),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        headlines.push(...(data.articles || []).map(a => ({
-          title: a.title,
-          source: a.source?.name || 'News',
-          url: a.url,
-          publishedAt: a.publishedAt,
-        })));
-      }
-    } catch (err) {
-      console.error('GNews error:', err.message);
-    }
-  }
+  // Combine and deduplicate by title similarity
+  const allHeadlines = [...newsAPI, ...gNews, ...mediaStack, ...rss];
+  const seen = new Set();
+  const headlines = allHeadlines.filter(h => {
+    if (!h.title) return false;
+    const normalized = h.title.toLowerCase().substring(0, 50);
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  }).slice(0, 15); // Limit total headlines
 
   const result = { headlines, timestamp: Date.now() };
   if (headlines.length > 0) {
@@ -5372,8 +5578,12 @@ app.get('/api/admin/crawl/config', authenticateToken, (req, res) => {
       apiKeys: {
         finnhub: !!FINNHUB_API_KEY,
         openweathermap: !!OPENWEATHERMAP_API_KEY,
+        weatherapi: !!WEATHERAPI_KEY,
+        tomorrowio: !!TOMORROWIO_API_KEY,
         newsapi: !!NEWSAPI_KEY,
         gnews: !!GNEWS_API_KEY,
+        mediastack: !!MEDIASTACK_API_KEY,
+        rss_feeds: NEWS_RSS_FEEDS.length,
       }
     }
   });
@@ -5440,8 +5650,12 @@ app.put('/api/admin/crawl/config', authenticateToken, async (req, res) => {
       apiKeys: {
         finnhub: !!FINNHUB_API_KEY,
         openweathermap: !!OPENWEATHERMAP_API_KEY,
+        weatherapi: !!WEATHERAPI_KEY,
+        tomorrowio: !!TOMORROWIO_API_KEY,
         newsapi: !!NEWSAPI_KEY,
         gnews: !!GNEWS_API_KEY,
+        mediastack: !!MEDIASTACK_API_KEY,
+        rss_feeds: NEWS_RSS_FEEDS.length,
       }
     }
   });
@@ -5478,7 +5692,7 @@ app.get('/api/crawl/stocks', authenticateToken, crawlLimiter, async (req, res) =
 
 // Get weather data
 app.get('/api/crawl/weather', authenticateToken, crawlLimiter, async (req, res) => {
-  if (!OPENWEATHERMAP_API_KEY) {
+  if (!OPENWEATHERMAP_API_KEY && !WEATHERAPI_KEY && !TOMORROWIO_API_KEY) {
     return res.json({
       enabled: false,
       weather: null,
@@ -5527,7 +5741,7 @@ app.get('/api/crawl/weather', authenticateToken, crawlLimiter, async (req, res) 
 
 // Get news headlines
 app.get('/api/crawl/news', authenticateToken, crawlLimiter, async (req, res) => {
-  if (!NEWSAPI_KEY && !GNEWS_API_KEY) {
+  if (!NEWSAPI_KEY && !GNEWS_API_KEY && !MEDIASTACK_API_KEY && NEWS_RSS_FEEDS.length === 0) {
     return res.json({
       enabled: false,
       headlines: [],
@@ -5580,8 +5794,9 @@ app.get('/api/crawl/all', authenticateToken, crawlLimiter, async (req, res) => {
     );
   }
 
-  // Weather
-  if (OPENWEATHERMAP_API_KEY && config.weatherEnabled && crawlPrefs.showWeather !== false) {
+  // Weather (any provider)
+  const hasWeatherProvider = OPENWEATHERMAP_API_KEY || WEATHERAPI_KEY || TOMORROWIO_API_KEY;
+  if (hasWeatherProvider && config.weatherEnabled && crawlPrefs.showWeather !== false) {
     promises.push(
       (async () => {
         let location = crawlPrefs.location;
@@ -5609,8 +5824,9 @@ app.get('/api/crawl/all', authenticateToken, crawlLimiter, async (req, res) => {
     );
   }
 
-  // News
-  if ((NEWSAPI_KEY || GNEWS_API_KEY) && config.newsEnabled && crawlPrefs.showNews !== false) {
+  // News (any provider)
+  const hasNewsProvider = NEWSAPI_KEY || GNEWS_API_KEY || MEDIASTACK_API_KEY || NEWS_RSS_FEEDS.length > 0;
+  if (hasNewsProvider && config.newsEnabled && crawlPrefs.showNews !== false) {
     promises.push(
       fetchNews()
         .then(news => {
