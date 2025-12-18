@@ -619,6 +619,34 @@ Automatic embedding of videos and media from popular platforms.
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
 
+- **v1.16.0 (December 2025)** - Alert Droplets
+  - **System Alerts**: Admin-created, time-limited alerts displayed in crawl bar
+    - 3 priority levels: Critical (🚨 orange), Warning (⚠️ amber), Info (ℹ️ teal)
+    - 3 categories: system, announcement, emergency
+    - Configurable start/end times for scheduled alerts
+    - Per-user dismissal tracking
+  - **Alert Federation**: Subscription-based alert sharing between servers
+    - Category-based subscriptions (subscribe to specific categories per server)
+    - Automatic broadcast to subscribers when creating federated alerts
+    - Inbox handlers: `alert_subscribe`, `alert_unsubscribe`, `alert_broadcast`, `alert_update`, `alert_delete`
+  - **Database Schema** (new tables):
+    - `alerts` - Alert content, priority, category, scope, timing
+    - `alert_subscriptions` - Our subscriptions to other servers
+    - `alert_subscribers` - Other servers subscribing to us
+    - `alert_dismissals` - Per-user alert dismissals
+  - **API Endpoints**:
+    - `GET/POST /api/admin/alerts` - Admin: list/create alerts
+    - `PUT/DELETE /api/admin/alerts/:id` - Admin: update/delete alerts
+    - `GET /api/alerts/active` - Get active alerts for current user
+    - `POST /api/alerts/:id/dismiss` - Dismiss alert for current user
+    - `GET/POST/PUT/DELETE /api/admin/alert-subscriptions` - Manage subscriptions
+  - **Client Components**:
+    - `CrawlBar` updated to display alerts with priority-based styling
+    - `AlertDetailModal` - Full alert view when clicking in crawl bar
+    - `AlertsAdminPanel` - Admin panel for creating/editing/deleting alerts
+    - `AlertSubscriptionsPanel` - Admin panel for managing federated subscriptions
+  - **Integration**: Alerts included in `/api/crawl/all` response
+
 - **v1.15.0 (December 2025)** - Crawl Bar & Nested Droplet Layout
   - **Crawl Bar Component**: Horizontal scrolling news ticker
     - Stock quotes from Finnhub API (60s cache, 60 calls/min free tier)
