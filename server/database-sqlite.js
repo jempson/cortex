@@ -849,6 +849,74 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Crawl bar tables created (v1.15.0)');
     }
+
+    // Auto-create alerts tables if they don't exist (v1.16.0)
+    const alertsTableExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='alerts'
+    `).get();
+
+    if (!alertsTableExists) {
+      console.log('📝 Creating alerts tables (v1.16.0)...');
+      this.db.exec(`
+        -- Admin-created alerts that display in crawl bar
+        CREATE TABLE IF NOT EXISTS alerts (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          priority TEXT NOT NULL DEFAULT 'info',
+          category TEXT NOT NULL DEFAULT 'system',
+          scope TEXT NOT NULL DEFAULT 'local',
+          start_time TEXT NOT NULL,
+          end_time TEXT NOT NULL,
+          created_by TEXT REFERENCES users(id),
+          created_at TEXT NOT NULL,
+          updated_at TEXT,
+          origin_node TEXT,
+          origin_alert_id TEXT,
+          UNIQUE (origin_node, origin_alert_id)
+        );
+
+        -- Subscriptions: what alert categories we subscribe to from other servers
+        CREATE TABLE IF NOT EXISTS alert_subscriptions (
+          id TEXT PRIMARY KEY,
+          source_node TEXT NOT NULL UNIQUE,
+          categories TEXT NOT NULL DEFAULT '[]',
+          status TEXT NOT NULL DEFAULT 'active',
+          created_by TEXT REFERENCES users(id),
+          created_at TEXT NOT NULL,
+          updated_at TEXT
+        );
+
+        -- Subscribers: who subscribes to our alerts (populated by federation inbox)
+        CREATE TABLE IF NOT EXISTS alert_subscribers (
+          id TEXT PRIMARY KEY,
+          subscriber_node TEXT NOT NULL UNIQUE,
+          categories TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL,
+          updated_at TEXT
+        );
+
+        -- Per-user alert dismissals
+        CREATE TABLE IF NOT EXISTS alert_dismissals (
+          alert_id TEXT NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          dismissed_at TEXT NOT NULL,
+          PRIMARY KEY (alert_id, user_id)
+        );
+
+        -- Alert indexes
+        CREATE INDEX IF NOT EXISTS idx_alerts_active ON alerts(start_time, end_time);
+        CREATE INDEX IF NOT EXISTS idx_alerts_priority ON alerts(priority);
+        CREATE INDEX IF NOT EXISTS idx_alerts_category ON alerts(category);
+        CREATE INDEX IF NOT EXISTS idx_alerts_scope ON alerts(scope);
+        CREATE INDEX IF NOT EXISTS idx_alerts_origin ON alerts(origin_node);
+        CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_source ON alert_subscriptions(source_node);
+        CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_status ON alert_subscriptions(status);
+        CREATE INDEX IF NOT EXISTS idx_alert_subscribers_node ON alert_subscribers(subscriber_node);
+        CREATE INDEX IF NOT EXISTS idx_alert_dismissals_user ON alert_dismissals(user_id);
+      `);
+      console.log('✅ Alerts tables created (v1.16.0)');
+    }
   }
 
   prepareStatements() {
@@ -4718,6 +4786,310 @@ export class DatabaseSQLite {
     );
 
     return this.getCrawlConfig();
+  }
+
+  // ============ Alert Methods (v1.16.0) ============
+
+  createAlert({ title, content, priority = 'info', category = 'system', scope = 'local', startTime, endTime, createdBy, originNode = null, originAlertId = null }) {
+    const id = `alert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO alerts (id, title, content, priority, category, scope, start_time, end_time, created_by, created_at, origin_node, origin_alert_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, title, content, priority, category, scope, startTime, endTime, createdBy, now, originNode, originAlertId);
+
+    return this.getAlert(id);
+  }
+
+  getAlert(alertId) {
+    const alert = this.db.prepare('SELECT * FROM alerts WHERE id = ?').get(alertId);
+    if (!alert) return null;
+
+    return {
+      id: alert.id,
+      title: alert.title,
+      content: alert.content,
+      priority: alert.priority,
+      category: alert.category,
+      scope: alert.scope,
+      startTime: alert.start_time,
+      endTime: alert.end_time,
+      createdBy: alert.created_by,
+      createdAt: alert.created_at,
+      updatedAt: alert.updated_at,
+      originNode: alert.origin_node,
+      originAlertId: alert.origin_alert_id,
+    };
+  }
+
+  getAlertByOrigin(originNode, originAlertId) {
+    if (!originNode || !originAlertId) return null;
+    const alert = this.db.prepare('SELECT * FROM alerts WHERE origin_node = ? AND origin_alert_id = ?').get(originNode, originAlertId);
+    return alert ? this.getAlert(alert.id) : null;
+  }
+
+  updateAlert(alertId, updates) {
+    const now = new Date().toISOString();
+    const alert = this.getAlert(alertId);
+    if (!alert) return null;
+
+    const newValues = {
+      title: updates.title !== undefined ? updates.title : alert.title,
+      content: updates.content !== undefined ? updates.content : alert.content,
+      priority: updates.priority !== undefined ? updates.priority : alert.priority,
+      category: updates.category !== undefined ? updates.category : alert.category,
+      scope: updates.scope !== undefined ? updates.scope : alert.scope,
+      startTime: updates.startTime !== undefined ? updates.startTime : alert.startTime,
+      endTime: updates.endTime !== undefined ? updates.endTime : alert.endTime,
+    };
+
+    this.db.prepare(`
+      UPDATE alerts SET title = ?, content = ?, priority = ?, category = ?, scope = ?, start_time = ?, end_time = ?, updated_at = ?
+      WHERE id = ?
+    `).run(newValues.title, newValues.content, newValues.priority, newValues.category, newValues.scope, newValues.startTime, newValues.endTime, now, alertId);
+
+    return this.getAlert(alertId);
+  }
+
+  deleteAlert(alertId) {
+    const alert = this.getAlert(alertId);
+    if (!alert) return false;
+
+    this.db.prepare('DELETE FROM alerts WHERE id = ?').run(alertId);
+    return true;
+  }
+
+  getActiveAlerts(userId) {
+    const now = new Date().toISOString();
+
+    // Get alerts that are currently active (now between start_time and end_time)
+    // and not dismissed by this user
+    const alerts = this.db.prepare(`
+      SELECT a.* FROM alerts a
+      WHERE a.start_time <= ? AND a.end_time >= ?
+        AND NOT EXISTS (
+          SELECT 1 FROM alert_dismissals ad
+          WHERE ad.alert_id = a.id AND ad.user_id = ?
+        )
+      ORDER BY
+        CASE a.priority WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END,
+        a.start_time DESC
+    `).all(now, now, userId);
+
+    return alerts.map(a => ({
+      id: a.id,
+      title: a.title,
+      content: a.content,
+      priority: a.priority,
+      category: a.category,
+      scope: a.scope,
+      startTime: a.start_time,
+      endTime: a.end_time,
+      createdBy: a.created_by,
+      createdAt: a.created_at,
+      originNode: a.origin_node,
+      originAlertId: a.origin_alert_id,
+    }));
+  }
+
+  getAllAlerts({ limit = 50, offset = 0, status = 'all' } = {}) {
+    const now = new Date().toISOString();
+
+    let query = 'SELECT * FROM alerts';
+    const params = [];
+
+    if (status === 'active') {
+      query += ' WHERE start_time <= ? AND end_time >= ?';
+      params.push(now, now);
+    } else if (status === 'scheduled') {
+      query += ' WHERE start_time > ?';
+      params.push(now);
+    } else if (status === 'expired') {
+      query += ' WHERE end_time < ?';
+      params.push(now);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const alerts = this.db.prepare(query).all(...params);
+
+    return alerts.map(a => ({
+      id: a.id,
+      title: a.title,
+      content: a.content,
+      priority: a.priority,
+      category: a.category,
+      scope: a.scope,
+      startTime: a.start_time,
+      endTime: a.end_time,
+      createdBy: a.created_by,
+      createdAt: a.created_at,
+      updatedAt: a.updated_at,
+      originNode: a.origin_node,
+      originAlertId: a.origin_alert_id,
+    }));
+  }
+
+  dismissAlert(alertId, userId) {
+    const now = new Date().toISOString();
+
+    // Check if already dismissed
+    const existing = this.db.prepare('SELECT 1 FROM alert_dismissals WHERE alert_id = ? AND user_id = ?').get(alertId, userId);
+    if (existing) return true;
+
+    this.db.prepare(`
+      INSERT INTO alert_dismissals (alert_id, user_id, dismissed_at) VALUES (?, ?, ?)
+    `).run(alertId, userId, now);
+
+    return true;
+  }
+
+  hasUserDismissedAlert(alertId, userId) {
+    const row = this.db.prepare('SELECT 1 FROM alert_dismissals WHERE alert_id = ? AND user_id = ?').get(alertId, userId);
+    return !!row;
+  }
+
+  cleanupExpiredAlerts(daysOld = 30) {
+    const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = this.db.prepare(`
+      DELETE FROM alerts WHERE end_time < ?
+    `).run(cutoff);
+
+    return result.changes;
+  }
+
+  // ============ Alert Subscription Methods (v1.16.0) ============
+
+  createAlertSubscription({ sourceNode, categories, createdBy }) {
+    const id = `alert-sub-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO alert_subscriptions (id, source_node, categories, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, sourceNode, JSON.stringify(categories), createdBy, now);
+
+    return this.getAlertSubscription(id);
+  }
+
+  getAlertSubscription(subscriptionId) {
+    const sub = this.db.prepare('SELECT * FROM alert_subscriptions WHERE id = ?').get(subscriptionId);
+    if (!sub) return null;
+
+    return {
+      id: sub.id,
+      sourceNode: sub.source_node,
+      categories: JSON.parse(sub.categories || '[]'),
+      status: sub.status,
+      createdBy: sub.created_by,
+      createdAt: sub.created_at,
+      updatedAt: sub.updated_at,
+    };
+  }
+
+  getAlertSubscriptionByNode(sourceNode) {
+    const sub = this.db.prepare('SELECT * FROM alert_subscriptions WHERE source_node = ?').get(sourceNode);
+    return sub ? this.getAlertSubscription(sub.id) : null;
+  }
+
+  updateAlertSubscription(subscriptionId, updates) {
+    const now = new Date().toISOString();
+    const sub = this.getAlertSubscription(subscriptionId);
+    if (!sub) return null;
+
+    const newValues = {
+      categories: updates.categories !== undefined ? updates.categories : sub.categories,
+      status: updates.status !== undefined ? updates.status : sub.status,
+    };
+
+    this.db.prepare(`
+      UPDATE alert_subscriptions SET categories = ?, status = ?, updated_at = ?
+      WHERE id = ?
+    `).run(JSON.stringify(newValues.categories), newValues.status, now, subscriptionId);
+
+    return this.getAlertSubscription(subscriptionId);
+  }
+
+  deleteAlertSubscription(subscriptionId) {
+    const sub = this.getAlertSubscription(subscriptionId);
+    if (!sub) return false;
+
+    this.db.prepare('DELETE FROM alert_subscriptions WHERE id = ?').run(subscriptionId);
+    return true;
+  }
+
+  getAllAlertSubscriptions() {
+    const subs = this.db.prepare('SELECT * FROM alert_subscriptions ORDER BY created_at DESC').all();
+
+    return subs.map(sub => ({
+      id: sub.id,
+      sourceNode: sub.source_node,
+      categories: JSON.parse(sub.categories || '[]'),
+      status: sub.status,
+      createdBy: sub.created_by,
+      createdAt: sub.created_at,
+      updatedAt: sub.updated_at,
+    }));
+  }
+
+  // ============ Alert Subscriber Methods (inbound federation) ============
+
+  addAlertSubscriber(subscriberNode, categories) {
+    const id = `alert-subscriber-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    // Use INSERT OR REPLACE to handle duplicates
+    this.db.prepare(`
+      INSERT OR REPLACE INTO alert_subscribers (id, subscriber_node, categories, created_at, updated_at)
+      VALUES (
+        COALESCE((SELECT id FROM alert_subscribers WHERE subscriber_node = ?), ?),
+        ?,
+        ?,
+        COALESCE((SELECT created_at FROM alert_subscribers WHERE subscriber_node = ?), ?),
+        ?
+      )
+    `).run(subscriberNode, id, subscriberNode, JSON.stringify(categories), subscriberNode, now, now);
+
+    return this.getAlertSubscriberByNode(subscriberNode);
+  }
+
+  getAlertSubscriberByNode(subscriberNode) {
+    const sub = this.db.prepare('SELECT * FROM alert_subscribers WHERE subscriber_node = ?').get(subscriberNode);
+    if (!sub) return null;
+
+    return {
+      id: sub.id,
+      subscriberNode: sub.subscriber_node,
+      categories: JSON.parse(sub.categories || '[]'),
+      createdAt: sub.created_at,
+      updatedAt: sub.updated_at,
+    };
+  }
+
+  removeAlertSubscriber(subscriberNode) {
+    const result = this.db.prepare('DELETE FROM alert_subscribers WHERE subscriber_node = ?').run(subscriberNode);
+    return result.changes > 0;
+  }
+
+  getAlertSubscribers() {
+    const subs = this.db.prepare('SELECT * FROM alert_subscribers ORDER BY created_at DESC').all();
+
+    return subs.map(sub => ({
+      id: sub.id,
+      subscriberNode: sub.subscriber_node,
+      categories: JSON.parse(sub.categories || '[]'),
+      createdAt: sub.created_at,
+      updatedAt: sub.updated_at,
+    }));
+  }
+
+  getSubscribersForCategory(category) {
+    // Get all subscribers whose categories array includes this category
+    const allSubscribers = this.getAlertSubscribers();
+    return allSubscribers.filter(sub => sub.categories.includes(category));
   }
 
   // Placeholder for JSON compatibility - not needed with SQLite

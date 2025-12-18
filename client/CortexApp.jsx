@@ -1630,8 +1630,8 @@ const CRAWL_SCROLL_SPEEDS = {
   fast: 30,     // quicker but still readable
 };
 
-const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }) => {
-  const [data, setData] = useState({ stocks: { data: [] }, weather: { data: null }, news: { data: [] } });
+const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false, onAlertClick }) => {
+  const [data, setData] = useState({ stocks: { data: [] }, weather: { data: null }, news: { data: [] }, alerts: { data: [] } });
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const scrollRef = useRef(null);
@@ -1758,6 +1758,48 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }
 
   // Build crawl items
   const items = [];
+
+  // System Alerts (from admins) - displayed first, highest priority
+  const alertPriorityConfig = {
+    critical: { icon: '🚨', color: 'var(--accent-orange)' },
+    warning: { icon: '⚠️', color: 'var(--accent-amber)' },
+    info: { icon: 'ℹ️', color: 'var(--accent-teal)' }
+  };
+
+  if (data.alerts?.enabled && data.alerts?.data?.length > 0) {
+    // Sort by priority (critical first, then warning, then info)
+    const priorityOrder = { critical: 0, warning: 1, info: 2 };
+    const sortedAlerts = [...data.alerts.data].sort((a, b) =>
+      (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2)
+    );
+
+    sortedAlerts.forEach(alert => {
+      const cfg = alertPriorityConfig[alert.priority] || alertPriorityConfig.info;
+      items.push({
+        type: 'system-alert',
+        key: `system-alert-${alert.id}`,
+        content: (
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              onAlertClick?.(alert);
+            }}
+            style={{
+              cursor: 'pointer',
+              color: cfg.color,
+            }}
+          >
+            {cfg.icon} [{alert.priority.toUpperCase()}] {alert.title}
+            {alert.originNode && (
+              <span style={{ fontSize: '0.7em', opacity: 0.7, marginLeft: '4px' }}>
+                (@{alert.originNode})
+              </span>
+            )}
+          </span>
+        ),
+      });
+    });
+  }
 
   // Stocks - clickable links to Yahoo Finance
   if (userPrefs.showStocks !== false && data.stocks?.enabled && data.stocks?.data?.length > 0) {
@@ -4026,6 +4068,117 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
         ) : (
           <div style={{ color: 'var(--accent-orange)', textAlign: 'center', padding: '40px' }}>Profile not found</div>
         )}
+      </div>
+    </div>
+  );
+};
+
+// ============ ALERT DETAIL MODAL ============
+const AlertDetailModal = ({ alert, onClose, onDismiss, isMobile }) => {
+  if (!alert) return null;
+
+  const priorityConfig = {
+    critical: { icon: '🚨', color: 'var(--accent-orange)', label: 'CRITICAL' },
+    warning: { icon: '⚠️', color: 'var(--accent-amber)', label: 'WARNING' },
+    info: { icon: 'ℹ️', color: 'var(--accent-teal)', label: 'INFO' }
+  };
+
+  const categoryLabels = {
+    system: 'System',
+    announcement: 'Announcement',
+    emergency: 'Emergency'
+  };
+
+  const cfg = priorityConfig[alert.priority] || priorityConfig.info;
+  const categoryLabel = categoryLabels[alert.category] || alert.category;
+
+  // Format dates
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    const d = new Date(dateStr);
+    return d.toLocaleString();
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000, display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0, 0, 0, 0.8)', padding: '16px',
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--bg-elevated)', border: `1px solid ${cfg.color}`,
+        borderRadius: '4px', padding: isMobile ? '16px' : '24px',
+        maxWidth: '500px', width: '100%', maxHeight: '80vh', overflow: 'auto',
+        boxShadow: `0 0 20px ${cfg.color}40`,
+      }} onClick={e => e.stopPropagation()}>
+        {/* Priority Badge */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          marginBottom: '16px', padding: '8px 12px',
+          background: `${cfg.color}15`, border: `1px solid ${cfg.color}40`,
+          borderRadius: '4px',
+        }}>
+          <span style={{ fontSize: '1.5rem' }}>{cfg.icon}</span>
+          <span style={{ color: cfg.color, fontWeight: 600, fontFamily: 'monospace', fontSize: '0.9rem' }}>
+            {cfg.label}
+          </span>
+          <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginLeft: 'auto' }}>
+            {categoryLabel}
+          </span>
+        </div>
+
+        {/* Title */}
+        <h2 style={{
+          margin: '0 0 16px 0', color: 'var(--text-primary)',
+          fontFamily: 'monospace', fontSize: isMobile ? '1.1rem' : '1.25rem',
+        }}>
+          {alert.title}
+        </h2>
+
+        {/* Content */}
+        <div style={{
+          color: 'var(--text-secondary)', marginBottom: '16px',
+          lineHeight: '1.6', fontFamily: 'monospace', fontSize: '0.9rem',
+          padding: '12px', background: 'var(--bg-surface)', borderRadius: '4px',
+        }} dangerouslySetInnerHTML={{ __html: alert.content }} />
+
+        {/* Metadata */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: '4px',
+          marginBottom: '20px', color: 'var(--text-dim)',
+          fontFamily: 'monospace', fontSize: '0.75rem',
+        }}>
+          <div>
+            <span style={{ color: 'var(--text-muted)' }}>Active: </span>
+            {formatDate(alert.startTime)} — {formatDate(alert.endTime)}
+          </div>
+          {alert.originNode && (
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>From: </span>
+              <span style={{ color: 'var(--accent-purple)' }}>@{alert.originNode}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          {onDismiss && (
+            <button onClick={() => { onDismiss(alert.id); onClose(); }} style={{
+              padding: isMobile ? '10px 16px' : '8px 14px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: 'transparent', border: '1px solid var(--border-secondary)',
+              color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'monospace',
+              fontSize: isMobile ? '0.85rem' : '0.8rem',
+            }}>DISMISS</button>
+          )}
+          <button onClick={onClose} style={{
+            padding: isMobile ? '10px 16px' : '8px 14px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: `${cfg.color}20`, border: `1px solid ${cfg.color}`,
+            color: cfg.color, cursor: 'pointer', fontFamily: 'monospace',
+            fontSize: isMobile ? '0.85rem' : '0.8rem',
+          }}>CLOSE</button>
+        </div>
       </div>
     </div>
   );
@@ -9312,6 +9465,847 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
   );
 };
 
+// ============ ALERTS ADMIN PANEL ============
+const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingAlert, setEditingAlert] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  // Form state
+  const [formTitle, setFormTitle] = useState('');
+  const [formContent, setFormContent] = useState('');
+  const [formPriority, setFormPriority] = useState('info');
+  const [formCategory, setFormCategory] = useState('system');
+  const [formScope, setFormScope] = useState('local');
+  const [formStartTime, setFormStartTime] = useState('');
+  const [formEndTime, setFormEndTime] = useState('');
+
+  const loadAlerts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchAPI('/admin/alerts');
+      setAlerts(data.alerts || []);
+    } catch (err) {
+      if (!err.message?.includes('401')) {
+        showToast(err.message || 'Failed to load alerts', 'error');
+      }
+    }
+    setLoading(false);
+  }, [fetchAPI, showToast]);
+
+  useEffect(() => {
+    if (expanded && alerts.length === 0) {
+      loadAlerts();
+    }
+  }, [expanded, alerts.length, loadAlerts]);
+
+  const resetForm = () => {
+    setFormTitle('');
+    setFormContent('');
+    setFormPriority('info');
+    setFormCategory('system');
+    setFormScope('local');
+    // Default start time to now
+    const now = new Date();
+    setFormStartTime(now.toISOString().slice(0, 16));
+    // Default end time to 24 hours from now
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    setFormEndTime(tomorrow.toISOString().slice(0, 16));
+    setEditingAlert(null);
+  };
+
+  const openCreateModal = () => {
+    resetForm();
+    setShowCreateModal(true);
+  };
+
+  const openEditModal = (alert) => {
+    setEditingAlert(alert);
+    setFormTitle(alert.title);
+    setFormContent(alert.content);
+    setFormPriority(alert.priority);
+    setFormCategory(alert.category);
+    setFormScope(alert.scope);
+    // Safely parse dates - handle both ISO strings and datetime-local format
+    const parseToLocalDatetime = (dateStr) => {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return d.toISOString().slice(0, 16);
+    };
+    setFormStartTime(parseToLocalDatetime(alert.start_time));
+    setFormEndTime(parseToLocalDatetime(alert.end_time));
+    setShowCreateModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!formTitle.trim() || !formContent.trim() || !formStartTime || !formEndTime) {
+      showToast('Please fill all required fields', 'error');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (editingAlert) {
+        await fetchAPI(`/admin/alerts/${editingAlert.id}`, {
+          method: 'PUT',
+          body: {
+            title: formTitle.trim(),
+            content: formContent.trim(),
+            priority: formPriority,
+            category: formCategory,
+            scope: formScope,
+            startTime: formStartTime,
+            endTime: formEndTime,
+          }
+        });
+        showToast('Alert updated', 'success');
+      } else {
+        await fetchAPI('/admin/alerts', {
+          method: 'POST',
+          body: {
+            title: formTitle.trim(),
+            content: formContent.trim(),
+            priority: formPriority,
+            category: formCategory,
+            scope: formScope,
+            startTime: formStartTime,
+            endTime: formEndTime,
+          }
+        });
+        showToast('Alert created', 'success');
+      }
+      setShowCreateModal(false);
+      loadAlerts();
+    } catch (err) {
+      showToast(err.message || 'Failed to save alert', 'error');
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async (alertId) => {
+    if (!confirm('Delete this alert?')) return;
+    try {
+      await fetchAPI(`/admin/alerts/${alertId}`, { method: 'DELETE' });
+      showToast('Alert deleted', 'success');
+      loadAlerts();
+    } catch (err) {
+      showToast(err.message || 'Failed to delete alert', 'error');
+    }
+  };
+
+  const getAlertStatus = (alert) => {
+    const now = new Date();
+    const start = new Date(alert.start_time);
+    const end = new Date(alert.end_time);
+    if (now < start) return { label: 'SCHEDULED', color: 'var(--accent-purple)' };
+    if (now > end) return { label: 'EXPIRED', color: 'var(--text-muted)' };
+    return { label: 'ACTIVE', color: 'var(--accent-green)' };
+  };
+
+  const priorityConfig = {
+    critical: { icon: '🚨', color: 'var(--accent-orange)' },
+    warning: { icon: '⚠️', color: 'var(--accent-amber)' },
+    info: { icon: 'ℹ️', color: 'var(--accent-teal)' }
+  };
+
+  return (
+    <div style={{ marginTop: '16px' }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          width: '100%',
+          padding: isMobile ? '12px 20px' : '10px 20px',
+          minHeight: isMobile ? '44px' : 'auto',
+          background: expanded ? 'var(--accent-amber)20' : 'transparent',
+          border: `1px solid ${expanded ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+          color: expanded ? 'var(--accent-amber)' : 'var(--text-dim)',
+          cursor: 'pointer',
+          fontFamily: 'monospace',
+          fontSize: isMobile ? '0.9rem' : '0.85rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <span>🚨 SYSTEM ALERTS</span>
+        <span>{expanded ? '▼' : '▶'}</span>
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)' }}>
+          {loading ? (
+            <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
+          ) : (
+            <>
+              {/* Create button */}
+              <div style={{ marginBottom: '16px' }}>
+                <button onClick={openCreateModal} style={{
+                  padding: isMobile ? '10px 16px' : '8px 14px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: 'var(--accent-amber)20',
+                  border: '1px solid var(--accent-amber)',
+                  color: 'var(--accent-amber)',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.85rem' : '0.8rem',
+                }}>+ NEW ALERT</button>
+              </div>
+
+              {/* Alerts list */}
+              {alerts.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>
+                  No alerts configured
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {alerts.map(alert => {
+                    const status = getAlertStatus(alert);
+                    const cfg = priorityConfig[alert.priority] || priorityConfig.info;
+                    return (
+                      <div key={alert.id} style={{
+                        padding: '12px',
+                        background: 'var(--bg-surface)',
+                        border: `1px solid ${cfg.color}40`,
+                        display: 'flex',
+                        flexDirection: isMobile ? 'column' : 'row',
+                        gap: '8px',
+                        alignItems: isMobile ? 'flex-start' : 'center',
+                      }}>
+                        {/* Priority icon and title */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span>{cfg.icon}</span>
+                            <span style={{
+                              color: 'var(--text-primary)',
+                              fontFamily: 'monospace',
+                              fontSize: '0.85rem',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {alert.title}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                            <span style={{ color: status.color, fontWeight: 600 }}>{status.label}</span>
+                            <span>•</span>
+                            <span>{alert.category}</span>
+                            <span>•</span>
+                            <span>{alert.scope}</span>
+                            {alert.origin_node && (
+                              <>
+                                <span>•</span>
+                                <span style={{ color: 'var(--accent-purple)' }}>@{alert.origin_node}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {/* Actions */}
+                        {!alert.origin_node && (
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button onClick={() => openEditModal(alert)} style={{
+                              padding: '4px 8px',
+                              background: 'transparent',
+                              border: '1px solid var(--border-secondary)',
+                              color: 'var(--text-secondary)',
+                              cursor: 'pointer',
+                              fontFamily: 'monospace',
+                              fontSize: '0.7rem',
+                            }}>EDIT</button>
+                            <button onClick={() => handleDelete(alert.id)} style={{
+                              padding: '4px 8px',
+                              background: 'transparent',
+                              border: '1px solid var(--accent-orange)40',
+                              color: 'var(--accent-orange)',
+                              cursor: 'pointer',
+                              fontFamily: 'monospace',
+                              fontSize: '0.7rem',
+                            }}>DEL</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
+      {showCreateModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0, 0, 0, 0.8)', padding: '16px',
+        }} onClick={() => setShowCreateModal(false)}>
+          <div style={{
+            background: 'var(--bg-elevated)', border: '1px solid var(--accent-amber)',
+            borderRadius: '4px', padding: isMobile ? '16px' : '24px',
+            maxWidth: '500px', width: '100%', maxHeight: '90vh', overflow: 'auto',
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 16px 0', color: 'var(--accent-amber)', fontFamily: 'monospace' }}>
+              {editingAlert ? 'EDIT ALERT' : 'NEW ALERT'}
+            </h3>
+
+            {/* Title */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>TITLE *</label>
+              <input
+                type="text"
+                value={formTitle}
+                onChange={e => setFormTitle(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem',
+                }}
+                placeholder="Alert title..."
+              />
+            </div>
+
+            {/* Content */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>CONTENT *</label>
+              <textarea
+                value={formContent}
+                onChange={e => setFormContent(e.target.value)}
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem',
+                  resize: 'vertical',
+                }}
+                placeholder="Alert content (supports basic HTML)..."
+              />
+            </div>
+
+            {/* Priority + Category Row */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>PRIORITY</label>
+                <select
+                  value={formPriority}
+                  onChange={e => setFormPriority(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-primary)',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <option value="info">ℹ️ Info</option>
+                  <option value="warning">⚠️ Warning</option>
+                  <option value="critical">🚨 Critical</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>CATEGORY</label>
+                <select
+                  value={formCategory}
+                  onChange={e => setFormCategory(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-primary)',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <option value="system">System</option>
+                  <option value="announcement">Announcement</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Scope */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>SCOPE</label>
+              <select
+                value={formScope}
+                onChange={e => setFormScope(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <option value="local">Local only</option>
+                <option value="federated">Federated (broadcast to subscribers)</option>
+              </select>
+            </div>
+
+            {/* Start + End Time */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>START TIME *</label>
+                <input
+                  type="datetime-local"
+                  value={formStartTime}
+                  onChange={e => setFormStartTime(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-primary)',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                  }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>END TIME *</label>
+                <input
+                  type="datetime-local"
+                  value={formEndTime}
+                  onChange={e => setFormEndTime(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-primary)',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowCreateModal(false)} style={{
+                padding: isMobile ? '10px 16px' : '8px 14px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'transparent',
+                border: '1px solid var(--border-secondary)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.8rem',
+              }}>CANCEL</button>
+              <button onClick={handleSave} disabled={saving} style={{
+                padding: isMobile ? '10px 16px' : '8px 14px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'var(--accent-amber)20',
+                border: '1px solid var(--accent-amber)',
+                color: 'var(--accent-amber)',
+                cursor: saving ? 'not-allowed' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.8rem',
+                opacity: saving ? 0.6 : 1,
+              }}>{saving ? 'SAVING...' : (editingAlert ? 'UPDATE' : 'CREATE')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============ ALERT SUBSCRIPTIONS PANEL ============
+const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [federationNodes, setFederationNodes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingSub, setEditingSub] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  // Form state
+  const [formSourceNode, setFormSourceNode] = useState('');
+  const [formCategories, setFormCategories] = useState({ system: false, announcement: false, emergency: false });
+
+  const availableCategories = ['system', 'announcement', 'emergency'];
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Load both subscriptions and federation nodes
+      const [subsData, nodesData] = await Promise.all([
+        fetchAPI('/admin/alert-subscriptions'),
+        fetchAPI('/admin/federation/nodes').catch(() => ({ nodes: [] })) // Gracefully handle if federation disabled
+      ]);
+      setSubscriptions(subsData.subscriptions || []);
+      setFederationNodes(nodesData.nodes || []);
+    } catch (err) {
+      if (!err.message?.includes('401')) {
+        showToast(err.message || 'Failed to load subscriptions', 'error');
+      }
+    }
+    setLoading(false);
+  }, [fetchAPI, showToast]);
+
+  const loadSubscriptions = loadData; // Alias for refresh
+
+  useEffect(() => {
+    if (expanded && subscriptions.length === 0 && federationNodes.length === 0) {
+      loadData();
+    }
+  }, [expanded, subscriptions.length, federationNodes.length, loadData]);
+
+  const resetForm = () => {
+    setFormSourceNode('');
+    setFormCategories({ system: false, announcement: false, emergency: false });
+    setEditingSub(null);
+  };
+
+  const openAddModal = () => {
+    resetForm();
+    setShowAddModal(true);
+  };
+
+  const openEditModal = (sub) => {
+    setEditingSub(sub);
+    setFormSourceNode(sub.source_node);
+    const cats = JSON.parse(sub.categories || '[]');
+    setFormCategories({
+      system: cats.includes('system'),
+      announcement: cats.includes('announcement'),
+      emergency: cats.includes('emergency'),
+    });
+    setShowAddModal(true);
+  };
+
+  const handleSave = async () => {
+    const selectedCats = Object.entries(formCategories)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+
+    if (!formSourceNode && !editingSub) {
+      showToast('Please select a federation node', 'error');
+      return;
+    }
+    if (selectedCats.length === 0) {
+      showToast('Please select at least one category', 'error');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (editingSub) {
+        await fetchAPI(`/admin/alert-subscriptions/${editingSub.id}`, {
+          method: 'PUT',
+          body: { categories: selectedCats }
+        });
+        showToast('Subscription updated', 'success');
+      } else {
+        await fetchAPI('/admin/alert-subscriptions', {
+          method: 'POST',
+          body: { sourceNode: formSourceNode, categories: selectedCats }
+        });
+        showToast('Subscription created', 'success');
+      }
+      setShowAddModal(false);
+      loadSubscriptions();
+    } catch (err) {
+      showToast(err.message || 'Failed to save subscription', 'error');
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async (subId) => {
+    if (!confirm('Unsubscribe from this node?')) return;
+    try {
+      await fetchAPI(`/admin/alert-subscriptions/${subId}`, { method: 'DELETE' });
+      showToast('Subscription removed', 'success');
+      loadSubscriptions();
+    } catch (err) {
+      showToast(err.message || 'Failed to remove subscription', 'error');
+    }
+  };
+
+  const handleToggleStatus = async (sub) => {
+    try {
+      await fetchAPI(`/admin/alert-subscriptions/${sub.id}`, {
+        method: 'PUT',
+        body: { status: sub.status === 'active' ? 'paused' : 'active' }
+      });
+      showToast(`Subscription ${sub.status === 'active' ? 'paused' : 'resumed'}`, 'success');
+      loadSubscriptions();
+    } catch (err) {
+      showToast(err.message || 'Failed to update subscription', 'error');
+    }
+  };
+
+  // Get nodes we haven't subscribed to yet
+  const subscribedNodes = subscriptions.map(s => s.source_node);
+  const availableNodes = federationNodes.filter(n => !subscribedNodes.includes(n.node_name) && n.status === 'active');
+
+  return (
+    <div style={{ marginTop: '16px' }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          width: '100%',
+          padding: isMobile ? '12px 20px' : '10px 20px',
+          minHeight: isMobile ? '44px' : 'auto',
+          background: expanded ? 'var(--accent-purple)20' : 'transparent',
+          border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+          color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
+          cursor: 'pointer',
+          fontFamily: 'monospace',
+          fontSize: isMobile ? '0.9rem' : '0.85rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <span>◇ ALERT SUBSCRIPTIONS</span>
+        <span>{expanded ? '▼' : '▶'}</span>
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)' }}>
+          {loading ? (
+            <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
+          ) : (
+            <>
+              {/* Info text */}
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '12px' }}>
+                Subscribe to receive alerts from federated servers. Choose which categories to receive.
+              </div>
+
+              {/* Add button */}
+              <div style={{ marginBottom: '16px' }}>
+                <button onClick={openAddModal} disabled={availableNodes.length === 0} style={{
+                  padding: isMobile ? '10px 16px' : '8px 14px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  background: 'var(--accent-purple)20',
+                  border: '1px solid var(--accent-purple)',
+                  color: 'var(--accent-purple)',
+                  cursor: availableNodes.length === 0 ? 'not-allowed' : 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  opacity: availableNodes.length === 0 ? 0.5 : 1,
+                }}>+ NEW SUBSCRIPTION</button>
+                {availableNodes.length === 0 && federationNodes.length > 0 && (
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginLeft: '8px' }}>
+                    (subscribed to all nodes)
+                  </span>
+                )}
+                {federationNodes.length === 0 && (
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginLeft: '8px' }}>
+                    (no federation nodes configured)
+                  </span>
+                )}
+              </div>
+
+              {/* Subscriptions list */}
+              {subscriptions.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>
+                  No alert subscriptions configured
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {subscriptions.map(sub => {
+                    const cats = JSON.parse(sub.categories || '[]');
+                    return (
+                      <div key={sub.id} style={{
+                        padding: '12px',
+                        background: 'var(--bg-surface)',
+                        border: `1px solid ${sub.status === 'active' ? 'var(--accent-purple)40' : 'var(--border-subtle)'}`,
+                        display: 'flex',
+                        flexDirection: isMobile ? 'column' : 'row',
+                        gap: '8px',
+                        alignItems: isMobile ? 'flex-start' : 'center',
+                        opacity: sub.status === 'paused' ? 0.6 : 1,
+                      }}>
+                        {/* Node name and categories */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span style={{ color: 'var(--accent-purple)' }}>◇</span>
+                            <span style={{
+                              color: 'var(--text-primary)',
+                              fontFamily: 'monospace',
+                              fontSize: '0.85rem',
+                            }}>
+                              {sub.source_node}
+                            </span>
+                            {sub.status === 'paused' && (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>(paused)</span>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {cats.map(cat => (
+                              <span key={cat} style={{
+                                fontSize: '0.65rem',
+                                padding: '2px 6px',
+                                background: 'var(--accent-purple)20',
+                                border: '1px solid var(--accent-purple)40',
+                                color: 'var(--accent-purple)',
+                                fontFamily: 'monospace',
+                              }}>
+                                {cat}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Actions */}
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button onClick={() => handleToggleStatus(sub)} style={{
+                            padding: '4px 8px',
+                            background: 'transparent',
+                            border: '1px solid var(--border-secondary)',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            fontFamily: 'monospace',
+                            fontSize: '0.7rem',
+                          }}>{sub.status === 'active' ? 'PAUSE' : 'RESUME'}</button>
+                          <button onClick={() => openEditModal(sub)} style={{
+                            padding: '4px 8px',
+                            background: 'transparent',
+                            border: '1px solid var(--border-secondary)',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            fontFamily: 'monospace',
+                            fontSize: '0.7rem',
+                          }}>EDIT</button>
+                          <button onClick={() => handleDelete(sub.id)} style={{
+                            padding: '4px 8px',
+                            background: 'transparent',
+                            border: '1px solid var(--accent-orange)40',
+                            color: 'var(--accent-orange)',
+                            cursor: 'pointer',
+                            fontFamily: 'monospace',
+                            fontSize: '0.7rem',
+                          }}>DEL</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Add/Edit Modal */}
+      {showAddModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0, 0, 0, 0.8)', padding: '16px',
+        }} onClick={() => setShowAddModal(false)}>
+          <div style={{
+            background: 'var(--bg-elevated)', border: '1px solid var(--accent-purple)',
+            borderRadius: '4px', padding: isMobile ? '16px' : '24px',
+            maxWidth: '400px', width: '100%',
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 16px 0', color: 'var(--accent-purple)', fontFamily: 'monospace' }}>
+              {editingSub ? 'EDIT SUBSCRIPTION' : 'NEW SUBSCRIPTION'}
+            </h3>
+
+            {/* Node selector */}
+            {!editingSub && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>FEDERATION NODE</label>
+                <select
+                  value={formSourceNode}
+                  onChange={e => setFormSourceNode(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-primary)',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <option value="">Select a node...</option>
+                  {availableNodes.map(node => (
+                    <option key={node.id} value={node.node_name}>{node.node_name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {editingSub && (
+              <div style={{ marginBottom: '16px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                Node: <span style={{ color: 'var(--accent-purple)' }}>{editingSub.source_node}</span>
+              </div>
+            )}
+
+            {/* Category checkboxes */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CATEGORIES TO RECEIVE</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {availableCategories.map(cat => (
+                  <label key={cat} style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    cursor: 'pointer', color: 'var(--text-secondary)', fontFamily: 'monospace',
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={formCategories[cat] || false}
+                      onChange={e => setFormCategories(prev => ({ ...prev, [cat]: e.target.checked }))}
+                      style={{ accentColor: 'var(--accent-purple)' }}
+                    />
+                    {cat}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowAddModal(false)} style={{
+                padding: isMobile ? '10px 16px' : '8px 14px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'transparent',
+                border: '1px solid var(--border-secondary)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.8rem',
+              }}>CANCEL</button>
+              <button onClick={handleSave} disabled={saving} style={{
+                padding: isMobile ? '10px 16px' : '8px 14px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'var(--accent-purple)20',
+                border: '1px solid var(--accent-purple)',
+                color: 'var(--accent-purple)',
+                cursor: saving ? 'not-allowed' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.8rem',
+                opacity: saving ? 0.6 : 1,
+              }}>{saving ? 'SAVING...' : (editingSub ? 'UPDATE' : 'SUBSCRIBE')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ============ FEDERATION ADMIN PANEL ============
 const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0 }) => {
   const [status, setStatus] = useState(null);
@@ -11469,6 +12463,12 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           {/* Crawl Bar Admin Panel */}
           <CrawlBarAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
 
+          {/* Alerts Admin Panel */}
+          <AlertsAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+
+          {/* Alert Subscriptions Panel */}
+          <AlertSubscriptionsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+
           {/* Federation Admin Panel */}
           <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} />
         </div>
@@ -11909,6 +12909,7 @@ function MainApp() {
   const [federationRequestsRefresh, setFederationRequestsRefresh] = useState(0); // Increment to refresh federation requests
   const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0); // Increment to refresh notifications
   const [waveNotifications, setWaveNotifications] = useState({}); // Notification counts/types by wave ID
+  const [selectedAlert, setSelectedAlert] = useState(null); // Alert to show in detail modal
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -12181,6 +13182,18 @@ function MainApp() {
       return false;
     }
   }, [fetchAPI, loadBlockedMutedUsers]);
+
+  // Dismiss alert handler
+  const handleDismissAlert = useCallback(async (alertId) => {
+    try {
+      await fetchAPI(`/alerts/${alertId}/dismiss`, { method: 'POST' });
+      // The crawl bar will refresh on its own interval, but we can show a toast
+      showToastMsg('Alert dismissed', 'success');
+    } catch (e) {
+      console.error('Failed to dismiss alert:', e);
+      showToastMsg('Failed to dismiss alert', 'error');
+    }
+  }, [fetchAPI, showToastMsg]);
 
   // Focus View handlers
   const handleFocusDroplet = useCallback((waveId, droplet) => {
@@ -12535,6 +13548,7 @@ function MainApp() {
           enabled={user?.preferences?.crawlBar?.enabled !== false}
           userPrefs={user?.preferences?.crawlBar || {}}
           isMobile={isMobile}
+          onAlertClick={setSelectedAlert}
         />
       )}
 
@@ -12740,6 +13754,14 @@ function MainApp() {
       />
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* Alert Detail Modal */}
+      <AlertDetailModal
+        alert={selectedAlert}
+        onClose={() => setSelectedAlert(null)}
+        onDismiss={handleDismissAlert}
+        isMobile={isMobile}
+      />
 
       {/* PWA Components */}
       <OfflineIndicator />

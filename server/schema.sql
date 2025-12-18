@@ -1,5 +1,5 @@
 -- Cortex SQLite Database Schema
--- Version 1.14.0
+-- Version 1.16.0
 
 -- ============ Users ============
 CREATE TABLE IF NOT EXISTS users (
@@ -599,6 +599,66 @@ CREATE TABLE IF NOT EXISTS crawl_cache (
 
 CREATE INDEX IF NOT EXISTS idx_crawl_cache_type ON crawl_cache(cache_type);
 CREATE INDEX IF NOT EXISTS idx_crawl_cache_expires ON crawl_cache(expires_at);
+
+-- ============ Alert Droplets (v1.16.0) ============
+
+-- Admin-created alerts that display in crawl bar
+CREATE TABLE IF NOT EXISTS alerts (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'info',    -- info, warning, critical
+    category TEXT NOT NULL DEFAULT 'system',  -- system, announcement, emergency
+    scope TEXT NOT NULL DEFAULT 'local',      -- local, federated
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    created_by TEXT REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    updated_at TEXT,
+    -- Federation tracking (NULL if local, populated if received from federated server)
+    origin_node TEXT,
+    origin_alert_id TEXT,
+    UNIQUE (origin_node, origin_alert_id)
+);
+
+-- Subscriptions: what alert categories we subscribe to from other servers
+CREATE TABLE IF NOT EXISTS alert_subscriptions (
+    id TEXT PRIMARY KEY,
+    source_node TEXT NOT NULL UNIQUE,         -- Node we're subscribing to
+    categories TEXT NOT NULL DEFAULT '[]',    -- JSON array: ["system","emergency"]
+    status TEXT NOT NULL DEFAULT 'active',    -- active, paused
+    created_by TEXT REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+);
+
+-- Subscribers: who subscribes to our alerts (populated by federation inbox)
+CREATE TABLE IF NOT EXISTS alert_subscribers (
+    id TEXT PRIMARY KEY,
+    subscriber_node TEXT NOT NULL UNIQUE,     -- Node subscribing to us
+    categories TEXT NOT NULL DEFAULT '[]',    -- JSON array
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+);
+
+-- Per-user alert dismissals
+CREATE TABLE IF NOT EXISTS alert_dismissals (
+    alert_id TEXT NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    dismissed_at TEXT NOT NULL,
+    PRIMARY KEY (alert_id, user_id)
+);
+
+-- Alert indexes
+CREATE INDEX IF NOT EXISTS idx_alerts_active ON alerts(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_alerts_priority ON alerts(priority);
+CREATE INDEX IF NOT EXISTS idx_alerts_category ON alerts(category);
+CREATE INDEX IF NOT EXISTS idx_alerts_scope ON alerts(scope);
+CREATE INDEX IF NOT EXISTS idx_alerts_origin ON alerts(origin_node);
+CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_source ON alert_subscriptions(source_node);
+CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_status ON alert_subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_alert_subscribers_node ON alert_subscribers(subscriber_node);
+CREATE INDEX IF NOT EXISTS idx_alert_dismissals_user ON alert_dismissals(user_id);
 
 -- ============ Full-Text Search ============
 

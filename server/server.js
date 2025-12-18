@@ -5781,7 +5781,25 @@ app.get('/api/crawl/all', authenticateToken, crawlLimiter, async (req, res) => {
     stocks: { enabled: false, data: [] },
     weather: { enabled: false, data: null, location: null },
     news: { enabled: false, data: [] },
+    alerts: { enabled: true, data: [] },
   };
+
+  // Fetch active alerts for this user (synchronous, no API call)
+  try {
+    const alerts = db.getActiveAlerts(userId);
+    result.alerts.data = alerts.map(a => ({
+      id: a.id,
+      title: a.title,
+      content: a.content,
+      priority: a.priority,
+      category: a.category,
+      startTime: a.start_time,
+      endTime: a.end_time,
+      originNode: a.origin_node
+    }));
+  } catch (err) {
+    console.error('Crawl alerts error:', err.message);
+  }
 
   const promises = [];
 
@@ -5881,6 +5899,454 @@ app.put('/api/profile/crawl-preferences', authenticateToken, (req, res) => {
   db.updateUserPreferences(userId, updatedPrefs);
 
   res.json({ success: true, crawlBar });
+});
+
+// ============ Alert Endpoints (v1.16.0) ============
+
+// Get all alerts (admin only)
+app.get('/api/admin/alerts', authenticateToken, (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const { limit = 50, offset = 0, status = 'all' } = req.query;
+  const alerts = db.getAllAlerts({
+    limit: parseInt(limit, 10),
+    offset: parseInt(offset, 10),
+    status
+  });
+
+  res.json({ alerts });
+});
+
+// Create alert (admin only)
+app.post('/api/admin/alerts', authenticateToken, async (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const { title, content, priority, category, scope, startTime, endTime } = req.body;
+
+  // Validation
+  if (!title || title.length > 100) {
+    return res.status(400).json({ error: 'Title is required (max 100 characters)' });
+  }
+  if (!content || content.length > 1000) {
+    return res.status(400).json({ error: 'Content is required (max 1000 characters)' });
+  }
+  if (!['info', 'warning', 'critical'].includes(priority)) {
+    return res.status(400).json({ error: 'Priority must be info, warning, or critical' });
+  }
+  if (!['system', 'announcement', 'emergency'].includes(category)) {
+    return res.status(400).json({ error: 'Category must be system, announcement, or emergency' });
+  }
+  if (!['local', 'federated'].includes(scope)) {
+    return res.status(400).json({ error: 'Scope must be local or federated' });
+  }
+  if (!startTime || !endTime) {
+    return res.status(400).json({ error: 'Start time and end time are required' });
+  }
+
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    return res.status(400).json({ error: 'Invalid date format' });
+  }
+  if (end <= start) {
+    return res.status(400).json({ error: 'End time must be after start time' });
+  }
+
+  // Sanitize content
+  const sanitizedContent = sanitizeHtml(content, {
+    allowedTags: ['b', 'i', 'em', 'strong', 'a', 'br'],
+    allowedAttributes: { a: ['href', 'target'] }
+  });
+
+  const alert = db.createAlert({
+    title: title.trim(),
+    content: sanitizedContent,
+    priority,
+    category,
+    scope,
+    startTime: start.toISOString(),
+    endTime: end.toISOString(),
+    createdBy: admin.id
+  });
+
+  console.log(`📢 Alert created: "${alert.title}" by ${admin.handle} (${scope}, ${priority})`);
+
+  // If federated, broadcast to subscribers
+  if (scope === 'federated' && FEDERATION_ENABLED) {
+    const subscribers = db.getSubscribersForCategory(category);
+    console.log(`📡 Broadcasting alert to ${subscribers.length} subscribers`);
+
+    for (const sub of subscribers) {
+      const node = db.getFederationNodeByName(sub.subscriberNode);
+      if (node?.status === 'active') {
+        const messageId = `alert-broadcast-${alert.id}-${Date.now()}`;
+        const payload = {
+          id: messageId,
+          type: 'alert_broadcast',
+          payload: {
+            alertId: alert.id,
+            title: alert.title,
+            content: alert.content,
+            priority: alert.priority,
+            category: alert.category,
+            startTime: alert.startTime,
+            endTime: alert.endTime,
+            originNode: db.getServerIdentity()?.nodeName
+          }
+        };
+
+        try {
+          await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
+          console.log(`✅ Alert broadcast to ${sub.subscriberNode}`);
+        } catch (err) {
+          console.error(`❌ Failed to broadcast alert to ${sub.subscriberNode}:`, err.message);
+          // Queue for retry
+          db.queueFederationMessage({
+            targetNode: sub.subscriberNode,
+            messageType: 'alert_broadcast',
+            payload
+          });
+        }
+      }
+    }
+  }
+
+  res.json({ success: true, alert });
+});
+
+// Update alert (admin only)
+app.put('/api/admin/alerts/:id', authenticateToken, async (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const alertId = req.params.id;
+  const existingAlert = db.getAlert(alertId);
+  if (!existingAlert) {
+    return res.status(404).json({ error: 'Alert not found' });
+  }
+
+  const { title, content, priority, category, scope, startTime, endTime } = req.body;
+  const updates = {};
+
+  if (title !== undefined) {
+    if (title.length > 100) {
+      return res.status(400).json({ error: 'Title max 100 characters' });
+    }
+    updates.title = title.trim();
+  }
+  if (content !== undefined) {
+    if (content.length > 1000) {
+      return res.status(400).json({ error: 'Content max 1000 characters' });
+    }
+    updates.content = sanitizeHtml(content, {
+      allowedTags: ['b', 'i', 'em', 'strong', 'a', 'br'],
+      allowedAttributes: { a: ['href', 'target'] }
+    });
+  }
+  if (priority !== undefined) {
+    if (!['info', 'warning', 'critical'].includes(priority)) {
+      return res.status(400).json({ error: 'Invalid priority' });
+    }
+    updates.priority = priority;
+  }
+  if (category !== undefined) {
+    if (!['system', 'announcement', 'emergency'].includes(category)) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
+    updates.category = category;
+  }
+  if (scope !== undefined) {
+    if (!['local', 'federated'].includes(scope)) {
+      return res.status(400).json({ error: 'Invalid scope' });
+    }
+    updates.scope = scope;
+  }
+  if (startTime !== undefined) {
+    const start = new Date(startTime);
+    if (isNaN(start.getTime())) {
+      return res.status(400).json({ error: 'Invalid start time' });
+    }
+    updates.startTime = start.toISOString();
+  }
+  if (endTime !== undefined) {
+    const end = new Date(endTime);
+    if (isNaN(end.getTime())) {
+      return res.status(400).json({ error: 'Invalid end time' });
+    }
+    updates.endTime = end.toISOString();
+  }
+
+  const alert = db.updateAlert(alertId, updates);
+  console.log(`📝 Alert updated: "${alert.title}" by ${admin.handle}`);
+
+  // If federated, broadcast update to subscribers
+  if (alert.scope === 'federated' && FEDERATION_ENABLED) {
+    const subscribers = db.getSubscribersForCategory(alert.category);
+    for (const sub of subscribers) {
+      const node = db.getFederationNodeByName(sub.subscriberNode);
+      if (node?.status === 'active') {
+        const messageId = `alert-update-${alert.id}-${Date.now()}`;
+        const payload = {
+          id: messageId,
+          type: 'alert_update',
+          payload: {
+            alertId: alert.id,
+            originNode: db.getServerIdentity()?.nodeName,
+            updates: {
+              title: alert.title,
+              content: alert.content,
+              priority: alert.priority,
+              category: alert.category,
+              startTime: alert.startTime,
+              endTime: alert.endTime
+            }
+          }
+        };
+
+        try {
+          await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
+        } catch (err) {
+          db.queueFederationMessage({
+            targetNode: sub.subscriberNode,
+            messageType: 'alert_update',
+            payload
+          });
+        }
+      }
+    }
+  }
+
+  res.json({ success: true, alert });
+});
+
+// Delete alert (admin only)
+app.delete('/api/admin/alerts/:id', authenticateToken, async (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const alertId = req.params.id;
+  const alert = db.getAlert(alertId);
+  if (!alert) {
+    return res.status(404).json({ error: 'Alert not found' });
+  }
+
+  // If federated, notify subscribers before deletion
+  if (alert.scope === 'federated' && FEDERATION_ENABLED) {
+    const subscribers = db.getSubscribersForCategory(alert.category);
+    for (const sub of subscribers) {
+      const node = db.getFederationNodeByName(sub.subscriberNode);
+      if (node?.status === 'active') {
+        const messageId = `alert-delete-${alert.id}-${Date.now()}`;
+        const payload = {
+          id: messageId,
+          type: 'alert_delete',
+          payload: {
+            alertId: alert.id,
+            originNode: db.getServerIdentity()?.nodeName
+          }
+        };
+
+        try {
+          await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
+        } catch (err) {
+          // Don't queue delete messages - if they fail, the alert will expire naturally
+          console.error(`Failed to send alert deletion to ${sub.subscriberNode}:`, err.message);
+        }
+      }
+    }
+  }
+
+  db.deleteAlert(alertId);
+  console.log(`🗑️ Alert deleted: "${alert.title}" by ${admin.handle}`);
+
+  res.json({ success: true });
+});
+
+// Get active alerts for current user (for crawl bar)
+app.get('/api/alerts/active', authenticateToken, (req, res) => {
+  const alerts = db.getActiveAlerts(req.user.userId);
+  res.json({ alerts });
+});
+
+// Dismiss an alert for current user
+app.post('/api/alerts/:id/dismiss', authenticateToken, (req, res) => {
+  const alertId = req.params.id;
+  const alert = db.getAlert(alertId);
+
+  if (!alert) {
+    return res.status(404).json({ error: 'Alert not found' });
+  }
+
+  db.dismissAlert(alertId, req.user.userId);
+  res.json({ success: true });
+});
+
+// ============ Alert Subscription Endpoints (v1.16.0) ============
+
+// Get all alert subscriptions (admin only)
+app.get('/api/admin/alert-subscriptions', authenticateToken, (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const subscriptions = db.getAllAlertSubscriptions();
+  res.json({ subscriptions });
+});
+
+// Subscribe to alerts from a federated node (admin only)
+app.post('/api/admin/alert-subscriptions', authenticateToken, async (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const { sourceNode, categories } = req.body;
+
+  if (!sourceNode) {
+    return res.status(400).json({ error: 'Source node is required' });
+  }
+  if (!Array.isArray(categories) || categories.length === 0) {
+    return res.status(400).json({ error: 'At least one category is required' });
+  }
+
+  // Validate categories
+  const validCategories = ['system', 'announcement', 'emergency'];
+  for (const cat of categories) {
+    if (!validCategories.includes(cat)) {
+      return res.status(400).json({ error: `Invalid category: ${cat}` });
+    }
+  }
+
+  // Check if already subscribed
+  const existing = db.getAlertSubscriptionByNode(sourceNode);
+  if (existing) {
+    return res.status(400).json({ error: 'Already subscribed to this node' });
+  }
+
+  // Verify node exists in federation
+  const node = db.getFederationNodeByName(sourceNode);
+  if (!node || node.status !== 'active') {
+    return res.status(400).json({ error: 'Node is not an active federation partner' });
+  }
+
+  const subscription = db.createAlertSubscription({
+    sourceNode,
+    categories,
+    createdBy: admin.id
+  });
+
+  // Notify the source node that we're subscribing
+  if (FEDERATION_ENABLED) {
+    const messageId = `alert-subscribe-${Date.now()}`;
+    const payload = {
+      id: messageId,
+      type: 'alert_subscribe',
+      payload: {
+        subscriberNode: db.getServerIdentity()?.nodeName,
+        categories
+      }
+    };
+
+    try {
+      await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
+      console.log(`📡 Subscribed to alerts from ${sourceNode}: ${categories.join(', ')}`);
+    } catch (err) {
+      console.error(`Failed to notify ${sourceNode} of subscription:`, err.message);
+      // Continue anyway - subscription is local, notifications are best-effort
+    }
+  }
+
+  res.json({ success: true, subscription });
+});
+
+// Update alert subscription (admin only)
+app.put('/api/admin/alert-subscriptions/:id', authenticateToken, async (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const subscriptionId = req.params.id;
+  const existing = db.getAlertSubscription(subscriptionId);
+  if (!existing) {
+    return res.status(404).json({ error: 'Subscription not found' });
+  }
+
+  const { categories, status } = req.body;
+  const updates = {};
+
+  if (categories !== undefined) {
+    if (!Array.isArray(categories) || categories.length === 0) {
+      return res.status(400).json({ error: 'At least one category is required' });
+    }
+    const validCategories = ['system', 'announcement', 'emergency'];
+    for (const cat of categories) {
+      if (!validCategories.includes(cat)) {
+        return res.status(400).json({ error: `Invalid category: ${cat}` });
+      }
+    }
+    updates.categories = categories;
+  }
+
+  if (status !== undefined) {
+    if (!['active', 'paused'].includes(status)) {
+      return res.status(400).json({ error: 'Status must be active or paused' });
+    }
+    updates.status = status;
+  }
+
+  const subscription = db.updateAlertSubscription(subscriptionId, updates);
+  res.json({ success: true, subscription });
+});
+
+// Delete alert subscription (admin only)
+app.delete('/api/admin/alert-subscriptions/:id', authenticateToken, async (req, res) => {
+  const admin = db.findUserById(req.user.userId);
+  if (!admin || !admin.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const subscriptionId = req.params.id;
+  const subscription = db.getAlertSubscription(subscriptionId);
+  if (!subscription) {
+    return res.status(404).json({ error: 'Subscription not found' });
+  }
+
+  // Notify the source node that we're unsubscribing
+  if (FEDERATION_ENABLED) {
+    const node = db.getFederationNodeByName(subscription.sourceNode);
+    if (node?.status === 'active') {
+      const messageId = `alert-unsubscribe-${Date.now()}`;
+      const payload = {
+        id: messageId,
+        type: 'alert_unsubscribe',
+        payload: {
+          subscriberNode: db.getServerIdentity()?.nodeName
+        }
+      };
+
+      try {
+        await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
+        console.log(`📡 Unsubscribed from alerts from ${subscription.sourceNode}`);
+      } catch (err) {
+        console.error(`Failed to notify ${subscription.sourceNode} of unsubscription:`, err.message);
+      }
+    }
+  }
+
+  db.deleteAlertSubscription(subscriptionId);
+  res.json({ success: true });
 });
 
 // ============ Rich Media Embed Endpoints ============
@@ -8106,6 +8572,115 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
           });
         }
         break;
+
+      case 'alert_subscribe': {
+        // Remote server wants to subscribe to our alerts
+        // payload: { categories: ['system', 'emergency'] }
+        console.log(`📨 Alert subscription request from ${sourceNode.nodeName}`);
+        const { categories } = payload;
+        if (!Array.isArray(categories) || categories.length === 0) {
+          console.error('Invalid alert_subscribe payload: missing categories');
+          break;
+        }
+        // Add or update subscriber
+        db.addAlertSubscriber(sourceNode.nodeName, categories);
+        console.log(`✅ ${sourceNode.nodeName} subscribed to alert categories: ${categories.join(', ')}`);
+        break;
+      }
+
+      case 'alert_unsubscribe': {
+        // Remote server wants to unsubscribe from our alerts
+        console.log(`📨 Alert unsubscription from ${sourceNode.nodeName}`);
+        db.removeAlertSubscriber(sourceNode.nodeName);
+        console.log(`✅ ${sourceNode.nodeName} unsubscribed from alerts`);
+        break;
+      }
+
+      case 'alert_broadcast': {
+        // Receiving an alert from a server we're subscribed to
+        // payload: { alertId, title, content, priority, category, startTime, endTime, originNode }
+        console.log(`📨 Alert broadcast from ${sourceNode.nodeName}`);
+        const { alertId, title, content, priority, category, startTime, endTime, originNode } = payload;
+
+        // Verify we're subscribed to this category from this node
+        const subscription = db.getAlertSubscriptionByNode(sourceNode.nodeName);
+        if (!subscription || subscription.status !== 'active') {
+          console.error(`Received alert from ${sourceNode.nodeName} but not subscribed`);
+          break;
+        }
+        const subscribedCategories = JSON.parse(subscription.categories || '[]');
+        if (!subscribedCategories.includes(category)) {
+          console.error(`Received alert category '${category}' but not subscribed to it`);
+          break;
+        }
+
+        // Check if we already have this alert
+        const existing = db.getAlertByOrigin(originNode || sourceNode.nodeName, alertId);
+        if (existing) {
+          console.log(`Alert ${alertId} from ${originNode || sourceNode.nodeName} already exists`);
+          break;
+        }
+
+        // Create the federated alert locally
+        const sanitizedContent = sanitizeHtml(content || '', sanitizeOptions);
+        db.createAlert({
+          title: sanitizeHtml(title || '', { allowedTags: [], allowedAttributes: {} }),
+          content: sanitizedContent,
+          priority: ['info', 'warning', 'critical'].includes(priority) ? priority : 'info',
+          category: ['system', 'announcement', 'emergency'].includes(category) ? category : 'system',
+          scope: 'local', // Don't re-federate
+          startTime: startTime || new Date().toISOString(),
+          endTime: endTime || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          createdBy: null, // No local creator for federated alerts
+          originNode: originNode || sourceNode.nodeName,
+          originAlertId: alertId,
+        });
+        console.log(`✅ Created federated alert '${title}' from ${originNode || sourceNode.nodeName}`);
+        break;
+      }
+
+      case 'alert_update': {
+        // Receiving an alert update from a server we're subscribed to
+        console.log(`📨 Alert update from ${sourceNode.nodeName}`);
+        const { alertId, title, content, priority, startTime, endTime, originNode } = payload;
+
+        // Find the local copy of this alert
+        const existing = db.getAlertByOrigin(originNode || sourceNode.nodeName, alertId);
+        if (!existing) {
+          console.error(`Alert update for unknown alert ${alertId} from ${originNode || sourceNode.nodeName}`);
+          break;
+        }
+
+        // Update it
+        const updates = {};
+        if (title) updates.title = sanitizeHtml(title, { allowedTags: [], allowedAttributes: {} });
+        if (content) updates.content = sanitizeHtml(content, sanitizeOptions);
+        if (priority && ['info', 'warning', 'critical'].includes(priority)) updates.priority = priority;
+        if (startTime) updates.startTime = startTime;
+        if (endTime) updates.endTime = endTime;
+
+        if (Object.keys(updates).length > 0) {
+          db.updateAlert(existing.id, updates);
+          console.log(`✅ Updated federated alert '${existing.title}'`);
+        }
+        break;
+      }
+
+      case 'alert_delete': {
+        // Receiving an alert deletion from a server we're subscribed to
+        console.log(`📨 Alert deletion from ${sourceNode.nodeName}`);
+        const { alertId, originNode } = payload;
+
+        // Find and delete the local copy
+        const existing = db.getAlertByOrigin(originNode || sourceNode.nodeName, alertId);
+        if (existing) {
+          db.deleteAlert(existing.id);
+          console.log(`✅ Deleted federated alert '${existing.title}'`);
+        } else {
+          console.log(`Alert ${alertId} from ${originNode || sourceNode.nodeName} not found locally`);
+        }
+        break;
+      }
 
       case 'ping':
         // Simple connectivity test
