@@ -5337,10 +5337,18 @@ app.put('/api/admin/crawl/config', authenticateToken, (req, res) => {
     news_enabled, newsEnabled
   } = req.body;
 
+  // Validate defaultLocation has required lat/lon if provided
+  const locationInput = default_location || defaultLocation;
+  if (locationInput) {
+    if (typeof locationInput.lat !== 'number' || typeof locationInput.lon !== 'number') {
+      return res.status(400).json({ error: 'Default location must include valid lat and lon coordinates' });
+    }
+  }
+
   const config = db.updateCrawlConfig({
     stockSymbols: stock_symbols || stockSymbols,
     newsSources: news_sources || newsSources,
-    defaultLocation: default_location || defaultLocation,
+    defaultLocation: locationInput,
     stockRefreshInterval: stock_refresh_interval || stockRefreshInterval,
     weatherRefreshInterval: weather_refresh_interval || weatherRefreshInterval,
     newsRefreshInterval: news_refresh_interval || newsRefreshInterval,
@@ -5425,12 +5433,9 @@ app.get('/api/crawl/weather', authenticateToken, crawlLimiter, async (req, res) 
     location = config.defaultLocation;
   }
 
+  // If stored default location has invalid coordinates, use hardcoded fallback
   if (!location?.lat || !location?.lon) {
-    return res.json({
-      enabled: true,
-      weather: null,
-      error: 'Location not available'
-    });
+    location = { lat: 40.7128, lon: -74.006, name: 'New York, NY' };
   }
 
   const weather = await fetchWeather(location.lat, location.lon);
@@ -5510,15 +5515,17 @@ app.get('/api/crawl/all', authenticateToken, crawlLimiter, async (req, res) => {
         if (!location) {
           location = config.defaultLocation;
         }
-
-        if (location?.lat && location?.lon) {
-          const weather = await fetchWeather(location.lat, location.lon);
-          result.weather = {
-            enabled: true,
-            data: weather,
-            location: { name: location.name, lat: location.lat, lon: location.lon }
-          };
+        // Hardcoded fallback if stored location has invalid coordinates
+        if (!location?.lat || !location?.lon) {
+          location = { lat: 40.7128, lon: -74.006, name: 'New York, NY' };
         }
+
+        const weather = await fetchWeather(location.lat, location.lon);
+        result.weather = {
+          enabled: true,
+          data: weather,
+          location: { name: location.name, lat: location.lat, lon: location.lon }
+        };
       })().catch(err => {
         console.error('Crawl weather error:', err.message);
       })
@@ -5545,7 +5552,9 @@ app.get('/api/crawl/all', authenticateToken, crawlLimiter, async (req, res) => {
 
 // Update user's crawl bar preferences
 app.put('/api/profile/crawl-preferences', authenticateToken, (req, res) => {
-  const { enabled, location, showStocks, showWeather, showNews, scrollSpeed } = req.body;
+  // Support both nested crawlBar object and flat properties
+  const input = req.body.crawlBar || req.body;
+  const { enabled, location, showStocks, showWeather, showNews, scrollSpeed } = input;
 
   const userId = req.user.userId;
   const user = db.findUserById(userId);
