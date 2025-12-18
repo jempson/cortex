@@ -1625,9 +1625,9 @@ const Toast = ({ message, type = 'info', onClose }) => {
 
 // ============ CRAWL BAR COMPONENT ============
 const CRAWL_SCROLL_SPEEDS = {
-  slow: 45,     // seconds for full scroll
-  normal: 30,
-  fast: 18,
+  slow: 60,     // seconds for full scroll - leisurely pace
+  normal: 45,   // comfortable reading speed
+  fast: 30,     // quicker but still readable
 };
 
 const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }) => {
@@ -1635,20 +1635,56 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const scrollRef = useRef(null);
+  const animationRef = useRef(null);
+  const [contentWidth, setContentWidth] = useState(0);
 
   const scrollSpeed = CRAWL_SCROLL_SPEEDS[userPrefs.scrollSpeed || 'normal'];
 
-  // Fetch crawl data
+  // Fetch crawl data without resetting animation (using Web Animations API)
   const loadData = useCallback(async () => {
     try {
+      // Save current animation time before update
+      let savedTime = 0;
+      if (animationRef.current) {
+        savedTime = animationRef.current.currentTime || 0;
+      }
+
       const result = await fetchAPI('/crawl/all');
       setData(result);
+
+      // Restore animation position after React re-render
+      requestAnimationFrame(() => {
+        if (scrollRef.current && savedTime > 0) {
+          // Re-measure content width in case it changed
+          const newContentWidth = scrollRef.current.scrollWidth / 2;
+
+          // Cancel existing animation if any
+          if (animationRef.current) {
+            animationRef.current.cancel();
+          }
+          // Create new animation and restore position
+          const anim = scrollRef.current.animate(
+            [
+              { transform: 'translateX(0px)' },
+              { transform: `translateX(-${newContentWidth}px)` }
+            ],
+            {
+              duration: scrollSpeed * 1000,
+              iterations: Infinity,
+              easing: 'linear'
+            }
+          );
+          anim.currentTime = savedTime;
+          animationRef.current = anim;
+          setContentWidth(newContentWidth);
+        }
+      });
     } catch (err) {
       console.error('Crawl bar error:', err);
     } finally {
       setLoading(false);
     }
-  }, [fetchAPI]);
+  }, [fetchAPI, scrollSpeed]);
 
   // Initial load and polling
   useEffect(() => {
@@ -1658,6 +1694,63 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }
     const interval = setInterval(loadData, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [enabled, loadData]);
+
+  // Measure content width for pixel-perfect seamless looping
+  useEffect(() => {
+    if (!scrollRef.current || loading) return;
+
+    // Measure the width of one set of items (half the total since content is duplicated)
+    const measureWidth = () => {
+      if (scrollRef.current) {
+        const totalWidth = scrollRef.current.scrollWidth;
+        setContentWidth(totalWidth / 2); // Half because content is duplicated
+      }
+    };
+
+    measureWidth();
+    // Re-measure on window resize
+    window.addEventListener('resize', measureWidth);
+    return () => window.removeEventListener('resize', measureWidth);
+  }, [loading, data]);
+
+  // Initialize WAAPI animation when content width is known
+  useEffect(() => {
+    if (!scrollRef.current || loading || contentWidth === 0) return;
+
+    // Create animation using pixel-based translation for seamless loop
+    if (!animationRef.current) {
+      const anim = scrollRef.current.animate(
+        [
+          { transform: 'translateX(0px)' },
+          { transform: `translateX(-${contentWidth}px)` }
+        ],
+        {
+          duration: scrollSpeed * 1000,
+          iterations: Infinity,
+          easing: 'linear'
+        }
+      );
+      animationRef.current = anim;
+    }
+
+    return () => {
+      if (animationRef.current) {
+        animationRef.current.cancel();
+        animationRef.current = null;
+      }
+    };
+  }, [loading, scrollSpeed, contentWidth]);
+
+  // Handle pause/resume
+  useEffect(() => {
+    if (animationRef.current) {
+      if (isPaused) {
+        animationRef.current.pause();
+      } else {
+        animationRef.current.play();
+      }
+    }
+  }, [isPaused]);
 
   if (!enabled) {
     return null;
@@ -1726,15 +1819,19 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }
       ),
     });
 
-    // Weather alerts - clickable link to weather.gov
+    // Weather alerts - clickable link to location-specific NWS forecast page
     if (hasAlerts) {
+      const alertUrl = location?.lat && location?.lon
+        ? `https://forecast.weather.gov/MapClick.php?lat=${location.lat}&lon=${location.lon}`
+        : 'https://www.weather.gov/alerts';
+
       weather.alerts.slice(0, 2).forEach((alert, i) => {
         items.push({
           type: 'alert',
           key: `alert-${i}`,
           content: (
             <a
-              href="https://www.weather.gov/alerts"
+              href={alertUrl}
               target="_blank"
               rel="noopener noreferrer"
               style={{ textDecoration: 'none', color: 'var(--accent-orange)' }}
@@ -1802,12 +1899,7 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }
       onTouchStart={() => setIsPaused(true)}
       onTouchEnd={() => setIsPaused(false)}
     >
-      <style>{`
-        @keyframes crawl-scroll {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-      `}</style>
+      {/* Animation controlled via Web Animations API for seamless data refresh */}
 
       {loading && items.length === 0 ? (
         <div style={{
@@ -1827,8 +1919,7 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }
             alignItems: 'center',
             height: '100%',
             whiteSpace: 'nowrap',
-            animation: `crawl-scroll ${scrollSpeed}s linear infinite`,
-            animationPlayState: isPaused ? 'paused' : 'running',
+            // Animation controlled via Web Animations API (see useEffect above)
           }}
         >
           {allItems.map((item, index) => (
@@ -3157,7 +3248,6 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
   const hasChildren = message.children?.length > 0;
   const isCollapsed = collapsed[message.id];
-  const indentSize = isMobile ? 12 : 24;
   const isDeleted = message.deleted;
   const canDelete = !isDeleted && message.author_id === currentUserId;
   const isEditing = !isDeleted && editingMessageId === message.id;
@@ -3204,7 +3294,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
     const rippledToId = message.brokenOutTo || message.rippledTo;
     const rippledToTitle = message.brokenOutToTitle || message.rippledToTitle || 'New Wave';
     return (
-      <div data-message-id={message.id} className={isReply ? 'thread-connector' : ''}>
+      <div data-message-id={message.id}>
         <RippledLinkCard
           droplet={message}
           waveTitle={rippledToTitle}
@@ -3219,12 +3309,18 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
     );
   }
 
+  // Reduce padding for nested droplets to avoid cramped views
+  const basePadding = depth === 0
+    ? (isMobile ? '10px 12px' : '12px 16px')
+    : (isMobile ? '8px 10px' : '10px 12px');
+
   return (
-    <div data-message-id={message.id} className={isReply ? 'thread-connector' : ''}>
+    <div data-message-id={message.id}>
       <div
         onClick={handleMessageClick}
         style={{
-          padding: isMobile ? '10px 12px' : '12px 16px', marginBottom: '8px',
+          padding: basePadding,
+          marginBottom: depth === 0 ? '8px' : '6px',
           background: isDeleted ? 'var(--bg-base)' : isHighlighted ? `${config.color}20` : isUnread ? 'var(--accent-amber)10' : 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
           border: `1px solid ${isDeleted ? 'var(--border-subtle)' : isHighlighted ? config.color : isUnread ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
           borderLeft: `3px solid ${isDeleted ? 'var(--text-muted)' : isUnread ? 'var(--accent-amber)' : config.color}`,
@@ -3599,21 +3695,28 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             </div>
           </details>
         )}
+
+        {/* Nested replies rendered INSIDE parent droplet */}
+        {hasChildren && !isCollapsed && (
+          <div style={{
+            marginTop: '10px',
+            marginLeft: isMobile ? '6px' : '10px',
+            paddingLeft: isMobile ? '8px' : '12px',
+            borderLeft: '2px solid var(--border-primary)',
+          }}>
+            {message.children.map(child => (
+              <Droplet key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
+                onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
+                editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
+                currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
+                onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
+                participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport}
+                onFocus={onFocus} onRipple={onRipple} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
+                unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} />
+            ))}
+          </div>
+        )}
       </div>
-      {hasChildren && !isCollapsed && (
-        <div style={{ borderLeft: '1px solid var(--border-primary)', marginLeft: `${indentSize}px` }}>
-          {message.children.map(child => (
-            <Droplet key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
-              onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
-              editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
-              currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
-              onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
-              participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport}
-              onFocus={onFocus} onRipple={onRipple} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
-              unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} />
-          ))}
-        </div>
-      )}
       {lightboxImage && (
         <ImageLightbox src={lightboxImage} onClose={() => setLightboxImage(null)} />
       )}

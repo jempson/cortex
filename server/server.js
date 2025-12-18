@@ -5710,8 +5710,13 @@ app.get('/api/crawl/weather', authenticateToken, crawlLimiter, async (req, res) 
   const prefs = user?.preferences || {};
   const crawlPrefs = prefs.crawlBar || {};
 
-  // Priority: user location > IP geolocation > server default
+  // Priority: user location > user locationName (geocoded) > IP geolocation > server default
   let location = crawlPrefs.location;
+
+  // If user has a locationName but no geocoded location, geocode it now
+  if (!location && crawlPrefs.locationName) {
+    location = await geocodeLocation(crawlPrefs.locationName);
+  }
 
   // Try IP geolocation if no user location
   if (!location) {
@@ -5800,13 +5805,23 @@ app.get('/api/crawl/all', authenticateToken, crawlLimiter, async (req, res) => {
     promises.push(
       (async () => {
         let location = crawlPrefs.location;
+
+        // If user has a locationName but no geocoded location, geocode it now
+        if (!location && crawlPrefs.locationName) {
+          location = await geocodeLocation(crawlPrefs.locationName);
+        }
+
+        // Try IP geolocation if no user location
         if (!location) {
           const clientIP = getClientIP(req);
           location = await getLocationFromIP(clientIP);
         }
+
+        // Fall back to server default
         if (!location) {
           location = config.defaultLocation;
         }
+
         // Hardcoded fallback if stored location has invalid coordinates
         if (!location?.lat || !location?.lon) {
           location = { lat: 40.7128, lon: -74.006, name: 'New York, NY' };
