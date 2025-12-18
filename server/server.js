@@ -504,6 +504,46 @@ async function fetchStockQuote(symbol) {
   }
 }
 
+// Geocode location name to coordinates using OpenWeatherMap
+async function geocodeLocation(locationName) {
+  if (!OPENWEATHERMAP_API_KEY || !locationName) return null;
+
+  const cacheKey = locationName.toLowerCase().trim();
+  const cached = getCrawlCache('geocode', cacheKey);
+  if (cached) return cached;
+
+  try {
+    // OpenWeatherMap Geocoding API - supports "City, Country" format
+    const url = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(locationName)}&limit=1&appid=${OPENWEATHERMAP_API_KEY}`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      console.error(`Geocoding API error:`, response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    if (!data || data.length === 0) {
+      console.error(`Geocoding: No results for "${locationName}"`);
+      return null;
+    }
+
+    const result = {
+      lat: data[0].lat,
+      lon: data[0].lon,
+      name: data[0].name + (data[0].state ? `, ${data[0].state}` : '') + (data[0].country ? `, ${data[0].country}` : ''),
+    };
+
+    setCrawlCache('geocode', cacheKey, result);
+    return result;
+  } catch (err) {
+    console.error(`Geocoding error for "${locationName}":`, err.message);
+    return null;
+  }
+}
+
 // Fetch weather from OpenWeatherMap
 async function fetchWeather(lat, lon) {
   if (!OPENWEATHERMAP_API_KEY) return null;
@@ -5303,10 +5343,18 @@ app.get('/api/admin/crawl/config', authenticateToken, (req, res) => {
   }
 
   const config = db.getCrawlConfig();
+  // Return config in snake_case format for client compatibility
   res.json({
     config: {
-      ...config,
-      // Include API availability status for admin UI
+      stock_symbols: config.stockSymbols,
+      news_sources: config.newsSources,
+      default_location: config.defaultLocation,
+      stock_refresh_interval: config.stockRefreshInterval,
+      weather_refresh_interval: config.weatherRefreshInterval,
+      news_refresh_interval: config.newsRefreshInterval,
+      stocks_enabled: config.stocksEnabled,
+      weather_enabled: config.weatherEnabled,
+      news_enabled: config.newsEnabled,
       apiKeys: {
         finnhub: !!FINNHUB_API_KEY,
         openweathermap: !!OPENWEATHERMAP_API_KEY,
@@ -5318,7 +5366,7 @@ app.get('/api/admin/crawl/config', authenticateToken, (req, res) => {
 });
 
 // Update crawl bar configuration (admin only)
-app.put('/api/admin/crawl/config', authenticateToken, (req, res) => {
+app.put('/api/admin/crawl/config', authenticateToken, async (req, res) => {
   const admin = db.findUserById(req.user.userId);
   if (!admin || !admin.isAdmin) {
     return res.status(403).json({ error: 'Admin access required' });
@@ -5337,11 +5385,17 @@ app.put('/api/admin/crawl/config', authenticateToken, (req, res) => {
     news_enabled, newsEnabled
   } = req.body;
 
-  // Validate defaultLocation has required lat/lon if provided
-  const locationInput = default_location || defaultLocation;
+  // Handle location - geocode if only name provided
+  let locationInput = default_location || defaultLocation;
   if (locationInput) {
-    if (typeof locationInput.lat !== 'number' || typeof locationInput.lon !== 'number') {
-      return res.status(400).json({ error: 'Default location must include valid lat and lon coordinates' });
+    // If location has name but no valid coordinates, try to geocode
+    if (locationInput.name && (typeof locationInput.lat !== 'number' || typeof locationInput.lon !== 'number')) {
+      const geocoded = await geocodeLocation(locationInput.name);
+      if (geocoded) {
+        locationInput = geocoded;
+      } else {
+        return res.status(400).json({ error: `Could not find coordinates for "${locationInput.name}". Try "City, Country" format (e.g., "Coudersport, US")` });
+      }
     }
   }
 
@@ -5349,17 +5403,26 @@ app.put('/api/admin/crawl/config', authenticateToken, (req, res) => {
     stockSymbols: stock_symbols || stockSymbols,
     newsSources: news_sources || newsSources,
     defaultLocation: locationInput,
-    stockRefreshInterval: stock_refresh_interval || stockRefreshInterval,
-    weatherRefreshInterval: weather_refresh_interval || weatherRefreshInterval,
-    newsRefreshInterval: news_refresh_interval || newsRefreshInterval,
+    stockRefreshInterval: stock_refresh_interval ?? stockRefreshInterval,
+    weatherRefreshInterval: weather_refresh_interval ?? weatherRefreshInterval,
+    newsRefreshInterval: news_refresh_interval ?? newsRefreshInterval,
     stocksEnabled: stocks_enabled !== undefined ? stocks_enabled : stocksEnabled,
     weatherEnabled: weather_enabled !== undefined ? weather_enabled : weatherEnabled,
     newsEnabled: news_enabled !== undefined ? news_enabled : newsEnabled
   });
 
+  // Return config in snake_case format for client compatibility
   res.json({
     config: {
-      ...config,
+      stock_symbols: config.stockSymbols,
+      news_sources: config.newsSources,
+      default_location: config.defaultLocation,
+      stock_refresh_interval: config.stockRefreshInterval,
+      weather_refresh_interval: config.weatherRefreshInterval,
+      news_refresh_interval: config.newsRefreshInterval,
+      stocks_enabled: config.stocksEnabled,
+      weather_enabled: config.weatherEnabled,
+      news_enabled: config.newsEnabled,
       apiKeys: {
         finnhub: !!FINNHUB_API_KEY,
         openweathermap: !!OPENWEATHERMAP_API_KEY,
