@@ -6367,8 +6367,8 @@ app.get('/share/:dropletId', async (req, res) => {
   const dropletId = sanitizeInput(req.params.dropletId);
 
   const droplet = db.getDroplet(dropletId);
-  const wave = droplet ? db.getWave(droplet.waveId) : null;
-  const author = droplet ? db.findUserById(droplet.authorId) : null;
+  const wave = droplet ? db.getWave(droplet.wave_id) : null;
+  const author = droplet ? db.findUserById(droplet.author_id) : null;
   const isPublic = wave?.privacy === 'public';
 
   // Strip HTML tags from content for meta description
@@ -6377,8 +6377,9 @@ app.get('/share/:dropletId', async (req, res) => {
     .substring(0, 200);
 
   const title = wave?.title || 'Cortex';
+  const authorName = author?.displayName || author?.display_name || 'Someone';
   const description = isPublic && plainContent
-    ? `${author?.displayName || 'Someone'}: "${plainContent}${plainContent.length >= 200 ? '...' : ''}"`
+    ? `${authorName}: "${plainContent}${plainContent.length >= 200 ? '...' : ''}"`
     : 'Join Cortex to view this droplet';
 
   // Server base URL for absolute paths
@@ -6455,8 +6456,8 @@ app.get('/api/share/:dropletId', async (req, res) => {
     return res.status(404).json({ error: 'Droplet not found' });
   }
 
-  // Get wave info
-  const wave = db.getWave(droplet.waveId);
+  // Get wave info (use wave_id from database)
+  const wave = db.getWave(droplet.wave_id);
   if (!wave) {
     return res.status(404).json({ error: 'Wave not found' });
   }
@@ -6464,15 +6465,15 @@ app.get('/api/share/:dropletId', async (req, res) => {
   // Check if wave is public
   const isPublic = wave.privacy === 'public';
 
-  // Get author info
-  const author = db.findUserById(droplet.authorId);
+  // Get author info (use author_id from database)
+  const author = db.findUserById(droplet.author_id);
 
   // Return share data (limited info for privacy)
   res.json({
     droplet: {
       id: droplet.id,
       content: isPublic ? droplet.content : null,
-      createdAt: droplet.createdAt,
+      createdAt: droplet.created_at,
     },
     wave: {
       id: wave.id,
@@ -6480,9 +6481,9 @@ app.get('/api/share/:dropletId', async (req, res) => {
       privacy: wave.privacy,
     },
     author: {
-      displayName: author?.displayName || 'Unknown',
+      displayName: author?.displayName || author?.display_name || 'Unknown',
       handle: author?.handle,
-      avatarUrl: isPublic ? author?.avatarUrl : null,
+      avatarUrl: isPublic ? (author?.avatarUrl || author?.avatar_url) : null,
     },
     isPublic,
     requiresLogin: !isPublic,
