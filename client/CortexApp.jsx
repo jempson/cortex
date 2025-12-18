@@ -1623,6 +1623,343 @@ const Toast = ({ message, type = 'info', onClose }) => {
   );
 };
 
+// ============ CRAWL BAR COMPONENT ============
+const CRAWL_SCROLL_SPEEDS = {
+  slow: 60,     // seconds for full scroll - leisurely pace
+  normal: 45,   // comfortable reading speed
+  fast: 30,     // quicker but still readable
+};
+
+const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }) => {
+  const [data, setData] = useState({ stocks: { data: [] }, weather: { data: null }, news: { data: [] } });
+  const [loading, setLoading] = useState(true);
+  const [isPaused, setIsPaused] = useState(false);
+  const scrollRef = useRef(null);
+  const animationRef = useRef(null);
+  const [contentWidth, setContentWidth] = useState(0);
+
+  const scrollSpeed = CRAWL_SCROLL_SPEEDS[userPrefs.scrollSpeed || 'normal'];
+
+  // Fetch crawl data without resetting animation (using Web Animations API)
+  const loadData = useCallback(async () => {
+    try {
+      // Save current animation time before update
+      let savedTime = 0;
+      if (animationRef.current) {
+        savedTime = animationRef.current.currentTime || 0;
+      }
+
+      const result = await fetchAPI('/crawl/all');
+      setData(result);
+
+      // Restore animation position after React re-render
+      requestAnimationFrame(() => {
+        if (scrollRef.current && savedTime > 0) {
+          // Re-measure content width in case it changed
+          const newContentWidth = scrollRef.current.scrollWidth / 2;
+
+          // Cancel existing animation if any
+          if (animationRef.current) {
+            animationRef.current.cancel();
+          }
+          // Create new animation and restore position
+          const anim = scrollRef.current.animate(
+            [
+              { transform: 'translateX(0px)' },
+              { transform: `translateX(-${newContentWidth}px)` }
+            ],
+            {
+              duration: scrollSpeed * 1000,
+              iterations: Infinity,
+              easing: 'linear'
+            }
+          );
+          anim.currentTime = savedTime;
+          animationRef.current = anim;
+          setContentWidth(newContentWidth);
+        }
+      });
+    } catch (err) {
+      console.error('Crawl bar error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAPI, scrollSpeed]);
+
+  // Initial load and polling
+  useEffect(() => {
+    if (!enabled) return;
+
+    loadData();
+    const interval = setInterval(loadData, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [enabled, loadData]);
+
+  // Measure content width for pixel-perfect seamless looping
+  useEffect(() => {
+    if (!scrollRef.current || loading) return;
+
+    // Measure the width of one set of items (half the total since content is duplicated)
+    const measureWidth = () => {
+      if (scrollRef.current) {
+        const totalWidth = scrollRef.current.scrollWidth;
+        setContentWidth(totalWidth / 2); // Half because content is duplicated
+      }
+    };
+
+    measureWidth();
+    // Re-measure on window resize
+    window.addEventListener('resize', measureWidth);
+    return () => window.removeEventListener('resize', measureWidth);
+  }, [loading, data]);
+
+  // Initialize WAAPI animation when content width is known
+  useEffect(() => {
+    if (!scrollRef.current || loading || contentWidth === 0) return;
+
+    // Create animation using pixel-based translation for seamless loop
+    if (!animationRef.current) {
+      const anim = scrollRef.current.animate(
+        [
+          { transform: 'translateX(0px)' },
+          { transform: `translateX(-${contentWidth}px)` }
+        ],
+        {
+          duration: scrollSpeed * 1000,
+          iterations: Infinity,
+          easing: 'linear'
+        }
+      );
+      animationRef.current = anim;
+    }
+
+    return () => {
+      if (animationRef.current) {
+        animationRef.current.cancel();
+        animationRef.current = null;
+      }
+    };
+  }, [loading, scrollSpeed, contentWidth]);
+
+  // Handle pause/resume
+  useEffect(() => {
+    if (animationRef.current) {
+      if (isPaused) {
+        animationRef.current.pause();
+      } else {
+        animationRef.current.play();
+      }
+    }
+  }, [isPaused]);
+
+  if (!enabled) {
+    return null;
+  }
+
+  // Build crawl items
+  const items = [];
+
+  // Stocks - clickable links to Yahoo Finance
+  if (userPrefs.showStocks !== false && data.stocks?.enabled && data.stocks?.data?.length > 0) {
+    data.stocks.data.forEach(stock => {
+      if (!stock) return;
+      const isUp = (stock.change || 0) >= 0;
+      items.push({
+        type: 'stock',
+        key: `stock-${stock.symbol}`,
+        content: (
+          <a
+            href={`https://finance.yahoo.com/quote/${stock.symbol}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ textDecoration: 'none' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span style={{ color: 'var(--accent-amber)', fontWeight: 600 }}>{stock.symbol}</span>
+            {' '}
+            <span style={{ color: 'var(--text-primary)' }}>${stock.price?.toFixed(2)}</span>
+            {' '}
+            <span style={{ color: isUp ? 'var(--accent-green)' : 'var(--accent-orange)' }}>
+              {isUp ? '▲' : '▼'} {Math.abs(stock.changePercent || 0).toFixed(2)}%
+            </span>
+          </a>
+        ),
+      });
+    });
+  }
+
+  // Weather - clickable link to OpenWeatherMap
+  if (userPrefs.showWeather !== false && data.weather?.enabled && data.weather?.data) {
+    const weather = data.weather.data;
+    const location = data.weather.location;
+    const hasAlerts = weather.alerts?.length > 0;
+    const weatherUrl = location?.lat && location?.lon
+      ? `https://openweathermap.org/weathermap?basemap=map&cities=true&layer=temperature&lat=${location.lat}&lon=${location.lon}&zoom=10`
+      : 'https://openweathermap.org/';
+
+    items.push({
+      type: 'weather',
+      key: 'weather-current',
+      content: (
+        <a
+          href={weatherUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ textDecoration: 'none' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span style={{ color: 'var(--accent-teal)' }}>🌡</span>
+          {' '}
+          <span style={{ color: 'var(--text-primary)' }}>{location?.name || 'Weather'}</span>
+          {': '}
+          <span style={{ color: 'var(--text-secondary)' }}>
+            {weather.temp}°F, {weather.description}
+          </span>
+        </a>
+      ),
+    });
+
+    // Weather alerts - clickable link to location-specific NWS forecast page
+    if (hasAlerts) {
+      const alertUrl = location?.lat && location?.lon
+        ? `https://forecast.weather.gov/MapClick.php?lat=${location.lat}&lon=${location.lon}`
+        : 'https://www.weather.gov/alerts';
+
+      weather.alerts.slice(0, 2).forEach((alert, i) => {
+        items.push({
+          type: 'alert',
+          key: `alert-${i}`,
+          content: (
+            <a
+              href={alertUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ textDecoration: 'none', color: 'var(--accent-orange)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              ⚠️ ALERT: {alert.event}
+            </a>
+          ),
+        });
+      });
+    }
+  }
+
+  // News
+  if (userPrefs.showNews !== false && data.news?.enabled && data.news?.data?.length > 0) {
+    data.news.data.slice(0, 5).forEach((headline, i) => {
+      if (!headline?.title) return;
+      items.push({
+        type: 'news',
+        key: `news-${i}`,
+        content: (
+          <a
+            href={headline.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: 'var(--text-secondary)',
+              textDecoration: 'none',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span style={{ color: 'var(--accent-purple)' }}>◆</span>
+            {' '}
+            {headline.title?.substring(0, 80)}{headline.title?.length > 80 ? '...' : ''}
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.7em', marginLeft: '6px' }}>
+              [{headline.source}]
+            </span>
+          </a>
+        ),
+      });
+    });
+  }
+
+  // If no items to display, hide the bar
+  if (items.length === 0 && !loading) {
+    return null;
+  }
+
+  // Duplicate items for seamless loop
+  const allItems = items.length > 0 ? [...items, ...items] : [];
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        height: isMobile ? '28px' : '32px',
+        background: 'var(--bg-surface)',
+        borderBottom: '1px solid var(--border-subtle)',
+        overflow: 'hidden',
+        fontFamily: "'Courier New', monospace",
+        fontSize: isMobile ? '0.7rem' : '0.75rem',
+      }}
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      onTouchStart={() => setIsPaused(true)}
+      onTouchEnd={() => setIsPaused(false)}
+    >
+      {/* Animation controlled via Web Animations API for seamless data refresh */}
+
+      {loading && items.length === 0 ? (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100%',
+          color: 'var(--text-muted)',
+        }}>
+          Loading crawl data...
+        </div>
+      ) : (
+        <div
+          ref={scrollRef}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            height: '100%',
+            whiteSpace: 'nowrap',
+            // Animation controlled via Web Animations API (see useEffect above)
+          }}
+        >
+          {allItems.map((item, index) => (
+            <span
+              key={`${item.key}-${index}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '0 24px',
+              }}
+            >
+              {item.content}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Gradient fade edges */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '40px',
+        height: '100%',
+        background: 'linear-gradient(90deg, var(--bg-surface), transparent)',
+        pointerEvents: 'none',
+      }} />
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        width: '40px',
+        height: '100%',
+        background: 'linear-gradient(-90deg, var(--bg-surface), transparent)',
+        pointerEvents: 'none',
+      }} />
+    </div>
+  );
+};
+
 const LoadingSpinner = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>
     <div style={{
@@ -2911,7 +3248,6 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
   const hasChildren = message.children?.length > 0;
   const isCollapsed = collapsed[message.id];
-  const indentSize = isMobile ? 12 : 24;
   const isDeleted = message.deleted;
   const canDelete = !isDeleted && message.author_id === currentUserId;
   const isEditing = !isDeleted && editingMessageId === message.id;
@@ -2958,7 +3294,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
     const rippledToId = message.brokenOutTo || message.rippledTo;
     const rippledToTitle = message.brokenOutToTitle || message.rippledToTitle || 'New Wave';
     return (
-      <div data-message-id={message.id} className={isReply ? 'thread-connector' : ''}>
+      <div data-message-id={message.id}>
         <RippledLinkCard
           droplet={message}
           waveTitle={rippledToTitle}
@@ -2973,12 +3309,18 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
     );
   }
 
+  // Reduce padding for nested droplets to avoid cramped views
+  const basePadding = depth === 0
+    ? (isMobile ? '10px 12px' : '12px 16px')
+    : (isMobile ? '8px 10px' : '10px 12px');
+
   return (
-    <div data-message-id={message.id} className={isReply ? 'thread-connector' : ''}>
+    <div data-message-id={message.id}>
       <div
         onClick={handleMessageClick}
         style={{
-          padding: isMobile ? '10px 12px' : '12px 16px', marginBottom: '8px',
+          padding: basePadding,
+          marginBottom: depth === 0 ? '8px' : '6px',
           background: isDeleted ? 'var(--bg-base)' : isHighlighted ? `${config.color}20` : isUnread ? 'var(--accent-amber)10' : 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
           border: `1px solid ${isDeleted ? 'var(--border-subtle)' : isHighlighted ? config.color : isUnread ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
           borderLeft: `3px solid ${isDeleted ? 'var(--text-muted)' : isUnread ? 'var(--accent-amber)' : config.color}`,
@@ -3353,21 +3695,28 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             </div>
           </details>
         )}
+
+        {/* Nested replies rendered INSIDE parent droplet */}
+        {hasChildren && !isCollapsed && (
+          <div style={{
+            marginTop: '10px',
+            marginLeft: isMobile ? '6px' : '10px',
+            paddingLeft: isMobile ? '8px' : '12px',
+            borderLeft: '2px solid var(--border-primary)',
+          }}>
+            {message.children.map(child => (
+              <Droplet key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
+                onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
+                editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
+                currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
+                onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
+                participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport}
+                onFocus={onFocus} onRipple={onRipple} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
+                unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} />
+            ))}
+          </div>
+        )}
       </div>
-      {hasChildren && !isCollapsed && (
-        <div style={{ borderLeft: '1px solid var(--border-primary)', marginLeft: `${indentSize}px` }}>
-          {message.children.map(child => (
-            <Droplet key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
-              onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
-              editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
-              currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
-              onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
-              participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport}
-              onFocus={onFocus} onRipple={onRipple} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
-              unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} />
-          ))}
-        </div>
-      )}
       {lightboxImage && (
         <ImageLightbox src={lightboxImage} onClose={() => setLightboxImage(null)} />
       )}
@@ -8629,6 +8978,340 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
   );
 };
 
+// ============ CRAWL BAR ADMIN PANEL ============
+const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
+  const [config, setConfig] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [stockSymbols, setStockSymbols] = useState('');
+  const [defaultLocation, setDefaultLocation] = useState('');
+
+  const loadConfig = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchAPI('/admin/crawl/config');
+      setConfig(data.config);
+      setStockSymbols((data.config?.stock_symbols || []).join(', '));
+      setDefaultLocation(data.config?.default_location?.name || '');
+    } catch (err) {
+      if (!err.message?.includes('401')) {
+        showToast(err.message || 'Failed to load crawl config', 'error');
+      }
+    }
+    setLoading(false);
+  }, [fetchAPI, showToast]);
+
+  useEffect(() => {
+    if (expanded && !config) {
+      loadConfig();
+    }
+  }, [expanded, config, loadConfig]);
+
+  const handleSave = async (updates) => {
+    setSaving(true);
+    try {
+      const data = await fetchAPI('/admin/crawl/config', {
+        method: 'PUT',
+        body: updates
+      });
+      setConfig(data.config);
+      showToast('Crawl bar configuration updated', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to update config', 'error');
+    }
+    setSaving(false);
+  };
+
+  const handleSaveSymbols = async () => {
+    const symbols = stockSymbols
+      .split(',')
+      .map(s => s.trim().toUpperCase())
+      .filter(s => s.length > 0);
+    await handleSave({ stock_symbols: symbols });
+    setStockSymbols(symbols.join(', '));
+  };
+
+  const handleSaveLocation = async () => {
+    // Simple location parsing - just store the name and let backend resolve coordinates
+    if (defaultLocation.trim()) {
+      await handleSave({
+        default_location: { name: defaultLocation.trim(), lat: null, lon: null }
+      });
+    } else {
+      await handleSave({
+        default_location: { name: 'New York, NY', lat: 40.7128, lon: -74.0060 }
+      });
+      setDefaultLocation('New York, NY');
+    }
+  };
+
+  return (
+    <div style={{ marginTop: '16px' }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          width: '100%',
+          padding: isMobile ? '12px 20px' : '10px 20px',
+          minHeight: isMobile ? '44px' : 'auto',
+          background: expanded ? 'var(--accent-teal)20' : 'transparent',
+          border: `1px solid ${expanded ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+          color: expanded ? 'var(--accent-teal)' : 'var(--text-dim)',
+          cursor: 'pointer',
+          fontFamily: 'monospace',
+          fontSize: isMobile ? '0.9rem' : '0.85rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <span>📊 CRAWL BAR CONFIG</span>
+        <span>{expanded ? '▼' : '▶'}</span>
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)' }}>
+          {loading ? (
+            <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
+          ) : (
+            <>
+              {/* Feature Toggles */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>ENABLED FEATURES</label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => handleSave({ stocks_enabled: !config?.stocks_enabled })}
+                    disabled={saving}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 16px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: config?.stocks_enabled ? 'var(--accent-green)20' : 'transparent',
+                      border: `1px solid ${config?.stocks_enabled ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                      color: config?.stocks_enabled ? 'var(--accent-green)' : 'var(--text-dim)',
+                      cursor: saving ? 'wait' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                      opacity: saving ? 0.5 : 1,
+                    }}
+                  >
+                    📈 STOCKS
+                  </button>
+                  <button
+                    onClick={() => handleSave({ weather_enabled: !config?.weather_enabled })}
+                    disabled={saving}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 16px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: config?.weather_enabled ? 'var(--accent-teal)20' : 'transparent',
+                      border: `1px solid ${config?.weather_enabled ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+                      color: config?.weather_enabled ? 'var(--accent-teal)' : 'var(--text-dim)',
+                      cursor: saving ? 'wait' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                      opacity: saving ? 0.5 : 1,
+                    }}
+                  >
+                    🌡️ WEATHER
+                  </button>
+                  <button
+                    onClick={() => handleSave({ news_enabled: !config?.news_enabled })}
+                    disabled={saving}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 16px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: config?.news_enabled ? 'var(--accent-purple)20' : 'transparent',
+                      border: `1px solid ${config?.news_enabled ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
+                      color: config?.news_enabled ? 'var(--accent-purple)' : 'var(--text-dim)',
+                      cursor: saving ? 'wait' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                      opacity: saving ? 0.5 : 1,
+                    }}
+                  >
+                    ◆ NEWS
+                  </button>
+                </div>
+              </div>
+
+              {/* Stock Symbols */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>STOCK SYMBOLS</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    placeholder="AAPL, GOOGL, MSFT, AMZN, TSLA"
+                    value={stockSymbols}
+                    onChange={(e) => setStockSymbols(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: isMobile ? '12px' : '10px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveSymbols}
+                    disabled={saving}
+                    style={{
+                      padding: isMobile ? '12px 16px' : '10px 16px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: 'var(--accent-amber)20',
+                      border: '1px solid var(--accent-amber)',
+                      color: 'var(--accent-amber)',
+                      cursor: saving ? 'wait' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                      opacity: saving ? 0.5 : 1,
+                    }}
+                  >
+                    SAVE
+                  </button>
+                </div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
+                  Comma-separated list of stock ticker symbols
+                </div>
+              </div>
+
+              {/* Default Location */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>DEFAULT LOCATION</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    placeholder="New York, NY"
+                    value={defaultLocation}
+                    onChange={(e) => setDefaultLocation(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: isMobile ? '12px' : '10px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveLocation}
+                    disabled={saving}
+                    style={{
+                      padding: isMobile ? '12px 16px' : '10px 16px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: 'var(--accent-amber)20',
+                      border: '1px solid var(--accent-amber)',
+                      color: 'var(--accent-amber)',
+                      cursor: saving ? 'wait' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                      opacity: saving ? 0.5 : 1,
+                    }}
+                  >
+                    SAVE
+                  </button>
+                </div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
+                  Default location for weather when user location is unavailable
+                </div>
+              </div>
+
+              {/* Refresh Intervals */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>REFRESH INTERVALS (SECONDS)</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  <div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginBottom: '4px' }}>Stocks</div>
+                    <input
+                      type="number"
+                      min="30"
+                      max="600"
+                      value={config?.stock_refresh_interval || 60}
+                      onChange={(e) => handleSave({ stock_refresh_interval: parseInt(e.target.value, 10) || 60 })}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border-subtle)',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'monospace',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginBottom: '4px' }}>Weather</div>
+                    <input
+                      type="number"
+                      min="60"
+                      max="1800"
+                      value={config?.weather_refresh_interval || 300}
+                      onChange={(e) => handleSave({ weather_refresh_interval: parseInt(e.target.value, 10) || 300 })}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border-subtle)',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'monospace',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginBottom: '4px' }}>News</div>
+                    <input
+                      type="number"
+                      min="60"
+                      max="1800"
+                      value={config?.news_refresh_interval || 180}
+                      onChange={(e) => handleSave({ news_refresh_interval: parseInt(e.target.value, 10) || 180 })}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border-subtle)',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'monospace',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* API Key Status */}
+              <div style={{ padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', marginTop: '12px' }}>
+                <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>API KEY STATUS</div>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '0.75rem' }}>
+                  <span style={{ color: config?.apiKeys?.finnhub ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+                    {config?.apiKeys?.finnhub ? '✓' : '✗'} Finnhub
+                  </span>
+                  <span style={{ color: config?.apiKeys?.openweathermap ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+                    {config?.apiKeys?.openweathermap ? '✓' : '✗'} OpenWeather
+                  </span>
+                  <span style={{ color: config?.apiKeys?.newsapi ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+                    {config?.apiKeys?.newsapi ? '✓' : '✗'} NewsAPI
+                  </span>
+                  <span style={{ color: config?.apiKeys?.gnews ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+                    {config?.apiKeys?.gnews ? '✓' : '✗'} GNews
+                  </span>
+                </div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '8px' }}>
+                  Configure API keys in server/.env file
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ============ FEDERATION ADMIN PANEL ============
 const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0 }) => {
   const [status, setStatus] = useState(null);
@@ -9490,6 +10173,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [mutedUsers, setMutedUsers] = useState([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(storage.getPushEnabled());
+  const [crawlBarLocation, setCrawlBarLocation] = useState(user?.preferences?.crawlBar?.locationName || '');
   // MFA state
   const [showMfaSetup, setShowMfaSetup] = useState(false);
   const [mfaStatus, setMfaStatus] = useState(null);
@@ -9537,6 +10221,11 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         .catch(err => console.error('Failed to load MFA status:', err));
     }
   }, [showMfaSetup, mfaStatus, fetchAPI]);
+
+  // Sync crawl bar location when user preferences change
+  useEffect(() => {
+    setCrawlBarLocation(user?.preferences?.crawlBar?.locationName || '');
+  }, [user?.preferences?.crawlBar?.locationName]);
 
   // MFA handler functions
   const loadMfaStatus = async () => {
@@ -10331,6 +11020,175 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         </div>
       </div>
 
+      {/* Crawl Bar Preferences */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '12px' }}>CRAWL BAR</div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>ENABLE CRAWL BAR</label>
+          <button
+            onClick={() => handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, enabled: !(user?.preferences?.crawlBar?.enabled !== false) } })}
+            style={{
+              padding: isMobile ? '10px 16px' : '8px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: (user?.preferences?.crawlBar?.enabled !== false) ? 'var(--accent-teal)20' : 'transparent',
+              border: `1px solid ${(user?.preferences?.crawlBar?.enabled !== false) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+              color: (user?.preferences?.crawlBar?.enabled !== false) ? 'var(--accent-teal)' : 'var(--text-dim)',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.9rem' : '0.85rem',
+            }}
+          >
+            {(user?.preferences?.crawlBar?.enabled !== false) ? '▣ ENABLED' : '▢ DISABLED'}
+          </button>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
+            Show scrolling ticker with stocks, weather, and news
+          </div>
+        </div>
+
+        {(user?.preferences?.crawlBar?.enabled !== false) && (
+          <>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CONTENT</label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, showStocks: !(user?.preferences?.crawlBar?.showStocks !== false) } })}
+                  style={{
+                    padding: isMobile ? '10px 16px' : '8px 16px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: (user?.preferences?.crawlBar?.showStocks !== false) ? 'var(--accent-green)20' : 'transparent',
+                    border: `1px solid ${(user?.preferences?.crawlBar?.showStocks !== false) ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                    color: (user?.preferences?.crawlBar?.showStocks !== false) ? 'var(--accent-green)' : 'var(--text-dim)',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  }}
+                >
+                  📈 STOCKS
+                </button>
+                <button
+                  onClick={() => handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, showWeather: !(user?.preferences?.crawlBar?.showWeather !== false) } })}
+                  style={{
+                    padding: isMobile ? '10px 16px' : '8px 16px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: (user?.preferences?.crawlBar?.showWeather !== false) ? 'var(--accent-teal)20' : 'transparent',
+                    border: `1px solid ${(user?.preferences?.crawlBar?.showWeather !== false) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+                    color: (user?.preferences?.crawlBar?.showWeather !== false) ? 'var(--accent-teal)' : 'var(--text-dim)',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  }}
+                >
+                  🌡️ WEATHER
+                </button>
+                <button
+                  onClick={() => handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, showNews: !(user?.preferences?.crawlBar?.showNews !== false) } })}
+                  style={{
+                    padding: isMobile ? '10px 16px' : '8px 16px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: (user?.preferences?.crawlBar?.showNews !== false) ? 'var(--accent-purple)20' : 'transparent',
+                    border: `1px solid ${(user?.preferences?.crawlBar?.showNews !== false) ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
+                    color: (user?.preferences?.crawlBar?.showNews !== false) ? 'var(--accent-purple)' : 'var(--text-dim)',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  }}
+                >
+                  ◆ NEWS
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SCROLL SPEED</label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {['slow', 'normal', 'fast'].map((speed) => (
+                  <button
+                    key={speed}
+                    onClick={() => handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, scrollSpeed: speed } })}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 16px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: (user?.preferences?.crawlBar?.scrollSpeed || 'normal') === speed ? 'var(--accent-amber)20' : 'transparent',
+                      border: `1px solid ${(user?.preferences?.crawlBar?.scrollSpeed || 'normal') === speed ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
+                      color: (user?.preferences?.crawlBar?.scrollSpeed || 'normal') === speed ? 'var(--accent-amber)' : 'var(--text-dim)',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                    }}
+                  >
+                    {speed.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>LOCATION OVERRIDE</label>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="e.g., New York, NY or Coudersport, US"
+                  value={crawlBarLocation}
+                  onChange={(e) => setCrawlBarLocation(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: isMobile ? '12px' : '10px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: 'var(--bg-base)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, locationName: crawlBarLocation || null, location: null } });
+                  }}
+                  disabled={crawlBarLocation === (user?.preferences?.crawlBar?.locationName || '')}
+                  style={{
+                    padding: isMobile ? '10px 12px' : '8px 12px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: crawlBarLocation !== (user?.preferences?.crawlBar?.locationName || '') ? 'var(--accent-amber)20' : 'transparent',
+                    border: `1px solid ${crawlBarLocation !== (user?.preferences?.crawlBar?.locationName || '') ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
+                    color: crawlBarLocation !== (user?.preferences?.crawlBar?.locationName || '') ? 'var(--accent-amber)' : 'var(--text-muted)',
+                    cursor: crawlBarLocation !== (user?.preferences?.crawlBar?.locationName || '') ? 'pointer' : 'default',
+                    fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  }}
+                >
+                  SAVE
+                </button>
+                {(crawlBarLocation || user?.preferences?.crawlBar?.locationName) && (
+                  <button
+                    onClick={() => {
+                      setCrawlBarLocation('');
+                      handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, locationName: null, location: null } });
+                    }}
+                    style={{
+                      padding: isMobile ? '10px 12px' : '8px 12px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: 'transparent',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-dim)',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                    }}
+                  >
+                    CLEAR
+                  </button>
+                )}
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
+                Enter city name (e.g., "Coudersport, US") then click SAVE
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
       {/* Notification Preferences */}
       <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -10607,6 +11465,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
           {/* Activity Log Panel */}
           <ActivityLogPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+
+          {/* Crawl Bar Admin Panel */}
+          <CrawlBarAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
 
           {/* Federation Admin Panel */}
           <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} />
@@ -11339,8 +12200,14 @@ function MainApp() {
   }, []);
 
   const handleFocusClose = useCallback(() => {
-    // Clear the entire focus stack, return to wave view
-    setFocusStack([]);
+    // When closing focus view, scroll WaveView to the originally focused droplet
+    setFocusStack(prev => {
+      if (prev.length > 0) {
+        // Set scroll target to the first focused droplet so WaveView scrolls to it
+        setScrollToDropletId(prev[0].dropletId);
+      }
+      return [];
+    });
   }, []);
 
   const handleFocusDeeper = useCallback((droplet) => {
@@ -11660,6 +12527,16 @@ function MainApp() {
           </div>
         )}
       </header>
+
+      {/* Crawl Bar */}
+      {user && (
+        <CrawlBar
+          fetchAPI={fetchAPI}
+          enabled={user?.preferences?.crawlBar?.enabled !== false}
+          userPrefs={user?.preferences?.crawlBar || {}}
+          isMobile={isMobile}
+        />
+      )}
 
       {/* Main */}
       <main style={{ flex: 1, display: 'flex', overflow: 'hidden', flexDirection: isMobile && selectedWave ? 'column' : 'row', paddingBottom: isMobile ? '60px' : '0' }}>

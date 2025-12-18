@@ -809,6 +809,46 @@ export class DatabaseSQLite {
       `);
       console.log('✅ require_password_change column added');
     }
+
+    // Auto-create crawl bar tables if they don't exist (v1.15.0)
+    const crawlConfigExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='crawl_config'
+    `).get();
+
+    if (!crawlConfigExists) {
+      console.log('📝 Creating crawl bar tables (v1.15.0)...');
+      this.db.exec(`
+        -- Server-wide crawl bar configuration (singleton)
+        CREATE TABLE IF NOT EXISTS crawl_config (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          stock_symbols TEXT DEFAULT '["AAPL","GOOGL","MSFT","AMZN","TSLA"]',
+          news_sources TEXT DEFAULT '[]',
+          default_location TEXT DEFAULT '{"lat":40.7128,"lon":-74.0060,"name":"New York, NY"}',
+          stock_refresh_interval INTEGER DEFAULT 60,
+          weather_refresh_interval INTEGER DEFAULT 300,
+          news_refresh_interval INTEGER DEFAULT 180,
+          stocks_enabled INTEGER DEFAULT 1,
+          weather_enabled INTEGER DEFAULT 1,
+          news_enabled INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        -- Cache for external API responses
+        CREATE TABLE IF NOT EXISTS crawl_cache (
+          id TEXT PRIMARY KEY,
+          cache_type TEXT NOT NULL,
+          cache_key TEXT NOT NULL,
+          data TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE (cache_type, cache_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_crawl_cache_type_key ON crawl_cache(cache_type, cache_key);
+        CREATE INDEX IF NOT EXISTS idx_crawl_cache_expires ON crawl_cache(expires_at);
+      `);
+      console.log('✅ Crawl bar tables created (v1.15.0)');
+    }
   }
 
   prepareStatements() {
@@ -3337,10 +3377,34 @@ export class DatabaseSQLite {
       reactions: {},
     };
 
-    this.db.prepare(`
-      INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
-    `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt);
+    // Check if parent is a remote droplet (exists in remote_droplets but not in droplets)
+    // If so, we need to temporarily disable FK checks since remote droplets aren't in the droplets table
+    let isRemoteParent = false;
+    if (droplet.parentId) {
+      const localParent = this.db.prepare('SELECT id FROM droplets WHERE id = ?').get(droplet.parentId);
+      if (!localParent) {
+        const remoteParent = this.db.prepare('SELECT id FROM remote_droplets WHERE id = ?').get(droplet.parentId);
+        isRemoteParent = !!remoteParent;
+      }
+    }
+
+    if (isRemoteParent) {
+      // Temporarily disable FK checks for inserting a reply to a remote droplet
+      this.db.exec('PRAGMA foreign_keys = OFF');
+      try {
+        this.db.prepare(`
+          INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
+        `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt);
+      } finally {
+        this.db.exec('PRAGMA foreign_keys = ON');
+      }
+    } else {
+      this.db.prepare(`
+        INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
+      `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt);
+    }
 
     // Author has read their own droplet
     this.db.prepare('INSERT INTO droplet_read_by (droplet_id, user_id, read_at) VALUES (?, ?, ?)').run(droplet.id, data.authorId, now);
@@ -4579,6 +4643,81 @@ export class DatabaseSQLite {
     `).run(cutoff);
 
     return result.changes;
+  }
+
+  // ============ Crawl Bar Config Methods ============
+
+  getCrawlConfig() {
+    // Ensure config exists (singleton pattern)
+    let config = this.db.prepare('SELECT * FROM crawl_config WHERE id = 1').get();
+
+    if (!config) {
+      const now = new Date().toISOString();
+      this.db.prepare(`
+        INSERT INTO crawl_config (id, created_at, updated_at)
+        VALUES (1, ?, ?)
+      `).run(now, now);
+      config = this.db.prepare('SELECT * FROM crawl_config WHERE id = 1').get();
+    }
+
+    return {
+      stockSymbols: JSON.parse(config.stock_symbols || '[]'),
+      newsSources: JSON.parse(config.news_sources || '[]'),
+      defaultLocation: JSON.parse(config.default_location || '{}'),
+      stockRefreshInterval: config.stock_refresh_interval,
+      weatherRefreshInterval: config.weather_refresh_interval,
+      newsRefreshInterval: config.news_refresh_interval,
+      stocksEnabled: !!config.stocks_enabled,
+      weatherEnabled: !!config.weather_enabled,
+      newsEnabled: !!config.news_enabled,
+      createdAt: config.created_at,
+      updatedAt: config.updated_at,
+    };
+  }
+
+  updateCrawlConfig(updates) {
+    const now = new Date().toISOString();
+    const config = this.getCrawlConfig();
+
+    const newConfig = {
+      stockSymbols: updates.stockSymbols !== undefined ? updates.stockSymbols : config.stockSymbols,
+      newsSources: updates.newsSources !== undefined ? updates.newsSources : config.newsSources,
+      defaultLocation: updates.defaultLocation !== undefined ? updates.defaultLocation : config.defaultLocation,
+      stockRefreshInterval: updates.stockRefreshInterval !== undefined ? updates.stockRefreshInterval : config.stockRefreshInterval,
+      weatherRefreshInterval: updates.weatherRefreshInterval !== undefined ? updates.weatherRefreshInterval : config.weatherRefreshInterval,
+      newsRefreshInterval: updates.newsRefreshInterval !== undefined ? updates.newsRefreshInterval : config.newsRefreshInterval,
+      stocksEnabled: updates.stocksEnabled !== undefined ? updates.stocksEnabled : config.stocksEnabled,
+      weatherEnabled: updates.weatherEnabled !== undefined ? updates.weatherEnabled : config.weatherEnabled,
+      newsEnabled: updates.newsEnabled !== undefined ? updates.newsEnabled : config.newsEnabled,
+    };
+
+    this.db.prepare(`
+      UPDATE crawl_config SET
+        stock_symbols = ?,
+        news_sources = ?,
+        default_location = ?,
+        stock_refresh_interval = ?,
+        weather_refresh_interval = ?,
+        news_refresh_interval = ?,
+        stocks_enabled = ?,
+        weather_enabled = ?,
+        news_enabled = ?,
+        updated_at = ?
+      WHERE id = 1
+    `).run(
+      JSON.stringify(newConfig.stockSymbols),
+      JSON.stringify(newConfig.newsSources),
+      JSON.stringify(newConfig.defaultLocation),
+      newConfig.stockRefreshInterval,
+      newConfig.weatherRefreshInterval,
+      newConfig.newsRefreshInterval,
+      newConfig.stocksEnabled ? 1 : 0,
+      newConfig.weatherEnabled ? 1 : 0,
+      newConfig.newsEnabled ? 1 : 0,
+      now
+    );
+
+    return this.getCrawlConfig();
   }
 
   // Placeholder for JSON compatibility - not needed with SQLite
