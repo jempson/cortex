@@ -12466,7 +12466,7 @@ function MainApp() {
               const pendingInvitations = view === 'groups' ? groupInvitations.length : 0;
               const badgeCount = totalUnread || pendingRequests || pendingInvitations;
               return (
-                <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); }} style={{
+                <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); loadWaves(); }} style={{
                   padding: '8px 16px',
                   background: activeView === view ? 'var(--accent-amber)15' : 'transparent',
                   border: `1px solid ${activeView === view ? 'var(--accent-amber)50' : 'var(--border-primary)'}`,
@@ -12666,6 +12666,7 @@ function MainApp() {
             } else {
               setActiveView(view);
               setSelectedWave(null);
+              loadWaves();
             }
           }}
           unreadCount={waves.reduce((sum, w) => sum + (w.unread_count || 0), 0)}
