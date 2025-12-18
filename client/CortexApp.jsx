@@ -12573,7 +12573,7 @@ function MainApp() {
               ) : selectedWave ? (
                 // Normal Wave View
                 <ErrorBoundary key={selectedWave.id}>
-                  <WaveView wave={selectedWave} onBack={() => { setSelectedWave(null); setFocusStack([]); }}
+                  <WaveView wave={selectedWave} onBack={() => { setSelectedWave(null); setFocusStack([]); loadWaves(); }}
                     fetchAPI={fetchAPI} showToast={showToastMsg} currentUser={user}
                     groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile}
                     sendWSMessage={sendWSMessage}
