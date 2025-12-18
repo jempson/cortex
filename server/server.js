@@ -4551,6 +4551,20 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   if (typeof req.body.autoFocusDroplets === 'boolean') {
     updates.autoFocusDroplets = req.body.autoFocusDroplets;
   }
+  // Handle crawlBar preferences
+  if (req.body.crawlBar && typeof req.body.crawlBar === 'object') {
+    const existingCrawlBar = user.preferences?.crawlBar || {};
+    const validScrollSpeeds = ['slow', 'normal', 'fast'];
+    updates.crawlBar = {
+      enabled: typeof req.body.crawlBar.enabled === 'boolean' ? req.body.crawlBar.enabled : (existingCrawlBar.enabled ?? true),
+      location: req.body.crawlBar.location !== undefined ? req.body.crawlBar.location : (existingCrawlBar.location ?? null),
+      locationName: req.body.crawlBar.locationName !== undefined ? req.body.crawlBar.locationName : (existingCrawlBar.locationName ?? null),
+      showStocks: typeof req.body.crawlBar.showStocks === 'boolean' ? req.body.crawlBar.showStocks : (existingCrawlBar.showStocks ?? true),
+      showWeather: typeof req.body.crawlBar.showWeather === 'boolean' ? req.body.crawlBar.showWeather : (existingCrawlBar.showWeather ?? true),
+      showNews: typeof req.body.crawlBar.showNews === 'boolean' ? req.body.crawlBar.showNews : (existingCrawlBar.showNews ?? true),
+      scrollSpeed: validScrollSpeeds.includes(req.body.crawlBar.scrollSpeed) ? req.body.crawlBar.scrollSpeed : (existingCrawlBar.scrollSpeed || 'normal'),
+    };
+  }
 
   // Use the dedicated method that works with both JSON and SQLite
   const updatedPreferences = db.updateUserPreferences(req.user.userId, updates);
