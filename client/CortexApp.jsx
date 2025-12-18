@@ -12466,7 +12466,7 @@ function MainApp() {
               const pendingInvitations = view === 'groups' ? groupInvitations.length : 0;
               const badgeCount = totalUnread || pendingRequests || pendingInvitations;
               return (
-                <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); }} style={{
+                <button key={view} onClick={() => { setActiveView(view); setSelectedWave(null); loadWaves(); loadWaveNotifications(); }} style={{
                   padding: '8px 16px',
                   background: activeView === view ? 'var(--accent-amber)15' : 'transparent',
                   border: `1px solid ${activeView === view ? 'var(--accent-amber)50' : 'var(--border-primary)'}`,
@@ -12573,7 +12573,7 @@ function MainApp() {
               ) : selectedWave ? (
                 // Normal Wave View
                 <ErrorBoundary key={selectedWave.id}>
-                  <WaveView wave={selectedWave} onBack={() => { setSelectedWave(null); setFocusStack([]); }}
+                  <WaveView wave={selectedWave} onBack={() => { setSelectedWave(null); setFocusStack([]); loadWaves(); loadWaveNotifications(); }}
                     fetchAPI={fetchAPI} showToast={showToastMsg} currentUser={user}
                     groups={groups} onWaveUpdate={loadWaves} isMobile={isMobile}
                     sendWSMessage={sendWSMessage}
@@ -12666,6 +12666,8 @@ function MainApp() {
             } else {
               setActiveView(view);
               setSelectedWave(null);
+              loadWaves();
+              loadWaveNotifications();
             }
           }}
           unreadCount={waves.reduce((sum, w) => sum + (w.unread_count || 0), 0)}
