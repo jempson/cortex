@@ -318,6 +318,16 @@ function isValidAvatarFilename(filename) {
   return validPattern.test(filename);
 }
 
+// Escape HTML for safe embedding in meta tags and HTML attributes
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Get request metadata for activity logging
 function getRequestMeta(req) {
   return {
@@ -6347,6 +6357,136 @@ app.delete('/api/admin/alert-subscriptions/:id', authenticateToken, async (req, 
 
   db.deleteAlertSubscription(subscriptionId);
   res.json({ success: true });
+});
+
+// ============ Share Routes (v1.17.0) ============
+
+// GET /share/:dropletId - HTML page with Open Graph meta tags for social sharing
+// This is a PUBLIC endpoint (no auth required) to allow social media crawlers to fetch previews
+app.get('/share/:dropletId', async (req, res) => {
+  const dropletId = sanitizeInput(req.params.dropletId);
+
+  const droplet = db.getDroplet(dropletId);
+  const wave = droplet ? db.getWave(droplet.waveId) : null;
+  const author = droplet ? db.findUserById(droplet.authorId) : null;
+  const isPublic = wave?.privacy === 'public';
+
+  // Strip HTML tags from content for meta description
+  const plainContent = (droplet?.content || '')
+    .replace(/<[^>]*>/g, '')
+    .substring(0, 200);
+
+  const title = wave?.title || 'Cortex';
+  const description = isPublic && plainContent
+    ? `${author?.displayName || 'Someone'}: "${plainContent}${plainContent.length >= 200 ? '...' : ''}"`
+    : 'Join Cortex to view this droplet';
+
+  // Server base URL for absolute paths
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  const baseUrl = process.env.BASE_URL || `${protocol}://${host}`;
+  const shareUrl = `${baseUrl}/share/${dropletId}`;
+  const logoUrl = `${baseUrl}/icons/icon-512.png`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)} - Cortex</title>
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="${escapeHtml(title)} - Cortex">
+  <meta property="og:description" content="${escapeHtml(description)}">
+  <meta property="og:url" content="${shareUrl}">
+  <meta property="og:image" content="${logoUrl}">
+  <meta property="og:site_name" content="Cortex">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="${escapeHtml(title)} - Cortex">
+  <meta name="twitter:description" content="${escapeHtml(description)}">
+  <meta name="twitter:image" content="${logoUrl}">
+
+  <!-- Redirect to app -->
+  <script>
+    window.location.href = '/?share=${dropletId}';
+  </script>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: #050805;
+      color: #0ead69;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+    }
+    a {
+      color: #ffd23f;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <p>Redirecting to Cortex...</p>
+    <p><a href="/?share=${dropletId}">Click here if not redirected</a></p>
+  </div>
+</body>
+</html>`;
+
+  res.type('html').send(html);
+});
+
+// GET /api/share/:dropletId - JSON endpoint for shared droplet data
+// This is a PUBLIC endpoint (no auth required for public waves)
+app.get('/api/share/:dropletId', async (req, res) => {
+  const dropletId = sanitizeInput(req.params.dropletId);
+
+  // Get droplet
+  const droplet = db.getDroplet(dropletId);
+  if (!droplet) {
+    return res.status(404).json({ error: 'Droplet not found' });
+  }
+
+  // Get wave info
+  const wave = db.getWave(droplet.waveId);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Check if wave is public
+  const isPublic = wave.privacy === 'public';
+
+  // Get author info
+  const author = db.findUserById(droplet.authorId);
+
+  // Return share data (limited info for privacy)
+  res.json({
+    droplet: {
+      id: droplet.id,
+      content: isPublic ? droplet.content : null,
+      createdAt: droplet.createdAt,
+    },
+    wave: {
+      id: wave.id,
+      title: wave.title,
+      privacy: wave.privacy,
+    },
+    author: {
+      displayName: author?.displayName || 'Unknown',
+      handle: author?.handle,
+      avatarUrl: isPublic ? author?.avatarUrl : null,
+    },
+    isPublic,
+    requiresLogin: !isPublic,
+  });
 });
 
 // ============ Rich Media Embed Endpoints ============
