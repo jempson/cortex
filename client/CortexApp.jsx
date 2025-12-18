@@ -1625,9 +1625,9 @@ const Toast = ({ message, type = 'info', onClose }) => {
 
 // ============ CRAWL BAR COMPONENT ============
 const CRAWL_SCROLL_SPEEDS = {
-  slow: 80,     // seconds for full scroll
-  normal: 50,
-  fast: 30,
+  slow: 45,     // seconds for full scroll
+  normal: 30,
+  fast: 18,
 };
 
 const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }) => {
@@ -1666,7 +1666,7 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }
   // Build crawl items
   const items = [];
 
-  // Stocks
+  // Stocks - clickable links to Yahoo Finance
   if (userPrefs.showStocks !== false && data.stocks?.enabled && data.stocks?.data?.length > 0) {
     data.stocks.data.forEach(stock => {
       if (!stock) return;
@@ -1675,7 +1675,13 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }
         type: 'stock',
         key: `stock-${stock.symbol}`,
         content: (
-          <span>
+          <a
+            href={`https://finance.yahoo.com/quote/${stock.symbol}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ textDecoration: 'none' }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <span style={{ color: 'var(--accent-amber)', fontWeight: 600 }}>{stock.symbol}</span>
             {' '}
             <span style={{ color: 'var(--text-primary)' }}>${stock.price?.toFixed(2)}</span>
@@ -1683,23 +1689,32 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }
             <span style={{ color: isUp ? 'var(--accent-green)' : 'var(--accent-orange)' }}>
               {isUp ? '▲' : '▼'} {Math.abs(stock.changePercent || 0).toFixed(2)}%
             </span>
-          </span>
+          </a>
         ),
       });
     });
   }
 
-  // Weather
+  // Weather - clickable link to OpenWeatherMap
   if (userPrefs.showWeather !== false && data.weather?.enabled && data.weather?.data) {
     const weather = data.weather.data;
     const location = data.weather.location;
     const hasAlerts = weather.alerts?.length > 0;
+    const weatherUrl = location?.lat && location?.lon
+      ? `https://openweathermap.org/weathermap?basemap=map&cities=true&layer=temperature&lat=${location.lat}&lon=${location.lon}&zoom=10`
+      : 'https://openweathermap.org/';
 
     items.push({
       type: 'weather',
       key: 'weather-current',
       content: (
-        <span>
+        <a
+          href={weatherUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ textDecoration: 'none' }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <span style={{ color: 'var(--accent-teal)' }}>🌡</span>
           {' '}
           <span style={{ color: 'var(--text-primary)' }}>{location?.name || 'Weather'}</span>
@@ -1707,20 +1722,26 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false }
           <span style={{ color: 'var(--text-secondary)' }}>
             {weather.temp}°F, {weather.description}
           </span>
-        </span>
+        </a>
       ),
     });
 
-    // Weather alerts (important - show prominently)
+    // Weather alerts - clickable link to weather.gov
     if (hasAlerts) {
       weather.alerts.slice(0, 2).forEach((alert, i) => {
         items.push({
           type: 'alert',
           key: `alert-${i}`,
           content: (
-            <span style={{ color: 'var(--accent-orange)' }}>
+            <a
+              href="https://www.weather.gov/alerts"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ textDecoration: 'none', color: 'var(--accent-orange)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
               ⚠️ ALERT: {alert.event}
-            </span>
+            </a>
           ),
         });
       });
@@ -10049,6 +10070,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [mutedUsers, setMutedUsers] = useState([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(storage.getPushEnabled());
+  const [crawlBarLocation, setCrawlBarLocation] = useState(user?.preferences?.crawlBar?.locationName || '');
   // MFA state
   const [showMfaSetup, setShowMfaSetup] = useState(false);
   const [mfaStatus, setMfaStatus] = useState(null);
@@ -10096,6 +10118,11 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         .catch(err => console.error('Failed to load MFA status:', err));
     }
   }, [showMfaSetup, mfaStatus, fetchAPI]);
+
+  // Sync crawl bar location when user preferences change
+  useEffect(() => {
+    setCrawlBarLocation(user?.preferences?.crawlBar?.locationName || '');
+  }, [user?.preferences?.crawlBar?.locationName]);
 
   // MFA handler functions
   const loadMfaStatus = async () => {
@@ -10998,9 +11025,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <input
                   type="text"
-                  placeholder="e.g., New York, NY"
-                  value={user?.preferences?.crawlBar?.locationName || ''}
-                  onChange={(e) => handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, locationName: e.target.value } })}
+                  placeholder="e.g., New York, NY or Coudersport, US"
+                  value={crawlBarLocation}
+                  onChange={(e) => setCrawlBarLocation(e.target.value)}
                   style={{
                     flex: 1,
                     padding: isMobile ? '12px' : '10px',
@@ -11012,9 +11039,30 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                     fontSize: isMobile ? '0.9rem' : '0.85rem',
                   }}
                 />
-                {user?.preferences?.crawlBar?.locationName && (
+                <button
+                  onClick={() => {
+                    handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, locationName: crawlBarLocation || null, location: null } });
+                  }}
+                  disabled={crawlBarLocation === (user?.preferences?.crawlBar?.locationName || '')}
+                  style={{
+                    padding: isMobile ? '10px 12px' : '8px 12px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: crawlBarLocation !== (user?.preferences?.crawlBar?.locationName || '') ? 'var(--accent-amber)20' : 'transparent',
+                    border: `1px solid ${crawlBarLocation !== (user?.preferences?.crawlBar?.locationName || '') ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
+                    color: crawlBarLocation !== (user?.preferences?.crawlBar?.locationName || '') ? 'var(--accent-amber)' : 'var(--text-muted)',
+                    cursor: crawlBarLocation !== (user?.preferences?.crawlBar?.locationName || '') ? 'pointer' : 'default',
+                    fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  }}
+                >
+                  SAVE
+                </button>
+                {(crawlBarLocation || user?.preferences?.crawlBar?.locationName) && (
                   <button
-                    onClick={() => handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, locationName: null, location: null } })}
+                    onClick={() => {
+                      setCrawlBarLocation('');
+                      handleUpdatePreferences({ crawlBar: { ...user?.preferences?.crawlBar, locationName: null, location: null } });
+                    }}
                     style={{
                       padding: isMobile ? '10px 12px' : '8px 12px',
                       minHeight: isMobile ? '44px' : 'auto',
@@ -11031,7 +11079,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                 )}
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
-                Leave empty to use automatic location detection
+                Enter city name (e.g., "Coudersport, US") then click SAVE
               </div>
             </div>
           </>
