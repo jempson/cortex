@@ -12200,8 +12200,14 @@ function MainApp() {
   }, []);
 
   const handleFocusClose = useCallback(() => {
-    // Clear the entire focus stack, return to wave view
-    setFocusStack([]);
+    // When closing focus view, scroll WaveView to the originally focused droplet
+    setFocusStack(prev => {
+      if (prev.length > 0) {
+        // Set scroll target to the first focused droplet so WaveView scrolls to it
+        setScrollToDropletId(prev[0].dropletId);
+      }
+      return [];
+    });
   }, []);
 
   const handleFocusDeeper = useCallback((droplet) => {
