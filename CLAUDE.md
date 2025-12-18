@@ -619,17 +619,24 @@ Automatic embedding of videos and media from popular platforms.
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
 
-- **v1.15.0 (December 2025)** - Crawl Bar
+- **v1.15.0 (December 2025)** - Crawl Bar & Nested Droplet Layout
   - **Crawl Bar Component**: Horizontal scrolling news ticker
     - Stock quotes from Finnhub API (60s cache, 60 calls/min free tier)
-    - Weather data from OpenWeatherMap API (5min cache, 1000 calls/day free)
-    - News headlines from NewsAPI.org + GNews.io (3min cache, fallback support)
+    - Weather data with fallback providers: OpenWeatherMap → WeatherAPI → Tomorrow.io
+    - News headlines aggregated from: NewsAPI + GNews + MediaStack + RSS feeds
     - IP geolocation via ip-api.com (free, no key required)
+    - Clickable items: stocks → Yahoo Finance, weather → OpenWeatherMap, alerts → NWS forecast
+    - Pixel-based animation for seamless looping (Web Animations API)
+    - Scroll speeds: slow (60s), normal (45s), fast (30s)
+  - **User-Specific Weather Location**:
+    - Users can set custom location in Profile Settings (city name like "Coudersport, US")
+    - Server geocodes `locationName` via OpenWeatherMap Geocoding API
+    - Priority: user location → IP geolocation → server default → fallback
   - **User Preferences** (`user.preferences.crawlBar`):
     - `enabled` - Show/hide crawl bar
     - `showStocks`, `showWeather`, `showNews` - Section toggles
     - `scrollSpeed` - "slow", "normal", "fast"
-    - `location` - Custom location override for weather
+    - `locationName` - City name for weather (auto-geocoded)
   - **Admin Configuration** (`crawl_config` table):
     - `stock_symbols` - Configurable stock list
     - `default_location` - Fallback when IP geolocation fails
@@ -647,11 +654,21 @@ Automatic embedding of videos and media from popular platforms.
     - `crawl_cache` - API response caching with TTL
   - **Environment Variables**:
     - `FINNHUB_API_KEY` - Stock quotes
-    - `OPENWEATHERMAP_API_KEY` - Weather data
-    - `NEWSAPI_KEY` - News (primary)
-    - `GNEWS_API_KEY` - News (backup)
+    - `OPENWEATHERMAP_API_KEY` - Weather data (primary)
+    - `WEATHERAPI_KEY` - Weather fallback
+    - `TOMORROWIO_API_KEY` - Weather fallback
+    - `NEWSAPI_KEY` - News (combined with others)
+    - `GNEWS_API_KEY` - News (combined with others)
+    - `MEDIASTACK_API_KEY` - News (combined with others)
+    - `NEWS_RSS_FEEDS` - Comma-separated RSS feed URLs
     - `RATE_LIMIT_CRAWL_MAX` - Rate limit (default: 60/min)
   - **Graceful Degradation**: Sections hidden when API keys missing
+  - **Nested Droplet Layout**: Visual redesign of threaded replies
+    - Replies now render inside parent droplet's bordered container
+    - Creates clear visual hierarchy showing conversation nesting
+    - Reduced padding for nested droplets to prevent cramped views
+    - Border-left indicator for nested content
+    - Works with existing collapse/expand and Focus View features
 
 - **v1.13.0 (December 2025)** - Federation
   - **Server-to-Server Federation**: Multiple Cortex instances can exchange waves and droplets
