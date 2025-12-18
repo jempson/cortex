@@ -809,6 +809,46 @@ export class DatabaseSQLite {
       `);
       console.log('✅ require_password_change column added');
     }
+
+    // Auto-create crawl bar tables if they don't exist (v1.15.0)
+    const crawlConfigExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='crawl_config'
+    `).get();
+
+    if (!crawlConfigExists) {
+      console.log('📝 Creating crawl bar tables (v1.15.0)...');
+      this.db.exec(`
+        -- Server-wide crawl bar configuration (singleton)
+        CREATE TABLE IF NOT EXISTS crawl_config (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          stock_symbols TEXT DEFAULT '["AAPL","GOOGL","MSFT","AMZN","TSLA"]',
+          news_sources TEXT DEFAULT '[]',
+          default_location TEXT DEFAULT '{"lat":40.7128,"lon":-74.0060,"name":"New York, NY"}',
+          stock_refresh_interval INTEGER DEFAULT 60,
+          weather_refresh_interval INTEGER DEFAULT 300,
+          news_refresh_interval INTEGER DEFAULT 180,
+          stocks_enabled INTEGER DEFAULT 1,
+          weather_enabled INTEGER DEFAULT 1,
+          news_enabled INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        -- Cache for external API responses
+        CREATE TABLE IF NOT EXISTS crawl_cache (
+          id TEXT PRIMARY KEY,
+          cache_type TEXT NOT NULL,
+          cache_key TEXT NOT NULL,
+          data TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE (cache_type, cache_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_crawl_cache_type_key ON crawl_cache(cache_type, cache_key);
+        CREATE INDEX IF NOT EXISTS idx_crawl_cache_expires ON crawl_cache(expires_at);
+      `);
+      console.log('✅ Crawl bar tables created (v1.15.0)');
+    }
   }
 
   prepareStatements() {
