@@ -3377,10 +3377,34 @@ export class DatabaseSQLite {
       reactions: {},
     };
 
-    this.db.prepare(`
-      INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
-    `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt);
+    // Check if parent is a remote droplet (exists in remote_droplets but not in droplets)
+    // If so, we need to temporarily disable FK checks since remote droplets aren't in the droplets table
+    let isRemoteParent = false;
+    if (droplet.parentId) {
+      const localParent = this.db.prepare('SELECT id FROM droplets WHERE id = ?').get(droplet.parentId);
+      if (!localParent) {
+        const remoteParent = this.db.prepare('SELECT id FROM remote_droplets WHERE id = ?').get(droplet.parentId);
+        isRemoteParent = !!remoteParent;
+      }
+    }
+
+    if (isRemoteParent) {
+      // Temporarily disable FK checks for inserting a reply to a remote droplet
+      this.db.exec('PRAGMA foreign_keys = OFF');
+      try {
+        this.db.prepare(`
+          INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
+        `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt);
+      } finally {
+        this.db.exec('PRAGMA foreign_keys = ON');
+      }
+    } else {
+      this.db.prepare(`
+        INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
+      `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt);
+    }
 
     // Author has read their own droplet
     this.db.prepare('INSERT INTO droplet_read_by (droplet_id, user_id, read_at) VALUES (?, ?, ?)').run(droplet.id, data.authorId, now);
