@@ -3284,7 +3284,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ DROPLET (formerly ThreadedMessage) ============
-const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false, isGrouped = false }) => {
+const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -3360,17 +3360,16 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
     );
   }
 
-  // Compact Discord-like styling
+  // Compact styling
   const avatarSize = isMobile ? 24 : 20;
-  const showHeader = !isGrouped || isDeleted || isHighlighted || isUnread;
 
   return (
     <div data-message-id={message.id}>
       <div
         onClick={handleMessageClick}
         style={{
-          padding: isGrouped ? (isMobile ? '0px 12px 0px 44px' : '0px 12px 0px 36px') : (isMobile ? '0px 12px' : '0px 12px'),
-          marginTop: isGrouped ? '0' : (isMobile ? '8px' : '6px'),
+          padding: '0px 12px',
+          marginTop: isMobile ? '8px' : '6px',
           background: isHighlighted ? `${config.color}15` : isUnread ? 'var(--accent-amber)08' : 'transparent',
           borderLeft: isUnread ? '2px solid var(--accent-amber)' : '2px solid transparent',
           cursor: (isUnread || (autoFocusDroplets && hasChildren && !isDeleted)) ? 'pointer' : 'default',
@@ -3390,26 +3389,24 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
       >
         {/* Header row with author info (left) and actions (right) */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px', position: 'relative' }}>
-          {showHeader ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div
-                style={{ cursor: onShowProfile ? 'pointer' : 'default', flexShrink: 0 }}
-                onClick={onShowProfile && message.author_id ? (e) => { e.stopPropagation(); onShowProfile(message.author_id); } : undefined}
-              >
-                <Avatar letter={message.sender_avatar || '?'} color={config.color} size={avatarSize} imageUrl={message.sender_avatar_url} />
-              </div>
-              <span
-                style={{ color: config.color, fontSize: isMobile ? '0.85rem' : '0.8rem', fontWeight: 600, cursor: onShowProfile ? 'pointer' : 'default' }}
-                onClick={onShowProfile && message.author_id ? (e) => { e.stopPropagation(); onShowProfile(message.author_id); } : undefined}
-              >
-                {message.sender_name}
-              </span>
-              <span style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.7rem' : '0.65rem' }}>
-                {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
-              {wave?.privacy !== message.privacy && <PrivacyBadge level={message.privacy} compact />}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div
+              style={{ cursor: onShowProfile ? 'pointer' : 'default', flexShrink: 0 }}
+              onClick={onShowProfile && message.author_id ? (e) => { e.stopPropagation(); onShowProfile(message.author_id); } : undefined}
+            >
+              <Avatar letter={message.sender_avatar || '?'} color={config.color} size={avatarSize} imageUrl={message.sender_avatar_url} />
             </div>
-          ) : <div />}
+            <span
+              style={{ color: config.color, fontSize: isMobile ? '0.85rem' : '0.8rem', fontWeight: 600, cursor: onShowProfile ? 'pointer' : 'default' }}
+              onClick={onShowProfile && message.author_id ? (e) => { e.stopPropagation(); onShowProfile(message.author_id); } : undefined}
+            >
+              {message.sender_name}
+            </span>
+            <span style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.7rem' : '0.65rem' }}>
+              {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            {wave?.privacy !== message.privacy && <PrivacyBadge level={message.privacy} compact />}
+          </div>
 
           {/* Compact inline actions */}
           {!isDeleted && (
@@ -3420,54 +3417,54 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               {/* Reply / Focus to Reply */}
               {isAtDepthLimit && onFocus ? (
                 <button onClick={() => onFocus(message)} title="Focus to reply" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>⤢</button>
               ) : (
                 <button onClick={() => onReply(message)} title="Reply" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>↵</button>
               )}
               {/* Collapse/Expand */}
               {hasChildren && (
                 <button onClick={() => onToggleCollapse(message.id)} title={isCollapsed ? 'Expand' : 'Collapse'} style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.7rem' : '0.65rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.8rem' : '0.65rem',
                 }}>{isCollapsed ? `▶${totalChildCount}` : '▼'}</button>
               )}
               {/* Focus */}
               {hasChildren && !isAtDepthLimit && onFocus && (
                 <button onClick={() => onFocus(message)} title="Focus" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>⤢</button>
               )}
               {/* Share */}
               {wave?.privacy === 'public' && onShare && (
                 <button onClick={() => onShare(message)} title="Share" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-purple)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-purple)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>⤴</button>
               )}
               {/* Edit */}
               {canDelete && !isEditing && (
                 <button onClick={() => onEdit(message)} title="Edit" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>✏</button>
               )}
               {/* Delete */}
               {canDelete && !isEditing && (
                 <button onClick={() => onDelete(message)} title="Delete" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-orange)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-orange)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>✕</button>
               )}
               {/* Reaction */}
               <button onClick={() => setShowReactionPicker(!showReactionPicker)} title="React" style={{
-                padding: '2px 4px', background: showReactionPicker ? 'var(--bg-hover)' : 'transparent', border: 'none',
-                color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                padding: isMobile ? '8px 10px' : '2px 4px', background: showReactionPicker ? 'var(--bg-hover)' : 'transparent', border: 'none',
+                color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
               }}>{showReactionPicker ? '✕' : '😀'}</button>
               {/* Reaction picker dropdown */}
               {showReactionPicker && (
@@ -3679,23 +3676,16 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             paddingLeft: isMobile ? '4px' : '6px',
             borderLeft: '1px solid var(--border-subtle)',
           }}>
-            {message.children.map((child, idx) => {
-              const prevChild = idx > 0 ? message.children[idx - 1] : null;
-              const childGrouped = prevChild &&
-                prevChild.author_id === child.author_id &&
-                !prevChild.deleted && !child.deleted &&
-                (new Date(child.created_at) - new Date(prevChild.created_at)) < 5 * 60 * 1000;
-              return (
-                <Droplet key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
-                  onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
-                  editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
-                  currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
-                  onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
-                  participants={participants} onShowProfile={onShowProfile} onReport={onReport}
-                  onFocus={onFocus} onRipple={onRipple} onShare={onShare} wave={wave} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
-                  unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} isGrouped={childGrouped} />
-              );
-            })}
+            {message.children.map((child) => (
+              <Droplet key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
+                onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
+                editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
+                currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
+                onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
+                participants={participants} onShowProfile={onShowProfile} onReport={onReport}
+                onFocus={onFocus} onRipple={onRipple} onShare={onShare} wave={wave} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
+                unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} />
+            ))}
           </div>
         )}
       </div>
@@ -4995,7 +4985,7 @@ const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ WAVE SETTINGS MODAL ============
-const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast, onUpdate }) => {
+const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast, onUpdate, participants = [], showParticipants, setShowParticipants, federationEnabled, currentUserId, onFederate, isMobile }) => {
   const [privacy, setPrivacy] = useState(wave?.privacy || 'private');
   const [selectedGroup, setSelectedGroup] = useState(wave?.groupId || null);
   const [title, setTitle] = useState(wave?.title || '');
@@ -5083,6 +5073,46 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{g.memberCount} members</div>
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Participants Section */}
+        {participants.length > 0 && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PARTICIPANTS ({participants.length})</div>
+            <button
+              onClick={() => { setShowParticipants(!showParticipants); onClose(); }}
+              style={{
+                width: '100%', padding: '12px', textAlign: 'left',
+                background: showParticipants ? 'var(--accent-green)15' : 'var(--bg-elevated)',
+                border: `1px solid ${showParticipants ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                color: showParticipants ? 'var(--accent-green)' : 'var(--text-primary)',
+                cursor: 'pointer', fontFamily: 'monospace',
+              }}
+            >
+              {showParticipants ? '✓ Participants panel visible' : 'Show participants panel'}
+            </button>
+          </div>
+        )}
+
+        {/* Federation Section */}
+        {federationEnabled && wave?.createdBy === currentUserId && wave?.federationState !== 'participant' && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>FEDERATION</div>
+            <button
+              onClick={onFederate}
+              style={{
+                width: '100%', padding: '12px', textAlign: 'left',
+                background: wave?.federationState === 'origin' ? 'var(--accent-teal)15' : 'var(--bg-elevated)',
+                border: `1px solid ${wave?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+                color: wave?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--text-primary)',
+                cursor: 'pointer', fontFamily: 'monospace',
+                display: 'flex', alignItems: 'center', gap: '8px',
+              }}
+            >
+              <span>◇</span>
+              {wave?.federationState === 'origin' ? 'Manage federated participants' : 'Federate this wave'}
+            </button>
           </div>
         )}
 
@@ -6267,28 +6297,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           gap: isMobile ? '8px' : '12px',
           flexShrink: 0
         }}>
-          {/* Participants Toggle */}
-          {participants.length > 0 && (
-            <button
-              onClick={() => setShowParticipants(!showParticipants)}
-              style={{
-                padding: isMobile ? '8px 12px' : '6px 10px',
-                background: showParticipants ? 'var(--accent-green)20' : 'transparent',
-                border: `1px solid ${showParticipants ? 'var(--accent-green)' : 'var(--border-primary)'}`,
-                color: showParticipants ? 'var(--accent-green)' : 'var(--text-dim)',
-                cursor: 'pointer',
-                fontFamily: 'monospace',
-                fontSize: isMobile ? '0.7rem' : '0.65rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <span>{showParticipants ? '▼' : '▶'}</span>
-              PARTICIPANTS ({participants.length})
-            </button>
-          )}
-
           {/* Playback Toggle */}
           {total > 0 && (
             <button
@@ -6311,63 +6319,30 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             </button>
           )}
 
-          {/* Federate Button - visible to wave owner when federation enabled */}
-          {federationEnabled && waveData?.createdBy === currentUser?.id && waveData?.federationState !== 'participant' && (
+          {/* Thread Collapse/Expand Toggle */}
+          {total > 0 && (
             <button
-              onClick={() => setShowFederateModal(true)}
+              onClick={() => {
+                const allCollapsed = Object.keys(collapsed).length > 0;
+                if (allCollapsed) {
+                  expandAllThreads();
+                } else {
+                  collapseAllThreads();
+                }
+              }}
               style={{
                 padding: isMobile ? '8px 12px' : '6px 10px',
-                background: waveData?.federationState === 'origin' ? 'var(--accent-teal)20' : 'transparent',
-                border: `1px solid ${waveData?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
-                color: waveData?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--text-dim)',
+                background: 'transparent',
+                border: '1px solid var(--border-primary)',
+                color: 'var(--text-dim)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.7rem' : '0.65rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
               }}
-              title={waveData?.federationState === 'origin' ? 'Add more federated participants' : 'Federate this wave to other servers'}
+              title={Object.keys(collapsed).length > 0 ? 'Expand all threads' : 'Collapse all threads'}
             >
-              <span>◇</span>
-              {waveData?.federationState === 'origin' ? 'FEDERATED' : 'FEDERATE'}
+              {Object.keys(collapsed).length > 0 ? '▼' : '▶'} ALL
             </button>
-          )}
-
-          {/* Thread Collapse/Expand Buttons */}
-          {total > 0 && (
-            <>
-              <button
-                onClick={collapseAllThreads}
-                style={{
-                  padding: isMobile ? '8px 12px' : '6px 10px',
-                  background: 'transparent',
-                  border: '1px solid var(--border-primary)',
-                  color: 'var(--text-dim)',
-                  cursor: 'pointer',
-                  fontFamily: 'monospace',
-                  fontSize: isMobile ? '0.7rem' : '0.65rem',
-                }}
-                title="Collapse all threads"
-              >
-                ▶ ALL
-              </button>
-              <button
-                onClick={expandAllThreads}
-                style={{
-                  padding: isMobile ? '8px 12px' : '6px 10px',
-                  background: 'transparent',
-                  border: '1px solid var(--border-primary)',
-                  color: 'var(--text-dim)',
-                  cursor: 'pointer',
-                  fontFamily: 'monospace',
-                  fontSize: isMobile ? '0.7rem' : '0.65rem',
-                }}
-                title="Expand all threads"
-              >
-                ▼ ALL
-              </button>
-            </>
           )}
 
           {/* Mark All Read Button - always visible if unread */}
@@ -6630,29 +6605,21 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             </button>
           </div>
         )}
-        {droplets.map((msg, idx) => {
-          const prevMsg = idx > 0 ? droplets[idx - 1] : null;
-          const isGrouped = prevMsg &&
-            prevMsg.author_id === msg.author_id &&
-            !prevMsg.deleted && !msg.deleted &&
-            (new Date(msg.created_at) - new Date(prevMsg.created_at)) < 5 * 60 * 1000; // 5 min window
-          return (
-            <Droplet key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
-              onEdit={handleStartEdit} onSaveEdit={handleSaveEdit} onCancelEdit={handleCancelEdit}
-              editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
-              currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
-              collapsed={collapsed} onToggleCollapse={toggleThreadCollapse} isMobile={isMobile}
-              onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
-              onShowProfile={onShowProfile} onReport={handleReportMessage}
-              onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined}
-              onRipple={(droplet) => setRippleTarget(droplet)}
-              onShare={handleShareDroplet} wave={wave || waveData}
-              onNavigateToWave={onNavigateToWave} currentWaveId={wave.id}
-              unreadCountsByWave={unreadCountsByWave}
-              autoFocusDroplets={currentUser?.preferences?.autoFocusDroplets === true}
-              isGrouped={isGrouped} />
-          );
-        })}
+        {droplets.map((msg) => (
+          <Droplet key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
+            onEdit={handleStartEdit} onSaveEdit={handleSaveEdit} onCancelEdit={handleCancelEdit}
+            editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
+            currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
+            collapsed={collapsed} onToggleCollapse={toggleThreadCollapse} isMobile={isMobile}
+            onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
+            onShowProfile={onShowProfile} onReport={handleReportMessage}
+            onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined}
+            onRipple={(droplet) => setRippleTarget(droplet)}
+            onShare={handleShareDroplet} wave={wave || waveData}
+            onNavigateToWave={onNavigateToWave} currentWaveId={wave.id}
+            unreadCountsByWave={unreadCountsByWave}
+            autoFocusDroplets={currentUser?.preferences?.autoFocusDroplets === true} />
+        ))}
       </div>
 
       {/* Typing Indicator */}
@@ -6872,8 +6839,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       </div>
 
       <WaveSettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)}
-       wave={waveData} groups={groups} fetchAPI={fetchAPI} showToast={showToast}
-        onUpdate={() => { loadWave(true); onWaveUpdate?.(); }} />
+        wave={waveData} groups={groups} fetchAPI={fetchAPI} showToast={showToast}
+        onUpdate={() => { loadWave(true); onWaveUpdate?.(); }}
+        participants={participants}
+        showParticipants={showParticipants}
+        setShowParticipants={setShowParticipants}
+        federationEnabled={federationEnabled}
+        currentUserId={currentUser?.id}
+        onFederate={() => { setShowSettings(false); setShowFederateModal(true); }}
+        isMobile={isMobile} />
 
       <DeleteConfirmModal
         isOpen={showDeleteConfirm}
@@ -7935,42 +7909,34 @@ const FocusView = ({
           padding: isMobile ? '12px' : '16px',
         }}
       >
-        {filteredDroplets.map((msg, idx) => {
-          const prevMsg = idx > 0 ? filteredDroplets[idx - 1] : null;
-          const isGrouped = prevMsg &&
-            prevMsg.author_id === msg.author_id &&
-            !prevMsg.deleted && !msg.deleted &&
-            (new Date(msg.created_at) - new Date(prevMsg.created_at)) < 5 * 60 * 1000;
-          return (
-            <Droplet
-              key={msg.id}
-              message={msg}
-              onReply={handleReply}
-              onDelete={handleDeleteMessage}
-              onEdit={handleStartEdit}
-              onSaveEdit={handleSaveEdit}
-              onCancelEdit={handleCancelEdit}
-              editingMessageId={editingMessageId}
-              editContent={editContent}
-              setEditContent={setEditContent}
-              currentUserId={currentUser?.id}
-              highlightId={replyingTo?.id}
-              playbackIndex={null}
-              collapsed={collapsed}
-              onToggleCollapse={toggleThreadCollapse}
-              isMobile={isMobile}
-              onReact={handleReaction}
-              onMessageClick={() => {}}
-              participants={participants}
-              onShowProfile={onShowProfile}
-              onFocus={onFocusDeeper ? (droplet) => onFocusDeeper(droplet) : undefined}
-              onShare={handleShareDroplet}
-              wave={wave}
-              currentWaveId={wave?.id}
-              isGrouped={isGrouped}
-            />
-          );
-        })}
+        {filteredDroplets.map((msg) => (
+          <Droplet
+            key={msg.id}
+            message={msg}
+            onReply={handleReply}
+            onDelete={handleDeleteMessage}
+            onEdit={handleStartEdit}
+            onSaveEdit={handleSaveEdit}
+            onCancelEdit={handleCancelEdit}
+            editingMessageId={editingMessageId}
+            editContent={editContent}
+            setEditContent={setEditContent}
+            currentUserId={currentUser?.id}
+            highlightId={replyingTo?.id}
+            playbackIndex={null}
+            collapsed={collapsed}
+            onToggleCollapse={toggleThreadCollapse}
+            isMobile={isMobile}
+            onReact={handleReaction}
+            onMessageClick={() => {}}
+            participants={participants}
+            onShowProfile={onShowProfile}
+            onFocus={onFocusDeeper ? (droplet) => onFocusDeeper(droplet) : undefined}
+            onShare={handleShareDroplet}
+            wave={wave}
+            currentWaveId={wave?.id}
+          />
+        ))}
       </div>
 
       {/* Typing Indicator */}
