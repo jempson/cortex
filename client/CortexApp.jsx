@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, createContext, use
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.17.2';
+const VERSION = '1.17.3';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
