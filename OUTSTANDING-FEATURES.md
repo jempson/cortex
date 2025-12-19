@@ -1,13 +1,13 @@
 # Cortex - Outstanding Features & Future Roadmap
 
-**Last Updated:** December 17, 2025
-**Current Version:** v1.14.0
+**Last Updated:** December 19, 2025
+**Current Version:** v1.17.2
 
 This document tracks planned but not-yet-implemented features for future releases.
 
 ---
 
-## Completed Features (v1.5.0 - v1.14.0)
+## Completed Features (v1.5.0 - v1.17.2)
 
 The following features have been implemented and are no longer outstanding:
 
@@ -61,6 +61,18 @@ The following features have been implemented and are no longer outstanding:
 | **MFA Login Flow** | v1.14.0 | Challenge-response during login |
 | **Activity Log** | v1.14.0 | Security and content event tracking with admin UI |
 | **Encryption at Rest** | v1.14.0 | SQLCipher database encryption support |
+| **Alert Droplets** | v1.15.0 | Scheduled alerts with start/end times |
+| **Web Crawl Feature** | v1.15.0 | Public info endpoint for web crawlers |
+| **Alert Banner** | v1.16.0 | Alert display in wave UI |
+| **Droplet Sharing** | v1.17.0 | Share public droplets via Web Share API |
+| **Social Previews** | v1.17.0 | Open Graph and Twitter Card meta tags |
+| **Public Droplet View** | v1.17.0 | Unauthenticated viewing of shared droplets |
+| **Compact UI** | v1.17.1 | Cleaner message layout, inline actions |
+| **Reduced Nesting** | v1.17.1 | Better deep thread readability |
+| **@ Mention Autocomplete** | v1.17.2 | Type @ to mention users with dropdown picker |
+| **Styled Mentions** | v1.17.2 | Teal colored, clickable to open profile |
+| **Alert Time Fix** | v1.17.2 | Proper timezone handling for alert expiration |
+| **Deleted Droplet Fix** | v1.17.2 | Fully deleted threads now disappear |
 
 ---
 
