@@ -1,13 +1,13 @@
 # Cortex - Outstanding Features & Future Roadmap
 
 **Last Updated:** December 19, 2025
-**Current Version:** v1.17.2
+**Current Version:** v1.17.3
 
 This document tracks planned but not-yet-implemented features for future releases.
 
 ---
 
-## Completed Features (v1.5.0 - v1.17.2)
+## Completed Features (v1.5.0 - v1.17.3)
 
 The following features have been implemented and are no longer outstanding:
 
@@ -73,6 +73,9 @@ The following features have been implemented and are no longer outstanding:
 | **Styled Mentions** | v1.17.2 | Teal colored, clickable to open profile |
 | **Alert Time Fix** | v1.17.2 | Proper timezone handling for alert expiration |
 | **Deleted Droplet Fix** | v1.17.2 | Fully deleted threads now disappear |
+| **Collapsible Sections** | v1.17.3 | Profile Settings and Admin Panel sections collapse |
+| **Password Confirmation** | v1.17.3 | Password change requires current + matching confirmation |
+| **Lazy Loading Admin** | v1.17.3 | Admin panels load data only when expanded |
 
 ---
 
