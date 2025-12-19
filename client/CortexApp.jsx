@@ -5301,6 +5301,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [messageToDelete, setMessageToDelete] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGifSearch, setShowGifSearch] = useState(false);
+  const [showMentionPicker, setShowMentionPicker] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionStartPos, setMentionStartPos] = useState(null);
   const [showPlayback, setShowPlayback] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
@@ -6696,49 +6700,181 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             Drop image to upload
           </div>
         )}
-        {/* Textarea - full width */}
-        <textarea
-          ref={textareaRef}
-          value={newMessage}
-          onChange={(e) => {
-            setNewMessage(e.target.value);
-            handleTyping();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSendMessage();
-            }
-          }}
-          onPaste={(e) => {
-            const items = e.clipboardData?.items;
-            if (!items) return;
-            for (const item of items) {
-              if (item.type.startsWith('image/')) {
-                e.preventDefault();
-                const file = item.getAsFile();
-                if (file) handleImageUpload(file);
-                return;
+        {/* Textarea - full width with mention picker */}
+        <div style={{ position: 'relative' }}>
+          <textarea
+            ref={textareaRef}
+            value={newMessage}
+            onChange={(e) => {
+              const value = e.target.value;
+              const cursorPos = e.target.selectionStart;
+              setNewMessage(value);
+              handleTyping();
+
+              // Detect @ mention
+              const textBeforeCursor = value.slice(0, cursorPos);
+              const atMatch = textBeforeCursor.match(/@(\w*)$/);
+              if (atMatch) {
+                setShowMentionPicker(true);
+                setMentionSearch(atMatch[1].toLowerCase());
+                setMentionStartPos(cursorPos - atMatch[0].length);
+                setMentionIndex(0);
+              } else {
+                setShowMentionPicker(false);
+                setMentionSearch('');
+                setMentionStartPos(null);
               }
-            }
-          }}
-          placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a droplet... (Shift+Enter for new line)'}
-          rows={1}
-          style={{
-            width: '100%',
-            padding: isMobile ? '14px 16px' : '12px 16px',
-            minHeight: isMobile ? '44px' : 'auto',
-            maxHeight: '200px',
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border-subtle)',
-            color: 'var(--text-primary)',
-            fontSize: isMobile ? '1rem' : '0.9rem',
-            fontFamily: 'inherit',
-            resize: 'none',
-            overflowY: 'auto',
-            boxSizing: 'border-box',
-          }}
-        />
+            }}
+            onKeyDown={(e) => {
+              // Handle mention picker navigation
+              if (showMentionPicker) {
+                const mentionableUsers = [...(contacts || []), ...(participants || [])]
+                  .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i) // dedupe
+                  .filter(u => u.id !== currentUser?.id)
+                  .filter(u => {
+                    const name = (u.displayName || u.display_name || u.handle || '').toLowerCase();
+                    const handle = (u.handle || '').toLowerCase();
+                    return name.includes(mentionSearch) || handle.includes(mentionSearch);
+                  })
+                  .slice(0, 8);
+
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setMentionIndex(i => Math.min(i + 1, mentionableUsers.length - 1));
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setMentionIndex(i => Math.max(i - 1, 0));
+                  return;
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  if (mentionableUsers.length > 0) {
+                    e.preventDefault();
+                    const user = mentionableUsers[mentionIndex];
+                    const handle = user.handle || user.displayName || user.display_name;
+                    const before = newMessage.slice(0, mentionStartPos);
+                    const after = newMessage.slice(textareaRef.current?.selectionStart || mentionStartPos);
+                    setNewMessage(before + '@' + handle + ' ' + after);
+                    setShowMentionPicker(false);
+                    setMentionSearch('');
+                    setMentionStartPos(null);
+                    return;
+                  }
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setShowMentionPicker(false);
+                  setMentionSearch('');
+                  setMentionStartPos(null);
+                  return;
+                }
+              }
+
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            onPaste={(e) => {
+              const items = e.clipboardData?.items;
+              if (!items) return;
+              for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                  e.preventDefault();
+                  const file = item.getAsFile();
+                  if (file) handleImageUpload(file);
+                  return;
+                }
+              }
+            }}
+            placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a droplet... (Shift+Enter for new line, @ to mention)'}
+            rows={1}
+            style={{
+              width: '100%',
+              padding: isMobile ? '14px 16px' : '12px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              maxHeight: '200px',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)',
+              fontSize: isMobile ? '1rem' : '0.9rem',
+              fontFamily: 'inherit',
+              resize: 'none',
+              overflowY: 'auto',
+              boxSizing: 'border-box',
+            }}
+          />
+          {/* Mention Picker Dropdown */}
+          {showMentionPicker && (() => {
+            const mentionableUsers = [...(contacts || []), ...(participants || [])]
+              .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i)
+              .filter(u => u.id !== currentUser?.id)
+              .filter(u => {
+                const name = (u.displayName || u.display_name || u.handle || '').toLowerCase();
+                const handle = (u.handle || '').toLowerCase();
+                return name.includes(mentionSearch) || handle.includes(mentionSearch);
+              })
+              .slice(0, 8);
+
+            if (mentionableUsers.length === 0) return null;
+
+            return (
+              <div style={{
+                position: 'absolute',
+                bottom: '100%',
+                left: 0,
+                right: 0,
+                marginBottom: '4px',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-primary)',
+                maxHeight: '200px',
+                overflowY: 'auto',
+                zIndex: 20,
+              }}>
+                {mentionableUsers.map((user, idx) => (
+                  <div
+                    key={user.id}
+                    onClick={() => {
+                      const handle = user.handle || user.displayName || user.display_name;
+                      const before = newMessage.slice(0, mentionStartPos);
+                      const after = newMessage.slice(textareaRef.current?.selectionStart || mentionStartPos);
+                      setNewMessage(before + '@' + handle + ' ' + after);
+                      setShowMentionPicker(false);
+                      setMentionSearch('');
+                      setMentionStartPos(null);
+                      textareaRef.current?.focus();
+                    }}
+                    style={{
+                      padding: isMobile ? '12px' : '8px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      cursor: 'pointer',
+                      background: idx === mentionIndex ? 'var(--bg-hover)' : 'transparent',
+                      borderBottom: idx < mentionableUsers.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                    }}
+                  >
+                    <Avatar
+                      letter={(user.displayName || user.display_name || user.handle || '?')[0]}
+                      color="var(--accent-teal)"
+                      size={24}
+                      imageUrl={user.avatarUrl || user.avatar_url}
+                    />
+                    <div>
+                      <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                        {user.displayName || user.display_name || user.handle}
+                      </div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                        @{user.handle}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
         {/* Button row - below textarea */}
         <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center', position: 'relative', flexWrap: 'wrap' }}>
           {/* Left side: media buttons */}
@@ -9539,8 +9675,8 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
             priority: formPriority,
             category: formCategory,
             scope: formScope,
-            startTime: formStartTime,
-            endTime: formEndTime,
+            startTime: new Date(formStartTime).toISOString(),
+            endTime: new Date(formEndTime).toISOString(),
           }
         });
         showToast('Alert updated', 'success');
@@ -9553,8 +9689,8 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
             priority: formPriority,
             category: formCategory,
             scope: formScope,
-            startTime: formStartTime,
-            endTime: formEndTime,
+            startTime: new Date(formStartTime).toISOString(),
+            endTime: new Date(formEndTime).toISOString(),
           }
         });
         showToast('Alert created', 'success');
