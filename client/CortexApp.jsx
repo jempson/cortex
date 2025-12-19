@@ -3388,26 +3388,104 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
           }
         }}
       >
-        {showHeader && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-            <div
-              style={{ cursor: onShowProfile ? 'pointer' : 'default', flexShrink: 0 }}
-              onClick={onShowProfile && message.author_id ? (e) => { e.stopPropagation(); onShowProfile(message.author_id); } : undefined}
-            >
-              <Avatar letter={message.sender_avatar || '?'} color={config.color} size={avatarSize} imageUrl={message.sender_avatar_url} />
+        {/* Header row with author info (left) and actions (right) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px', position: 'relative' }}>
+          {showHeader ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div
+                style={{ cursor: onShowProfile ? 'pointer' : 'default', flexShrink: 0 }}
+                onClick={onShowProfile && message.author_id ? (e) => { e.stopPropagation(); onShowProfile(message.author_id); } : undefined}
+              >
+                <Avatar letter={message.sender_avatar || '?'} color={config.color} size={avatarSize} imageUrl={message.sender_avatar_url} />
+              </div>
+              <span
+                style={{ color: config.color, fontSize: isMobile ? '0.85rem' : '0.8rem', fontWeight: 600, cursor: onShowProfile ? 'pointer' : 'default' }}
+                onClick={onShowProfile && message.author_id ? (e) => { e.stopPropagation(); onShowProfile(message.author_id); } : undefined}
+              >
+                {message.sender_name}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.7rem' : '0.65rem' }}>
+                {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+              {wave?.privacy !== message.privacy && <PrivacyBadge level={message.privacy} compact />}
             </div>
-            <span
-              style={{ color: config.color, fontSize: isMobile ? '0.85rem' : '0.8rem', fontWeight: 600, cursor: onShowProfile ? 'pointer' : 'default' }}
-              onClick={onShowProfile && message.author_id ? (e) => { e.stopPropagation(); onShowProfile(message.author_id); } : undefined}
+          ) : <div />}
+
+          {/* Compact inline actions */}
+          {!isDeleted && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', opacity: 0.6, transition: 'opacity 0.15s' }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
             >
-              {message.sender_name}
-            </span>
-            <span style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.7rem' : '0.65rem' }}>
-              {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-            {wave?.privacy !== message.privacy && <PrivacyBadge level={message.privacy} compact />}
-          </div>
-        )}
+              {/* Reply / Focus to Reply */}
+              {isAtDepthLimit && onFocus ? (
+                <button onClick={() => onFocus(message)} title="Focus to reply" style={{
+                  padding: '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                }}>⤢</button>
+              ) : (
+                <button onClick={() => onReply(message)} title="Reply" style={{
+                  padding: '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                }}>↵</button>
+              )}
+              {/* Collapse/Expand */}
+              {hasChildren && (
+                <button onClick={() => onToggleCollapse(message.id)} title={isCollapsed ? 'Expand' : 'Collapse'} style={{
+                  padding: '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.7rem' : '0.65rem',
+                }}>{isCollapsed ? `▶${totalChildCount}` : '▼'}</button>
+              )}
+              {/* Focus */}
+              {hasChildren && !isAtDepthLimit && onFocus && (
+                <button onClick={() => onFocus(message)} title="Focus" style={{
+                  padding: '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                }}>⤢</button>
+              )}
+              {/* Share */}
+              {wave?.privacy === 'public' && onShare && (
+                <button onClick={() => onShare(message)} title="Share" style={{
+                  padding: '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-purple)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                }}>⤴</button>
+              )}
+              {/* Edit */}
+              {canDelete && !isEditing && (
+                <button onClick={() => onEdit(message)} title="Edit" style={{
+                  padding: '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                }}>✏</button>
+              )}
+              {/* Delete */}
+              {canDelete && !isEditing && (
+                <button onClick={() => onDelete(message)} title="Delete" style={{
+                  padding: '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-orange)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                }}>✕</button>
+              )}
+              {/* Reaction */}
+              <button onClick={() => setShowReactionPicker(!showReactionPicker)} title="React" style={{
+                padding: '2px 4px', background: showReactionPicker ? 'var(--bg-hover)' : 'transparent', border: 'none',
+                color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+              }}>{showReactionPicker ? '✕' : '😀'}</button>
+              {/* Reaction picker dropdown */}
+              {showReactionPicker && (
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: '4px', zIndex: 10,
+                  background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', padding: '4px',
+                  display: 'flex', gap: '2px',
+                }}>
+                  {quickReactions.map(emoji => (
+                    <button key={emoji} onClick={() => { onReact(message.id, emoji); setShowReactionPicker(false); }}
+                      style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
+                    >{emoji}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         {/* Depth indicator for deep threads */}
         {isAtDepthLimit && (
           <div style={{
@@ -3531,190 +3609,35 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <DropletWithEmbeds content={message.content} />
           </div>
         )}
-        {/* Actions Row: Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>
-          {/* At depth limit, show Focus button instead of Reply */}
-          {isAtDepthLimit && hasChildren && onFocus ? (
-            <button onClick={() => onFocus(message)} style={{
-              padding: isMobile ? '8px 12px' : '4px 8px',
-              minHeight: isMobile ? '38px' : 'auto',
-              background: 'var(--accent-teal)15', border: 'none',
-              color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-            }} title="Thread is deep - focus to continue">⤢ FOCUS TO REPLY</button>
-          ) : isAtDepthLimit && onFocus ? (
-            <button onClick={() => onFocus(message)} style={{
-              padding: isMobile ? '8px 12px' : '4px 8px',
-              minHeight: isMobile ? '38px' : 'auto',
-              background: 'var(--accent-teal)15', border: 'none',
-              color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-            }} title="Thread is deep - focus to reply">⤢ FOCUS TO REPLY</button>
-          ) : (
-            <button onClick={() => onReply(message)} style={{
-              padding: isMobile ? '8px 12px' : '4px 8px',
-              minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: 'none',
-              color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-            }}>↵ REPLY</button>
-          )}
-          {hasChildren && (
-            <>
-              <button onClick={() => onToggleCollapse(message.id)} style={{
-                padding: isMobile ? '8px 12px' : '4px 8px',
-                minHeight: isMobile ? '38px' : 'auto',
-                background: unreadChildCount > 0 ? 'var(--accent-amber)15' : 'transparent',
-                border: 'none',
-                color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-              }}>{isCollapsed ? `▶ ${totalChildCount}${unreadChildCount > 0 ? ` (${unreadChildCount} new)` : ''}` : '▼'}</button>
-              {/* Show separate Focus button only when not at depth limit (at limit, Focus is in reply button) */}
-              {!isAtDepthLimit && onFocus && (
-                <button onClick={() => onFocus(message)} style={{
-                  padding: isMobile ? '8px 12px' : '4px 8px',
-                  minHeight: isMobile ? '38px' : 'auto',
-                  background: 'transparent', border: 'none',
-                  color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-                }} title="Focus on this droplet and its replies">⤢ FOCUS</button>
-              )}
-              {/* Ripple button - create new wave from this droplet */}
-              {onRipple && (
-                <button onClick={() => onRipple(message)} style={{
-                  padding: isMobile ? '8px 12px' : '4px 8px',
-                  minHeight: isMobile ? '38px' : 'auto',
-                  background: 'transparent', border: 'none',
-                  color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-                }} title="Ripple to new wave">◈ RIPPLE</button>
-              )}
-            </>
-          )}
-          {/* Share button - only for public waves */}
-          {!isDeleted && wave?.privacy === 'public' && onShare && (
-            <button onClick={() => onShare(message)} style={{
-              padding: isMobile ? '8px 12px' : '4px 8px',
-              minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: 'none',
-              color: 'var(--accent-purple)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-            }} title="Share droplet">⤴ SHARE</button>
-          )}
-          {canDelete && !isEditing && (
-            <>
-              <button onClick={() => onEdit(message)} style={{
-                padding: isMobile ? '8px 12px' : '4px 8px',
-                minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: 'none',
-                color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-              }}>✏️</button>
-              <button onClick={() => onDelete(message)} style={{
-                padding: isMobile ? '8px 12px' : '4px 8px',
-                minHeight: isMobile ? '38px' : 'auto',
-                background: 'transparent', border: 'none',
-                color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-              }}>✕</button>
-            </>
-          )}
-
-          {/* Report button - shown for other users' messages */}
-          {!isDeleted && message.author_id !== currentUserId && onReport && (
-            <button onClick={() => onReport(message)} style={{
-              padding: isMobile ? '8px 12px' : '4px 8px',
-              minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: 'none',
-              color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-            }} title="Report droplet">⚐</button>
-          )}
-
-          {/* Emoji picker button - hidden for deleted messages */}
-          {!isDeleted && (
-            <>
-              <button
-                onClick={() => setShowReactionPicker(!showReactionPicker)}
-                style={{
-                  padding: isMobile ? '8px 10px' : '4px 8px',
-                  minHeight: isMobile ? '38px' : 'auto',
-                  background: showReactionPicker ? 'var(--border-primary)' : 'transparent',
-                  border: 'none',
-                  color: 'var(--text-dim)',
-                  cursor: 'pointer',
-                  fontSize: isMobile ? '0.9rem' : '0.85rem',
-                }}
-              >
-                {showReactionPicker ? '✕' : '😀'}
-              </button>
-
-              {showReactionPicker && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: isMobile ? '0' : 'auto',
-                  right: isMobile ? 'auto' : '0',
-                  marginTop: '4px',
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-subtle)',
-                  padding: '8px',
-                  display: 'flex',
-                  gap: '4px',
-                  zIndex: 10,
-                  flexWrap: 'wrap',
-                  maxWidth: isMobile ? '200px' : '250px',
-                }}>
-                  {quickReactions.map(emoji => (
-                    <button
-                      key={emoji}
-                      onClick={() => {
-                        onReact(message.id, emoji);
-                        setShowReactionPicker(false);
-                      }}
-                      style={{
-                        padding: isMobile ? '8px' : '6px',
-                        minHeight: isMobile ? '38px' : 'auto',
-                        minWidth: isMobile ? '38px' : 'auto',
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: isMobile ? '1.3rem' : '1.1rem',
-                      }}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Separator before reactions */}
-          {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
-            <span style={{ color: 'var(--border-subtle)', margin: '0 2px' }}>│</span>
-          )}
-
-          {/* Inline Reactions Display */}
-          {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
-            Object.entries(message.reactions).map(([emoji, userIds]) => {
+        {/* Reactions and Read Receipts Row */}
+        {!isDeleted && message.reactions && Object.keys(message.reactions).length > 0 && (
+          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center', marginTop: '2px' }}>
+            {Object.entries(message.reactions).map(([emoji, userIds]) => {
               const hasReacted = userIds.includes(currentUserId);
               return (
                 <button
                   key={emoji}
                   onClick={() => onReact(message.id, emoji)}
                   style={{
-                    padding: isMobile ? '6px 8px' : '3px 6px',
-                    minHeight: isMobile ? '38px' : 'auto',
-                    background: hasReacted ? 'var(--accent-amber)20' : 'transparent',
+                    padding: '1px 4px',
+                    background: hasReacted ? 'var(--accent-amber)20' : 'var(--bg-hover)',
                     border: 'none',
                     color: hasReacted ? 'var(--accent-amber)' : 'var(--text-dim)',
                     cursor: 'pointer',
-                    fontSize: isMobile ? '0.95rem' : '0.85rem',
+                    fontSize: isMobile ? '0.8rem' : '0.75rem',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '3px',
+                    gap: '2px',
+                    borderRadius: '2px',
                   }}
                 >
                   <span>{emoji}</span>
-                  <span style={{ fontSize: isMobile ? '0.7rem' : '0.65rem', fontFamily: 'monospace' }}>
-                    {userIds.length}
-                  </span>
+                  <span style={{ fontSize: '0.6rem', fontFamily: 'monospace' }}>{userIds.length}</span>
                 </button>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+        )}
 
         {/* Read Receipts - compact display */}
         {!isDeleted && message.readBy && message.readBy.length > 0 && (
