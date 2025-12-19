@@ -3299,6 +3299,15 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   const isReply = depth > 0 && message.parentId;
   const isAtDepthLimit = depth >= THREAD_DEPTH_LIMIT;
 
+  // Count all droplets in children (recursive) - for collapsed thread indicator
+  const countAllChildren = (children) => {
+    if (!children) return 0;
+    return children.reduce((count, child) => {
+      return count + 1 + countAllChildren(child.children);
+    }, 0);
+  };
+  const totalChildCount = hasChildren ? countAllChildren(message.children) : 0;
+
   // Count unread droplets in children (recursive) - for collapsed thread indicator
   const countUnreadChildren = (children) => {
     if (!children) return 0;
@@ -3563,7 +3572,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 background: unreadChildCount > 0 ? 'var(--accent-amber)15' : 'transparent',
                 border: 'none',
                 color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-              }}>{isCollapsed ? `▶ ${message.children.length}${unreadChildCount > 0 ? ` (${unreadChildCount} new)` : ''}` : '▼'}</button>
+              }}>{isCollapsed ? `▶ ${totalChildCount}${unreadChildCount > 0 ? ` (${unreadChildCount} new)` : ''}` : '▼'}</button>
               {/* Show separate Focus button only when not at depth limit (at limit, Focus is in reply button) */}
               {!isAtDepthLimit && onFocus && (
                 <button onClick={() => onFocus(message)} style={{
