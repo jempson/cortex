@@ -619,6 +619,28 @@ Automatic embedding of videos and media from popular platforms.
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
 
+- **v1.17.0 (December 2025)** - Droplet Sharing
+  - **Share Public Droplets**: Share droplets from public waves to external platforms
+    - SHARE button (⤴ SHARE) appears on droplets in public waves only
+    - Uses native Web Share API on mobile (share sheet)
+    - Falls back to clipboard copy on desktop
+  - **Rich Social Previews**: Open Graph and Twitter Card meta tags
+    - Wave title, author name, and content snippet
+    - Cortex branding and logo
+    - Server endpoint: `GET /share/:dropletId` returns HTML with meta tags
+  - **Public Droplet View**: Unauthenticated users can view shared public droplets
+    - Shows droplet content, author info, and wave title
+    - Login/Register CTAs to join the conversation
+    - Private wave droplets show "Private Content" message with login prompt
+  - **Share URL Handling**: Supports both URL formats
+    - `/share/:dropletId` - direct path (handled by React when proxy serves SPA)
+    - `/?share=dropletId` - query parameter (for server redirects)
+    - Authenticated users: auto-navigates to wave and scrolls to droplet
+  - **API Endpoints**:
+    - `GET /share/:dropletId` - HTML page with OG meta tags (public, no auth)
+    - `GET /api/share/:dropletId` - JSON share data (public, no auth)
+  - **Client Components**: `PublicDropletView`, `handleShareDroplet()` in WaveView/FocusView
+
 - **v1.16.0 (December 2025)** - Alert Droplets
   - **System Alerts**: Admin-created, time-limited alerts displayed in crawl bar
     - 3 priority levels: Critical (🚨 orange), Warning (⚠️ amber), Info (ℹ️ teal)
