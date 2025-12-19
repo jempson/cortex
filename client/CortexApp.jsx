@@ -13044,8 +13044,10 @@ function MainApp({ shareDropletId }) {
             setSelectedWave({ id: data.wave.id, title: data.wave.title });
             setScrollToDropletId(shareDropletId);
             setActiveView('waves');
-            // Clear the URL parameter to prevent confusion
-            window.history.replaceState({}, '', '/');
+            // Clear the URL (works for both /?share=x and /share/x formats)
+            if (window.location.pathname !== '/' || window.location.search) {
+              window.history.replaceState({}, '', '/');
+            }
           } else if (data.error) {
             setToast({ message: data.error, type: 'error' });
           } else {
@@ -14240,10 +14242,20 @@ function AppContent() {
   const [showLoginScreen, setShowLoginScreen] = useState(false);
   const [showRegisterScreen, setShowRegisterScreen] = useState(false);
 
-  // Capture share parameter on mount (before any re-renders can lose it)
+  // Capture share parameter on mount - check both URL formats:
+  // 1. /?share=dropletId (query param style)
+  // 2. /share/dropletId (path style - when server redirect doesn't work due to proxy)
   const [shareDropletId] = useState(() => {
+    // Check query param first
     const params = new URLSearchParams(window.location.search);
-    return params.get('share');
+    const fromQuery = params.get('share');
+    if (fromQuery) return fromQuery;
+
+    // Check path: /share/:dropletId
+    const pathMatch = window.location.pathname.match(/^\/share\/(.+)$/);
+    if (pathMatch) return pathMatch[1];
+
+    return null;
   });
 
   // Handle browser back/forward navigation
