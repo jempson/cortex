@@ -3284,7 +3284,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ DROPLET (formerly ThreadedMessage) ============
-const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onJumpToParent, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false }) => {
+const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -3531,16 +3531,8 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <DropletWithEmbeds content={message.content} />
           </div>
         )}
-        {/* Actions Row: Parent, Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
+        {/* Actions Row: Reply, Collapse, Edit, Delete, Emoji Picker, Reactions - all inline */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>
-          {isReply && onJumpToParent && (
-            <button onClick={() => onJumpToParent(message.parentId)} style={{
-              padding: isMobile ? '8px 12px' : '4px 8px',
-              minHeight: isMobile ? '38px' : 'auto',
-              background: 'transparent', border: 'none',
-              color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
-            }}>↑ PARENT</button>
-          )}
           {/* At depth limit, show Focus button instead of Reply */}
           {isAtDepthLimit && hasChildren && onFocus ? (
             <button onClick={() => onFocus(message)} style={{
@@ -3770,7 +3762,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
                 currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
                 onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
-                participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport}
+                participants={participants} onShowProfile={onShowProfile} onReport={onReport}
                 onFocus={onFocus} onRipple={onRipple} onShare={onShare} wave={wave} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
                 unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} />
             ))}
@@ -5522,16 +5514,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   };
 
-  // Jump to parent message with highlight animation
-  const jumpToParent = (parentId) => {
-    const el = document.querySelector(`[data-message-id="${parentId}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.add('highlight-flash');
-      setTimeout(() => el.classList.remove('highlight-flash'), 1500);
-    }
-  };
-
   const composeRef = useRef(null);
   const messagesRef = useRef(null);
   const textareaRef = useRef(null);
@@ -6725,7 +6707,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={toggleThreadCollapse} isMobile={isMobile}
             onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
-            onShowProfile={onShowProfile} onJumpToParent={jumpToParent} onReport={handleReportMessage}
+            onShowProfile={onShowProfile} onReport={handleReportMessage}
             onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined}
             onRipple={(droplet) => setRippleTarget(droplet)}
             onShare={handleShareDroplet} wave={wave || waveData}
@@ -7779,15 +7761,6 @@ const FocusView = ({
     setCollapsed(prev => ({ ...prev, [messageId]: !prev[messageId] }));
   };
 
-  const jumpToParent = (parentId) => {
-    const el = document.querySelector(`[data-message-id="${parentId}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.add('highlight-flash');
-      setTimeout(() => el.classList.remove('highlight-flash'), 1500);
-    }
-  };
-
   // Share droplet to external platforms
   const handleShareDroplet = async (droplet) => {
     const shareUrl = `${window.location.origin}/share/${droplet.id}`;
@@ -8046,7 +8019,6 @@ const FocusView = ({
             onMessageClick={() => {}}
             participants={participants}
             onShowProfile={onShowProfile}
-            onJumpToParent={jumpToParent}
             onFocus={onFocusDeeper ? (droplet) => onFocusDeeper(droplet) : undefined}
             onShare={handleShareDroplet}
             wave={wave}
