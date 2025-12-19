@@ -76,6 +76,7 @@ The following features have been implemented and are no longer outstanding:
 | **Collapsible Sections** | v1.17.3 | Profile Settings and Admin Panel sections collapse |
 | **Password Confirmation** | v1.17.3 | Password change requires current + matching confirmation |
 | **Lazy Loading Admin** | v1.17.3 | Admin panels load data only when expanded |
+| **Wave Rename Fix** | v1.17.3 | Wave title changes now persist in SQLite mode |
 
 ---
 
