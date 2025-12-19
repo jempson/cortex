@@ -13025,23 +13025,35 @@ function MainApp({ shareDropletId }) {
   }, [user?.preferences?.theme]);
 
   // Handle shared droplet URL parameter - navigate to the wave containing the droplet
+  const shareHandledRef = useRef(false);
   useEffect(() => {
-    if (shareDropletId && user) {
+    if (shareDropletId && user && !shareHandledRef.current) {
+      shareHandledRef.current = true; // Prevent duplicate handling
+      console.log('[Share] Handling shared droplet:', shareDropletId);
+
       fetch(`${API_URL}/share/${shareDropletId}`)
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
         .then(data => {
+          console.log('[Share] API response:', data);
           if (data.wave?.id) {
             // Navigate to the wave and scroll to the droplet
+            console.log('[Share] Navigating to wave:', data.wave.id);
             setSelectedWave({ id: data.wave.id, title: data.wave.title });
             setScrollToDropletId(shareDropletId);
             setActiveView('waves');
-            // Clear the URL parameter to prevent re-triggering
+            // Clear the URL parameter to prevent confusion
             window.history.replaceState({}, '', '/');
           } else if (data.error) {
             setToast({ message: data.error, type: 'error' });
+          } else {
+            setToast({ message: 'Could not load shared droplet', type: 'error' });
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error('[Share] Error:', err);
           setToast({ message: 'Could not find shared droplet', type: 'error' });
         });
     }
@@ -14228,6 +14240,12 @@ function AppContent() {
   const [showLoginScreen, setShowLoginScreen] = useState(false);
   const [showRegisterScreen, setShowRegisterScreen] = useState(false);
 
+  // Capture share parameter on mount (before any re-renders can lose it)
+  const [shareDropletId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('share');
+  });
+
   // Handle browser back/forward navigation
   useEffect(() => {
     const handlePopState = () => setCurrentPath(window.location.pathname);
@@ -14240,10 +14258,6 @@ function AppContent() {
     window.history.pushState({}, '', path);
     setCurrentPath(path);
   };
-
-  // Check for share URL parameter
-  const searchParams = new URLSearchParams(window.location.search);
-  const shareDropletId = searchParams.get('share');
 
   // Public routes (accessible without login)
   if (currentPath === '/about') {
