@@ -1,13 +1,13 @@
 # Cortex - Outstanding Features & Future Roadmap
 
 **Last Updated:** December 19, 2025
-**Current Version:** v1.17.3
+**Current Version:** v1.17.4
 
 This document tracks planned but not-yet-implemented features for future releases.
 
 ---
 
-## Completed Features (v1.5.0 - v1.17.3)
+## Completed Features (v1.5.0 - v1.17.4)
 
 The following features have been implemented and are no longer outstanding:
 
@@ -77,6 +77,9 @@ The following features have been implemented and are no longer outstanding:
 | **Password Confirmation** | v1.17.3 | Password change requires current + matching confirmation |
 | **Lazy Loading Admin** | v1.17.3 | Admin panels load data only when expanded |
 | **Wave Rename Fix** | v1.17.3 | Wave title changes now persist in SQLite mode |
+| **PWA App Badge** | v1.17.4 | Unread count on installed app icon (Windows, macOS, iOS) |
+| **Tab Title Unread** | v1.17.4 | Document title shows unread count: "(3) Cortex" |
+| **Favicon Flashing** | v1.17.4 | Favicon flashes with notification dot when tab inactive |
 
 ---
 
