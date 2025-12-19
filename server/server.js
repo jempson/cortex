@@ -23,6 +23,10 @@ import { getEmailService } from './email-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Read version from package.json
+const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+const VERSION = packageJson.version;
+
 // ============ Configuration ============
 const PORT = process.env.PORT || 3001;
 
@@ -10831,7 +10835,7 @@ server.listen(PORT, () => {
 ║  ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗         ║
 ║  ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗        ║
 ║   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝        ║
-║  SECURE COMMUNICATIONS SYSTEM v1.14.0                      ║
+║  SECURE COMMUNICATIONS SYSTEM v${VERSION.padEnd(24)}║
 ╠════════════════════════════════════════════════════════════╣
 ║  🔒 Security: Rate limiting, XSS protection, Helmet        ║
 ║  🌐 Federation: Server-to-server communication             ║
