@@ -3674,9 +3674,9 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
         {/* Nested replies rendered INSIDE parent droplet */}
         {hasChildren && !isCollapsed && (
           <div style={{
-            marginTop: '4px',
-            marginLeft: isMobile ? '8px' : '12px',
-            paddingLeft: isMobile ? '8px' : '10px',
+            marginTop: '2px',
+            marginLeft: '0px',
+            paddingLeft: isMobile ? '4px' : '6px',
             borderLeft: '1px solid var(--border-subtle)',
           }}>
             {message.children.map((child, idx) => {
