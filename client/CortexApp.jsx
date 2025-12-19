@@ -718,26 +718,61 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
 };
 
 // Component to render droplet content with embeds (formerly MessageWithEmbeds)
-const DropletWithEmbeds = ({ content, autoLoadEmbeds = false }) => {
+const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], onMentionClick }) => {
   const embeds = useMemo(() => detectEmbedUrls(content), [content]);
 
   // Get the plain text URLs that have embeds (to potentially hide them)
   const embedUrls = useMemo(() => new Set(embeds.map(e => e.url)), [embeds]);
 
+  // Process @mentions to make them styled and clickable
+  const processMentions = (html) => {
+    // Match @handle patterns not already inside HTML tags
+    return html.replace(/@([a-zA-Z0-9_]+)/g, (match, handle) => {
+      // Find the user by handle in participants
+      const user = participants.find(p =>
+        (p.handle || '').toLowerCase() === handle.toLowerCase()
+      );
+      const userId = user?.id || '';
+      const displayName = user?.displayName || user?.display_name || handle;
+      return `<span class="mention-link" data-handle="${handle}" data-user-id="${userId}" style="color: var(--accent-teal); cursor: pointer;" title="${displayName}">@${handle}</span>`;
+    });
+  };
+
   // Strip embed URLs from displayed content if we're showing the embed
   const displayContent = useMemo(() => {
-    if (embeds.length === 0) return content;
     let result = content;
-    for (const url of embedUrls) {
-      // Only hide the URL if it's on its own line or at the end
-      result = result.replace(new RegExp(`\\s*${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'g'), ' ');
+    if (embeds.length > 0) {
+      for (const url of embedUrls) {
+        // Only hide the URL if it's on its own line or at the end
+        result = result.replace(new RegExp(`\\s*${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'g'), ' ');
+      }
+      result = result.trim();
     }
-    return result.trim();
-  }, [content, embedUrls, embeds.length]);
+    // Process mentions
+    result = processMentions(result);
+    return result;
+  }, [content, embedUrls, embeds.length, participants]);
+
+  // Handle click events with delegation for mentions
+  const handleClick = (e) => {
+    const mentionEl = e.target.closest('.mention-link');
+    if (mentionEl && onMentionClick) {
+      e.preventDefault();
+      e.stopPropagation();
+      const userId = mentionEl.dataset.userId;
+      const handle = mentionEl.dataset.handle;
+      if (userId) {
+        onMentionClick(userId);
+      }
+    }
+  };
 
   return (
     <>
-      <div dangerouslySetInnerHTML={{ __html: displayContent }} />
+      <div
+        dangerouslySetInnerHTML={{ __html: displayContent }}
+        onClick={handleClick}
+      />
       {embeds.map((embed, index) => (
         <RichEmbed key={`${embed.platform}-${embed.contentId}-${index}`} embed={embed} autoLoad={autoLoadEmbeds} />
       ))}
@@ -3609,7 +3644,11 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               overflow: 'hidden',
             }}
           >
-            <DropletWithEmbeds content={message.content} />
+            <DropletWithEmbeds
+              content={message.content}
+              participants={participants}
+              onMentionClick={onShowProfile}
+            />
           </div>
         )}
         {/* Reactions and Read Receipts Row */}
