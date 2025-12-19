@@ -718,18 +718,30 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
 };
 
 // Component to render droplet content with embeds (formerly MessageWithEmbeds)
-const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], onMentionClick }) => {
+const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], contacts = [], onMentionClick, fetchAPI }) => {
   const embeds = useMemo(() => detectEmbedUrls(content), [content]);
 
   // Get the plain text URLs that have embeds (to potentially hide them)
   const embedUrls = useMemo(() => new Set(embeds.map(e => e.url)), [embeds]);
 
+  // Combine participants and contacts for user lookup
+  const allUsers = useMemo(() => {
+    const combined = [...participants, ...contacts];
+    // Dedupe by id
+    const seen = new Set();
+    return combined.filter(u => {
+      if (seen.has(u.id)) return false;
+      seen.add(u.id);
+      return true;
+    });
+  }, [participants, contacts]);
+
   // Process @mentions to make them styled and clickable
   const processMentions = (html) => {
     // Match @handle patterns not already inside HTML tags
     return html.replace(/@([a-zA-Z0-9_]+)/g, (match, handle) => {
-      // Find the user by handle in participants
-      const user = participants.find(p =>
+      // Find the user by handle in participants or contacts
+      const user = allUsers.find(p =>
         (p.handle || '').toLowerCase() === handle.toLowerCase()
       );
       const userId = user?.id || '';
@@ -751,16 +763,29 @@ const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [],
     // Process mentions
     result = processMentions(result);
     return result;
-  }, [content, embedUrls, embeds.length, participants]);
+  }, [content, embedUrls, embeds.length, allUsers]);
 
   // Handle click events with delegation for mentions
-  const handleClick = (e) => {
+  const handleClick = async (e) => {
     const mentionEl = e.target.closest('.mention-link');
     if (mentionEl && onMentionClick) {
       e.preventDefault();
       e.stopPropagation();
-      const userId = mentionEl.dataset.userId;
+      let userId = mentionEl.dataset.userId;
       const handle = mentionEl.dataset.handle;
+
+      // If we don't have the userId, try to look up the user by handle
+      if (!userId && handle && fetchAPI) {
+        try {
+          const users = await fetchAPI(`/users/search?q=${encodeURIComponent(handle)}&limit=1`);
+          if (users && users.length > 0 && users[0].handle.toLowerCase() === handle.toLowerCase()) {
+            userId = users[0].id;
+          }
+        } catch (err) {
+          console.error('Failed to look up user by handle:', err);
+        }
+      }
+
       if (userId) {
         onMentionClick(userId);
       }
@@ -3319,7 +3344,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ DROPLET (formerly ThreadedMessage) ============
-const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false }) => {
+const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], contacts = [], onShowProfile, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false, fetchAPI }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -3647,7 +3672,9 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             <DropletWithEmbeds
               content={message.content}
               participants={participants}
+              contacts={contacts}
               onMentionClick={onShowProfile}
+              fetchAPI={fetchAPI}
             />
           </div>
         )}
@@ -3727,9 +3754,9 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
                 currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
                 onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
-                participants={participants} onShowProfile={onShowProfile} onReport={onReport}
+                participants={participants} contacts={contacts} onShowProfile={onShowProfile} onReport={onReport}
                 onFocus={onFocus} onRipple={onRipple} onShare={onShare} wave={wave} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
-                unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} />
+                unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} fetchAPI={fetchAPI} />
             ))}
           </div>
         )}
@@ -6661,13 +6688,14 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={toggleThreadCollapse} isMobile={isMobile}
             onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
-            onShowProfile={onShowProfile} onReport={handleReportMessage}
+            contacts={contacts} onShowProfile={onShowProfile} onReport={handleReportMessage}
             onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined}
             onRipple={(droplet) => setRippleTarget(droplet)}
             onShare={handleShareDroplet} wave={wave || waveData}
             onNavigateToWave={onNavigateToWave} currentWaveId={wave.id}
             unreadCountsByWave={unreadCountsByWave}
-            autoFocusDroplets={currentUser?.preferences?.autoFocusDroplets === true} />
+            autoFocusDroplets={currentUser?.preferences?.autoFocusDroplets === true}
+            fetchAPI={fetchAPI} />
         ))}
       </div>
 
@@ -7660,7 +7688,8 @@ const FocusView = ({
   reloadTrigger,
   onShowProfile,
   blockedUsers,
-  mutedUsers
+  mutedUsers,
+  contacts = []
 }) => {
   const currentFocus = focusStack[focusStack.length - 1];
   const initialDroplet = currentFocus?.droplet;
@@ -8111,11 +8140,13 @@ const FocusView = ({
             onReact={handleReaction}
             onMessageClick={() => {}}
             participants={participants}
+            contacts={contacts}
             onShowProfile={onShowProfile}
             onFocus={onFocusDeeper ? (droplet) => onFocusDeeper(droplet) : undefined}
             onShare={handleShareDroplet}
             wave={wave}
             currentWaveId={wave?.id}
+            fetchAPI={fetchAPI}
           />
         ))}
       </div>
@@ -13781,6 +13812,7 @@ function MainApp({ shareDropletId }) {
                     onShowProfile={setProfileUserId}
                     blockedUsers={blockedUsers}
                     mutedUsers={mutedUsers}
+                    contacts={contacts}
                   />
                 </ErrorBoundary>
               ) : selectedWave ? (
