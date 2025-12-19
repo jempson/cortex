@@ -3284,7 +3284,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ DROPLET (formerly ThreadedMessage) ============
-const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onJumpToParent, onReport, onFocus, onRipple, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false }) => {
+const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onJumpToParent, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -3584,6 +3584,15 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               )}
             </>
           )}
+          {/* Share button - only for public waves */}
+          {!isDeleted && wave?.privacy === 'public' && onShare && (
+            <button onClick={() => onShare(message)} style={{
+              padding: isMobile ? '8px 12px' : '4px 8px',
+              minHeight: isMobile ? '38px' : 'auto',
+              background: 'transparent', border: 'none',
+              color: 'var(--accent-purple)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '0.7rem',
+            }} title="Share droplet">⤴ SHARE</button>
+          )}
           {canDelete && !isEditing && (
             <>
               <button onClick={() => onEdit(message)} style={{
@@ -3753,7 +3762,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
                 onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
                 participants={participants} onShowProfile={onShowProfile} onJumpToParent={onJumpToParent} onReport={onReport}
-                onFocus={onFocus} onRipple={onRipple} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
+                onFocus={onFocus} onRipple={onRipple} onShare={onShare} wave={wave} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
                 unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} />
             ))}
           </div>
@@ -5462,6 +5471,48 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     showToast('All threads expanded', 'success');
   };
 
+  // Share droplet to external platforms
+  const handleShareDroplet = async (droplet) => {
+    const shareUrl = `${window.location.origin}/share/${droplet.id}`;
+    const shareTitle = wave?.title || waveData?.title || 'Cortex';
+    const shareText = `Check out this conversation on Cortex`;
+
+    // Try native Web Share API first (mobile-friendly)
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+        showToast('Shared successfully', 'success');
+        return;
+      } catch (err) {
+        // User cancelled or share failed - fall through to clipboard
+        if (err.name !== 'AbortError') {
+          console.error('Share failed:', err);
+        }
+      }
+    }
+
+    // Fallback: Copy to clipboard
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast('Link copied to clipboard', 'success');
+    } catch (err) {
+      // Final fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = shareUrl;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      showToast('Link copied to clipboard', 'success');
+    }
+  };
+
   // Jump to parent message with highlight animation
   const jumpToParent = (parentId) => {
     const el = document.querySelector(`[data-message-id="${parentId}"]`);
@@ -6668,6 +6719,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             onShowProfile={onShowProfile} onJumpToParent={jumpToParent} onReport={handleReportMessage}
             onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined}
             onRipple={(droplet) => setRippleTarget(droplet)}
+            onShare={handleShareDroplet} wave={wave || waveData}
             onNavigateToWave={onNavigateToWave} currentWaveId={wave.id}
             unreadCountsByWave={unreadCountsByWave}
             autoFocusDroplets={currentUser?.preferences?.autoFocusDroplets === true} />
@@ -7727,6 +7779,40 @@ const FocusView = ({
     }
   };
 
+  // Share droplet to external platforms
+  const handleShareDroplet = async (droplet) => {
+    const shareUrl = `${window.location.origin}/share/${droplet.id}`;
+    const shareTitle = wave?.title || wave?.name || 'Cortex';
+    const shareText = `Check out this conversation on Cortex`;
+
+    // Try native Web Share API first
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
+        showToast('Shared successfully', 'success');
+        return;
+      } catch (err) {
+        if (err.name !== 'AbortError') console.error('Share failed:', err);
+      }
+    }
+
+    // Fallback: Copy to clipboard
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast('Link copied to clipboard', 'success');
+    } catch (err) {
+      const textArea = document.createElement('textarea');
+      textArea.value = shareUrl;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      showToast('Link copied to clipboard', 'success');
+    }
+  };
+
   // Build breadcrumb from focus stack
   const buildBreadcrumb = () => {
     // On mobile, show more compact breadcrumb
@@ -7953,6 +8039,8 @@ const FocusView = ({
             onShowProfile={onShowProfile}
             onJumpToParent={jumpToParent}
             onFocus={onFocusDeeper ? (droplet) => onFocusDeeper(droplet) : undefined}
+            onShare={handleShareDroplet}
+            wave={wave}
             currentWaveId={wave?.id}
           />
         ))}
@@ -12882,7 +12970,7 @@ const ConnectionStatus = ({ wsConnected, apiConnected }) => (
 );
 
 // ============ MAIN APP ============
-function MainApp() {
+function MainApp({ shareDropletId }) {
   const { user, token, logout, updateUser } = useAuth();
   const { fetchAPI } = useAPI();
   const [toast, setToast] = useState(null);
@@ -12935,6 +13023,43 @@ function MainApp() {
       storage.setTheme(theme);
     }
   }, [user?.preferences?.theme]);
+
+  // Handle shared droplet URL parameter - navigate to the wave containing the droplet
+  const shareHandledRef = useRef(false);
+  useEffect(() => {
+    if (shareDropletId && user && !shareHandledRef.current) {
+      shareHandledRef.current = true; // Prevent duplicate handling
+      console.log('[Share] Handling shared droplet:', shareDropletId);
+
+      fetch(`${API_URL}/share/${shareDropletId}`)
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then(data => {
+          console.log('[Share] API response:', data);
+          if (data.wave?.id) {
+            // Navigate to the wave and scroll to the droplet
+            console.log('[Share] Navigating to wave:', data.wave.id);
+            setSelectedWave({ id: data.wave.id, title: data.wave.title });
+            setScrollToDropletId(shareDropletId);
+            setActiveView('waves');
+            // Clear the URL (works for both /?share=x and /share/x formats)
+            if (window.location.pathname !== '/' || window.location.search) {
+              window.history.replaceState({}, '', '/');
+            }
+          } else if (data.error) {
+            setToast({ message: data.error, type: 'error' });
+          } else {
+            setToast({ message: 'Could not load shared droplet', type: 'error' });
+          }
+        })
+        .catch((err) => {
+          console.error('[Share] Error:', err);
+          setToast({ message: 'Could not find shared droplet', type: 'error' });
+        });
+    }
+  }, [shareDropletId, user]);
 
   const showToastMsg = useCallback((message, type) => setToast({ message, type }), []);
 
@@ -13460,7 +13585,7 @@ function MainApp() {
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.16.0</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.17.0</span>
           </div>
           {/* Status indicators */}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', fontSize: '0.55rem', fontFamily: 'monospace' }}>
@@ -13661,7 +13786,7 @@ function MainApp() {
           display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
         }}>
           <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ color: 'var(--border-primary)' }}>v1.16.0</span>
+            <span style={{ color: 'var(--border-primary)' }}>v1.17.0</span>
             <span><span style={{ color: 'var(--accent-green)' }}>●</span> ENCRYPTED</span>
             <span><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> LIVE</span>
@@ -13770,6 +13895,258 @@ function MainApp() {
   );
 }
 
+// ============ PUBLIC DROPLET VIEW (for shared links) ============
+const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const { isMobile } = useWindowSize();
+
+  useEffect(() => {
+    fetch(`${API_URL}/share/${dropletId}`)
+      .then(res => res.json())
+      .then(result => {
+        if (result.error) {
+          setError(result.error);
+        } else {
+          setData(result);
+        }
+      })
+      .catch(() => setError('Failed to load shared content'))
+      .finally(() => setLoading(false));
+  }, [dropletId]);
+
+  const containerStyle = {
+    minHeight: '100vh',
+    background: 'var(--bg-base)',
+    color: 'var(--text-primary)',
+    fontFamily: 'Courier New, monospace',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: isMobile ? '20px' : '40px',
+  };
+
+  const cardStyle = {
+    background: 'var(--bg-elevated)',
+    border: '1px solid var(--border-primary)',
+    borderRadius: '4px',
+    padding: isMobile ? '20px' : '32px',
+    maxWidth: '600px',
+    width: '100%',
+  };
+
+  if (loading) {
+    return (
+      <div style={containerStyle}>
+        <div style={{ color: 'var(--accent-green)' }}>Loading...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <h2 style={{ color: 'var(--accent-orange)', margin: '0 0 16px 0' }}>Not Found</h2>
+          <p style={{ color: 'var(--text-secondary)' }}>{error}</p>
+          <button
+            onClick={onLogin}
+            style={{
+              marginTop: '20px',
+              padding: '12px 24px',
+              background: 'var(--accent-green)',
+              border: 'none',
+              color: '#000',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '1rem',
+            }}
+          >
+            LOGIN TO CORTEX
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data.isPublic) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <h2 style={{ color: 'var(--accent-amber)', margin: '0 0 16px 0' }}>Private Content</h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
+            This droplet is in a private wave.
+          </p>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
+            Log in or create an account to view it.
+          </p>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              onClick={onLogin}
+              style={{
+                padding: '12px 24px',
+                background: 'var(--accent-green)',
+                border: 'none',
+                color: '#000',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '1rem',
+              }}
+            >
+              LOGIN
+            </button>
+            <button
+              onClick={onRegister}
+              style={{
+                padding: '12px 24px',
+                background: 'transparent',
+                border: '1px solid var(--accent-green)',
+                color: 'var(--accent-green)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '1rem',
+              }}
+            >
+              CREATE ACCOUNT
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Public droplet - show preview
+  const plainContent = (data.droplet?.content || '').replace(/<[^>]*>/g, '');
+
+  return (
+    <div style={containerStyle}>
+      <div style={cardStyle}>
+        {/* Wave title */}
+        <div style={{
+          color: 'var(--accent-teal)',
+          fontSize: '0.85rem',
+          marginBottom: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}>
+          <span>○</span>
+          <span>{data.wave?.title || 'Cortex Wave'}</span>
+        </div>
+
+        {/* Author and content */}
+        <div style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-secondary)',
+          borderRadius: '4px',
+          padding: '16px',
+          marginBottom: '24px',
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            marginBottom: '12px',
+          }}>
+            {/* Avatar */}
+            {data.author?.avatarUrl ? (
+              <img
+                src={data.author.avatarUrl}
+                alt=""
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                }}
+              />
+            ) : (
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                background: 'var(--accent-teal)30',
+                color: 'var(--accent-teal)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 'bold',
+              }}>
+                {(data.author?.displayName || '?')[0].toUpperCase()}
+              </div>
+            )}
+            <div>
+              <div style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                {data.author?.displayName || 'Unknown'}
+              </div>
+              {data.author?.handle && (
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  @{data.author.handle}
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{ color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+            {plainContent || 'No content'}
+          </div>
+          {data.droplet?.createdAt && (
+            <div style={{
+              color: 'var(--text-muted)',
+              fontSize: '0.75rem',
+              marginTop: '12px',
+            }}>
+              {new Date(data.droplet.createdAt).toLocaleString()}
+            </div>
+          )}
+        </div>
+
+        {/* CTA */}
+        <div style={{
+          textAlign: 'center',
+          borderTop: '1px solid var(--border-secondary)',
+          paddingTop: '20px',
+        }}>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
+            Join the conversation on Cortex
+          </p>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={onLogin}
+              style={{
+                padding: '12px 24px',
+                background: 'var(--accent-green)',
+                border: 'none',
+                color: '#000',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '1rem',
+              }}
+            >
+              LOGIN
+            </button>
+            <button
+              onClick={onRegister}
+              style={{
+                padding: '12px 24px',
+                background: 'transparent',
+                border: '1px solid var(--accent-green)',
+                color: 'var(--accent-green)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '1rem',
+              }}
+            >
+              CREATE ACCOUNT
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ============ AUTH PROVIDER ============
 function AuthProvider({ children }) {
   const [user, setUser] = useState(storage.getUser());
@@ -13862,6 +14239,24 @@ export default function CortexApp() {
 function AppContent() {
   const { user } = useAuth();
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  const [showLoginScreen, setShowLoginScreen] = useState(false);
+  const [showRegisterScreen, setShowRegisterScreen] = useState(false);
+
+  // Capture share parameter on mount - check both URL formats:
+  // 1. /?share=dropletId (query param style)
+  // 2. /share/dropletId (path style - when server redirect doesn't work due to proxy)
+  const [shareDropletId] = useState(() => {
+    // Check query param first
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get('share');
+    if (fromQuery) return fromQuery;
+
+    // Check path: /share/:dropletId
+    const pathMatch = window.location.pathname.match(/^\/share\/(.+)$/);
+    if (pathMatch) return pathMatch[1];
+
+    return null;
+  });
 
   // Handle browser back/forward navigation
   useEffect(() => {
@@ -13885,5 +14280,22 @@ function AppContent() {
     return <ResetPasswordPage onBack={() => navigate('/')} />;
   }
 
-  return user ? <MainApp /> : <LoginScreen onAbout={() => navigate('/about')} />;
+  // Handle shared droplet for unauthenticated users
+  if (shareDropletId && !user) {
+    if (showLoginScreen) {
+      return <LoginScreen onAbout={() => navigate('/about')} />;
+    }
+    if (showRegisterScreen) {
+      return <LoginScreen onAbout={() => navigate('/about')} initialView="register" />;
+    }
+    return (
+      <PublicDropletView
+        dropletId={shareDropletId}
+        onLogin={() => setShowLoginScreen(true)}
+        onRegister={() => setShowRegisterScreen(true)}
+      />
+    );
+  }
+
+  return user ? <MainApp shareDropletId={shareDropletId} /> : <LoginScreen onAbout={() => navigate('/about')} />;
 }
