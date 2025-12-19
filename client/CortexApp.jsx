@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
 
 // ============ CONFIGURATION ============
+// Version - keep in sync with package.json
+const VERSION = '1.17.2';
+
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
 const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
@@ -718,26 +721,86 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
 };
 
 // Component to render droplet content with embeds (formerly MessageWithEmbeds)
-const DropletWithEmbeds = ({ content, autoLoadEmbeds = false }) => {
+const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], contacts = [], onMentionClick, fetchAPI }) => {
   const embeds = useMemo(() => detectEmbedUrls(content), [content]);
 
   // Get the plain text URLs that have embeds (to potentially hide them)
   const embedUrls = useMemo(() => new Set(embeds.map(e => e.url)), [embeds]);
 
+  // Combine participants and contacts for user lookup
+  const allUsers = useMemo(() => {
+    const combined = [...participants, ...contacts];
+    // Dedupe by id
+    const seen = new Set();
+    return combined.filter(u => {
+      if (seen.has(u.id)) return false;
+      seen.add(u.id);
+      return true;
+    });
+  }, [participants, contacts]);
+
+  // Process @mentions to make them styled and clickable
+  const processMentions = (html) => {
+    // Match @handle patterns not already inside HTML tags
+    return html.replace(/@([a-zA-Z0-9_]+)/g, (match, handle) => {
+      // Find the user by handle in participants or contacts
+      const user = allUsers.find(p =>
+        (p.handle || '').toLowerCase() === handle.toLowerCase()
+      );
+      const userId = user?.id || '';
+      const displayName = user?.displayName || user?.display_name || handle;
+      return `<span class="mention-link" data-handle="${handle}" data-user-id="${userId}" style="color: var(--accent-teal); cursor: pointer;" title="${displayName}">@${handle}</span>`;
+    });
+  };
+
   // Strip embed URLs from displayed content if we're showing the embed
   const displayContent = useMemo(() => {
-    if (embeds.length === 0) return content;
     let result = content;
-    for (const url of embedUrls) {
-      // Only hide the URL if it's on its own line or at the end
-      result = result.replace(new RegExp(`\\s*${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'g'), ' ');
+    if (embeds.length > 0) {
+      for (const url of embedUrls) {
+        // Only hide the URL if it's on its own line or at the end
+        result = result.replace(new RegExp(`\\s*${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'g'), ' ');
+      }
+      result = result.trim();
     }
-    return result.trim();
-  }, [content, embedUrls, embeds.length]);
+    // Process mentions
+    result = processMentions(result);
+    return result;
+  }, [content, embedUrls, embeds.length, allUsers]);
+
+  // Handle click events with delegation for mentions
+  const handleClick = async (e) => {
+    const mentionEl = e.target.closest('.mention-link');
+    if (mentionEl && onMentionClick) {
+      e.preventDefault();
+      e.stopPropagation();
+      let userId = mentionEl.dataset.userId;
+      const handle = mentionEl.dataset.handle;
+
+      // If we don't have the userId, try to look up the user by handle
+      if (!userId && handle && fetchAPI) {
+        try {
+          const users = await fetchAPI(`/users/search?q=${encodeURIComponent(handle)}&limit=1`);
+          if (users && users.length > 0 && users[0].handle.toLowerCase() === handle.toLowerCase()) {
+            userId = users[0].id;
+          }
+        } catch (err) {
+          console.error('Failed to look up user by handle:', err);
+        }
+      }
+
+      if (userId) {
+        onMentionClick(userId);
+      }
+    }
+  };
 
   return (
     <>
-      <div dangerouslySetInnerHTML={{ __html: displayContent }} />
+      <div
+        dangerouslySetInnerHTML={{ __html: displayContent }}
+        onClick={handleClick}
+      />
       {embeds.map((embed, index) => (
         <RichEmbed key={`${embed.platform}-${embed.contentId}-${index}`} embed={embed} autoLoad={autoLoadEmbeds} />
       ))}
@@ -3284,11 +3347,17 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
 );
 
 // ============ DROPLET (formerly ThreadedMessage) ============
-const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], onShowProfile, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false }) => {
+const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], contacts = [], onShowProfile, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false, fetchAPI }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
-  const hasChildren = message.children?.length > 0;
+
+  // Check if there are any visible children (non-deleted or deleted with visible descendants)
+  const hasVisibleChildren = (children) => {
+    if (!children || children.length === 0) return false;
+    return children.some(child => !child.deleted || hasVisibleChildren(child.children));
+  };
+  const hasChildren = hasVisibleChildren(message.children);
   const isCollapsed = collapsed[message.id];
   const isDeleted = message.deleted;
   const canDelete = !isDeleted && message.author_id === currentUserId;
@@ -3603,7 +3672,13 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               overflow: 'hidden',
             }}
           >
-            <DropletWithEmbeds content={message.content} />
+            <DropletWithEmbeds
+              content={message.content}
+              participants={participants}
+              contacts={contacts}
+              onMentionClick={onShowProfile}
+              fetchAPI={fetchAPI}
+            />
           </div>
         )}
         {/* Reactions and Read Receipts Row */}
@@ -3682,9 +3757,9 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
                 currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
                 onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
-                participants={participants} onShowProfile={onShowProfile} onReport={onReport}
+                participants={participants} contacts={contacts} onShowProfile={onShowProfile} onReport={onReport}
                 onFocus={onFocus} onRipple={onRipple} onShare={onShare} wave={wave} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
-                unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} />
+                unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} fetchAPI={fetchAPI} />
             ))}
           </div>
         )}
@@ -5301,6 +5376,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [messageToDelete, setMessageToDelete] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGifSearch, setShowGifSearch] = useState(false);
+  const [showMentionPicker, setShowMentionPicker] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionStartPos, setMentionStartPos] = useState(null);
   const [showPlayback, setShowPlayback] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
@@ -6612,13 +6691,14 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={toggleThreadCollapse} isMobile={isMobile}
             onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
-            onShowProfile={onShowProfile} onReport={handleReportMessage}
+            contacts={contacts} onShowProfile={onShowProfile} onReport={handleReportMessage}
             onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined}
             onRipple={(droplet) => setRippleTarget(droplet)}
             onShare={handleShareDroplet} wave={wave || waveData}
             onNavigateToWave={onNavigateToWave} currentWaveId={wave.id}
             unreadCountsByWave={unreadCountsByWave}
-            autoFocusDroplets={currentUser?.preferences?.autoFocusDroplets === true} />
+            autoFocusDroplets={currentUser?.preferences?.autoFocusDroplets === true}
+            fetchAPI={fetchAPI} />
         ))}
       </div>
 
@@ -6696,49 +6776,181 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             Drop image to upload
           </div>
         )}
-        {/* Textarea - full width */}
-        <textarea
-          ref={textareaRef}
-          value={newMessage}
-          onChange={(e) => {
-            setNewMessage(e.target.value);
-            handleTyping();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSendMessage();
-            }
-          }}
-          onPaste={(e) => {
-            const items = e.clipboardData?.items;
-            if (!items) return;
-            for (const item of items) {
-              if (item.type.startsWith('image/')) {
-                e.preventDefault();
-                const file = item.getAsFile();
-                if (file) handleImageUpload(file);
-                return;
+        {/* Textarea - full width with mention picker */}
+        <div style={{ position: 'relative' }}>
+          <textarea
+            ref={textareaRef}
+            value={newMessage}
+            onChange={(e) => {
+              const value = e.target.value;
+              const cursorPos = e.target.selectionStart;
+              setNewMessage(value);
+              handleTyping();
+
+              // Detect @ mention
+              const textBeforeCursor = value.slice(0, cursorPos);
+              const atMatch = textBeforeCursor.match(/@(\w*)$/);
+              if (atMatch) {
+                setShowMentionPicker(true);
+                setMentionSearch(atMatch[1].toLowerCase());
+                setMentionStartPos(cursorPos - atMatch[0].length);
+                setMentionIndex(0);
+              } else {
+                setShowMentionPicker(false);
+                setMentionSearch('');
+                setMentionStartPos(null);
               }
-            }
-          }}
-          placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a droplet... (Shift+Enter for new line)'}
-          rows={1}
-          style={{
-            width: '100%',
-            padding: isMobile ? '14px 16px' : '12px 16px',
-            minHeight: isMobile ? '44px' : 'auto',
-            maxHeight: '200px',
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border-subtle)',
-            color: 'var(--text-primary)',
-            fontSize: isMobile ? '1rem' : '0.9rem',
-            fontFamily: 'inherit',
-            resize: 'none',
-            overflowY: 'auto',
-            boxSizing: 'border-box',
-          }}
-        />
+            }}
+            onKeyDown={(e) => {
+              // Handle mention picker navigation
+              if (showMentionPicker) {
+                const mentionableUsers = [...(contacts || []), ...(participants || [])]
+                  .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i) // dedupe
+                  .filter(u => u.id !== currentUser?.id)
+                  .filter(u => {
+                    const name = (u.displayName || u.display_name || u.handle || '').toLowerCase();
+                    const handle = (u.handle || '').toLowerCase();
+                    return name.includes(mentionSearch) || handle.includes(mentionSearch);
+                  })
+                  .slice(0, 8);
+
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setMentionIndex(i => Math.min(i + 1, mentionableUsers.length - 1));
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setMentionIndex(i => Math.max(i - 1, 0));
+                  return;
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  if (mentionableUsers.length > 0) {
+                    e.preventDefault();
+                    const user = mentionableUsers[mentionIndex];
+                    const handle = user.handle || user.displayName || user.display_name;
+                    const before = newMessage.slice(0, mentionStartPos);
+                    const after = newMessage.slice(textareaRef.current?.selectionStart || mentionStartPos);
+                    setNewMessage(before + '@' + handle + ' ' + after);
+                    setShowMentionPicker(false);
+                    setMentionSearch('');
+                    setMentionStartPos(null);
+                    return;
+                  }
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setShowMentionPicker(false);
+                  setMentionSearch('');
+                  setMentionStartPos(null);
+                  return;
+                }
+              }
+
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            onPaste={(e) => {
+              const items = e.clipboardData?.items;
+              if (!items) return;
+              for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                  e.preventDefault();
+                  const file = item.getAsFile();
+                  if (file) handleImageUpload(file);
+                  return;
+                }
+              }
+            }}
+            placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a droplet... (Shift+Enter for new line, @ to mention)'}
+            rows={1}
+            style={{
+              width: '100%',
+              padding: isMobile ? '14px 16px' : '12px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              maxHeight: '200px',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)',
+              fontSize: isMobile ? '1rem' : '0.9rem',
+              fontFamily: 'inherit',
+              resize: 'none',
+              overflowY: 'auto',
+              boxSizing: 'border-box',
+            }}
+          />
+          {/* Mention Picker Dropdown */}
+          {showMentionPicker && (() => {
+            const mentionableUsers = [...(contacts || []), ...(participants || [])]
+              .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i)
+              .filter(u => u.id !== currentUser?.id)
+              .filter(u => {
+                const name = (u.displayName || u.display_name || u.handle || '').toLowerCase();
+                const handle = (u.handle || '').toLowerCase();
+                return name.includes(mentionSearch) || handle.includes(mentionSearch);
+              })
+              .slice(0, 8);
+
+            if (mentionableUsers.length === 0) return null;
+
+            return (
+              <div style={{
+                position: 'absolute',
+                bottom: '100%',
+                left: 0,
+                right: 0,
+                marginBottom: '4px',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-primary)',
+                maxHeight: '200px',
+                overflowY: 'auto',
+                zIndex: 20,
+              }}>
+                {mentionableUsers.map((user, idx) => (
+                  <div
+                    key={user.id}
+                    onClick={() => {
+                      const handle = user.handle || user.displayName || user.display_name;
+                      const before = newMessage.slice(0, mentionStartPos);
+                      const after = newMessage.slice(textareaRef.current?.selectionStart || mentionStartPos);
+                      setNewMessage(before + '@' + handle + ' ' + after);
+                      setShowMentionPicker(false);
+                      setMentionSearch('');
+                      setMentionStartPos(null);
+                      textareaRef.current?.focus();
+                    }}
+                    style={{
+                      padding: isMobile ? '12px' : '8px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      cursor: 'pointer',
+                      background: idx === mentionIndex ? 'var(--bg-hover)' : 'transparent',
+                      borderBottom: idx < mentionableUsers.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                    }}
+                  >
+                    <Avatar
+                      letter={(user.displayName || user.display_name || user.handle || '?')[0]}
+                      color="var(--accent-teal)"
+                      size={24}
+                      imageUrl={user.avatarUrl || user.avatar_url}
+                    />
+                    <div>
+                      <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                        {user.displayName || user.display_name || user.handle}
+                      </div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                        @{user.handle}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
         {/* Button row - below textarea */}
         <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center', position: 'relative', flexWrap: 'wrap' }}>
           {/* Left side: media buttons */}
@@ -7479,7 +7691,8 @@ const FocusView = ({
   reloadTrigger,
   onShowProfile,
   blockedUsers,
-  mutedUsers
+  mutedUsers,
+  contacts = []
 }) => {
   const currentFocus = focusStack[focusStack.length - 1];
   const initialDroplet = currentFocus?.droplet;
@@ -7930,11 +8143,13 @@ const FocusView = ({
             onReact={handleReaction}
             onMessageClick={() => {}}
             participants={participants}
+            contacts={contacts}
             onShowProfile={onShowProfile}
             onFocus={onFocusDeeper ? (droplet) => onFocusDeeper(droplet) : undefined}
             onShare={handleShareDroplet}
             wave={wave}
             currentWaveId={wave?.id}
+            fetchAPI={fetchAPI}
           />
         ))}
       </div>
@@ -9539,8 +9754,8 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
             priority: formPriority,
             category: formCategory,
             scope: formScope,
-            startTime: formStartTime,
-            endTime: formEndTime,
+            startTime: new Date(formStartTime).toISOString(),
+            endTime: new Date(formEndTime).toISOString(),
           }
         });
         showToast('Alert updated', 'success');
@@ -9553,8 +9768,8 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
             priority: formPriority,
             category: formCategory,
             scope: formScope,
-            startTime: formStartTime,
-            endTime: formEndTime,
+            startTime: new Date(formStartTime).toISOString(),
+            endTime: new Date(formEndTime).toISOString(),
           }
         });
         showToast('Alert created', 'success');
@@ -13478,7 +13693,7 @@ function MainApp({ shareDropletId }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v1.17.0</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v{VERSION}</span>
           </div>
           {/* Status indicators */}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', fontSize: '0.55rem', fontFamily: 'monospace' }}>
@@ -13600,6 +13815,7 @@ function MainApp({ shareDropletId }) {
                     onShowProfile={setProfileUserId}
                     blockedUsers={blockedUsers}
                     mutedUsers={mutedUsers}
+                    contacts={contacts}
                   />
                 </ErrorBoundary>
               ) : selectedWave ? (
@@ -13679,7 +13895,7 @@ function MainApp({ shareDropletId }) {
           display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', fontFamily: 'monospace', flexWrap: 'wrap', gap: '4px',
         }}>
           <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ color: 'var(--border-primary)' }}>v1.17.0</span>
+            <span style={{ color: 'var(--border-primary)' }}>v{VERSION}</span>
             <span><span style={{ color: 'var(--accent-green)' }}>●</span> ENCRYPTED</span>
             <span><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> LIVE</span>

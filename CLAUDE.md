@@ -619,6 +619,27 @@ Automatic embedding of videos and media from popular platforms.
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
 
+- **v1.17.2 (December 2025)** - @ Mentions & Bug Fixes
+  - **@ Mention Autocomplete**: Type `@` in compose area to mention users
+    - Shows dropdown of contacts and wave participants
+    - Filter by typing after `@` (matches display name or handle)
+    - Keyboard navigation: Arrow keys, Enter/Tab to select, Escape to dismiss
+    - Inserts `@handle ` into message
+  - **Styled @Mentions**: Mentions display in teal color and are clickable
+    - Click mention to open user's profile modal
+    - Searches participants, contacts, then API fallback for user lookup
+    - Tooltip shows display name on hover
+  - **Alert Time Expiration Fix**: Alerts now properly expire at end time
+    - Client converts local datetime to ISO string before sending to server
+    - Fixes timezone mismatch that caused alerts to persist past end time
+  - **Deleted Droplet Placeholder Fix**: Deleted droplets no longer show placeholder when all children deleted
+    - `hasChildren` now recursively checks for visible (non-deleted) descendants
+    - Fully deleted threads disappear completely as expected
+  - **Version Number Centralization**: Version now defined in one place
+    - Server reads from `package.json`, uses in startup banner
+    - Client has `VERSION` constant used in header and footer
+    - Service worker cache name uses version
+
 - **v1.17.1 (December 2025)** - Compact UI & Mobile Improvements
   - **Compact Droplet Display**: Cleaner, more readable message layout
     - Removed card-style borders for cleaner appearance
