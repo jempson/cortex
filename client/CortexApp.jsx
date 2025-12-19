@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, createContext, use
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.17.2';
+const VERSION = '1.17.3';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -805,6 +805,53 @@ const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [],
         <RichEmbed key={`${embed.platform}-${embed.contentId}-${index}`} embed={embed} autoLoad={autoLoadEmbeds} />
       ))}
     </>
+  );
+};
+
+// ============ COLLAPSIBLE SECTION COMPONENT ============
+const CollapsibleSection = ({ title, children, defaultOpen = true, isMobile, titleColor = 'var(--text-dim)', accentColor, badge }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: accentColor ? `1px solid ${accentColor}40` : '1px solid var(--border-subtle)',
+    }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ color: titleColor, fontSize: '0.8rem', fontWeight: 500 }}>{title}</div>
+          {badge && (
+            <span style={{
+              padding: '2px 6px',
+              background: 'var(--accent-amber)20',
+              border: '1px solid var(--accent-amber)',
+              color: 'var(--accent-amber)',
+              fontSize: '0.65rem',
+              borderRadius: '3px',
+            }}>{badge}</span>
+          )}
+        </div>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>
+          {isOpen ? '▼' : '▶'}
+        </span>
+      </div>
+      {isOpen && (
+        <div style={{ marginTop: '16px' }}>
+          {children}
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -4642,8 +4689,9 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
 
 // ============ ADMIN REPORTS PANEL ============
 const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
+  const [isOpen, setIsOpen] = useState(false);
   const [reports, setReports] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('pending');
   const [selectedReport, setSelectedReport] = useState(null);
   const [resolveNotes, setResolveNotes] = useState('');
@@ -4665,8 +4713,10 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
   }, [fetchAPI, activeTab, showToast]);
 
   useEffect(() => {
-    loadReports();
-  }, [loadReports]);
+    if (isOpen) {
+      loadReports();
+    }
+  }, [isOpen, loadReports]);
 
   const handleResolve = async () => {
     if (!selectedReport || !resolution) return;
@@ -4722,12 +4772,18 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
   ];
 
   return (
-    <div style={{ marginTop: '24px' }}>
-      <div style={{ marginBottom: '16px' }}>
-        <GlowText color="var(--accent-orange)" size={isMobile ? '1rem' : '1.1rem'}>Reports Dashboard</GlowText>
+    <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-orange)40' }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', fontWeight: 500 }}>REPORTS DASHBOARD</div>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>{isOpen ? '▼' : '▶'}</span>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+      {isOpen && (
+        <div style={{ marginTop: '16px' }}>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -4955,6 +5011,8 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
               }}>RESOLVE</button>
             </div>
           </div>
+        </div>
+      )}
         </div>
       )}
     </div>
@@ -9102,9 +9160,10 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ ACTIVITY LOG ADMIN PANEL ============
-const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
+const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, defaultOpen = false }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const [activities, setActivities] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState(null);
   const [selectedAction, setSelectedAction] = useState('');
   const [offset, setOffset] = useState(0);
@@ -9170,9 +9229,11 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
   }, [fetchAPI]);
 
   useEffect(() => {
-    loadActivities(0);
-    loadStats();
-  }, [loadActivities, loadStats]);
+    if (isOpen && activities.length === 0) {
+      loadActivities(0);
+      loadStats();
+    }
+  }, [isOpen, loadActivities, loadStats, activities.length]);
 
   const formatDate = (dateStr) => {
     const date = new Date(dateStr);
@@ -9186,23 +9247,31 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
 
   return (
     <div style={{ marginTop: '20px', padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '16px',
-        flexWrap: 'wrap',
-        gap: '12px'
-      }}>
-        <div style={{ color: 'var(--accent-teal)', fontSize: '0.85rem', fontWeight: 'bold' }}>
-          📊 ACTIVITY LOG
-        </div>
-        {stats && (
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-            Last 7 days: {stats.totalActivities} events | {stats.uniqueUsers} users
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ color: 'var(--accent-teal)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+            📊 ACTIVITY LOG
           </div>
-        )}
+          {stats && (
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+              Last 7 days: {stats.totalActivities} events | {stats.uniqueUsers} users
+            </div>
+          )}
+        </div>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{isOpen ? '▼' : '▶'}</span>
       </div>
+
+      {isOpen && (
+        <div style={{ marginTop: '16px' }}>
 
       {/* Filter by action type */}
       <div style={{ marginBottom: '16px' }}>
@@ -9322,6 +9391,8 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile }) => {
             </button>
           )}
         </>
+      )}
+        </div>
       )}
     </div>
   );
@@ -10504,9 +10575,10 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
 
 // ============ FEDERATION ADMIN PANEL ============
 const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0 }) => {
+  const [isOpen, setIsOpen] = useState(false);
   const [status, setStatus] = useState(null);
   const [nodes, setNodes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [nodeName, setNodeName] = useState('');
   const [showAddNode, setShowAddNode] = useState(false);
   const [newNodeName, setNewNodeName] = useState('');
@@ -10540,8 +10612,10 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
   }, [fetchAPI, showToast]);
 
   useEffect(() => {
-    loadFederationData();
-  }, [loadFederationData, refreshTrigger]);
+    if (isOpen) {
+      loadFederationData();
+    }
+  }, [isOpen, loadFederationData, refreshTrigger]);
 
   const handleSetupIdentity = async () => {
     if (!nodeName.trim() || nodeName.length < 3) {
@@ -10694,20 +10768,23 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ marginTop: '24px' }}>
-        <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>Federation</GlowText>
-        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-dim)' }}>Loading...</div>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ marginTop: '24px' }}>
-      <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>Federation</GlowText>
+    <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-teal)40' }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>FEDERATION</div>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>{isOpen ? '▼' : '▶'}</span>
+      </div>
 
-      {/* Status Overview */}
+      {isOpen && (
+        <div style={{ marginTop: '16px' }}>
+          {loading ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-dim)' }}>Loading...</div>
+          ) : (
+            <>
+              {/* Status Overview */}
       <div style={{
         marginTop: '16px',
         padding: isMobile ? '14px' : '16px',
@@ -11229,12 +11306,17 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
           </div>
         )}
       </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };
 
 // ============ HANDLE REQUESTS LIST (ADMIN) ============
 const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
+  const [isOpen, setIsOpen] = useState(false);
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -11250,8 +11332,10 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
   };
 
   useEffect(() => {
-    loadRequests();
-  }, []);
+    if (isOpen) {
+      loadRequests();
+    }
+  }, [isOpen]);
 
   const handleApprove = async (requestId) => {
     try {
@@ -11277,23 +11361,30 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
     }
   };
 
-  if (loading) return <LoadingSpinner />;
-
-  if (requests.length === 0) {
-    return (
-      <div style={{
-        padding: '20px', textAlign: 'center',
-        color: 'var(--text-muted)', fontSize: isMobile ? '0.9rem' : '0.85rem',
-        background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
-        marginTop: '16px',
-      }}>
-        No pending handle change requests
-      </div>
-    );
-  }
-
   return (
-    <div style={{ marginTop: '16px' }}>
+    <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-purple)40' }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <div style={{ color: 'var(--accent-purple)', fontSize: '0.8rem', fontWeight: 500 }}>HANDLE CHANGE REQUESTS</div>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>{isOpen ? '▼' : '▶'}</span>
+      </div>
+
+      {isOpen && (
+        <div style={{ marginTop: '16px' }}>
+          {loading ? (
+            <LoadingSpinner />
+          ) : requests.length === 0 ? (
+            <div style={{
+              padding: '20px', textAlign: 'center',
+              color: 'var(--text-muted)', fontSize: isMobile ? '0.9rem' : '0.85rem',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+            }}>
+              No pending handle change requests
+            </div>
+          ) : (
+            <div>
       {requests.map(req => (
         <div key={req.id} style={{
           padding: isMobile ? '14px' : '16px',
@@ -11341,6 +11432,10 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
           </div>
         </div>
       ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -11354,6 +11449,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [bio, setBio] = useState(user?.bio || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [newHandle, setNewHandle] = useState('');
   const [showHandleRequests, setShowHandleRequests] = useState(false);
   const [showBlockedMuted, setShowBlockedMuted] = useState(false);
@@ -11650,12 +11746,17 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   };
 
   const handleChangePassword = async () => {
-    if (!currentPassword || !newPassword) return;
+    if (!currentPassword || !newPassword || !confirmPassword) return;
+    if (newPassword !== confirmPassword) {
+      showToast('New passwords do not match', 'error');
+      return;
+    }
     try {
       await fetchAPI('/profile/password', { method: 'POST', body: { currentPassword, newPassword } });
       showToast('Password changed', 'success');
       setCurrentPassword('');
       setNewPassword('');
+      setConfirmPassword('');
     } catch (err) {
       showToast(err.message || 'Failed to change password', 'error');
     }
@@ -11801,8 +11902,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       </div>
 
       {/* Handle Change */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '16px' }}>HANDLE CHANGE</div>
+      <CollapsibleSection title="HANDLE CHANGE" defaultOpen={false} isMobile={isMobile}>
         <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
           Handle changes require admin approval. You can change your handle once every 30 days.
         </div>
@@ -11817,11 +11917,10 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           color: newHandle ? 'var(--accent-teal)' : 'var(--text-muted)',
           cursor: newHandle ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
         }}>REQUEST CHANGE</button>
-      </div>
+      </CollapsibleSection>
 
       {/* Password Change */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '12px' }}>CHANGE PASSWORD</div>
+      <CollapsibleSection title="CHANGE PASSWORD" defaultOpen={false} isMobile={isMobile}>
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CURRENT PASSWORD</label>
           <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={inputStyle} />
@@ -11831,14 +11930,27 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
             placeholder="Min 8 chars, upper, lower, number" style={inputStyle} />
         </div>
-        <button onClick={handleChangePassword} disabled={!currentPassword || !newPassword} style={{
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CONFIRM NEW PASSWORD</label>
+          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Re-enter new password" style={{
+              ...inputStyle,
+              borderColor: confirmPassword && newPassword !== confirmPassword ? 'var(--accent-orange)' : 'var(--border-subtle)',
+            }} />
+          {confirmPassword && newPassword !== confirmPassword && (
+            <div style={{ color: 'var(--accent-orange)', fontSize: '0.7rem', marginTop: '4px' }}>
+              Passwords do not match
+            </div>
+          )}
+        </div>
+        <button onClick={handleChangePassword} disabled={!currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword} style={{
           padding: '10px 20px',
-          background: currentPassword && newPassword ? 'var(--accent-orange)20' : 'transparent',
-          border: `1px solid ${currentPassword && newPassword ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
-          color: currentPassword && newPassword ? 'var(--accent-orange)' : 'var(--text-muted)',
-          cursor: currentPassword && newPassword ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+          background: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)20' : 'transparent',
+          border: `1px solid ${currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+          color: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)' : 'var(--text-muted)',
+          cursor: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
         }}>CHANGE PASSWORD</button>
-      </div>
+      </CollapsibleSection>
 
       {/* Two-Factor Authentication */}
       <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>

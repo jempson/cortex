@@ -2632,11 +2632,22 @@ class Database {
   updateWavePrivacy(waveId, privacy, groupId = null) {
     const wave = this.getWave(waveId);
     if (!wave) return null;
-    
+
     wave.privacy = privacy;
     wave.groupId = privacy === 'group' ? groupId : null;
     wave.updatedAt = new Date().toISOString();
-    
+
+    this.saveWaves();
+    return wave;
+  }
+
+  updateWaveTitle(waveId, title) {
+    const wave = this.getWave(waveId);
+    if (!wave) return null;
+
+    wave.title = title;
+    wave.updatedAt = new Date().toISOString();
+
     this.saveWaves();
     return wave;
   }
@@ -9383,8 +9394,9 @@ app.put('/api/waves/:id', authenticateToken, async (req, res) => {
   }
 
   if (req.body.title) {
-    wave.title = sanitizeInput(req.body.title).slice(0, 200);
-    db.saveWaves();
+    const sanitizedTitle = sanitizeInput(req.body.title).slice(0, 200);
+    db.updateWaveTitle(waveId, sanitizedTitle);
+    wave.title = sanitizedTitle;
   }
 
   // If wave is being promoted to crossServer and federation is enabled, broadcast to all trusted nodes

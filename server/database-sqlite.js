@@ -3037,6 +3037,16 @@ export class DatabaseSQLite {
     return this.getWave(waveId);
   }
 
+  updateWaveTitle(waveId, title) {
+    const wave = this.getWave(waveId);
+    if (!wave) return null;
+
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE waves SET title = ?, updated_at = ? WHERE id = ?').run(title, now, waveId);
+
+    return this.getWave(waveId);
+  }
+
   updateWaveTimestamp(waveId) {
     this.db.prepare('UPDATE waves SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), waveId);
   }
