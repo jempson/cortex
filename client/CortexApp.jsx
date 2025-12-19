@@ -3417,54 +3417,54 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               {/* Reply / Focus to Reply */}
               {isAtDepthLimit && onFocus ? (
                 <button onClick={() => onFocus(message)} title="Focus to reply" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>⤢</button>
               ) : (
                 <button onClick={() => onReply(message)} title="Reply" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>↵</button>
               )}
               {/* Collapse/Expand */}
               {hasChildren && (
                 <button onClick={() => onToggleCollapse(message.id)} title={isCollapsed ? 'Expand' : 'Collapse'} style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.7rem' : '0.65rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.8rem' : '0.65rem',
                 }}>{isCollapsed ? `▶${totalChildCount}` : '▼'}</button>
               )}
               {/* Focus */}
               {hasChildren && !isAtDepthLimit && onFocus && (
                 <button onClick={() => onFocus(message)} title="Focus" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>⤢</button>
               )}
               {/* Share */}
               {wave?.privacy === 'public' && onShare && (
                 <button onClick={() => onShare(message)} title="Share" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-purple)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-purple)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>⤴</button>
               )}
               {/* Edit */}
               {canDelete && !isEditing && (
                 <button onClick={() => onEdit(message)} title="Edit" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>✏</button>
               )}
               {/* Delete */}
               {canDelete && !isEditing && (
                 <button onClick={() => onDelete(message)} title="Delete" style={{
-                  padding: '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-orange)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-orange)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>✕</button>
               )}
               {/* Reaction */}
               <button onClick={() => setShowReactionPicker(!showReactionPicker)} title="React" style={{
-                padding: '2px 4px', background: showReactionPicker ? 'var(--bg-hover)' : 'transparent', border: 'none',
-                color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.75rem' : '0.7rem',
+                padding: isMobile ? '8px 10px' : '2px 4px', background: showReactionPicker ? 'var(--bg-hover)' : 'transparent', border: 'none',
+                color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
               }}>{showReactionPicker ? '✕' : '😀'}</button>
               {/* Reaction picker dropdown */}
               {showReactionPicker && (
@@ -4985,7 +4985,7 @@ const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ WAVE SETTINGS MODAL ============
-const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast, onUpdate }) => {
+const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast, onUpdate, participants = [], showParticipants, setShowParticipants, federationEnabled, currentUserId, onFederate, isMobile }) => {
   const [privacy, setPrivacy] = useState(wave?.privacy || 'private');
   const [selectedGroup, setSelectedGroup] = useState(wave?.groupId || null);
   const [title, setTitle] = useState(wave?.title || '');
@@ -5073,6 +5073,46 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{g.memberCount} members</div>
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Participants Section */}
+        {participants.length > 0 && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PARTICIPANTS ({participants.length})</div>
+            <button
+              onClick={() => { setShowParticipants(!showParticipants); onClose(); }}
+              style={{
+                width: '100%', padding: '12px', textAlign: 'left',
+                background: showParticipants ? 'var(--accent-green)15' : 'var(--bg-elevated)',
+                border: `1px solid ${showParticipants ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                color: showParticipants ? 'var(--accent-green)' : 'var(--text-primary)',
+                cursor: 'pointer', fontFamily: 'monospace',
+              }}
+            >
+              {showParticipants ? '✓ Participants panel visible' : 'Show participants panel'}
+            </button>
+          </div>
+        )}
+
+        {/* Federation Section */}
+        {federationEnabled && wave?.createdBy === currentUserId && wave?.federationState !== 'participant' && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>FEDERATION</div>
+            <button
+              onClick={onFederate}
+              style={{
+                width: '100%', padding: '12px', textAlign: 'left',
+                background: wave?.federationState === 'origin' ? 'var(--accent-teal)15' : 'var(--bg-elevated)',
+                border: `1px solid ${wave?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+                color: wave?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--text-primary)',
+                cursor: 'pointer', fontFamily: 'monospace',
+                display: 'flex', alignItems: 'center', gap: '8px',
+              }}
+            >
+              <span>◇</span>
+              {wave?.federationState === 'origin' ? 'Manage federated participants' : 'Federate this wave'}
+            </button>
           </div>
         )}
 
@@ -6257,28 +6297,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           gap: isMobile ? '8px' : '12px',
           flexShrink: 0
         }}>
-          {/* Participants Toggle */}
-          {participants.length > 0 && (
-            <button
-              onClick={() => setShowParticipants(!showParticipants)}
-              style={{
-                padding: isMobile ? '8px 12px' : '6px 10px',
-                background: showParticipants ? 'var(--accent-green)20' : 'transparent',
-                border: `1px solid ${showParticipants ? 'var(--accent-green)' : 'var(--border-primary)'}`,
-                color: showParticipants ? 'var(--accent-green)' : 'var(--text-dim)',
-                cursor: 'pointer',
-                fontFamily: 'monospace',
-                fontSize: isMobile ? '0.7rem' : '0.65rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <span>{showParticipants ? '▼' : '▶'}</span>
-              PARTICIPANTS ({participants.length})
-            </button>
-          )}
-
           {/* Playback Toggle */}
           {total > 0 && (
             <button
@@ -6301,63 +6319,30 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             </button>
           )}
 
-          {/* Federate Button - visible to wave owner when federation enabled */}
-          {federationEnabled && waveData?.createdBy === currentUser?.id && waveData?.federationState !== 'participant' && (
+          {/* Thread Collapse/Expand Toggle */}
+          {total > 0 && (
             <button
-              onClick={() => setShowFederateModal(true)}
+              onClick={() => {
+                const allCollapsed = Object.keys(collapsed).length > 0;
+                if (allCollapsed) {
+                  expandAllThreads();
+                } else {
+                  collapseAllThreads();
+                }
+              }}
               style={{
                 padding: isMobile ? '8px 12px' : '6px 10px',
-                background: waveData?.federationState === 'origin' ? 'var(--accent-teal)20' : 'transparent',
-                border: `1px solid ${waveData?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
-                color: waveData?.federationState === 'origin' ? 'var(--accent-teal)' : 'var(--text-dim)',
+                background: 'transparent',
+                border: '1px solid var(--border-primary)',
+                color: 'var(--text-dim)',
                 cursor: 'pointer',
                 fontFamily: 'monospace',
                 fontSize: isMobile ? '0.7rem' : '0.65rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
               }}
-              title={waveData?.federationState === 'origin' ? 'Add more federated participants' : 'Federate this wave to other servers'}
+              title={Object.keys(collapsed).length > 0 ? 'Expand all threads' : 'Collapse all threads'}
             >
-              <span>◇</span>
-              {waveData?.federationState === 'origin' ? 'FEDERATED' : 'FEDERATE'}
+              {Object.keys(collapsed).length > 0 ? '▼' : '▶'} ALL
             </button>
-          )}
-
-          {/* Thread Collapse/Expand Buttons */}
-          {total > 0 && (
-            <>
-              <button
-                onClick={collapseAllThreads}
-                style={{
-                  padding: isMobile ? '8px 12px' : '6px 10px',
-                  background: 'transparent',
-                  border: '1px solid var(--border-primary)',
-                  color: 'var(--text-dim)',
-                  cursor: 'pointer',
-                  fontFamily: 'monospace',
-                  fontSize: isMobile ? '0.7rem' : '0.65rem',
-                }}
-                title="Collapse all threads"
-              >
-                ▶ ALL
-              </button>
-              <button
-                onClick={expandAllThreads}
-                style={{
-                  padding: isMobile ? '8px 12px' : '6px 10px',
-                  background: 'transparent',
-                  border: '1px solid var(--border-primary)',
-                  color: 'var(--text-dim)',
-                  cursor: 'pointer',
-                  fontFamily: 'monospace',
-                  fontSize: isMobile ? '0.7rem' : '0.65rem',
-                }}
-                title="Expand all threads"
-              >
-                ▼ ALL
-              </button>
-            </>
           )}
 
           {/* Mark All Read Button - always visible if unread */}
@@ -6854,8 +6839,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       </div>
 
       <WaveSettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)}
-       wave={waveData} groups={groups} fetchAPI={fetchAPI} showToast={showToast}
-        onUpdate={() => { loadWave(true); onWaveUpdate?.(); }} />
+        wave={waveData} groups={groups} fetchAPI={fetchAPI} showToast={showToast}
+        onUpdate={() => { loadWave(true); onWaveUpdate?.(); }}
+        participants={participants}
+        showParticipants={showParticipants}
+        setShowParticipants={setShowParticipants}
+        federationEnabled={federationEnabled}
+        currentUserId={currentUser?.id}
+        onFederate={() => { setShowSettings(false); setShowFederateModal(true); }}
+        isMobile={isMobile} />
 
       <DeleteConfirmModal
         isOpen={showDeleteConfirm}
