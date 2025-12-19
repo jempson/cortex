@@ -3684,6 +3684,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               const childGrouped = prevChild &&
                 prevChild.author_id === child.author_id &&
                 !prevChild.deleted && !child.deleted &&
+                !(prevChild.children && prevChild.children.length > 0) && // Don't group if previous has replies
                 (new Date(child.created_at) - new Date(prevChild.created_at)) < 5 * 60 * 1000;
               return (
                 <Droplet key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
@@ -6635,6 +6636,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           const isGrouped = prevMsg &&
             prevMsg.author_id === msg.author_id &&
             !prevMsg.deleted && !msg.deleted &&
+            !(prevMsg.children && prevMsg.children.length > 0) && // Don't group if previous has replies
             (new Date(msg.created_at) - new Date(prevMsg.created_at)) < 5 * 60 * 1000; // 5 min window
           return (
             <Droplet key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
@@ -7940,6 +7942,7 @@ const FocusView = ({
           const isGrouped = prevMsg &&
             prevMsg.author_id === msg.author_id &&
             !prevMsg.deleted && !msg.deleted &&
+            !(prevMsg.children && prevMsg.children.length > 0) && // Don't group if previous has replies
             (new Date(msg.created_at) - new Date(prevMsg.created_at)) < 5 * 60 * 1000;
           return (
             <Droplet
