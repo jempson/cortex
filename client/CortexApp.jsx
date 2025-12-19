@@ -3288,7 +3288,13 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
-  const hasChildren = message.children?.length > 0;
+
+  // Check if there are any visible children (non-deleted or deleted with visible descendants)
+  const hasVisibleChildren = (children) => {
+    if (!children || children.length === 0) return false;
+    return children.some(child => !child.deleted || hasVisibleChildren(child.children));
+  };
+  const hasChildren = hasVisibleChildren(message.children);
   const isCollapsed = collapsed[message.id];
   const isDeleted = message.deleted;
   const canDelete = !isDeleted && message.author_id === currentUserId;
