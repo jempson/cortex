@@ -14018,7 +14018,8 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
   }
 
   // Public droplet - show preview
-  const plainContent = (data.droplet?.content || '').replace(/<[^>]*>/g, '');
+  // Content is already sanitized by the server, render as HTML
+  const dropletContent = data.droplet?.content || '';
 
   return (
     <div style={containerStyle}>
@@ -14088,9 +14089,15 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
               )}
             </div>
           </div>
-          <div style={{ color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-            {plainContent || 'No content'}
-          </div>
+          <div
+            style={{
+              color: 'var(--text-primary)',
+              lineHeight: '1.6',
+              wordBreak: 'break-word',
+            }}
+            dangerouslySetInnerHTML={{ __html: dropletContent || '<em>No content</em>' }}
+            className="public-droplet-content"
+          />
           {data.droplet?.createdAt && (
             <div style={{
               color: 'var(--text-muted)',
