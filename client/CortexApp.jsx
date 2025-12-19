@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, createContext, use
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.17.3';
+const VERSION = '1.17.4';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -96,6 +96,101 @@ const FONT_SIZES = {
 // ============ THREADING DEPTH LIMIT ============
 // Maximum nesting depth before prompting user to Focus or Ripple
 const THREAD_DEPTH_LIMIT = 3;
+
+// ============ PWA BADGE & TAB NOTIFICATIONS ============
+// PWA Badge API - shows unread count on installed app icon
+const updateAppBadge = (count) => {
+  if ('setAppBadge' in navigator) {
+    if (count > 0) {
+      navigator.setAppBadge(count).catch(err => console.log('[Badge] Failed to set:', err));
+    } else {
+      navigator.clearAppBadge().catch(err => console.log('[Badge] Failed to clear:', err));
+    }
+  }
+};
+
+// Tab notification state
+let originalTitle = 'Cortex';
+let originalFaviconHref = '/icons/favicon-32x32.png';
+let notificationFaviconDataUrl = null;
+let faviconFlashInterval = null;
+let isFlashing = false;
+
+// Generate notification favicon with red dot overlay
+const generateNotificationFavicon = () => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+
+      // Draw original favicon
+      ctx.drawImage(img, 0, 0, 32, 32);
+
+      // Draw notification dot (red circle in top-right)
+      ctx.beginPath();
+      ctx.arc(24, 8, 7, 0, 2 * Math.PI);
+      ctx.fillStyle = '#ff6b35'; // Orange accent color
+      ctx.fill();
+      ctx.strokeStyle = '#050805'; // Dark border
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(null);
+    img.src = originalFaviconHref;
+  });
+};
+
+// Initialize notification favicon on load
+generateNotificationFavicon().then(dataUrl => {
+  notificationFaviconDataUrl = dataUrl;
+});
+
+// Update document title with unread count
+const updateDocumentTitle = (count) => {
+  if (count > 0) {
+    document.title = `(${count}) ${originalTitle}`;
+  } else {
+    document.title = originalTitle;
+  }
+};
+
+// Set favicon
+const setFavicon = (href) => {
+  let link = document.querySelector("link[rel~='icon']");
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  link.href = href;
+};
+
+// Start flashing favicon between normal and notification versions
+const startFaviconFlash = () => {
+  if (isFlashing || !notificationFaviconDataUrl) return;
+  isFlashing = true;
+  let showNotification = true;
+  faviconFlashInterval = setInterval(() => {
+    setFavicon(showNotification ? notificationFaviconDataUrl : originalFaviconHref);
+    showNotification = !showNotification;
+  }, 1000);
+};
+
+// Stop flashing favicon
+const stopFaviconFlash = () => {
+  if (faviconFlashInterval) {
+    clearInterval(faviconFlashInterval);
+    faviconFlashInterval = null;
+  }
+  isFlashing = false;
+  setFavicon(originalFaviconHref);
+};
 
 // ============ STORAGE ============
 const storage = {
@@ -13243,6 +13338,37 @@ function MainApp({ shareDropletId }) {
       storage.setTheme(theme);
     }
   }, [user?.preferences?.theme]);
+
+  // PWA Badge and Tab Notifications - update based on unread count
+  useEffect(() => {
+    const totalUnread = waves.reduce((sum, w) => sum + (w.unread_count || 0), 0);
+
+    // Update PWA app badge (shows on installed app icon)
+    updateAppBadge(totalUnread);
+
+    // Update document title with unread count
+    updateDocumentTitle(totalUnread);
+
+    // Handle favicon flashing based on visibility
+    const handleVisibilityChange = () => {
+      if (document.hidden && totalUnread > 0) {
+        startFaviconFlash();
+      } else {
+        stopFaviconFlash();
+      }
+    };
+
+    // Initial check
+    handleVisibilityChange();
+
+    // Listen for visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      stopFaviconFlash();
+    };
+  }, [waves]);
 
   // Handle shared droplet URL parameter - navigate to the wave containing the droplet
   const shareHandledRef = useRef(false);
