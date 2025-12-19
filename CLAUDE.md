@@ -619,6 +619,28 @@ Automatic embedding of videos and media from popular platforms.
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
 
+- **v1.17.1 (December 2025)** - Compact UI & Mobile Improvements
+  - **Compact Droplet Display**: Cleaner, more readable message layout
+    - Removed card-style borders for cleaner appearance
+    - Inline timestamps (time only) next to username in header
+    - Smaller avatars (20px desktop, 24px mobile)
+    - Reduced vertical padding for tighter message spacing
+  - **Inline Action Buttons**: Actions moved to header row, right-aligned
+    - Reply, collapse, focus, share, edit, delete, react buttons in compact row
+    - Icon-only buttons at 60% opacity, full on hover
+    - Larger touch targets on mobile (8px 10px padding, 0.85rem font)
+  - **Reduced Nested Indentation**: Better deep thread readability
+    - Nested droplets now use 4px padding (mobile) / 6px (desktop)
+    - Previously 16px+ per level caused unreadable deep threads
+    - Border line provides visual nesting indicator
+  - **Simplified Toolbar**: Less clutter, easier access to key actions
+    - Combined Collapse All/Expand All into single toggle button
+    - Moved Participants panel toggle to Wave Settings
+    - Moved Federate button to Wave Settings
+    - Mark All Read now always visible when unread droplets exist
+  - **Reaction Picker**: Added sad (😢) and crying (😭) emojis
+  - **Touch Target Improvements**: All inline action buttons sized for reliable mobile tapping
+
 - **v1.17.0 (December 2025)** - Droplet Sharing
   - **Share Public Droplets**: Share droplets from public waves to external platforms
     - SHARE button (⤴ SHARE) appears on droplets in public waves only
