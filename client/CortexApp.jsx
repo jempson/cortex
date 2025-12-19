@@ -3752,8 +3752,8 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
         {hasChildren && !isCollapsed && (
           <div style={{
             marginTop: '10px',
-            marginLeft: isMobile ? '6px' : '10px',
-            paddingLeft: isMobile ? '8px' : '12px',
+            marginLeft: isMobile ? '1px' : '2px',
+            paddingLeft: isMobile ? '1px' : '2px',
             borderLeft: '2px solid var(--border-primary)',
           }}>
             {message.children.map(child => (
