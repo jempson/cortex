@@ -3369,7 +3369,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
       <div
         onClick={handleMessageClick}
         style={{
-          padding: isGrouped ? (isMobile ? '0px 12px 0px 44px' : '0px 12px 0px 36px') : (isMobile ? '0px 12px' : '0px 12px'),
+          padding: '0px 12px',
           marginTop: isGrouped ? '0' : (isMobile ? '8px' : '6px'),
           background: isHighlighted ? `${config.color}15` : isUnread ? 'var(--accent-amber)08' : 'transparent',
           borderLeft: isUnread ? '2px solid var(--accent-amber)' : '2px solid transparent',
