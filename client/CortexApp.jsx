@@ -99,13 +99,26 @@ const THREAD_DEPTH_LIMIT = 3;
 
 // ============ PWA BADGE & TAB NOTIFICATIONS ============
 // PWA Badge API - shows unread count on installed app icon
+// Note: Only works when installed as PWA (not in browser tab)
 const updateAppBadge = (count) => {
-  if ('setAppBadge' in navigator) {
+  const isInstalled = window.matchMedia('(display-mode: standalone)').matches ||
+                      window.navigator.standalone === true;
+  const hasAPI = 'setAppBadge' in navigator;
+
+  console.log(`[Badge] Update requested: count=${count}, installed=${isInstalled}, hasAPI=${hasAPI}`);
+
+  if (hasAPI) {
     if (count > 0) {
-      navigator.setAppBadge(count).catch(err => console.log('[Badge] Failed to set:', err));
+      navigator.setAppBadge(count)
+        .then(() => console.log(`[Badge] Successfully set to ${count}`))
+        .catch(err => console.log('[Badge] Failed to set:', err.message));
     } else {
-      navigator.clearAppBadge().catch(err => console.log('[Badge] Failed to clear:', err));
+      navigator.clearAppBadge()
+        .then(() => console.log('[Badge] Successfully cleared'))
+        .catch(err => console.log('[Badge] Failed to clear:', err.message));
     }
+  } else {
+    console.log('[Badge] API not available - requires installed PWA in supported browser');
   }
 };
 
@@ -13354,6 +13367,15 @@ function MainApp({ shareDropletId }) {
   // PWA Badge and Tab Notifications - update based on unread count
   useEffect(() => {
     const totalUnread = waves.reduce((sum, w) => sum + (w.unread_count || 0), 0);
+
+    // Debug: Log unread counts per wave
+    if (waves.length > 0) {
+      const wavesWithUnread = waves.filter(w => w.unread_count > 0);
+      console.log(`[Badge] Total unread: ${totalUnread} across ${waves.length} waves (${wavesWithUnread.length} with unread)`);
+      if (wavesWithUnread.length > 0 && wavesWithUnread.length <= 5) {
+        wavesWithUnread.forEach(w => console.log(`  - "${w.title}": ${w.unread_count} unread`));
+      }
+    }
 
     // Update PWA app badge (shows on installed app icon)
     updateAppBadge(totalUnread);
