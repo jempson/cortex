@@ -10159,7 +10159,7 @@ app.get('/api/search', authenticateToken, (req, res) => {
 
 // ============ Health Check ============
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.14.0', uptime: process.uptime() });
+  res.json({ status: 'ok', version: VERSION, uptime: process.uptime() });
 });
 
 // ============ Public Server Info ============
@@ -10180,7 +10180,7 @@ app.get('/api/server/info', (req, res) => {
 
   res.json({
     name: identity?.nodeName || null,
-    version: '1.14.0',
+    version: VERSION,
     federationEnabled: FEDERATION_ENABLED,
     stats: {
       users: stats.userCount,
