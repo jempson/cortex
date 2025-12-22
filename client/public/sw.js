@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.17.5
+// Cortex Service Worker v1.17.6
 // Includes: Push notifications, offline caching, stale-while-revalidate
-// v1.17.5: Activity log filter fix
-const CACHE_NAME = 'cortex-v1.17.5';
+// v1.17.6: Fix server version display using VERSION constant
+const CACHE_NAME = 'cortex-v1.17.6';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

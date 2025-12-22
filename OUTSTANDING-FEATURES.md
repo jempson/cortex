@@ -1,13 +1,13 @@
 # Cortex - Outstanding Features & Future Roadmap
 
 **Last Updated:** December 19, 2025
-**Current Version:** v1.17.5
+**Current Version:** v1.17.6
 
 This document tracks planned but not-yet-implemented features for future releases.
 
 ---
 
-## Completed Features (v1.5.0 - v1.17.5)
+## Completed Features (v1.5.0 - v1.17.6)
 
 The following features have been implemented and are no longer outstanding:
 
@@ -81,6 +81,7 @@ The following features have been implemented and are no longer outstanding:
 | **Tab Title Unread** | v1.17.4 | Document title shows unread count: "(3) Cortex" |
 | **Favicon Flashing** | v1.17.4 | Favicon flashes with notification dot when tab inactive |
 | **Activity Log Filter Fix** | v1.17.5 | Filter dropdown now properly fetches filtered results |
+| **Server Version Fix** | v1.17.6 | Health/info endpoints now use VERSION constant from package.json |
 
 ---
 
