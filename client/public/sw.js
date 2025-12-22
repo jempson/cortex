@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.17.4
+// Cortex Service Worker v1.17.5
 // Includes: Push notifications, offline caching, stale-while-revalidate
-// v1.17.4: PWA badge, tab notifications, favicon flashing
-const CACHE_NAME = 'cortex-v1.17.4';
+// v1.17.5: Activity log filter fix
+const CACHE_NAME = 'cortex-v1.17.5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,7 @@ const STATIC_ASSETS = [
 
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.17.4...');
+  console.log('[SW] Installing service worker v1.17.5...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');

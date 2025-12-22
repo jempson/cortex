@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, createContext, use
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.17.4';
+const VERSION = '1.17.5';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -9373,8 +9373,20 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, defaultOpen = false }
         <select
           value={selectedAction}
           onChange={(e) => {
-            setSelectedAction(e.target.value);
+            const newAction = e.target.value;
+            setSelectedAction(newAction);
             setOffset(0);
+            // Fetch filtered results immediately
+            setLoading(true);
+            let url = `/admin/activity-log?limit=${LIMIT}&offset=0`;
+            if (newAction) url += `&actionType=${newAction}`;
+            fetchAPI(url).then(data => {
+              setActivities(data.activities || []);
+              setTotal(data.total || 0);
+              setHasMore((data.activities || []).length === LIMIT);
+            }).catch(() => {
+              showToast('Failed to load activity log', 'error');
+            }).finally(() => setLoading(false));
           }}
           style={{
             padding: '8px 12px',
