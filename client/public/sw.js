@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.18.0
+// Cortex Service Worker v1.18.1
 // Includes: Push notifications, offline caching, stale-while-revalidate
-// v1.18.0: Security & Privacy Hardening (session management, GDPR, HSTS, CORS)
-const CACHE_NAME = 'cortex-v1.18.0';
+// v1.18.1: Fix logout to revoke session on server
+const CACHE_NAME = 'cortex-v1.18.1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

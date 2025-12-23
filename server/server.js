@@ -339,12 +339,19 @@ function validateSession(token) {
 
 // Revoke a session by token
 function revokeSessionByToken(token) {
-  if (!SESSION_TRACKING_ENABLED || !db.hasSessionTable || !db.hasSessionTable()) {
+  if (!SESSION_TRACKING_ENABLED) {
+    console.log('[Session] Revocation skipped: SESSION_TRACKING_ENABLED is false');
+    return false;
+  }
+  if (!db.hasSessionTable || !db.hasSessionTable()) {
+    console.log('[Session] Revocation skipped: session table not available');
     return false;
   }
   try {
     const tokenHash = hashToken(token);
-    return db.revokeSessionByTokenHash(tokenHash);
+    const result = db.revokeSessionByTokenHash(tokenHash);
+    console.log(`[Session] Revocation result for hash ${tokenHash.substring(0, 8)}...: ${result ? 'success' : 'not found'}`);
+    return result;
   } catch (err) {
     console.error('[Session] Revocation error:', err.message);
     return false;
@@ -4030,7 +4037,11 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
     const revoked = revokeSessionByToken(req.token);
     if (revoked) {
       console.log(`📱 Session revoked for: ${req.user.handle}`);
+    } else {
+      console.log(`📱 Session revocation skipped for: ${req.user.handle} (no session found or tracking disabled)`);
     }
+  } else {
+    console.log(`📱 Logout without token for: ${req.user.handle}`);
   }
 
   // Log logout

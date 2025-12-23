@@ -15000,7 +15000,19 @@ function AuthProvider({ children }) {
     setToken(data.token); setUser(data.user);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Revoke session on server
+    if (token) {
+      try {
+        await fetch(`${API_URL}/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      } catch (err) {
+        console.error('Logout API error:', err);
+      }
+    }
+    // Clear local storage
     storage.removeToken(); storage.removeUser();
     setToken(null); setUser(null);
   };
