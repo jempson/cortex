@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.17.7
+// Cortex Service Worker v1.18.1
 // Includes: Push notifications, offline caching, stale-while-revalidate
-// v1.17.7: Add WebSocket message rate limiting
-const CACHE_NAME = 'cortex-v1.17.7';
+// v1.18.1: Fix logout to revoke session on server
+const CACHE_NAME = 'cortex-v1.18.1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,7 @@ const STATIC_ASSETS = [
 
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.17.5...');
+  console.log('[SW] Installing service worker v1.18.0...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');

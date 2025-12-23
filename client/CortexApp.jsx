@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, createContext, use
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.17.7';
+const VERSION = '1.18.0';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -11592,6 +11592,17 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [mfaLoading, setMfaLoading] = useState(false);
   const [mfaDisablePassword, setMfaDisablePassword] = useState('');
   const [mfaDisableCode, setMfaDisableCode] = useState('');
+  // Session management state (v1.18.0)
+  const [showSessions, setShowSessions] = useState(false);
+  const [sessions, setSessions] = useState([]);
+  const [sessionsEnabled, setSessionsEnabled] = useState(true);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  // Account management state (v1.18.0)
+  const [showAccountManagement, setShowAccountManagement] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const fileInputRef = useRef(null);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -11627,6 +11638,23 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         .catch(err => console.error('Failed to load MFA status:', err));
     }
   }, [showMfaSetup, mfaStatus, fetchAPI]);
+
+  // Load sessions when section is expanded (v1.18.0)
+  useEffect(() => {
+    if (showSessions) {
+      setSessionsLoading(true);
+      fetchAPI('/auth/sessions')
+        .then(data => {
+          setSessions(data.sessions || []);
+          setSessionsEnabled(data.enabled !== false);
+        })
+        .catch(err => {
+          console.error('Failed to load sessions:', err);
+          setSessionsEnabled(false);
+        })
+        .finally(() => setSessionsLoading(false));
+    }
+  }, [showSessions, fetchAPI]);
 
   // Sync crawl bar location when user preferences change
   useEffect(() => {
@@ -11758,6 +11786,145 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       showToast(err.message || 'Failed to regenerate recovery codes', 'error');
     }
     setMfaLoading(false);
+  };
+
+  // Session management handlers (v1.18.0)
+  const loadSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      const data = await fetchAPI('/auth/sessions');
+      setSessions(data.sessions || []);
+      setSessionsEnabled(data.enabled !== false);
+    } catch (err) {
+      console.error('Failed to load sessions:', err);
+    }
+    setSessionsLoading(false);
+  };
+
+  const handleRevokeSession = async (sessionId) => {
+    try {
+      await fetchAPI(`/auth/sessions/${sessionId}/revoke`, { method: 'POST' });
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      showToast('Session revoked', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to revoke session', 'error');
+    }
+  };
+
+  const handleRevokeAllSessions = async () => {
+    try {
+      const data = await fetchAPI('/auth/sessions/revoke-all', { method: 'POST' });
+      showToast(`${data.revoked} session(s) revoked`, 'success');
+      loadSessions(); // Refresh the list
+    } catch (err) {
+      showToast(err.message || 'Failed to revoke sessions', 'error');
+    }
+  };
+
+  const formatSessionDate = (dateStr) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const parseDeviceInfo = (userAgent) => {
+    if (!userAgent || userAgent === 'Unknown') return { device: 'Unknown', browser: '' };
+
+    let browser = '';
+    let device = '';
+
+    // Detect browser
+    if (userAgent.includes('Firefox')) browser = 'Firefox';
+    else if (userAgent.includes('Edg/')) browser = 'Edge';
+    else if (userAgent.includes('Chrome')) browser = 'Chrome';
+    else if (userAgent.includes('Safari')) browser = 'Safari';
+    else browser = 'Browser';
+
+    // Detect device/OS
+    if (userAgent.includes('iPhone')) device = 'iPhone';
+    else if (userAgent.includes('iPad')) device = 'iPad';
+    else if (userAgent.includes('Android')) device = 'Android';
+    else if (userAgent.includes('Windows')) device = 'Windows';
+    else if (userAgent.includes('Mac')) device = 'Mac';
+    else if (userAgent.includes('Linux')) device = 'Linux';
+    else device = 'Device';
+
+    return { device, browser };
+  };
+
+  // Account management handlers (v1.18.0)
+  const handleExportData = async () => {
+    setExportLoading(true);
+    try {
+      const response = await fetch(`${window.API_URL || ''}/api/account/export`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('cortex_token')}`
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Export failed');
+      }
+
+      // Get the filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `cortex-data-export-${user?.handle || 'user'}-${new Date().toISOString().split('T')[0]}.json`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/);
+        if (match) filename = match[1];
+      }
+
+      // Download the file
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      showToast('Data exported successfully', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to export data', 'error');
+    }
+    setExportLoading(false);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deletePassword) {
+      showToast('Password required to delete account', 'error');
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      await fetchAPI('/account/delete', {
+        method: 'POST',
+        body: { password: deletePassword }
+      });
+
+      showToast('Account deleted. Goodbye!', 'success');
+
+      // Clear storage and logout
+      setTimeout(() => {
+        onLogout();
+      }, 1500);
+    } catch (err) {
+      showToast(err.message || 'Failed to delete account', 'error');
+      setDeleteLoading(false);
+    }
   };
 
   const handleUpdateNotificationPrefs = async (updates) => {
@@ -12294,6 +12461,122 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
                 Loading MFA settings...
               </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Active Sessions (v1.18.0) */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div
+          onClick={() => setShowSessions(!showSessions)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+        >
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>ACTIVE SESSIONS</div>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showSessions ? '▼' : '▶'}</span>
+        </div>
+
+        {showSessions && (
+          <div style={{ marginTop: '16px' }}>
+            {!sessionsEnabled ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
+                Session management is not enabled on this server.
+              </div>
+            ) : sessionsLoading ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
+                Loading sessions...
+              </div>
+            ) : (
+              <>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '16px' }}>
+                  Manage your active login sessions. Revoking a session will log out that device.
+                </div>
+
+                {sessions.length > 0 ? (
+                  <>
+                    {sessions.map(session => {
+                      const { device, browser } = parseDeviceInfo(session.deviceInfo);
+                      return (
+                        <div
+                          key={session.id}
+                          style={{
+                            marginBottom: '12px',
+                            padding: '12px',
+                            background: session.isCurrent ? 'var(--accent-green)10' : 'var(--bg-elevated)',
+                            border: `1px solid ${session.isCurrent ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                <span style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                                  {device} {browser && `• ${browser}`}
+                                </span>
+                                {session.isCurrent && (
+                                  <span style={{
+                                    padding: '2px 6px',
+                                    background: 'var(--accent-green)20',
+                                    border: '1px solid var(--accent-green)',
+                                    color: 'var(--accent-green)',
+                                    fontSize: '0.65rem',
+                                    borderRadius: '3px',
+                                  }}>
+                                    THIS DEVICE
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                                {session.ipAddress} • Active {formatSessionDate(session.lastActive)}
+                              </div>
+                              <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginTop: '2px' }}>
+                                Created {formatSessionDate(session.createdAt)}
+                              </div>
+                            </div>
+                            {!session.isCurrent && (
+                              <button
+                                onClick={() => handleRevokeSession(session.id)}
+                                style={{
+                                  padding: '6px 12px',
+                                  background: 'var(--accent-orange)20',
+                                  border: '1px solid var(--accent-orange)',
+                                  color: 'var(--accent-orange)',
+                                  cursor: 'pointer',
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.7rem',
+                                }}
+                              >
+                                REVOKE
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {sessions.filter(s => !s.isCurrent).length > 0 && (
+                      <button
+                        onClick={handleRevokeAllSessions}
+                        style={{
+                          marginTop: '8px',
+                          padding: '10px 20px',
+                          background: 'var(--accent-orange)20',
+                          border: '1px solid var(--accent-orange)',
+                          color: 'var(--accent-orange)',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                          width: '100%',
+                        }}
+                      >
+                        LOGOUT ALL OTHER DEVICES
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
+                    No active sessions found.
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -12928,6 +13211,128 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         >
           <span>⏻</span> LOGOUT
         </button>
+      </div>
+
+      {/* Account Management (v1.18.0) */}
+      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-orange)40' }}>
+        <div
+          onClick={() => setShowAccountManagement(!showAccountManagement)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+        >
+          <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem' }}>ACCOUNT MANAGEMENT</div>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showAccountManagement ? '▼' : '▶'}</span>
+        </div>
+
+        {showAccountManagement && (
+          <div style={{ marginTop: '16px' }}>
+            {/* Data Export */}
+            <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem', marginBottom: '8px' }}>
+                📦 Export Your Data
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
+                Download a copy of all your personal data including profile, droplets, contacts, and settings.
+              </div>
+              <button
+                onClick={handleExportData}
+                disabled={exportLoading}
+                style={{
+                  padding: '10px 20px',
+                  background: 'var(--accent-teal)20',
+                  border: '1px solid var(--accent-teal)',
+                  color: 'var(--accent-teal)',
+                  cursor: exportLoading ? 'wait' : 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                }}
+              >
+                {exportLoading ? 'EXPORTING...' : 'DOWNLOAD MY DATA'}
+              </button>
+            </div>
+
+            {/* Account Deletion */}
+            <div style={{ padding: '16px', background: 'var(--accent-orange)05', border: '1px solid var(--accent-orange)' }}>
+              <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '8px' }}>
+                ⚠️ Delete Account
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
+                Permanently delete your account and all associated data. This action cannot be undone.
+                Your droplets will remain visible as "[Deleted User]" for context in conversations.
+              </div>
+
+              {!showDeleteConfirm ? (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'transparent',
+                    border: '1px solid var(--accent-orange)',
+                    color: 'var(--accent-orange)',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  DELETE MY ACCOUNT
+                </button>
+              ) : (
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', marginBottom: '12px', fontWeight: 'bold' }}>
+                    Are you sure? Enter your password to confirm:
+                  </div>
+                  <input
+                    type="password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    placeholder="Your password"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--accent-orange)',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'monospace',
+                      marginBottom: '12px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={handleDeleteAccount}
+                      disabled={deleteLoading || !deletePassword}
+                      style={{
+                        padding: '10px 20px',
+                        background: deletePassword ? 'var(--accent-orange)' : 'transparent',
+                        border: '1px solid var(--accent-orange)',
+                        color: deletePassword ? '#000' : 'var(--accent-orange)',
+                        cursor: deleteLoading || !deletePassword ? 'not-allowed' : 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '0.8rem',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      {deleteLoading ? 'DELETING...' : 'CONFIRM DELETE'}
+                    </button>
+                    <button
+                      onClick={() => { setShowDeleteConfirm(false); setDeletePassword(''); }}
+                      style={{
+                        padding: '10px 20px',
+                        background: 'transparent',
+                        border: '1px solid var(--border-primary)',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      CANCEL
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -14595,7 +15000,19 @@ function AuthProvider({ children }) {
     setToken(data.token); setUser(data.user);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Revoke session on server
+    if (token) {
+      try {
+        await fetch(`${API_URL}/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      } catch (err) {
+        console.error('Logout API error:', err);
+      }
+    }
+    // Clear local storage
     storage.removeToken(); storage.removeUser();
     setToken(null); setUser(null);
   };
