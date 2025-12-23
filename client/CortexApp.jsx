@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
+import { E2EEProvider, useE2EE } from './e2ee-context.jsx';
+import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWaveBadge, LegacyWaveNotice } from './e2ee-components.jsx';
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.18.1';
+const VERSION = '1.19.0';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -5521,6 +5523,9 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 
 // ============ WAVE VIEW (Mobile Responsive) ============
 const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave, scrollToDropletId, onScrollToDropletComplete, federationEnabled }) => {
+  // E2EE context
+  const e2ee = useE2EE();
+
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -5559,6 +5564,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [rippleTarget, setRippleTarget] = useState(null); // droplet to ripple
   const [showFederateModal, setShowFederateModal] = useState(false);
   const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For ripple activity badges
+  const [decryptionErrors, setDecryptionErrors] = useState({}); // Track droplets that failed to decrypt
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -5570,6 +5576,48 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Helper functions for blocked/muted status
   const isBlocked = (userId) => blockedUsers?.some(u => u.blockedUserId === userId) || false;
   const isMuted = (userId) => mutedUsers?.some(u => u.mutedUserId === userId) || false;
+
+  // E2EE: Helper to decrypt droplets
+  const decryptDroplets = useCallback(async (droplets, waveId) => {
+    if (!e2ee.isUnlocked) return droplets;
+
+    const errors = {};
+    const decrypted = await Promise.all(
+      droplets.map(async (droplet) => {
+        if (!droplet.encrypted || !droplet.nonce) {
+          return droplet; // Not encrypted
+        }
+        try {
+          const plaintext = await e2ee.decryptDroplet(
+            droplet.content,
+            droplet.nonce,
+            waveId,
+            droplet.keyVersion
+          );
+          return { ...droplet, content: plaintext, _decrypted: true };
+        } catch (err) {
+          console.error('Failed to decrypt droplet:', droplet.id, err);
+          errors[droplet.id] = err.message;
+          return { ...droplet, content: '[Unable to decrypt]', _decryptError: true };
+        }
+      })
+    );
+    setDecryptionErrors(prev => ({ ...prev, ...errors }));
+    return decrypted;
+  }, [e2ee]);
+
+  // E2EE: Helper to decrypt a tree of droplets recursively
+  const decryptDropletTree = useCallback(async (tree, waveId) => {
+    const decryptNode = async (node) => {
+      const decrypted = await decryptDroplets([node], waveId);
+      const result = decrypted[0];
+      if (result.children && result.children.length > 0) {
+        result.children = await Promise.all(result.children.map(child => decryptNode(child)));
+      }
+      return result;
+    };
+    return Promise.all(tree.map(node => decryptNode(node)));
+  }, [decryptDroplets]);
 
   // State for showing moderation menu
   const [showModMenu, setShowModMenu] = useState(null); // participant.id or null
@@ -6008,6 +6056,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       if (!data.all_messages) data.all_messages = [];
       if (!data.participants) data.participants = [];
 
+      // E2EE: Decrypt messages if wave is encrypted and E2EE is unlocked
+      if (data.encrypted && e2ee.isUnlocked) {
+        try {
+          // Decrypt all_messages flat list
+          data.all_messages = await decryptDroplets(data.all_messages, wave.id);
+          // Decrypt the tree structure
+          data.messages = await decryptDropletTree(data.messages, wave.id);
+        } catch (decryptErr) {
+          console.error('Failed to decrypt wave messages:', decryptErr);
+        }
+      }
+
       // Assign chronological indices based on created_at for proper playback order
       // Sort all_messages by created_at and create a map of id -> chronoIndex
       const sortedByTime = [...data.all_messages].sort((a, b) =>
@@ -6031,7 +6091,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         totalMessages: data.total_messages,
         hasMoreMessages: data.hasMoreMessages,
         messageCount: data.messages?.length,
-        allMessagesCount: data.all_messages?.length
+        allMessagesCount: data.all_messages?.length,
+        encrypted: data.encrypted
       });
       setWaveData(data);
       setHasMoreMessages(data.hasMoreMessages || false);
@@ -6067,8 +6128,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         const container = messagesRef.current;
         const scrollHeightBefore = container?.scrollHeight || 0;
 
+        // E2EE: Decrypt new messages if wave is encrypted
+        let decryptedMessages = data.messages;
+        if (waveData?.encrypted && e2ee.isUnlocked) {
+          try {
+            decryptedMessages = await decryptDroplets(data.messages, wave.id);
+          } catch (decryptErr) {
+            console.error('Failed to decrypt older messages:', decryptErr);
+          }
+        }
+
         // Merge older messages with existing ones
-        const mergedMessages = [...data.messages, ...waveData.all_messages];
+        const mergedMessages = [...decryptedMessages, ...waveData.all_messages];
 
         // Rebuild the message tree - treat orphaned replies (parent not in set) as roots
         const messageIds = new Set(mergedMessages.map(m => m.id));
@@ -6211,9 +6282,31 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         scrollPositionToRestore.current = messagesRef.current.scrollTop;
       }
 
+      // E2EE: Encrypt message if wave is encrypted and E2EE is unlocked
+      let messageBody = { wave_id: wave.id, parent_id: replyingTo?.id || null, content: newMessage };
+
+      if (waveData?.encrypted && e2ee.isUnlocked) {
+        try {
+          const { ciphertext, nonce } = await e2ee.encryptDroplet(newMessage, wave.id);
+          const waveKeyVersion = await fetchAPI(`/waves/${wave.id}/key`).then(r => r.keyVersion).catch(() => 1);
+          messageBody = {
+            ...messageBody,
+            content: ciphertext,
+            encrypted: true,
+            nonce,
+            keyVersion: waveKeyVersion || 1
+          };
+        } catch (encryptErr) {
+          console.error('Failed to encrypt message:', encryptErr);
+          showToast('Failed to encrypt message', 'error');
+          userActionInProgressRef.current = false;
+          return;
+        }
+      }
+
       await fetchAPI('/droplets', {
         method: 'POST',
-        body: { wave_id: wave.id, parent_id: replyingTo?.id || null, content: newMessage },
+        body: messageBody,
       });
       setNewMessage('');
       setReplyingTo(null);
@@ -15101,13 +15194,24 @@ function AuthProvider({ children }) {
 export default function CortexApp() {
   return (
     <AuthProvider>
-      <AppContent />
+      <E2EEWrapper />
     </AuthProvider>
   );
 }
 
+// E2EE wrapper that has access to AuthContext
+function E2EEWrapper() {
+  const { token } = useAuth();
+
+  return (
+    <E2EEProvider token={token} API_URL={API_URL}>
+      <AppContent />
+    </E2EEProvider>
+  );
+}
+
 function AppContent() {
-  const { user } = useAuth();
+  const { user, token, logout } = useAuth();
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [showLoginScreen, setShowLoginScreen] = useState(false);
   const [showRegisterScreen, setShowRegisterScreen] = useState(false);
@@ -15167,5 +15271,114 @@ function AppContent() {
     );
   }
 
-  return user ? <MainApp shareDropletId={shareDropletId} /> : <LoginScreen onAbout={() => navigate('/about')} />;
+  // Show login screen for unauthenticated users
+  if (!user) {
+    return <LoginScreen onAbout={() => navigate('/about')} />;
+  }
+
+  // User is authenticated - wrap with E2EE flow
+  return <E2EEAuthenticatedApp shareDropletId={shareDropletId} logout={logout} />;
+}
+
+// E2EE authenticated app wrapper - handles E2EE setup/unlock before showing main app
+function E2EEAuthenticatedApp({ shareDropletId, logout }) {
+  const {
+    e2eeStatus,
+    isUnlocked,
+    needsPassphrase,
+    needsSetup,
+    isUnlocking,
+    unlockError,
+    checkE2EEStatus,
+    setupE2EE,
+    unlockE2EE,
+    recoverWithPassphrase,
+    clearE2EE,
+    isCryptoAvailable
+  } = useE2EE();
+
+  const [isSettingUp, setIsSettingUp] = useState(false);
+  const [recoveryHint, setRecoveryHint] = useState(null);
+
+  // Check E2EE status on mount
+  useEffect(() => {
+    checkE2EEStatus();
+  }, [checkE2EEStatus]);
+
+  // Fetch recovery hint when passphrase is needed
+  useEffect(() => {
+    if (needsPassphrase) {
+      fetch(`${API_URL}/e2ee/recovery/hint`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('cortex_token')}` }
+      })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => setRecoveryHint(data?.hint || null))
+        .catch(() => setRecoveryHint(null));
+    }
+  }, [needsPassphrase]);
+
+  // Handle logout (also clears E2EE state)
+  const handleLogout = () => {
+    clearE2EE();
+    logout();
+  };
+
+  // Check if Web Crypto is available
+  if (!isCryptoAvailable) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-primary)' }}>
+        <h2 style={{ color: 'var(--accent-orange)' }}>Encryption Not Available</h2>
+        <p style={{ color: 'var(--text-secondary)' }}>
+          Your browser does not support the Web Crypto API required for end-to-end encryption.
+          Please use a modern browser (Chrome, Firefox, Safari, Edge) with HTTPS.
+        </p>
+        <button
+          onClick={handleLogout}
+          style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: 'var(--accent-orange)', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+        >
+          Log Out
+        </button>
+      </div>
+    );
+  }
+
+  // Show loading while checking E2EE status
+  if (e2eeStatus === null) {
+    return <LoadingSpinner message="Checking encryption status..." />;
+  }
+
+  // Show E2EE setup modal for users who haven't set up E2EE
+  if (needsSetup) {
+    return (
+      <E2EESetupModal
+        onSetup={async (passphrase, recoveryPassphrase, recoveryHint) => {
+          setIsSettingUp(true);
+          try {
+            await setupE2EE(passphrase, recoveryPassphrase, recoveryHint);
+          } finally {
+            setIsSettingUp(false);
+          }
+        }}
+        onSkip={null}  // E2EE is mandatory, no skip option
+        isLoading={isSettingUp}
+      />
+    );
+  }
+
+  // Show passphrase unlock modal for users with E2EE set up
+  if (needsPassphrase) {
+    return (
+      <PassphraseUnlockModal
+        onUnlock={unlockE2EE}
+        onRecover={recoverWithPassphrase}
+        onLogout={handleLogout}
+        isLoading={isUnlocking}
+        error={unlockError}
+        recoveryHint={recoveryHint}
+      />
+    );
+  }
+
+  // E2EE is unlocked - render the main app
+  return <MainApp shareDropletId={shareDropletId} />;
 }

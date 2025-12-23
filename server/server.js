@@ -10529,7 +10529,9 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
     db.addWaveParticipant(waveId, req.user.userId);
   }
 
-  if (content.length > 10000) return res.status(400).json({ error: 'Droplet too long' });
+  // E2EE: encrypted content is base64 and may be longer than plaintext
+  const maxLength = req.body.encrypted ? 20000 : 10000;
+  if (content.length > maxLength) return res.status(400).json({ error: 'Droplet too long' });
 
   // For rippled waves, default parent to root droplet if no parent specified
   let parentId = req.body.parent_id ? sanitizeInput(req.body.parent_id) : null;
@@ -10543,6 +10545,9 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
     authorId: req.user.userId,
     content,
     privacy: wave.privacy,
+    encrypted: !!req.body.encrypted,
+    nonce: req.body.nonce || null,
+    keyVersion: req.body.keyVersion || null,
   });
 
   // Create in-app notifications for mentions, replies, and wave activity
@@ -10553,13 +10558,17 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
 
   // Create push notification payload
   const senderName = droplet.sender_name || db.findUserById(req.user.userId)?.displayName || 'Someone';
-  const contentPreview = content.replace(/<[^>]*>/g, '').substring(0, 100);
+  // For encrypted droplets, don't reveal content in push notification
+  const contentPreview = req.body.encrypted
+    ? 'Encrypted message'
+    : content.replace(/<[^>]*>/g, '').substring(0, 100);
   const pushPayload = {
     title: `New droplet in ${wave.title}`,
-    body: `${senderName}: ${contentPreview}${content.length > 100 ? '...' : ''}`,
+    body: `${senderName}: ${contentPreview}${!req.body.encrypted && content.length > 100 ? '...' : ''}`,
     url: `/?wave=${waveId}`,
     waveId,
-    dropletId: droplet.id
+    dropletId: droplet.id,
+    encrypted: !!req.body.encrypted
   };
 
   // Broadcast to connected users and send push to offline users

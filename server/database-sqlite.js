@@ -3058,6 +3058,8 @@ export class DatabaseSQLite {
       federationState: row.federation_state || 'local',
       originNode: row.origin_node || null,
       originWaveId: row.origin_wave_id || null,
+      // E2EE fields
+      encrypted: row.encrypted === 1,
     };
   }
 
@@ -3496,6 +3498,9 @@ export class DatabaseSQLite {
         brokenOutTo: d.broken_out_to,
         brokenOutToTitle: d.broken_out_to_title,
         isRemote: false,
+        encrypted: d.encrypted === 1,
+        nonce: d.nonce,
+        keyVersion: d.key_version,
       };
     });
 
@@ -3550,9 +3555,15 @@ export class DatabaseSQLite {
   createDroplet(data) {
     const now = new Date().toISOString();
 
-    // Sanitize and auto-embed media URLs
-    let content = sanitizeMessage(data.content);
-    content = detectAndEmbedMedia(content);
+    // For encrypted content, skip sanitization (it's base64 ciphertext)
+    // For unencrypted content, sanitize and auto-embed media URLs
+    let content;
+    if (data.encrypted) {
+      content = data.content;  // Raw ciphertext, no processing
+    } else {
+      content = sanitizeMessage(data.content);
+      content = detectAndEmbedMedia(content);
+    }
 
     const droplet = {
       id: `droplet-${uuidv4()}`,
@@ -3565,6 +3576,9 @@ export class DatabaseSQLite {
       createdAt: now,
       editedAt: null,
       reactions: {},
+      encrypted: data.encrypted ? 1 : 0,
+      nonce: data.nonce || null,
+      keyVersion: data.keyVersion || null,
     };
 
     // Check if parent is a remote droplet (exists in remote_droplets but not in droplets)
@@ -3583,17 +3597,17 @@ export class DatabaseSQLite {
       this.db.exec('PRAGMA foreign_keys = OFF');
       try {
         this.db.prepare(`
-          INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
-        `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt);
+          INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
+        `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion);
       } finally {
         this.db.exec('PRAGMA foreign_keys = ON');
       }
     } else {
       this.db.prepare(`
-        INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
-      `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt);
+        INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
+      `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion);
     }
 
     // Author has read their own droplet
@@ -3656,6 +3670,9 @@ export class DatabaseSQLite {
       edited_at: d.edited_at,
       deleted_at: d.deleted_at,
       brokenOutTo: d.broken_out_to,
+      encrypted: d.encrypted === 1,
+      nonce: d.nonce,
+      keyVersion: d.key_version,
     };
   }
 
