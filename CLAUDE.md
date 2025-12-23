@@ -619,6 +619,47 @@ Automatic embedding of videos and media from popular platforms.
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
 
+- **v1.19.0 (December 2025)** - End-to-End Encryption (E2EE)
+  - **E2EE Core**: Zero-knowledge encryption for all wave content
+    - ECDH P-384 keypairs per user, protected by passphrase
+    - AES-256-GCM for droplet content encryption
+    - Per-wave symmetric keys distributed via ECDH key exchange
+    - PBKDF2-SHA256 key derivation (600k iterations)
+    - Web Crypto API only (no external JS crypto libraries)
+  - **Key Management**:
+    - Private keys encrypted before storage (AES-KW)
+    - Wave keys encrypted individually for each participant
+    - Key rotation when participants removed from waves
+    - Multi-version key support for decrypting old messages
+    - LRU cache (100 keys) for wave key performance
+  - **Recovery System**:
+    - Optional recovery passphrase for key backup
+    - Recovery hint stored on server
+    - Full key recovery flow when main passphrase forgotten
+  - **E2EE API Endpoints**:
+    - `GET /api/e2ee/status` - Check user's E2EE status
+    - `POST /api/e2ee/keys/register` - Register encrypted keypair
+    - `GET /api/e2ee/keys/me` - Fetch encrypted private key
+    - `GET /api/e2ee/keys/user/:id` - Get user's public key
+    - `POST /api/e2ee/recovery/setup` - Configure recovery
+    - `GET /api/e2ee/recovery` - Get recovery data
+    - `GET /api/waves/:id/key` - Get encrypted wave key
+    - `POST /api/waves/:id/key/rotate` - Rotate wave key
+    - `GET /api/waves/:id/keys/all` - Get all key versions
+  - **Database Schema** (new tables):
+    - `user_encryption_keys` - User's encrypted keypair
+    - `wave_encryption_keys` - Per-user encrypted wave keys
+    - `wave_key_metadata` - Wave key version tracking
+    - `user_recovery_keys` - Recovery passphrase data
+  - **Client Integration**:
+    - `client/crypto.js` - Crypto operations module
+    - `client/e2ee-context.jsx` - React context for E2EE state
+    - E2EE setup modal for first-time passphrase creation
+    - Passphrase unlock on login
+    - Automatic wave encryption/decryption
+    - Legacy wave notice for unencrypted content
+  - **WebSocket Events**: `wave_key_rotated` when keys are rotated
+
 - **v1.18.0 (December 2025)** - Security & Privacy Hardening
   - **Session Management**: View and manage active login sessions
     - `GET /api/auth/sessions` - List all active sessions with device info, IP, timestamps
