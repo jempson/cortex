@@ -65,10 +65,10 @@ export function generateNonce() {
 // ============ Key Derivation ============
 
 /**
- * Derive an AES-256 key from a passphrase using PBKDF2
+ * Derive an AES-256-GCM key from a passphrase using PBKDF2
  * @param {string} passphrase - User's passphrase
  * @param {string} saltBase64 - Base64-encoded salt
- * @returns {Promise<CryptoKey>} - AES-KW key for wrapping
+ * @returns {Promise<CryptoKey>} - AES-GCM key for encryption
  */
 export async function deriveKeyFromPassphrase(passphrase, saltBase64) {
   const encoder = new TextEncoder();
@@ -83,7 +83,8 @@ export async function deriveKeyFromPassphrase(passphrase, saltBase64) {
     ['deriveKey']
   );
 
-  // Derive AES-KW key for wrapping/unwrapping
+  // Derive AES-GCM key for encrypting private key
+  // Using AES-GCM instead of AES-KW for better compatibility with JWK sizes
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
@@ -92,9 +93,9 @@ export async function deriveKeyFromPassphrase(passphrase, saltBase64) {
       hash: 'SHA-256'
     },
     keyMaterial,
-    { name: 'AES-KW', length: 256 },
+    { name: 'AES-GCM', length: 256 },
     false,
-    ['wrapKey', 'unwrapKey']
+    ['encrypt', 'decrypt']
   );
 }
 
@@ -145,33 +146,62 @@ export async function importPublicKey(spkiBase64) {
 
 /**
  * Wrap (encrypt) a private key with a passphrase-derived key
+ * Uses AES-GCM for encryption, which handles any data size (unlike AES-KW)
  * @param {CryptoKey} privateKey - ECDH private key
- * @param {CryptoKey} wrappingKey - AES-KW key from PBKDF2
- * @returns {Promise<string>} - Base64-encoded wrapped key
+ * @param {CryptoKey} wrappingKey - AES-GCM key from PBKDF2
+ * @returns {Promise<string>} - Base64-encoded nonce:ciphertext
  */
 export async function wrapPrivateKey(privateKey, wrappingKey) {
-  const wrapped = await crypto.subtle.wrapKey(
-    'jwk',
-    privateKey,
+  // Export private key to JWK format
+  const jwk = await crypto.subtle.exportKey('jwk', privateKey);
+  const jwkString = JSON.stringify(jwk);
+  const encoder = new TextEncoder();
+  const jwkBytes = encoder.encode(jwkString);
+
+  // Generate nonce and encrypt
+  const nonce = generateNonce();
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce },
     wrappingKey,
-    'AES-KW'
+    jwkBytes
   );
-  return base64Encode(wrapped);
+
+  // Combine nonce + ciphertext
+  const combined = new Uint8Array(nonce.length + ciphertext.byteLength);
+  combined.set(nonce, 0);
+  combined.set(new Uint8Array(ciphertext), nonce.length);
+
+  return base64Encode(combined);
 }
 
 /**
  * Unwrap (decrypt) a private key with a passphrase-derived key
- * @param {string} wrappedKeyBase64 - Base64-encoded wrapped key
- * @param {CryptoKey} unwrappingKey - AES-KW key from PBKDF2
+ * @param {string} wrappedKeyBase64 - Base64-encoded nonce:ciphertext
+ * @param {CryptoKey} unwrappingKey - AES-GCM key from PBKDF2
  * @returns {Promise<CryptoKey>} - ECDH private key
  */
 export async function unwrapPrivateKey(wrappedKeyBase64, unwrappingKey) {
-  const wrappedKey = base64Decode(wrappedKeyBase64);
-  return crypto.subtle.unwrapKey(
-    'jwk',
-    wrappedKey,
+  const combined = new Uint8Array(base64Decode(wrappedKeyBase64));
+
+  // Extract nonce and ciphertext
+  const nonce = combined.slice(0, NONCE_LENGTH);
+  const ciphertext = combined.slice(NONCE_LENGTH);
+
+  // Decrypt
+  const jwkBytes = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: nonce },
     unwrappingKey,
-    'AES-KW',
+    ciphertext
+  );
+
+  // Parse JWK and import
+  const decoder = new TextDecoder();
+  const jwkString = decoder.decode(jwkBytes);
+  const jwk = JSON.parse(jwkString);
+
+  return crypto.subtle.importKey(
+    'jwk',
+    jwk,
     { name: 'ECDH', namedCurve: 'P-384' },
     true,
     ['deriveKey', 'deriveBits']
