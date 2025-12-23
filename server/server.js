@@ -9940,13 +9940,33 @@ app.post('/api/waves', authenticateToken, async (req, res) => {
   // Determine if this is a federated wave
   const hasFederatedParticipants = federatedParticipants.length > 0;
 
+  // E2EE: Check if wave should be encrypted
+  const encrypted = !!req.body.encrypted;
+  const keyDistribution = req.body.keyDistribution;
+
   const wave = db.createWave({
     title,
     privacy: hasFederatedParticipants ? 'crossServer' : privacy, // Force cross-server if federated
     groupId: privacy === 'group' ? sanitizeInput(req.body.groupId) : null,
     createdBy: req.user.userId,
     participants: localParticipantIds,
+    encrypted,
   });
+
+  // E2EE: Store wave keys if encrypted
+  if (encrypted && keyDistribution && Array.isArray(keyDistribution)) {
+    // Create key metadata
+    db.createWaveKeyMetadata(wave.id);
+
+    // Store encrypted keys for each participant
+    for (const { userId, encryptedWaveKey, senderPublicKey } of keyDistribution) {
+      if (encryptedWaveKey && senderPublicKey) {
+        // If userId is null, it's the creator's own key
+        const targetUserId = userId || req.user.userId;
+        db.createWaveEncryptionKey(wave.id, targetUserId, encryptedWaveKey, senderPublicKey, 1);
+      }
+    }
+  }
 
   // If federated, mark as origin and send invites
   if (hasFederatedParticipants) {

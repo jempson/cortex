@@ -3122,9 +3122,10 @@ export class DatabaseSQLite {
       createdBy: data.createdBy,
       createdAt: now,
       updatedAt: now,
+      encrypted: data.encrypted || false,
     };
 
-    this.db.prepare('INSERT INTO waves (id, title, privacy, group_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(wave.id, wave.title, wave.privacy, wave.groupId, wave.createdBy, wave.createdAt, wave.updatedAt);
+    this.db.prepare('INSERT INTO waves (id, title, privacy, group_id, created_by, created_at, updated_at, encrypted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(wave.id, wave.title, wave.privacy, wave.groupId, wave.createdBy, wave.createdAt, wave.updatedAt, wave.encrypted ? 1 : 0);
 
     // Add creator as participant
     this.db.prepare('INSERT INTO wave_participants (wave_id, user_id, joined_at, archived) VALUES (?, ?, ?, 0)').run(wave.id, data.createdBy, now);

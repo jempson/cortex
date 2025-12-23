@@ -6923,6 +6923,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       {/* Messages */}
       <div ref={messagesRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '12px' : '20px' }}>
+        {/* E2EE: Show legacy wave notice for unencrypted waves when E2EE is enabled */}
+        {e2ee.isE2EEEnabled && !waveData?.encrypted && (
+          <LegacyWaveNotice />
+        )}
         {/* Load Older Messages Button */}
         {hasMoreMessages && (
           <div style={{ textAlign: 'center', marginBottom: '16px' }}>
@@ -14432,10 +14436,31 @@ function MainApp({ shareDropletId }) {
 
   const handleCreateWave = async (data) => {
     try {
-      await fetchAPI('/waves', { method: 'POST', body: data });
+      // E2EE: If E2EE is set up, create encrypted wave with keys
+      if (e2ee.isUnlocked && e2ee.isE2EEEnabled) {
+        // Get participant IDs from the data
+        const participantIds = data.participants || [];
+
+        // Set up encryption for this wave
+        const { keyDistribution } = await e2ee.createWaveWithEncryption(participantIds);
+
+        // Create wave with encryption enabled
+        await fetchAPI('/waves', {
+          method: 'POST',
+          body: {
+            ...data,
+            encrypted: true,
+            keyDistribution
+          }
+        });
+      } else {
+        // Create unencrypted wave
+        await fetchAPI('/waves', { method: 'POST', body: data });
+      }
       showToastMsg('Wave created', 'success');
       loadWaves();
     } catch (err) {
+      console.error('Failed to create wave:', err);
       showToastMsg(err.message || 'Failed to create wave', 'error');
     }
   };
