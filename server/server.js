@@ -4196,7 +4196,7 @@ app.post('/api/account/delete', authenticateToken, accountLimiter, async (req, r
 
     // Prevent admin from deleting themselves if they're the only admin
     if (user.isAdmin) {
-      const adminCount = db.db?.prepare?.('SELECT COUNT(*) as count FROM users WHERE isAdmin = 1')?.get()?.count || 1;
+      const adminCount = db.db?.prepare?.('SELECT COUNT(*) as count FROM users WHERE is_admin = 1')?.get()?.count || 1;
       if (adminCount <= 1) {
         return res.status(400).json({ error: 'Cannot delete the only admin account. Transfer admin rights first.' });
       }
