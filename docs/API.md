@@ -276,7 +276,7 @@ Get current authenticated user's information.
 
 #### POST /api/auth/logout
 
-Log out the current user (updates status to offline).
+Log out the current user (updates status to offline, revokes session).
 
 **Authentication:** Required
 
@@ -287,6 +287,165 @@ Log out the current user (updates status to offline).
   "success": true
 }
 ```
+
+---
+
+### Session Management (v1.18.0)
+
+#### GET /api/auth/sessions
+
+List all active sessions for the current user.
+
+**Authentication:** Required
+
+**Response (200 OK):**
+
+```json
+{
+  "sessions": [
+    {
+      "id": "sess-550e8400-e29b-41d4-a716-446655440000",
+      "deviceInfo": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:146.0)",
+      "ipAddress": "192.168.1.100",
+      "createdAt": "2025-12-23T10:00:00.000Z",
+      "lastActive": "2025-12-23T15:30:00.000Z",
+      "expiresAt": "2025-12-30T10:00:00.000Z",
+      "isCurrent": true
+    }
+  ],
+  "enabled": true
+}
+```
+
+---
+
+#### POST /api/auth/sessions/:id/revoke
+
+Revoke a specific session (cannot revoke current session via this endpoint).
+
+**Authentication:** Required
+
+**URL Parameters:**
+
+- `id` (string, required): Session ID to revoke
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true
+}
+```
+
+**Response (400 Bad Request):**
+
+```json
+{
+  "error": "Use logout to revoke current session"
+}
+```
+
+---
+
+#### POST /api/auth/sessions/revoke-all
+
+Revoke all sessions except the current one.
+
+**Authentication:** Required
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "revokedCount": 3
+}
+```
+
+---
+
+### Account Management (v1.18.0 GDPR)
+
+#### GET /api/account/export
+
+Download all personal data as JSON (GDPR data export).
+
+**Authentication:** Required
+
+**Rate Limit:** 5 requests per hour
+
+**Response (200 OK):**
+
+```json
+{
+  "exportedAt": "2025-12-23T15:30:00.000Z",
+  "user": {
+    "id": "user-550e8400-e29b-41d4-a716-446655440000",
+    "handle": "mal",
+    "email": "mal@serenity.ship",
+    "displayName": "Malcolm Reynolds",
+    "bio": "Captain of Serenity",
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  },
+  "contacts": [...],
+  "droplets": [...],
+  "waveParticipation": [...],
+  "groupMemberships": [...],
+  "sessions": [...],
+  "activityLog": [...]
+}
+```
+
+---
+
+#### POST /api/account/delete
+
+Permanently delete account (GDPR right to erasure).
+
+**Authentication:** Required
+
+**Rate Limit:** 5 requests per hour
+
+**Request Body:**
+
+```json
+{
+  "password": "current_password"
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "message": "Account deleted successfully"
+}
+```
+
+**Response (400 Bad Request):**
+
+```json
+{
+  "error": "Cannot delete the only admin account. Transfer admin rights first."
+}
+```
+
+**Response (401 Unauthorized):**
+
+```json
+{
+  "error": "Invalid password"
+}
+```
+
+**Deletion Behavior:**
+- Sessions: All revoked
+- Droplets: Author set to "[Deleted User]" (content preserved)
+- Waves created: Transferred to other participant, or deleted if sole participant
+- Groups created: Transferred to next admin/member, or deleted if sole member
+- Contacts, requests, blocks, mutes: Deleted
+- Activity log: User ID set to null (records preserved)
 
 ---
 

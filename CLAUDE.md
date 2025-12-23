@@ -619,6 +619,58 @@ Automatic embedding of videos and media from popular platforms.
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
 
+- **v1.18.0 (December 2025)** - Security & Privacy Hardening
+  - **Session Management**: View and manage active login sessions
+    - `GET /api/auth/sessions` - List all active sessions with device info, IP, timestamps
+    - `POST /api/auth/sessions/:id/revoke` - Revoke specific session
+    - `POST /api/auth/sessions/revoke-all` - Revoke all sessions except current
+    - Sessions tracked in `user_sessions` table with hashed tokens
+    - Automatic cleanup of expired sessions (hourly background job)
+    - Current session marked in UI, device info and IP displayed
+  - **GDPR Compliance - Data Export**:
+    - `GET /api/account/export` - Download all personal data as JSON
+    - Includes: profile, droplets, wave participation, contacts, groups, sessions
+    - Rate limited: 5 requests per hour
+  - **GDPR Compliance - Account Deletion**:
+    - `POST /api/account/delete` - Permanently delete account (requires password)
+    - Droplets preserved but attributed to "[Deleted User]" system account
+    - Waves transferred to other participants, empty waves deleted
+    - Groups transferred to next admin/member, empty groups deleted
+    - Prevents deletion of only admin account
+  - **HSTS Headers**: HTTP Strict Transport Security enabled (1-year max-age)
+  - **HTTPS Enforcement**: Optional redirect via `ENFORCE_HTTPS=true`
+  - **Restrictive CORS**: `ALLOWED_ORIGINS` required in production mode
+    - `CORS_STRICT_MODE=true` by default
+    - Server exits on startup without `ALLOWED_ORIGINS` in production
+  - **Security Improvements**:
+    - Session tokens hashed (SHA-256) before storage
+    - Logout now properly revokes session on server
+    - Graceful degradation if session table missing
+
+- **v1.17.7 (December 2025)** - WebSocket Rate Limiting
+  - Per-user rate limits on WebSocket messages (60/min)
+  - Typing indicator rate limit (20/min)
+  - Prevents WebSocket spam/abuse
+
+- **v1.17.6 (December 2025)** - Server Version Fix
+  - Health/info endpoints now use VERSION constant from package.json
+  - Consistent version reporting across all endpoints
+
+- **v1.17.5 (December 2025)** - Activity Log Filter Fix
+  - Filter dropdown now properly fetches filtered results
+  - Fixed API call to include filter parameter
+
+- **v1.17.4 (December 2025)** - Notification Badges
+  - **PWA App Badge**: Unread count on installed app icon (Windows, macOS, iOS)
+  - **Tab Title Unread**: Document title shows unread count: "(3) Cortex"
+  - **Favicon Flashing**: Favicon flashes with notification dot when tab inactive
+
+- **v1.17.3 (December 2025)** - UI Polish & Bug Fixes
+  - **Collapsible Sections**: Profile Settings and Admin Panel sections collapse
+  - **Password Confirmation**: Password change requires current + matching confirmation
+  - **Lazy Loading Admin**: Admin panels load data only when expanded
+  - **Wave Rename Fix**: Wave title changes now persist in SQLite mode
+
 - **v1.17.2 (December 2025)** - @ Mentions & Bug Fixes
   - **@ Mention Autocomplete**: Type `@` in compose area to mention users
     - Shows dropdown of contacts and wave participants
