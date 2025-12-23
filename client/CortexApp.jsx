@@ -13876,6 +13876,7 @@ const ConnectionStatus = ({ wsConnected, apiConnected }) => (
 function MainApp({ shareDropletId }) {
   const { user, token, logout, updateUser } = useAuth();
   const { fetchAPI } = useAPI();
+  const e2ee = useE2EE();
   const [toast, setToast] = useState(null);
   const [activeView, setActiveView] = useState('waves');
   const [apiConnected, setApiConnected] = useState(false);
@@ -14071,6 +14072,16 @@ function MainApp({ shareDropletId }) {
         setActiveView('waves');
       }
       loadWaves();
+    } else if (data.type === 'wave_key_rotated') {
+      // E2EE: Wave key was rotated, invalidate cached key
+      if (e2ee.isUnlocked && data.waveId) {
+        e2ee.invalidateWaveKey(data.waveId);
+        // Reload wave if currently viewing it to re-fetch and re-decrypt with new key
+        if (selectedWave?.id === data.waveId) {
+          setWaveReloadTrigger(prev => prev + 1);
+        }
+        showToastMsg('Wave encryption key was rotated', 'info');
+      }
     } else if (data.type === 'user_typing') {
       // Handle typing indicator
       const { waveId, userId, userName } = data;

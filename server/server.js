@@ -10391,7 +10391,7 @@ app.post('/api/waves/:id/key/rotate', authenticateToken, (req, res) => {
     }
 
     // Only wave creator or admin can rotate keys
-    if (wave.created_by !== req.user.userId) {
+    if (wave.createdBy !== req.user.userId) {
       const user = db.findUserById(req.user.userId);
       if (!user?.isAdmin) {
         return res.status(403).json({ error: 'Only wave creator can rotate keys' });

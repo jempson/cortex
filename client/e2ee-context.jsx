@@ -343,6 +343,67 @@ export function E2EEProvider({ children, token, API_URL }) {
     return crypto.decryptDroplet(ciphertext, nonce, waveKey);
   }, [getWaveKey, fetchAPI, privateKey]);
 
+  // ============ Key Rotation ============
+  const rotateWaveKey = useCallback(async (waveId, remainingParticipantIds) => {
+    if (!privateKey || !publicKeyBase64) {
+      throw new Error('E2EE not unlocked');
+    }
+
+    try {
+      // Get public keys for remaining participants
+      const participantKeys = await Promise.all(
+        remainingParticipantIds.map(async (userId) => {
+          const res = await fetchAPI(`/e2ee/keys/user/${userId}`);
+          if (res.ok) {
+            const { publicKey } = await res.json();
+            return { userId, publicKey };
+          }
+          return { userId, publicKey: null };
+        })
+      );
+
+      // Add self
+      participantKeys.push({ userId: 'self', publicKey: publicKeyBase64 });
+
+      // Generate new wave key and distribute
+      const { waveKey, keyDistribution } = await crypto.setupWaveEncryption(
+        participantKeys.filter(p => p.publicKey),
+        privateKey,
+        publicKeyBase64
+      );
+
+      // Format for API
+      const formattedDistribution = keyDistribution
+        .filter(k => !k.error)
+        .map(({ userId, encryptedWaveKey, nonce, senderPublicKey }) => ({
+          userId: userId === 'self' ? null : userId,
+          encryptedWaveKey: `${encryptedWaveKey}:${nonce}`,
+          senderPublicKey
+        }));
+
+      // Call rotation endpoint
+      const res = await fetchAPI(`/waves/${waveId}/key/rotate`, {
+        method: 'POST',
+        body: JSON.stringify({ keyDistribution: formattedDistribution })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to rotate wave key');
+      }
+
+      const { newKeyVersion } = await res.json();
+
+      // Invalidate cached key so new one is fetched
+      waveKeyCacheRef.current.delete(waveId);
+
+      return { success: true, newKeyVersion };
+    } catch (err) {
+      console.error('Wave key rotation error:', err);
+      throw err;
+    }
+  }, [privateKey, publicKeyBase64, fetchAPI]);
+
   // ============ Clear on Logout ============
   const clearE2EE = useCallback(() => {
     setPrivateKey(null);
@@ -384,6 +445,7 @@ export function E2EEProvider({ children, token, API_URL }) {
     getWaveKey,
     createWaveWithEncryption,
     invalidateWaveKey,
+    rotateWaveKey,
 
     // Droplet operations
     encryptDroplet,
