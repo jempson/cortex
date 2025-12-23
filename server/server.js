@@ -43,6 +43,10 @@ if (!JWT_SECRET_ENV) {
 const JWT_SECRET = JWT_SECRET_ENV || 'cortex-dev-secret-DO-NOT-USE-IN-PROD';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
+// Session management configuration (v1.18.0)
+const SESSION_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
+const SESSION_TRACKING_ENABLED = process.env.SESSION_TRACKING_ENABLED !== 'false'; // Default true
+
 // GIPHY API configuration
 const GIPHY_API_KEY = process.env.GIPHY_API_KEY || null;
 
@@ -148,9 +152,13 @@ const messageUpload = multer({
 });
 
 // CORS configuration
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : null;
+
+// HTTPS enforcement configuration (v1.18.0)
+const ENFORCE_HTTPS = process.env.ENFORCE_HTTPS === 'true';
+const CORS_STRICT_MODE = process.env.CORS_STRICT_MODE !== 'false'; // Default true
 
 // ============ Security: Rate Limiting ============
 // Configurable via .env - set higher values for development/testing
@@ -264,6 +272,82 @@ function recordFailedAttempt(handle) {
 function clearFailedAttempts(handle) {
   if (typeof db !== 'undefined' && db.clearFailedLogins) {
     db.clearFailedLogins(handle);
+  }
+}
+
+// ============ Security: Session Management (v1.18.0) ============
+
+// Hash token for storage (don't store raw JWTs in database)
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+// Create a session record for a token
+function createSession(userId, token, req) {
+  if (!SESSION_TRACKING_ENABLED || !db.hasSessionTable || !db.hasSessionTable()) {
+    return null;
+  }
+  try {
+    const tokenHash = hashToken(token);
+    const decoded = jwt.decode(token);
+    const expiresAt = new Date(decoded.exp * 1000).toISOString();
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'Unknown';
+
+    return db.createSession({
+      userId,
+      tokenHash,
+      deviceInfo: req.headers['user-agent'] || 'Unknown',
+      ipAddress,
+      expiresAt
+    });
+  } catch (err) {
+    console.error('[Session] Failed to create session:', err.message);
+    return null;
+  }
+}
+
+// Validate that a session exists and is not revoked
+function validateSession(token) {
+  if (!SESSION_TRACKING_ENABLED || !db.hasSessionTable || !db.hasSessionTable()) {
+    return { valid: true, session: null }; // Graceful degradation
+  }
+  try {
+    const tokenHash = hashToken(token);
+    const session = db.getSessionByTokenHash(tokenHash);
+
+    if (!session) {
+      return { valid: false, reason: 'Session not found' };
+    }
+    if (session.revoked) {
+      return { valid: false, reason: 'Session revoked' };
+    }
+    if (new Date(session.expiresAt) < new Date()) {
+      return { valid: false, reason: 'Session expired' };
+    }
+
+    // Update last_active timestamp (async, don't block)
+    try {
+      db.updateSessionActivity(tokenHash);
+    } catch (e) { /* Ignore update errors */ }
+
+    return { valid: true, session };
+  } catch (err) {
+    console.error('[Session] Validation error:', err.message);
+    return { valid: true, session: null }; // Fail open if database error
+  }
+}
+
+// Revoke a session by token
+function revokeSessionByToken(token) {
+  if (!SESSION_TRACKING_ENABLED || !db.hasSessionTable || !db.hasSessionTable()) {
+    return false;
+  }
+  try {
+    const tokenHash = hashToken(token);
+    return db.revokeSessionByTokenHash(tokenHash);
+  } catch (err) {
+    console.error('[Session] Revocation error:', err.message);
+    return false;
   }
 }
 
@@ -3680,6 +3764,17 @@ if (USE_SQLITE) {
 // ============ Express App ============
 const app = express();
 
+// HTTPS redirect middleware (v1.18.0)
+if (ENFORCE_HTTPS) {
+  app.use((req, res, next) => {
+    // Check x-forwarded-proto header (set by reverse proxies like nginx)
+    if (req.headers['x-forwarded-proto'] !== 'https' && process.env.NODE_ENV === 'production') {
+      return res.redirect(301, `https://${req.headers.host}${req.url}`);
+    }
+    next();
+  });
+}
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -3706,18 +3801,51 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false,
+  // HSTS configuration (v1.18.0)
+  hsts: {
+    maxAge: 31536000, // 1 year in seconds
+    includeSubDomains: true,
+    preload: true,
+  },
 }));
+
+// Restrictive CORS (v1.18.0)
 app.use(cors({
-  origin: ALLOWED_ORIGINS ? (origin, callback) => {
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) callback(null, true);
-    else callback(new Error('CORS not allowed'));
-  } : true,
+  origin: (origin, callback) => {
+    // In development with CORS_STRICT_MODE=false, allow all
+    if (!CORS_STRICT_MODE && process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+
+    // In production or strict mode, require ALLOWED_ORIGINS
+    if (!ALLOWED_ORIGINS || ALLOWED_ORIGINS.length === 0) {
+      if (process.env.NODE_ENV === 'production') {
+        // In production without ALLOWED_ORIGINS, only allow same-origin
+        if (!origin) return callback(null, true);
+        return callback(new Error('CORS not allowed - set ALLOWED_ORIGINS'));
+      }
+      // Development without strict mode - allow same-origin only
+      if (!origin) return callback(null, true);
+      return callback(null, true); // Allow in development
+    }
+
+    // Check against allowed origins
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS not allowed'));
+    }
+  },
   credentials: true,
 }));
 
 // Warn about permissive CORS in production
 if (!ALLOWED_ORIGINS && process.env.NODE_ENV === 'production') {
-  console.warn('⚠️  WARNING: CORS allows all origins. Set ALLOWED_ORIGINS for production security.');
+  console.error('========================================');
+  console.error('⚠️  SECURITY WARNING: ALLOWED_ORIGINS not set');
+  console.error('   Set ALLOWED_ORIGINS=https://your-domain.com');
+  console.error('   for proper CORS security in production');
+  console.error('========================================');
 }
 
 app.use(express.json({ limit: '100kb' }));
@@ -3736,10 +3864,19 @@ function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Authentication required' });
-  
+
   jwt.verify(token, JWT_SECRET, (err, decoded) => {
     if (err) return res.status(403).json({ error: 'Invalid or expired token' });
+
+    // Validate session if session tracking is enabled
+    const validation = validateSession(token);
+    if (!validation.valid) {
+      return res.status(403).json({ error: validation.reason });
+    }
+
     req.user = decoded;
+    req.sessionId = validation.session?.id || null;
+    req.token = token; // Store token for logout/session operations
     next();
   });
 }
@@ -3783,6 +3920,12 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
 
     const token = jwt.sign({ userId: id, handle: user.handle }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     console.log(`✅ New user registered: ${handle}`);
+
+    // Create session for the new user
+    const session = createSession(user.id, token, req);
+    if (session) {
+      console.log(`📱 Session created for new user: ${handle}`);
+    }
 
     // Log registration
     if (db.logActivity) db.logActivity(user.id, 'register', 'user', user.id, getRequestMeta(req));
@@ -3853,6 +3996,12 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     console.log(`✅ User logged in: ${handle}`);
 
+    // Create session for the login
+    const session = createSession(user.id, token, req);
+    if (session) {
+      console.log(`📱 Session created for: ${handle}`);
+    }
+
     // Log successful login
     if (db.logActivity) db.logActivity(user.id, 'login', 'user', user.id, meta);
 
@@ -3875,9 +4024,204 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
   db.updateUserStatus(req.user.userId, 'offline');
+
+  // Revoke the current session
+  if (req.token) {
+    const revoked = revokeSessionByToken(req.token);
+    if (revoked) {
+      console.log(`📱 Session revoked for: ${req.user.handle}`);
+    }
+  }
+
   // Log logout
   if (db.logActivity) db.logActivity(req.user.userId, 'logout', 'user', req.user.userId, getRequestMeta(req));
   res.json({ success: true });
+});
+
+// ============ Session Management Routes (v1.18.0) ============
+
+// Get user's active sessions
+app.get('/api/auth/sessions', authenticateToken, (req, res) => {
+  if (!SESSION_TRACKING_ENABLED || !db.getSessionsByUser) {
+    return res.json({ sessions: [], enabled: false });
+  }
+
+  try {
+    const sessions = db.getSessionsByUser(req.user.userId);
+
+    // Mark current session
+    const currentTokenHash = hashToken(req.token);
+    const sessionsWithCurrent = sessions.map(session => ({
+      id: session.id,
+      deviceInfo: session.deviceInfo,
+      ipAddress: session.ipAddress,
+      createdAt: session.createdAt,
+      lastActive: session.lastActive,
+      isCurrent: session.tokenHash === currentTokenHash
+    }));
+
+    res.json({ sessions: sessionsWithCurrent, enabled: true });
+  } catch (err) {
+    console.error('Get sessions error:', err);
+    res.status(500).json({ error: 'Failed to get sessions' });
+  }
+});
+
+// Revoke a specific session
+app.post('/api/auth/sessions/:id/revoke', authenticateToken, (req, res) => {
+  if (!SESSION_TRACKING_ENABLED || !db.revokeSession) {
+    return res.status(400).json({ error: 'Session management not enabled' });
+  }
+
+  try {
+    const sessionId = req.params.id;
+
+    // Verify the session belongs to this user
+    const sessions = db.getSessionsByUser(req.user.userId);
+    const session = sessions.find(s => s.id === sessionId);
+
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    // Don't allow revoking the current session via this endpoint
+    const currentTokenHash = hashToken(req.token);
+    if (session.tokenHash === currentTokenHash) {
+      return res.status(400).json({ error: 'Use logout to revoke current session' });
+    }
+
+    const revoked = db.revokeSession(sessionId);
+    if (revoked) {
+      console.log(`📱 Session ${sessionId} revoked by user: ${req.user.handle}`);
+      if (db.logActivity) db.logActivity(req.user.userId, 'session_revoked', 'session', sessionId, getRequestMeta(req));
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Revoke session error:', err);
+    res.status(500).json({ error: 'Failed to revoke session' });
+  }
+});
+
+// Revoke all sessions except current
+app.post('/api/auth/sessions/revoke-all', authenticateToken, (req, res) => {
+  if (!SESSION_TRACKING_ENABLED || !db.revokeAllUserSessions) {
+    return res.status(400).json({ error: 'Session management not enabled' });
+  }
+
+  try {
+    const currentTokenHash = hashToken(req.token);
+    const currentSession = db.getSessionByTokenHash(currentTokenHash);
+    const currentSessionId = currentSession?.id || null;
+
+    const revoked = db.revokeAllUserSessions(req.user.userId, currentSessionId);
+    console.log(`📱 ${revoked} sessions revoked for user: ${req.user.handle}`);
+
+    if (db.logActivity) db.logActivity(req.user.userId, 'all_sessions_revoked', 'user', req.user.userId, { ...getRequestMeta(req), count: revoked });
+
+    res.json({ success: true, revoked });
+  } catch (err) {
+    console.error('Revoke all sessions error:', err);
+    res.status(500).json({ error: 'Failed to revoke sessions' });
+  }
+});
+
+// ============ Account Management Routes (v1.18.0 GDPR) ============
+
+// Rate limiter for account operations
+const accountLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 requests per hour
+  message: { error: 'Too many account operations. Please try again later.' }
+});
+
+// Export user data (GDPR data portability)
+app.get('/api/account/export', authenticateToken, accountLimiter, (req, res) => {
+  try {
+    if (!db.exportUserData) {
+      return res.status(501).json({ error: 'Data export not available' });
+    }
+
+    const exportData = db.exportUserData(req.user.userId);
+    if (!exportData) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Log the export
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'data_export', 'user', req.user.userId, getRequestMeta(req));
+    }
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="cortex-data-export-${req.user.handle}-${new Date().toISOString().split('T')[0]}.json"`);
+
+    res.json(exportData);
+  } catch (err) {
+    console.error('Data export error:', err);
+    res.status(500).json({ error: 'Failed to export data' });
+  }
+});
+
+// Delete account (requires password confirmation)
+app.post('/api/account/delete', authenticateToken, accountLimiter, async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ error: 'Password confirmation required' });
+    }
+
+    // Verify password
+    const user = db.findUserById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Prevent admin from deleting themselves if they're the only admin
+    if (user.isAdmin) {
+      const adminCount = db.db?.prepare?.('SELECT COUNT(*) as count FROM users WHERE isAdmin = 1')?.get()?.count || 1;
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: 'Cannot delete the only admin account. Transfer admin rights first.' });
+      }
+    }
+
+    // Perform account deletion
+    if (!db.deleteUserAccount) {
+      return res.status(501).json({ error: 'Account deletion not available' });
+    }
+
+    // Log before deletion (since we're about to delete the user)
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'account_deleted', 'user', req.user.userId, getRequestMeta(req));
+    }
+
+    const result = db.deleteUserAccount(req.user.userId);
+
+    if (!result.success) {
+      return res.status(500).json({ error: result.error || 'Failed to delete account' });
+    }
+
+    console.log(`🗑️ Account deleted: ${result.handle} (${result.deletedUserId})`);
+
+    // Revoke current session if tracking is enabled
+    if (req.token) {
+      revokeSessionByToken(req.token);
+    }
+
+    res.json({
+      success: true,
+      message: 'Your account has been permanently deleted.'
+    });
+  } catch (err) {
+    console.error('Account deletion error:', err);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
 });
 
 // ============ Password Reset Routes ============
@@ -4504,6 +4848,12 @@ app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
+
+    // Create session for the MFA login
+    const session = createSession(user.id, token, req);
+    if (session) {
+      console.log(`📱 Session created for MFA login: ${user.handle}`);
+    }
 
     // Clear any failed login attempts
     if (db.clearFailedLogins) {
@@ -10903,7 +11253,23 @@ server.listen(PORT, () => {
 ║  📦 Archives: Personal wave archiving                      ║
 ╠════════════════════════════════════════════════════════════╣
 ║  PORT=${PORT} | JWT=${JWT_SECRET === 'cortex-default-secret-CHANGE-ME' ? '⚠️ DEFAULT' : '✅ Custom'} | CORS=${ALLOWED_ORIGINS ? '✅' : '⚠️ All'}
-║  FEDERATION=${process.env.FEDERATION_ENABLED === 'true' ? '✅' : '❌'} | Server: http://localhost:${PORT}
+║  FEDERATION=${process.env.FEDERATION_ENABLED === 'true' ? '✅' : '❌'} | SESSIONS=${SESSION_TRACKING_ENABLED ? '✅' : '❌'}
+║  Server: http://localhost:${PORT}
 ╚════════════════════════════════════════════════════════════╝
 `);
+
+  // Start session cleanup job if session tracking is enabled
+  if (SESSION_TRACKING_ENABLED && db.cleanupExpiredSessions) {
+    setInterval(() => {
+      try {
+        const cleaned = db.cleanupExpiredSessions();
+        if (cleaned > 0) {
+          console.log(`🧹 Cleaned up ${cleaned} expired sessions`);
+        }
+      } catch (err) {
+        console.error('Session cleanup error:', err.message);
+      }
+    }, SESSION_CLEANUP_INTERVAL);
+    console.log('📱 Session management enabled (cleanup every hour)');
+  }
 });

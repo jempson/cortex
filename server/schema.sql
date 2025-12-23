@@ -292,6 +292,28 @@ CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_log(action_type);
 CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_activity_resource ON activity_log(resource_type, resource_id);
 
+-- ============ Session Management (v1.18.0) ============
+
+-- Server-side session tracking for token revocation
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL,
+    device_info TEXT,
+    ip_address TEXT,
+    created_at TEXT NOT NULL,
+    last_active TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked INTEGER DEFAULT 0,
+    revoked_at TEXT,
+    UNIQUE(token_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_revoked ON user_sessions(revoked);
+
 -- ============ Indexes ============
 
 -- User lookups

@@ -1,13 +1,13 @@
 # Cortex - Outstanding Features & Future Roadmap
 
-**Last Updated:** December 19, 2025
-**Current Version:** v1.17.7
+**Last Updated:** December 23, 2025
+**Current Version:** v1.18.0
 
 This document tracks planned but not-yet-implemented features for future releases.
 
 ---
 
-## Completed Features (v1.5.0 - v1.17.7)
+## Completed Features (v1.5.0 - v1.18.0)
 
 The following features have been implemented and are no longer outstanding:
 
@@ -83,6 +83,13 @@ The following features have been implemented and are no longer outstanding:
 | **Activity Log Filter Fix** | v1.17.5 | Filter dropdown now properly fetches filtered results |
 | **Server Version Fix** | v1.17.6 | Health/info endpoints now use VERSION constant from package.json |
 | **WebSocket Rate Limiting** | v1.17.7 | Per-user rate limits on WebSocket messages (60/min) and typing indicators (20/min) |
+| **Session Management** | v1.18.0 | View and revoke login sessions from any device |
+| **Token Revocation** | v1.18.0 | Invalidate JWT tokens server-side via session tracking |
+| **User Data Export** | v1.18.0 | GDPR-compliant personal data download (JSON) |
+| **Account Deletion** | v1.18.0 | GDPR-compliant account deletion with password confirmation |
+| **HSTS Headers** | v1.18.0 | HTTP Strict Transport Security with 1-year max-age |
+| **HTTPS Enforcement** | v1.18.0 | Optional redirect HTTP to HTTPS in production |
+| **Restrictive CORS** | v1.18.0 | Strict CORS by default, requires ALLOWED_ORIGINS in production |
 
 ---
 

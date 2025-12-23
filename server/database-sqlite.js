@@ -917,6 +917,37 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Alerts tables created (v1.16.0)');
     }
+
+    // Auto-create session management tables if they don't exist (v1.18.0)
+    const sessionsTableExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='user_sessions'
+    `).get();
+
+    if (!sessionsTableExists) {
+      console.log('📝 Creating session management tables (v1.18.0)...');
+      this.db.exec(`
+        -- Server-side session tracking for token revocation
+        CREATE TABLE IF NOT EXISTS user_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL,
+          device_info TEXT,
+          ip_address TEXT,
+          created_at TEXT NOT NULL,
+          last_active TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          revoked INTEGER DEFAULT 0,
+          revoked_at TEXT,
+          UNIQUE(token_hash)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(token_hash);
+        CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_sessions_revoked ON user_sessions(revoked);
+      `);
+      console.log('✅ Session management tables created (v1.18.0)');
+    }
   }
 
   prepareStatements() {
@@ -5100,6 +5131,411 @@ export class DatabaseSQLite {
     // Get all subscribers whose categories array includes this category
     const allSubscribers = this.getAlertSubscribers();
     return allSubscribers.filter(sub => sub.categories.includes(category));
+  }
+
+  // ============ Session Management (v1.18.0) ============
+
+  // Create a new session
+  createSession({ userId, tokenHash, deviceInfo, ipAddress, expiresAt }) {
+    const id = `sess-${uuidv4()}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO user_sessions (id, user_id, token_hash, device_info, ip_address, created_at, last_active, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, tokenHash, deviceInfo || 'Unknown', ipAddress || 'Unknown', now, now, expiresAt);
+
+    return { id, userId, tokenHash, deviceInfo, ipAddress, createdAt: now, lastActive: now, expiresAt, revoked: false };
+  }
+
+  // Get session by token hash
+  getSessionByTokenHash(tokenHash) {
+    const row = this.db.prepare(`
+      SELECT * FROM user_sessions WHERE token_hash = ?
+    `).get(tokenHash);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      tokenHash: row.token_hash,
+      deviceInfo: row.device_info,
+      ipAddress: row.ip_address,
+      createdAt: row.created_at,
+      lastActive: row.last_active,
+      expiresAt: row.expires_at,
+      revoked: row.revoked === 1,
+      revokedAt: row.revoked_at
+    };
+  }
+
+  // Get all sessions for a user
+  getSessionsByUser(userId) {
+    const rows = this.db.prepare(`
+      SELECT * FROM user_sessions
+      WHERE user_id = ? AND revoked = 0 AND expires_at > datetime('now')
+      ORDER BY last_active DESC
+    `).all(userId);
+
+    return rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      tokenHash: row.token_hash,
+      deviceInfo: row.device_info,
+      ipAddress: row.ip_address,
+      createdAt: row.created_at,
+      lastActive: row.last_active,
+      expiresAt: row.expires_at,
+      revoked: row.revoked === 1,
+      revokedAt: row.revoked_at
+    }));
+  }
+
+  // Update last_active timestamp
+  updateSessionActivity(tokenHash) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE user_sessions SET last_active = ? WHERE token_hash = ?
+    `).run(now, tokenHash);
+  }
+
+  // Revoke a specific session
+  revokeSession(sessionId) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE user_sessions SET revoked = 1, revoked_at = ? WHERE id = ?
+    `).run(now, sessionId);
+    return result.changes > 0;
+  }
+
+  // Revoke session by token hash
+  revokeSessionByTokenHash(tokenHash) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE user_sessions SET revoked = 1, revoked_at = ? WHERE token_hash = ?
+    `).run(now, tokenHash);
+    return result.changes > 0;
+  }
+
+  // Revoke all sessions for a user except one
+  revokeAllUserSessions(userId, exceptSessionId = null) {
+    const now = new Date().toISOString();
+    if (exceptSessionId) {
+      const result = this.db.prepare(`
+        UPDATE user_sessions SET revoked = 1, revoked_at = ?
+        WHERE user_id = ? AND id != ? AND revoked = 0
+      `).run(now, userId, exceptSessionId);
+      return result.changes;
+    } else {
+      const result = this.db.prepare(`
+        UPDATE user_sessions SET revoked = 1, revoked_at = ?
+        WHERE user_id = ? AND revoked = 0
+      `).run(now, userId);
+      return result.changes;
+    }
+  }
+
+  // Cleanup expired and old revoked sessions
+  cleanupExpiredSessions() {
+    // Delete sessions that are either:
+    // 1. Expired (past expires_at)
+    // 2. Revoked more than 7 days ago
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const result = this.db.prepare(`
+      DELETE FROM user_sessions
+      WHERE expires_at < datetime('now')
+         OR (revoked = 1 AND revoked_at < ?)
+    `).run(sevenDaysAgo);
+    return result.changes;
+  }
+
+  // Check if session table exists (for graceful degradation)
+  hasSessionTable() {
+    try {
+      const row = this.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name='user_sessions'
+      `).get();
+      return !!row;
+    } catch {
+      return false;
+    }
+  }
+
+  // ============ User Data Export (v1.18.0 GDPR Compliance) ============
+
+  exportUserData(userId) {
+    const user = this.findUserById(userId);
+    if (!user) return null;
+
+    // Compile all user data
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      profile: {
+        id: user.id,
+        handle: user.handle,
+        email: user.email,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        avatarUrl: user.avatarUrl,
+        bio: user.bio,
+        status: user.status,
+        isAdmin: user.isAdmin,
+        preferences: user.preferences,
+        createdAt: user.createdAt,
+        lastHandleChange: user.lastHandleChange,
+        handleHistory: user.handleHistory || [],
+      },
+      contacts: this.db.prepare(`
+        SELECT c.*, u.handle, u.displayName
+        FROM contacts c
+        LEFT JOIN users u ON c.contactId = u.id
+        WHERE c.userId = ?
+      `).all(userId),
+      droplets: this.db.prepare(`
+        SELECT d.*, w.title as waveName
+        FROM droplets d
+        LEFT JOIN waves w ON d.waveId = w.id
+        WHERE d.authorId = ?
+        ORDER BY d.createdAt DESC
+      `).all(userId),
+      waveParticipation: this.db.prepare(`
+        SELECT w.id, w.title, w.privacyLevel, w.createdAt, wp.archived
+        FROM wave_participants wp
+        JOIN waves w ON wp.waveId = w.id
+        WHERE wp.userId = ?
+        ORDER BY w.createdAt DESC
+      `).all(userId),
+      groupMemberships: this.db.prepare(`
+        SELECT g.id, g.name, g.description, gm.role, gm.joinedAt
+        FROM group_members gm
+        JOIN groups g ON gm.groupId = g.id
+        WHERE gm.userId = ?
+      `).all(userId),
+      sentContactRequests: this.db.prepare(`
+        SELECT cr.*, u.handle as toHandle
+        FROM contact_requests cr
+        LEFT JOIN users u ON cr.toUserId = u.id
+        WHERE cr.fromUserId = ?
+      `).all(userId),
+      receivedContactRequests: this.db.prepare(`
+        SELECT cr.*, u.handle as fromHandle
+        FROM contact_requests cr
+        LEFT JOIN users u ON cr.fromUserId = u.id
+        WHERE cr.toUserId = ?
+      `).all(userId),
+      handleRequests: this.db.prepare(`
+        SELECT * FROM handle_requests WHERE userId = ?
+        ORDER BY createdAt DESC
+      `).all(userId),
+      blockedUsers: this.db.prepare(`
+        SELECT b.*, u.handle
+        FROM blocks b
+        LEFT JOIN users u ON b.blockedUserId = u.id
+        WHERE b.userId = ?
+      `).all(userId),
+      mutedUsers: this.db.prepare(`
+        SELECT m.*, u.handle
+        FROM mutes m
+        LEFT JOIN users u ON m.mutedUserId = u.id
+        WHERE m.userId = ?
+      `).all(userId),
+    };
+
+    // Try to get sessions if table exists
+    try {
+      if (this.hasSessionTable()) {
+        exportData.sessions = this.db.prepare(`
+          SELECT id, deviceInfo, ipAddress, createdAt, lastActive, expiresAt, revoked, revokedAt
+          FROM user_sessions WHERE userId = ?
+          ORDER BY createdAt DESC
+        `).all(userId);
+      }
+    } catch { /* Session table may not exist */ }
+
+    // Try to get notifications if table exists
+    try {
+      exportData.notifications = this.db.prepare(`
+        SELECT * FROM notifications WHERE userId = ?
+        ORDER BY createdAt DESC LIMIT 100
+      `).all(userId);
+    } catch { /* Table may not exist */ }
+
+    // Try to get push subscriptions if table exists
+    try {
+      exportData.pushSubscriptions = this.db.prepare(`
+        SELECT id, endpoint, createdAt FROM push_subscriptions WHERE userId = ?
+      `).all(userId);
+    } catch { /* Table may not exist */ }
+
+    // Try to get activity log if table exists
+    try {
+      exportData.activityLog = this.db.prepare(`
+        SELECT action, targetType, targetId, metadata, createdAt
+        FROM activity_log WHERE userId = ?
+        ORDER BY createdAt DESC LIMIT 500
+      `).all(userId);
+    } catch { /* Table may not exist */ }
+
+    return exportData;
+  }
+
+  // ============ Account Deletion (v1.18.0 GDPR Compliance) ============
+
+  deleteUserAccount(userId) {
+    const user = this.findUserById(userId);
+    if (!user) return { success: false, error: 'User not found' };
+
+    // Use transaction for atomic deletion
+    const deleteTransaction = this.db.transaction(() => {
+      // 1. Revoke all sessions
+      try {
+        if (this.hasSessionTable()) {
+          this.db.prepare('DELETE FROM user_sessions WHERE userId = ?').run(userId);
+        }
+      } catch { /* Session table may not exist */ }
+
+      // 2. Delete push subscriptions
+      try {
+        this.db.prepare('DELETE FROM push_subscriptions WHERE userId = ?').run(userId);
+      } catch { /* Table may not exist */ }
+
+      // 3. Delete MFA settings
+      try {
+        this.db.prepare('DELETE FROM mfa_totp WHERE userId = ?').run(userId);
+        this.db.prepare('DELETE FROM mfa_email WHERE userId = ?').run(userId);
+        this.db.prepare('DELETE FROM mfa_recovery_codes WHERE userId = ?').run(userId);
+        this.db.prepare('DELETE FROM mfa_challenges WHERE userId = ?').run(userId);
+      } catch { /* MFA tables may not exist */ }
+
+      // 4. Delete password reset tokens
+      try {
+        this.db.prepare('DELETE FROM password_reset_tokens WHERE userId = ?').run(userId);
+      } catch { /* Table may not exist */ }
+
+      // 5. Delete notifications
+      try {
+        this.db.prepare('DELETE FROM notifications WHERE userId = ?').run(userId);
+        this.db.prepare('DELETE FROM notification_preferences WHERE userId = ?').run(userId);
+      } catch { /* Tables may not exist */ }
+
+      // 6. Delete alert subscriptions/dismissals
+      try {
+        this.db.prepare('DELETE FROM alert_subscriptions WHERE userId = ?').run(userId);
+        this.db.prepare('DELETE FROM alert_dismissals WHERE userId = ?').run(userId);
+      } catch { /* Tables may not exist */ }
+
+      // 7. Handle waves - delete empty ones, orphan others
+      const wavesCreated = this.db.prepare(`
+        SELECT w.id FROM waves w WHERE w.createdBy = ?
+      `).all(userId);
+
+      for (const wave of wavesCreated) {
+        const participantCount = this.db.prepare(`
+          SELECT COUNT(*) as count FROM wave_participants WHERE waveId = ?
+        `).get(wave.id)?.count || 0;
+
+        if (participantCount <= 1) {
+          // Delete wave and all its droplets (sole participant)
+          this.db.prepare('DELETE FROM droplets WHERE waveId = ?').run(wave.id);
+          this.db.prepare('DELETE FROM wave_participants WHERE waveId = ?').run(wave.id);
+          this.db.prepare('DELETE FROM waves WHERE id = ?').run(wave.id);
+        } else {
+          // Transfer ownership to null (orphan)
+          this.db.prepare('UPDATE waves SET createdBy = NULL WHERE id = ?').run(wave.id);
+        }
+      }
+
+      // 8. Remove user from wave participants
+      this.db.prepare('DELETE FROM wave_participants WHERE userId = ?').run(userId);
+
+      // 9. Orphan droplets (set author to null, keep content)
+      this.db.prepare('UPDATE droplets SET authorId = NULL WHERE authorId = ?').run(userId);
+
+      // 10. Handle groups - delete empty ones, orphan others
+      const groupsCreated = this.db.prepare(`
+        SELECT g.id FROM groups g WHERE g.createdBy = ?
+      `).all(userId);
+
+      for (const group of groupsCreated) {
+        const memberCount = this.db.prepare(`
+          SELECT COUNT(*) as count FROM group_members WHERE groupId = ?
+        `).get(group.id)?.count || 0;
+
+        if (memberCount <= 1) {
+          // Delete group (sole member)
+          this.db.prepare('DELETE FROM group_members WHERE groupId = ?').run(group.id);
+          this.db.prepare('DELETE FROM group_invitations WHERE groupId = ?').run(group.id);
+          this.db.prepare('DELETE FROM groups WHERE id = ?').run(group.id);
+        } else {
+          // Transfer to next admin or first member
+          const nextAdmin = this.db.prepare(`
+            SELECT userId FROM group_members
+            WHERE groupId = ? AND userId != ? AND role = 'admin'
+            LIMIT 1
+          `).get(group.id, userId);
+
+          const newOwner = nextAdmin?.userId || this.db.prepare(`
+            SELECT userId FROM group_members
+            WHERE groupId = ? AND userId != ?
+            LIMIT 1
+          `).get(group.id, userId)?.userId;
+
+          if (newOwner) {
+            this.db.prepare('UPDATE groups SET createdBy = ? WHERE id = ?').run(newOwner, group.id);
+            // Make sure new owner is admin
+            this.db.prepare(`
+              UPDATE group_members SET role = 'admin'
+              WHERE groupId = ? AND userId = ?
+            `).run(group.id, newOwner);
+          }
+        }
+      }
+
+      // 11. Remove user from group members
+      this.db.prepare('DELETE FROM group_members WHERE userId = ?').run(userId);
+
+      // 12. Delete contacts
+      this.db.prepare('DELETE FROM contacts WHERE userId = ? OR contactId = ?').run(userId, userId);
+
+      // 13. Delete contact requests
+      this.db.prepare('DELETE FROM contact_requests WHERE fromUserId = ? OR toUserId = ?').run(userId, userId);
+
+      // 14. Delete group invitations
+      this.db.prepare('DELETE FROM group_invitations WHERE fromUserId = ? OR toUserId = ?').run(userId, userId);
+
+      // 15. Delete blocks and mutes
+      this.db.prepare('DELETE FROM blocks WHERE userId = ? OR blockedUserId = ?').run(userId, userId);
+      this.db.prepare('DELETE FROM mutes WHERE userId = ? OR mutedUserId = ?').run(userId, userId);
+
+      // 16. Delete handle requests
+      this.db.prepare('DELETE FROM handle_requests WHERE userId = ?').run(userId);
+
+      // 17. Update activity log (set userId to null, keep records)
+      try {
+        this.db.prepare('UPDATE activity_log SET userId = NULL WHERE userId = ?').run(userId);
+      } catch { /* Table may not exist */ }
+
+      // 18. Delete reports by user (but keep reports about user for admin review)
+      try {
+        this.db.prepare('UPDATE reports SET reporterId = NULL WHERE reporterId = ?').run(userId);
+      } catch { /* Table may not exist */ }
+
+      // 19. Delete user avatar file (if exists)
+      // Note: This should be handled separately by the server if avatarUrl exists
+
+      // 20. Finally, delete the user
+      this.db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+
+      return { success: true, deletedUserId: userId, handle: user.handle };
+    });
+
+    try {
+      return deleteTransaction();
+    } catch (err) {
+      console.error('Account deletion error:', err);
+      return { success: false, error: err.message };
+    }
   }
 
   // Placeholder for JSON compatibility - not needed with SQLite
