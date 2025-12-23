@@ -228,6 +228,11 @@ const crawlLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// WebSocket message rate limits (per user, per minute)
+const WS_RATE_LIMIT_MESSAGES = parseInt(process.env.WS_RATE_LIMIT_MESSAGES) || 60;
+const WS_RATE_LIMIT_TYPING = parseInt(process.env.WS_RATE_LIMIT_TYPING) || 20;
+const WS_RATE_WINDOW_MS = 60 * 1000; // 1 minute window
+
 // ============ Security: Account Lockout ============
 // Now uses database persistence (see database-sqlite.js account lockout methods)
 // These wrapper functions are called after db is initialized
@@ -10290,9 +10295,35 @@ const wss = new WebSocketServer({ server });
 const clients = new Map();
 const userViewingState = new Map(); // Track which wave each user is viewing { userId: { waveId, timestamp } }
 
+// Connection rate limiting (per IP)
 const wsConnectionAttempts = new Map();
 const WS_RATE_LIMIT = 10;
 const WS_RATE_WINDOW = 60 * 1000;
+
+// Per-user message rate limiting
+const wsUserMessageCounts = new Map(); // { odUserId: { messages: [], typing: [] } }
+
+function checkWsRateLimit(userId, type = 'messages') {
+  const now = Date.now();
+  if (!wsUserMessageCounts.has(userId)) {
+    wsUserMessageCounts.set(userId, { messages: [], typing: [] });
+  }
+  const userCounts = wsUserMessageCounts.get(userId);
+
+  // Clean old entries
+  userCounts.messages = userCounts.messages.filter(t => t > now - WS_RATE_WINDOW_MS);
+  userCounts.typing = userCounts.typing.filter(t => t > now - WS_RATE_WINDOW_MS);
+
+  const limit = type === 'typing' ? WS_RATE_LIMIT_TYPING : WS_RATE_LIMIT_MESSAGES;
+  const counts = type === 'typing' ? userCounts.typing : userCounts.messages;
+
+  if (counts.length >= limit) {
+    return false; // Rate limit exceeded
+  }
+
+  counts.push(now);
+  return true; // Allowed
+}
 
 wss.on('connection', (ws, req) => {
   const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
@@ -10314,6 +10345,14 @@ wss.on('connection', (ws, req) => {
       if (data.length > 10000) { ws.close(1009, 'Message too large'); return; }
       const message = JSON.parse(data.toString());
 
+      // Rate limit all messages (except auth and ping which are essential)
+      if (userId && message.type !== 'auth' && message.type !== 'ping') {
+        if (!checkWsRateLimit(userId, 'messages')) {
+          ws.send(JSON.stringify({ type: 'rate_limit', message: 'WebSocket message rate limit exceeded' }));
+          return;
+        }
+      }
+
       if (message.type === 'auth') {
         try {
           const decoded = jwt.verify(message.token, JWT_SECRET);
@@ -10334,6 +10373,12 @@ wss.on('connection', (ws, req) => {
       } else if (message.type === 'user_typing') {
         // Broadcast typing indicator to other users in the wave
         if (!userId) return; // Must be authenticated
+
+        // Rate limit typing indicators (more restrictive since they broadcast)
+        if (!checkWsRateLimit(userId, 'typing')) {
+          ws.send(JSON.stringify({ type: 'rate_limit', message: 'Typing indicator rate limit exceeded' }));
+          return;
+        }
 
         const waveId = sanitizeInput(message.waveId);
         if (!waveId) return;
@@ -10379,6 +10424,7 @@ wss.on('connection', (ws, req) => {
         clients.delete(userId);
         db.updateUserStatus(userId, 'offline');
         userViewingState.delete(userId); // Clean up viewing state
+        wsUserMessageCounts.delete(userId); // Clean up rate limit tracking
       }
     }
   });
