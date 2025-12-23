@@ -1,5 +1,5 @@
 -- Cortex SQLite Database Schema
--- Version 1.16.0
+-- Version 1.19.0
 
 -- ============ Users ============
 CREATE TABLE IF NOT EXISTS users (
@@ -57,7 +57,9 @@ CREATE TABLE IF NOT EXISTS waves (
     -- Federation fields (v1.13.0)
     federation_state TEXT DEFAULT 'local',  -- local, origin, participant
     origin_node TEXT,                        -- node name if participant wave
-    origin_wave_id TEXT                      -- original wave id on origin server
+    origin_wave_id TEXT,                     -- original wave id on origin server
+    -- E2EE field (v1.19.0)
+    encrypted INTEGER DEFAULT 0             -- 1 if wave uses E2EE (all new waves)
 );
 
 -- Wave participants
@@ -87,7 +89,10 @@ CREATE TABLE IF NOT EXISTS droplets (
     reactions TEXT DEFAULT '{}',
     -- Break-out tracking fields
     broken_out_to TEXT REFERENCES waves(id) ON DELETE SET NULL,
-    original_wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL
+    original_wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL,
+    -- E2EE fields (v1.19.0)
+    encrypted INTEGER DEFAULT 0,           -- 1 if content is encrypted
+    nonce TEXT                             -- Base64 AES-GCM nonce (12 bytes)
 );
 
 -- Droplet read tracking (many-to-many)
@@ -313,6 +318,56 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(token_hash);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_revoked ON user_sessions(revoked);
+
+-- ============ End-to-End Encryption (v1.19.0) ============
+
+-- User encryption keypairs (ECDH P-384)
+-- Private key is encrypted with user's passphrase-derived key (PBKDF2)
+CREATE TABLE IF NOT EXISTS user_encryption_keys (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    public_key TEXT NOT NULL,              -- Base64 SPKI-encoded ECDH public key
+    encrypted_private_key TEXT NOT NULL,   -- Base64 AES-KW encrypted JWK private key
+    key_derivation_salt TEXT NOT NULL,     -- Base64 PBKDF2 salt (16 bytes)
+    key_version INTEGER DEFAULT 1,         -- Incremented on key rotation
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+);
+
+-- Wave encryption keys (per-participant)
+-- Each participant has the wave key encrypted with their public key
+CREATE TABLE IF NOT EXISTS wave_encryption_keys (
+    id TEXT PRIMARY KEY,
+    wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    encrypted_wave_key TEXT NOT NULL,      -- Base64 encrypted AES-256-GCM key
+    sender_public_key TEXT NOT NULL,       -- Base64 SPKI of key used to encrypt
+    key_version INTEGER DEFAULT 1,         -- Version of wave key
+    created_at TEXT NOT NULL,
+    UNIQUE(wave_id, user_id, key_version)
+);
+
+-- Wave key metadata
+-- Tracks current key version and rotation history
+CREATE TABLE IF NOT EXISTS wave_key_metadata (
+    wave_id TEXT PRIMARY KEY REFERENCES waves(id) ON DELETE CASCADE,
+    current_key_version INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    last_rotated_at TEXT
+);
+
+-- E2EE Recovery (optional passphrase recovery)
+CREATE TABLE IF NOT EXISTS user_recovery_keys (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    encrypted_private_key TEXT NOT NULL,   -- Private key encrypted with recovery passphrase
+    recovery_salt TEXT NOT NULL,           -- Separate salt for recovery key derivation
+    hint TEXT,                             -- User-provided hint for recovery passphrase
+    created_at TEXT NOT NULL
+);
+
+-- E2EE indexes
+CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_wave ON wave_encryption_keys(wave_id);
+CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_user ON wave_encryption_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_version ON wave_encryption_keys(wave_id, key_version);
 
 -- ============ Indexes ============
 

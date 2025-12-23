@@ -948,6 +948,87 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Session management tables created (v1.18.0)');
     }
+
+    // Auto-create E2EE tables if they don't exist (v1.19.0)
+    const userEncryptionKeysExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='user_encryption_keys'
+    `).get();
+
+    if (!userEncryptionKeysExists) {
+      console.log('📝 Creating E2EE tables (v1.19.0)...');
+      this.db.exec(`
+        -- User encryption keypairs (ECDH P-384)
+        CREATE TABLE IF NOT EXISTS user_encryption_keys (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          public_key TEXT NOT NULL,
+          encrypted_private_key TEXT NOT NULL,
+          key_derivation_salt TEXT NOT NULL,
+          key_version INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT
+        );
+
+        -- Wave encryption keys (per-participant)
+        CREATE TABLE IF NOT EXISTS wave_encryption_keys (
+          id TEXT PRIMARY KEY,
+          wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          encrypted_wave_key TEXT NOT NULL,
+          sender_public_key TEXT NOT NULL,
+          key_version INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL,
+          UNIQUE(wave_id, user_id, key_version)
+        );
+
+        -- Wave key metadata
+        CREATE TABLE IF NOT EXISTS wave_key_metadata (
+          wave_id TEXT PRIMARY KEY REFERENCES waves(id) ON DELETE CASCADE,
+          current_key_version INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL,
+          last_rotated_at TEXT
+        );
+
+        -- E2EE Recovery
+        CREATE TABLE IF NOT EXISTS user_recovery_keys (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          encrypted_private_key TEXT NOT NULL,
+          recovery_salt TEXT NOT NULL,
+          hint TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        -- E2EE indexes
+        CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_wave ON wave_encryption_keys(wave_id);
+        CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_user ON wave_encryption_keys(user_id);
+        CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_version ON wave_encryption_keys(wave_id, key_version);
+      `);
+      console.log('✅ E2EE tables created (v1.19.0)');
+    }
+
+    // Add E2EE columns to waves table if they don't exist (v1.19.0)
+    const waveColumnsE2EE = this.db.prepare(`PRAGMA table_info(waves)`).all();
+    const hasWaveEncrypted = waveColumnsE2EE.some(c => c.name === 'encrypted');
+
+    if (!hasWaveEncrypted) {
+      console.log('📝 Adding encrypted column to waves table (v1.19.0)...');
+      this.db.exec(`
+        ALTER TABLE waves ADD COLUMN encrypted INTEGER DEFAULT 0;
+      `);
+      console.log('✅ Waves encrypted column added');
+    }
+
+    // Add E2EE columns to droplets table if they don't exist (v1.19.0)
+    const dropletColumnsE2EE = this.db.prepare(`PRAGMA table_info(droplets)`).all();
+    const hasDropletEncrypted = dropletColumnsE2EE.some(c => c.name === 'encrypted');
+
+    if (!hasDropletEncrypted) {
+      console.log('📝 Adding E2EE columns to droplets table (v1.19.0)...');
+      this.db.exec(`
+        ALTER TABLE droplets ADD COLUMN encrypted INTEGER DEFAULT 0;
+        ALTER TABLE droplets ADD COLUMN nonce TEXT;
+      `);
+      console.log('✅ Droplets E2EE columns added');
+    }
   }
 
   prepareStatements() {
@@ -5585,6 +5666,265 @@ export class DatabaseSQLite {
       console.error('Account deletion error:', err);
       return { success: false, error: err.message };
     }
+  }
+
+  // ============ E2EE Methods (v1.19.0) ============
+
+  // Create or update user encryption keys
+  createUserEncryptionKeys(userId, publicKey, encryptedPrivateKey, salt) {
+    const now = new Date().toISOString();
+    const existing = this.db.prepare('SELECT user_id FROM user_encryption_keys WHERE user_id = ?').get(userId);
+
+    if (existing) {
+      // Update existing keys (key rotation)
+      const currentVersion = this.db.prepare('SELECT key_version FROM user_encryption_keys WHERE user_id = ?').get(userId);
+      this.db.prepare(`
+        UPDATE user_encryption_keys
+        SET public_key = ?, encrypted_private_key = ?, key_derivation_salt = ?,
+            key_version = key_version + 1, updated_at = ?
+        WHERE user_id = ?
+      `).run(publicKey, encryptedPrivateKey, salt, now, userId);
+      return { userId, keyVersion: (currentVersion?.key_version || 0) + 1 };
+    } else {
+      this.db.prepare(`
+        INSERT INTO user_encryption_keys (user_id, public_key, encrypted_private_key, key_derivation_salt, key_version, created_at)
+        VALUES (?, ?, ?, ?, 1, ?)
+      `).run(userId, publicKey, encryptedPrivateKey, salt, now);
+      return { userId, keyVersion: 1 };
+    }
+  }
+
+  // Get user's encryption keys (for themselves to decrypt)
+  getUserEncryptionKeys(userId) {
+    const row = this.db.prepare(`
+      SELECT user_id, public_key, encrypted_private_key, key_derivation_salt, key_version, created_at, updated_at
+      FROM user_encryption_keys WHERE user_id = ?
+    `).get(userId);
+
+    if (!row) return null;
+
+    return {
+      userId: row.user_id,
+      publicKey: row.public_key,
+      encryptedPrivateKey: row.encrypted_private_key,
+      keyDerivationSalt: row.key_derivation_salt,
+      keyVersion: row.key_version,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  // Get just the public key (for encrypting wave keys for other users)
+  getUserPublicKey(userId) {
+    const row = this.db.prepare('SELECT public_key FROM user_encryption_keys WHERE user_id = ?').get(userId);
+    return row?.public_key || null;
+  }
+
+  // Check if user has E2EE set up
+  hasUserEncryptionKeys(userId) {
+    const row = this.db.prepare('SELECT 1 FROM user_encryption_keys WHERE user_id = ?').get(userId);
+    return !!row;
+  }
+
+  // Create wave encryption key for a participant
+  createWaveEncryptionKey(waveId, userId, encryptedWaveKey, senderPublicKey, keyVersion = 1) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    // Check if key already exists for this version
+    const existing = this.db.prepare(`
+      SELECT id FROM wave_encryption_keys
+      WHERE wave_id = ? AND user_id = ? AND key_version = ?
+    `).get(waveId, userId, keyVersion);
+
+    if (existing) {
+      // Update existing
+      this.db.prepare(`
+        UPDATE wave_encryption_keys
+        SET encrypted_wave_key = ?, sender_public_key = ?
+        WHERE wave_id = ? AND user_id = ? AND key_version = ?
+      `).run(encryptedWaveKey, senderPublicKey, waveId, userId, keyVersion);
+      return existing.id;
+    }
+
+    this.db.prepare(`
+      INSERT INTO wave_encryption_keys (id, wave_id, user_id, encrypted_wave_key, sender_public_key, key_version, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, waveId, userId, encryptedWaveKey, senderPublicKey, keyVersion, now);
+
+    return id;
+  }
+
+  // Get wave key for a specific user
+  getWaveKeyForUser(waveId, userId, keyVersion = null) {
+    let query = `
+      SELECT wek.*, wkm.current_key_version
+      FROM wave_encryption_keys wek
+      LEFT JOIN wave_key_metadata wkm ON wek.wave_id = wkm.wave_id
+      WHERE wek.wave_id = ? AND wek.user_id = ?
+    `;
+
+    if (keyVersion !== null) {
+      query += ' AND wek.key_version = ?';
+      const row = this.db.prepare(query).get(waveId, userId, keyVersion);
+      if (!row) return null;
+      return {
+        encryptedWaveKey: row.encrypted_wave_key,
+        senderPublicKey: row.sender_public_key,
+        keyVersion: row.key_version,
+        currentKeyVersion: row.current_key_version || 1
+      };
+    }
+
+    // Get the current version
+    query += ' ORDER BY wek.key_version DESC LIMIT 1';
+    const row = this.db.prepare(query).get(waveId, userId);
+    if (!row) return null;
+
+    return {
+      encryptedWaveKey: row.encrypted_wave_key,
+      senderPublicKey: row.sender_public_key,
+      keyVersion: row.key_version,
+      currentKeyVersion: row.current_key_version || 1
+    };
+  }
+
+  // Get all wave keys for a user (for key rotation/history)
+  getAllWaveKeysForUser(waveId, userId) {
+    const rows = this.db.prepare(`
+      SELECT encrypted_wave_key, sender_public_key, key_version, created_at
+      FROM wave_encryption_keys
+      WHERE wave_id = ? AND user_id = ?
+      ORDER BY key_version ASC
+    `).all(waveId, userId);
+
+    return rows.map(row => ({
+      encryptedWaveKey: row.encrypted_wave_key,
+      senderPublicKey: row.sender_public_key,
+      keyVersion: row.key_version,
+      createdAt: row.created_at
+    }));
+  }
+
+  // Initialize wave key metadata
+  createWaveKeyMetadata(waveId) {
+    const now = new Date().toISOString();
+    const existing = this.db.prepare('SELECT wave_id FROM wave_key_metadata WHERE wave_id = ?').get(waveId);
+
+    if (!existing) {
+      this.db.prepare(`
+        INSERT INTO wave_key_metadata (wave_id, current_key_version, created_at)
+        VALUES (?, 1, ?)
+      `).run(waveId, now);
+    }
+    return { waveId, currentKeyVersion: 1 };
+  }
+
+  // Get current wave key version
+  getWaveKeyVersion(waveId) {
+    const row = this.db.prepare('SELECT current_key_version FROM wave_key_metadata WHERE wave_id = ?').get(waveId);
+    return row?.current_key_version || 1;
+  }
+
+  // Rotate wave key (when participant is removed)
+  rotateWaveKey(waveId, newKeyDistribution) {
+    const now = new Date().toISOString();
+
+    return this.db.transaction(() => {
+      // Increment the key version
+      const existing = this.db.prepare('SELECT current_key_version FROM wave_key_metadata WHERE wave_id = ?').get(waveId);
+      const newVersion = (existing?.current_key_version || 1) + 1;
+
+      if (existing) {
+        this.db.prepare(`
+          UPDATE wave_key_metadata
+          SET current_key_version = ?, last_rotated_at = ?
+          WHERE wave_id = ?
+        `).run(newVersion, now, waveId);
+      } else {
+        this.db.prepare(`
+          INSERT INTO wave_key_metadata (wave_id, current_key_version, created_at, last_rotated_at)
+          VALUES (?, ?, ?, ?)
+        `).run(waveId, newVersion, now, now);
+      }
+
+      // Insert new encrypted keys for each remaining participant
+      for (const { userId, encryptedWaveKey, senderPublicKey } of newKeyDistribution) {
+        this.createWaveEncryptionKey(waveId, userId, encryptedWaveKey, senderPublicKey, newVersion);
+      }
+
+      return { waveId, newKeyVersion: newVersion };
+    })();
+  }
+
+  // Store recovery key
+  createRecoveryKey(userId, encryptedPrivateKey, recoverySalt, hint = null) {
+    const now = new Date().toISOString();
+    const existing = this.db.prepare('SELECT user_id FROM user_recovery_keys WHERE user_id = ?').get(userId);
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE user_recovery_keys
+        SET encrypted_private_key = ?, recovery_salt = ?, hint = ?, created_at = ?
+        WHERE user_id = ?
+      `).run(encryptedPrivateKey, recoverySalt, hint, now, userId);
+    } else {
+      this.db.prepare(`
+        INSERT INTO user_recovery_keys (user_id, encrypted_private_key, recovery_salt, hint, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(userId, encryptedPrivateKey, recoverySalt, hint, now);
+    }
+
+    return { userId, hasHint: !!hint };
+  }
+
+  // Get recovery key info
+  getRecoveryKeyInfo(userId) {
+    const row = this.db.prepare(`
+      SELECT encrypted_private_key, recovery_salt, hint, created_at
+      FROM user_recovery_keys WHERE user_id = ?
+    `).get(userId);
+
+    if (!row) return null;
+
+    return {
+      encryptedPrivateKey: row.encrypted_private_key,
+      recoverySalt: row.recovery_salt,
+      hint: row.hint,
+      createdAt: row.created_at
+    };
+  }
+
+  // Get recovery hint only (for display without revealing key)
+  getRecoveryHint(userId) {
+    const row = this.db.prepare('SELECT hint FROM user_recovery_keys WHERE user_id = ?').get(userId);
+    return row?.hint || null;
+  }
+
+  // Get all participants' public keys for a wave (for key distribution)
+  getWaveParticipantPublicKeys(waveId) {
+    const rows = this.db.prepare(`
+      SELECT wp.user_id, uek.public_key
+      FROM wave_participants wp
+      LEFT JOIN user_encryption_keys uek ON wp.user_id = uek.user_id
+      WHERE wp.wave_id = ?
+    `).all(waveId);
+
+    return rows.map(row => ({
+      userId: row.user_id,
+      publicKey: row.public_key  // May be null if user hasn't set up E2EE
+    }));
+  }
+
+  // Check if a wave is encrypted
+  isWaveEncrypted(waveId) {
+    const row = this.db.prepare('SELECT encrypted FROM waves WHERE id = ?').get(waveId);
+    return row?.encrypted === 1;
+  }
+
+  // Set wave as encrypted
+  setWaveEncrypted(waveId, encrypted = true) {
+    this.db.prepare('UPDATE waves SET encrypted = ? WHERE id = ?').run(encrypted ? 1 : 0, waveId);
   }
 
   // Placeholder for JSON compatibility - not needed with SQLite
