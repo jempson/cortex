@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 1.15.0** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 1.18.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
 ## Quick Start
 
@@ -774,6 +774,38 @@ server {
 ---
 
 ## Changelog
+
+### v1.18.0 (December 2025)
+- **Session Management**: View and revoke login sessions from any device
+  - List all active sessions with device info and IP addresses
+  - Revoke individual sessions or logout all other devices
+  - Automatic session cleanup (hourly background job)
+- **GDPR Compliance**: User data export and account deletion
+  - Download all personal data as JSON
+  - Permanently delete account with password confirmation
+  - Droplets preserved as "[Deleted User]", waves transferred
+- **Security Hardening**:
+  - HSTS headers enabled (1-year max-age)
+  - Optional HTTPS enforcement (`ENFORCE_HTTPS=true`)
+  - Restrictive CORS (`ALLOWED_ORIGINS` required in production)
+  - Session tokens hashed before storage
+
+### v1.17.0 - v1.17.7 (December 2025)
+- **v1.17.7**: WebSocket rate limiting (60 msg/min, 20 typing/min)
+- **v1.17.6**: Server version fix (uses package.json VERSION)
+- **v1.17.5**: Activity log filter fix
+- **v1.17.4**: PWA app badge, tab title unread count, favicon flashing
+- **v1.17.3**: Collapsible sections, password confirmation, wave rename fix
+- **v1.17.2**: @ mention autocomplete, styled mentions, alert expiration fix
+- **v1.17.1**: Compact droplet display, inline action buttons, reduced nesting
+- **v1.17.0**: Share public droplets with Open Graph meta tags
+
+### v1.16.0 (December 2025)
+- **Alert Droplets**: Admin-created system alerts in crawl bar
+  - Priority levels: Critical, Warning, Info
+  - Scheduled start/end times
+  - Per-user dismissal tracking
+  - Federation: Subscribe to alerts from other servers
 
 ### v1.15.0 (December 2025)
 - **Crawl Bar**: Live scrolling news ticker with stocks, weather, and news
