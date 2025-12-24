@@ -5086,6 +5086,41 @@ app.post('/api/e2ee/keys/rotate', authenticateToken, (req, res) => {
   }
 });
 
+// Update encrypted private key (for password changes)
+// This keeps the same public key but re-encrypts the private key with a new password
+app.post('/api/e2ee/keys/update', authenticateToken, (req, res) => {
+  try {
+    const { encryptedPrivateKey, salt } = req.body;
+
+    if (!encryptedPrivateKey || !salt) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Check if user has keys
+    if (!db.hasUserEncryptionKeys(req.user.userId)) {
+      return res.status(400).json({ error: 'No encryption keys found. Use /api/e2ee/keys/register first.' });
+    }
+
+    // Update only the encrypted private key and salt (not the public key)
+    db.updateEncryptedPrivateKey(req.user.userId, encryptedPrivateKey, salt);
+
+    // Log the update
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'e2ee_key_reencrypt', 'user', req.user.userId, {
+        ...getRequestMeta(req)
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Encryption keys updated successfully'
+    });
+  } catch (err) {
+    console.error('E2EE key update error:', err);
+    res.status(500).json({ error: 'Failed to update keys' });
+  }
+});
+
 // Setup recovery key
 app.post('/api/e2ee/recovery/setup', authenticateToken, (req, res) => {
   try {

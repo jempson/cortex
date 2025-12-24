@@ -143,56 +143,30 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
         {step === 1 ? (
           <>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
-              Create an encryption passphrase to secure your messages. This passphrase is different from your login password
-              and is used to encrypt your private key.
+              End-to-end encryption protects your messages. Your login password is used to secure your encryption keys,
+              so there's no separate passphrase to remember.
             </p>
 
-            <div style={{ backgroundColor: 'var(--overlay-amber)', padding: '12px', borderRadius: '4px', marginBottom: '16px', border: '1px solid var(--accent-amber)' }}>
-              <p style={{ color: 'var(--accent-amber)', fontSize: '12px', margin: 0 }}>
-                <strong>Important:</strong> You will need this passphrase every time you log in. A recovery key will be generated for backup access.
+            <div style={{ backgroundColor: 'var(--overlay-teal)', padding: '12px', borderRadius: '4px', marginBottom: '16px', border: '1px solid var(--accent-teal)' }}>
+              <p style={{ color: 'var(--accent-teal)', fontSize: '12px', margin: 0 }}>
+                <strong>Note:</strong> A recovery key will be generated for backup access. Save it somewhere safe!
               </p>
             </div>
 
             <form onSubmit={handleSubmit}>
-              <label style={{ color: 'var(--text-secondary)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                Encryption Passphrase
-              </label>
-              <input
-                type="password"
-                value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Enter your encryption passphrase"
-                style={inputStyle}
-                autoComplete="new-password"
-                required
-              />
-
-              <label style={{ color: 'var(--text-secondary)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                Confirm Passphrase
-              </label>
-              <input
-                type="password"
-                value={confirmPassphrase}
-                onChange={(e) => setConfirmPassphrase(e.target.value)}
-                placeholder="Confirm your passphrase"
-                style={inputStyle}
-                autoComplete="new-password"
-                required
-              />
-
               {error && (
                 <p style={{ color: 'var(--accent-orange)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>
               )}
 
               <button type="submit" style={buttonStyle} disabled={isLoading}>
-                {isLoading ? 'Setting up...' : 'Create Encryption Keys'}
+                {isLoading ? 'Setting up...' : 'Enable End-to-End Encryption'}
               </button>
             </form>
           </>
         ) : (
           <>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
-              Your encryption is set up! Save this recovery key somewhere safe. You'll need it if you forget your passphrase.
+              Your encryption is set up! Save this recovery key somewhere safe. You'll need it to recover access if needed.
             </p>
 
             <div style={recoveryKeyStyle}>
@@ -217,7 +191,7 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
 
             <div style={{ backgroundColor: 'var(--overlay-orange)', padding: '12px', borderRadius: '4px', marginBottom: '16px', border: '1px solid var(--accent-orange)' }}>
               <p style={{ color: 'var(--accent-orange)', fontSize: '12px', margin: 0 }}>
-                <strong>Warning:</strong> This key will only be shown once. If you lose both your passphrase and this recovery key, you will lose access to your encrypted messages permanently.
+                <strong>Warning:</strong> This key will only be shown once. If you lose this recovery key, you may lose access to your encrypted messages.
               </p>
             </div>
 
@@ -253,9 +227,10 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
 
 // ============ Passphrase Unlock Modal ============
 // Shown on login when user has E2EE set up
-export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading, error: propError }) {
+// recoveryOnly: skip passphrase input and show recovery only (when auto-unlock fails)
+export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading, error: propError, recoveryOnly = false }) {
   const [passphrase, setPassphrase] = useState('');
-  const [showRecovery, setShowRecovery] = useState(false);
+  const [showRecovery, setShowRecovery] = useState(recoveryOnly);
   const [recoveryKey, setRecoveryKey] = useState('');
   const [error, setError] = useState(propError);
 
@@ -355,15 +330,18 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
         {!showRecovery ? (
           <>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
-              Enter your encryption passphrase to decrypt your messages.
+              Your encryption needs to be unlocked. This can happen if your password was changed on another device.
             </p>
 
             <form onSubmit={handleUnlock}>
+              <label style={{ color: 'var(--text-secondary)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                Current Password
+              </label>
               <input
                 type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Encryption passphrase"
+                placeholder="Enter your password"
                 style={inputStyle}
                 autoComplete="current-password"
                 autoFocus
@@ -377,7 +355,7 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
               )}
 
               <button type="submit" style={buttonStyle} disabled={isLoading}>
-                {isLoading ? 'Unlocking...' : 'Unlock'}
+                {isLoading ? 'Unlocking...' : 'Unlock Encryption'}
               </button>
             </form>
 
@@ -386,7 +364,7 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
                 onClick={() => setShowRecovery(true)}
                 style={{ background: 'none', border: 'none', color: 'var(--accent-teal)', cursor: 'pointer', fontSize: '13px' }}
               >
-                Forgot passphrase? Use recovery key
+                Can't unlock? Use recovery key
               </button>
             </div>
 
@@ -426,14 +404,16 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
               </button>
             </form>
 
-            <div style={{ marginTop: '16px', textAlign: 'center' }}>
-              <button
-                onClick={() => setShowRecovery(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '13px' }}
-              >
-                Back to passphrase
-              </button>
-            </div>
+            {!recoveryOnly && (
+              <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                <button
+                  onClick={() => setShowRecovery(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '13px' }}
+                >
+                  Back to passphrase
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -3,13 +3,19 @@
  *
  * Manages end-to-end encryption state and operations.
  * Integrates with AuthContext to provide E2EE after login.
+ *
+ * Password-based E2EE: Encryption key derived from login password.
+ * Session caching: Private key cached in sessionStorage for page refreshes.
  */
 
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import * as crypto from './crypto.js';
 
 // ============ Constants ============
 const WAVE_KEY_CACHE_MAX = 100;  // Max cached wave keys
+const SESSION_KEY_STORAGE = 'cortex_e2ee_session_key';
+const SESSION_DATA_STORAGE = 'cortex_e2ee_session_data';
+const SESSION_PUBLIC_KEY = 'cortex_e2ee_public_key';
 
 // ============ Context ============
 const E2EEContext = createContext(null);
@@ -36,6 +42,56 @@ export function E2EEProvider({ children, token, API_URL }) {
 
   // Wave key cache (waveId -> { waveKey: CryptoKey, version: number })
   const waveKeyCacheRef = useRef(new Map());
+  const sessionRestoreAttempted = useRef(false);
+
+  // ============ Session Cache Helpers ============
+  const saveToSessionCache = useCallback(async (privKey, pubKeyBase64) => {
+    try {
+      // Generate a session key and encrypt the private key
+      const { key: sessionKey, keyBase64 } = await crypto.generateSessionKey();
+      const jwkString = await crypto.exportPrivateKeyForSession(privKey);
+      const encryptedData = await crypto.encryptForSession(jwkString, sessionKey);
+
+      // Store in sessionStorage
+      sessionStorage.setItem(SESSION_KEY_STORAGE, keyBase64);
+      sessionStorage.setItem(SESSION_DATA_STORAGE, encryptedData);
+      sessionStorage.setItem(SESSION_PUBLIC_KEY, pubKeyBase64);
+      console.log('E2EE: Saved to session cache');
+    } catch (err) {
+      console.error('E2EE: Failed to save to session cache:', err);
+    }
+  }, []);
+
+  const restoreFromSessionCache = useCallback(async () => {
+    try {
+      const sessionKeyBase64 = sessionStorage.getItem(SESSION_KEY_STORAGE);
+      const encryptedData = sessionStorage.getItem(SESSION_DATA_STORAGE);
+      const pubKeyBase64 = sessionStorage.getItem(SESSION_PUBLIC_KEY);
+
+      if (!sessionKeyBase64 || !encryptedData || !pubKeyBase64) {
+        return null;
+      }
+
+      // Import session key and decrypt private key
+      const sessionKey = await crypto.importSessionKey(sessionKeyBase64);
+      const jwkString = await crypto.decryptFromSession(encryptedData, sessionKey);
+      const privKey = await crypto.importPrivateKeyFromSession(jwkString);
+      const pubKey = await crypto.importPublicKey(pubKeyBase64);
+
+      console.log('E2EE: Restored from session cache');
+      return { privateKey: privKey, publicKey: pubKey, publicKeyBase64: pubKeyBase64 };
+    } catch (err) {
+      console.error('E2EE: Failed to restore from session cache:', err);
+      clearSessionCache();
+      return null;
+    }
+  }, []);
+
+  const clearSessionCache = useCallback(() => {
+    sessionStorage.removeItem(SESSION_KEY_STORAGE);
+    sessionStorage.removeItem(SESSION_DATA_STORAGE);
+    sessionStorage.removeItem(SESSION_PUBLIC_KEY);
+  }, []);
 
   // Fetch helper
   const fetchAPI = useCallback(async (path, options = {}) => {
@@ -55,6 +111,22 @@ export function E2EEProvider({ children, token, API_URL }) {
     if (!token) return;
 
     try {
+      // First, try to restore from session cache (for page refreshes)
+      if (!sessionRestoreAttempted.current) {
+        sessionRestoreAttempted.current = true;
+        const cached = await restoreFromSessionCache();
+        if (cached) {
+          setPrivateKey(cached.privateKey);
+          setPublicKey(cached.publicKey);
+          setPublicKeyBase64(cached.publicKeyBase64);
+          setE2eeStatus({ enabled: true });
+          setNeedsPassphrase(false);
+          setNeedsSetup(false);
+          console.log('E2EE: Restored from session cache - no passphrase needed');
+          return;
+        }
+      }
+
       const res = await fetchAPI('/e2ee/status');
       if (res.ok) {
         const data = await res.json();
@@ -75,7 +147,7 @@ export function E2EEProvider({ children, token, API_URL }) {
       console.error('E2EE status check failed:', err);
       setE2eeStatus({ enabled: false, error: err.message });
     }
-  }, [token, fetchAPI]);
+  }, [token, fetchAPI, restoreFromSessionCache]);
 
   // ============ E2EE Setup ============
   const setupE2EE = useCallback(async (passphrase, createRecoveryKey = true) => {
@@ -127,12 +199,15 @@ export function E2EEProvider({ children, token, API_URL }) {
       setNeedsPassphrase(false);
       setE2eeStatus({ enabled: true });
 
+      // Save to session cache for page refreshes
+      await saveToSessionCache(keyPair.privateKey, pubKeyBase64);
+
       return { success: true, recoveryKey };
     } catch (err) {
       console.error('E2EE setup error:', err);
       throw err;
     }
-  }, [token, fetchAPI]);
+  }, [token, fetchAPI, saveToSessionCache]);
 
   // ============ Unlock with Passphrase ============
   const unlockE2EE = useCallback(async (passphrase) => {
@@ -162,6 +237,9 @@ export function E2EEProvider({ children, token, API_URL }) {
       setNeedsPassphrase(false);
       setIsUnlocking(false);
 
+      // Save to session cache for page refreshes
+      await saveToSessionCache(privKey, pubKeyBase64);
+
       return { success: true };
     } catch (err) {
       console.error('E2EE unlock error:', err);
@@ -169,7 +247,7 @@ export function E2EEProvider({ children, token, API_URL }) {
       setIsUnlocking(false);
       throw err;
     }
-  }, [token, fetchAPI]);
+  }, [token, fetchAPI, saveToSessionCache]);
 
   // ============ Recovery ============
   const recoverWithPassphrase = useCallback(async (recoveryPassphrase) => {
@@ -199,12 +277,15 @@ export function E2EEProvider({ children, token, API_URL }) {
       setPublicKeyBase64(pubKeyBase64);
       setNeedsPassphrase(false);
 
+      // Save to session cache for page refreshes
+      await saveToSessionCache(privKey, pubKeyBase64);
+
       return { success: true };
     } catch (err) {
       console.error('E2EE recovery error:', err);
       throw err;
     }
-  }, [token, fetchAPI]);
+  }, [token, fetchAPI, saveToSessionCache]);
 
   // Regenerate recovery key (requires unlocked E2EE)
   const regenerateRecoveryKey = useCallback(async () => {
@@ -236,6 +317,40 @@ export function E2EEProvider({ children, token, API_URL }) {
       throw err;
     }
   }, [token, privateKey, fetchAPI]);
+
+  // Re-encrypt private key with new password (used after password change)
+  const reencryptWithPassword = useCallback(async (newPassword) => {
+    if (!token) throw new Error('Not authenticated');
+    if (!privateKey) throw new Error('E2EE not unlocked');
+
+    try {
+      // Re-encrypt the private key with the new password
+      const { encryptedPrivateKey, salt } = await crypto.reencryptPrivateKey(privateKey, newPassword);
+
+      // Update on server
+      const res = await fetchAPI('/e2ee/keys/update', {
+        method: 'POST',
+        body: JSON.stringify({
+          encryptedPrivateKey,
+          salt
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to update encryption keys');
+      }
+
+      // Update session cache with new encryption
+      await saveToSessionCache(privateKey, publicKeyBase64);
+
+      console.log('E2EE: Private key re-encrypted with new password');
+      return { success: true };
+    } catch (err) {
+      console.error('E2EE re-encryption error:', err);
+      throw err;
+    }
+  }, [token, privateKey, publicKeyBase64, fetchAPI, saveToSessionCache]);
 
   // ============ Wave Key Management ============
   const getWaveKey = useCallback(async (waveId) => {
@@ -597,7 +712,9 @@ export function E2EEProvider({ children, token, API_URL }) {
     setNeedsPassphrase(false);
     setNeedsSetup(false);
     waveKeyCacheRef.current.clear();
-  }, []);
+    clearSessionCache();
+    sessionRestoreAttempted.current = false;
+  }, [clearSessionCache]);
 
   // ============ Invalidate wave key cache ============
   const invalidateWaveKey = useCallback((waveId) => {
@@ -624,6 +741,7 @@ export function E2EEProvider({ children, token, API_URL }) {
     unlockE2EE,
     recoverWithPassphrase,
     regenerateRecoveryKey,
+    reencryptWithPassword,
     clearE2EE,
 
     // Wave operations

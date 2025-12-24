@@ -12280,7 +12280,20 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
     }
     try {
       await fetchAPI('/profile/password', { method: 'POST', body: { currentPassword, newPassword } });
-      showToast('Password changed', 'success');
+
+      // Re-encrypt E2EE private key with new password
+      if (e2ee.isUnlocked && e2ee.reencryptWithPassword) {
+        try {
+          await e2ee.reencryptWithPassword(newPassword);
+          showToast('Password and encryption updated', 'success');
+        } catch (e2eeErr) {
+          console.error('E2EE re-encryption failed:', e2eeErr);
+          showToast('Password changed, but encryption update failed. You may need to use your recovery key on next login.', 'error');
+        }
+      } else {
+        showToast('Password changed', 'success');
+      }
+
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -12771,7 +12784,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                     🔐 New Recovery Key Generated
                   </div>
                   <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '12px' }}>
-                    Save this key in a safe place. You'll need it if you forget your encryption passphrase.
+                    Save this key in a safe place. You'll need it to recover access if your password changes.
                   </div>
                   <div style={{ padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--accent-green)', borderRadius: '4px', textAlign: 'center', marginBottom: '12px' }}>
                     <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', letterSpacing: '2px', color: 'var(--accent-green)', wordBreak: 'break-all', userSelect: 'all' }}>
@@ -12820,23 +12833,16 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
               {!e2eeRecoveryKey && (
                 <>
                   <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '16px' }}>
-                    Your recovery key allows you to regain access to your encrypted messages if you forget your passphrase.
+                    Your recovery key allows you to regain access to your encrypted messages.
+                    Your encryption is tied to your login password - if you change your password, the encryption is automatically updated.
                     If you've lost your recovery key, you can generate a new one below.
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                    <span style={{ color: e2ee.isUnlocked ? 'var(--accent-green)' : 'var(--accent-amber)', fontSize: '0.85rem' }}>
-                      {e2ee.isUnlocked ? '🔓 E2EE Unlocked' : '🔒 E2EE Locked'}
+                    <span style={{ color: 'var(--accent-green)', fontSize: '0.85rem' }}>
+                      🔐 End-to-End Encryption Active
                     </span>
                   </div>
-
-                  {!e2ee.isUnlocked && (
-                    <div style={{ padding: '12px', background: 'var(--accent-amber)10', border: '1px solid var(--accent-amber)', borderRadius: '4px', marginBottom: '16px' }}>
-                      <div style={{ color: 'var(--accent-amber)', fontSize: '0.8rem' }}>
-                        E2EE must be unlocked to regenerate your recovery key. Enter your passphrase to unlock.
-                      </div>
-                    </div>
-                  )}
 
                   <button
                     onClick={async () => {
@@ -15393,6 +15399,8 @@ function AuthProvider({ children }) {
   const [user, setUser] = useState(storage.getUser());
   const [token, setToken] = useState(storage.getToken());
   const [loading, setLoading] = useState(true);
+  // Temporary password storage for E2EE unlock (cleared after use)
+  const pendingPasswordRef = useRef(null);
 
   useEffect(() => {
     if (token) {
@@ -15409,6 +15417,17 @@ function AuthProvider({ children }) {
     }
   }, [token]);
 
+  // Get pending password for E2EE unlock (one-time read, clears after access)
+  const getPendingPassword = () => {
+    const pwd = pendingPasswordRef.current;
+    return pwd;
+  };
+
+  // Clear pending password after E2EE has used it
+  const clearPendingPassword = () => {
+    pendingPasswordRef.current = null;
+  };
+
   const login = async (handle, password) => {
     const res = await fetch(`${API_URL}/auth/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -15418,8 +15437,12 @@ function AuthProvider({ children }) {
     if (!res.ok) throw new Error(data.error || 'Login failed');
     // Check if MFA is required
     if (data.mfaRequired) {
+      // Store password for later E2EE unlock after MFA
+      pendingPasswordRef.current = password;
       return { mfaRequired: true, mfaChallenge: data.mfaChallenge, mfaMethods: data.mfaMethods };
     }
+    // Store password for E2EE unlock
+    pendingPasswordRef.current = password;
     storage.setToken(data.token); storage.setUser(data.user);
     setToken(data.token); setUser(data.user);
     return { success: true };
@@ -15444,6 +15467,8 @@ function AuthProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
+    // Store password for E2EE setup
+    pendingPasswordRef.current = password;
     storage.setToken(data.token); storage.setUser(data.user);
     setToken(data.token); setUser(data.user);
   };
@@ -15460,7 +15485,8 @@ function AuthProvider({ children }) {
         console.error('Logout API error:', err);
       }
     }
-    // Clear local storage
+    // Clear password and local storage
+    pendingPasswordRef.current = null;
     storage.removeToken(); storage.removeUser();
     setToken(null); setUser(null);
   };
@@ -15474,7 +15500,7 @@ function AuthProvider({ children }) {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, completeMfaLogin, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, login, completeMfaLogin, register, logout, updateUser, getPendingPassword, clearPendingPassword }}>
       {children}
     </AuthContext.Provider>
   );
@@ -15572,6 +15598,7 @@ function AppContent() {
 
 // E2EE authenticated app wrapper - handles E2EE setup/unlock before showing main app
 function E2EEAuthenticatedApp({ shareDropletId, logout }) {
+  const { getPendingPassword, clearPendingPassword } = useAuth();
   const {
     e2eeStatus,
     isUnlocked,
@@ -15588,26 +15615,60 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
   } = useE2EE();
 
   const [isSettingUp, setIsSettingUp] = useState(false);
+  const [autoUnlockAttempted, setAutoUnlockAttempted] = useState(false);
+  const [autoUnlockFailed, setAutoUnlockFailed] = useState(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
 
   // Check E2EE status on mount
   useEffect(() => {
     checkE2EEStatus();
   }, [checkE2EEStatus]);
 
-  // Fetch recovery hint when passphrase is needed
+  // Auto-unlock E2EE with pending password (from login)
   useEffect(() => {
-    if (needsPassphrase) {
-      fetch(`${API_URL}/e2ee/recovery/hint`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('cortex_token')}` }
-      })
-        .then(res => res.ok ? res.json() : null)
-        .then(data => setRecoveryHint(data?.hint || null))
-        .catch(() => setRecoveryHint(null));
+    const pendingPassword = getPendingPassword();
+    if (needsPassphrase && pendingPassword && !autoUnlockAttempted && !isUnlocking) {
+      setAutoUnlockAttempted(true);
+      console.log('E2EE: Auto-unlocking with login password...');
+      unlockE2EE(pendingPassword)
+        .then(() => {
+          console.log('E2EE: Auto-unlock successful');
+          clearPendingPassword();
+        })
+        .catch((err) => {
+          console.error('E2EE: Auto-unlock failed:', err);
+          setAutoUnlockFailed(true);
+          clearPendingPassword();
+        });
     }
-  }, [needsPassphrase]);
+  }, [needsPassphrase, autoUnlockAttempted, isUnlocking, getPendingPassword, clearPendingPassword, unlockE2EE]);
+
+  // Auto-setup E2EE with pending password (from registration)
+  useEffect(() => {
+    const pendingPassword = getPendingPassword();
+    if (needsSetup && pendingPassword && !isSettingUp) {
+      console.log('E2EE: Auto-setting up with login password...');
+      setIsSettingUp(true);
+      setupE2EE(pendingPassword, true)
+        .then((result) => {
+          console.log('E2EE: Auto-setup successful');
+          clearPendingPassword();
+          // Note: Recovery key is still generated and available, but we don't show the modal
+          // Users can regenerate it from Profile Settings if needed
+        })
+        .catch((err) => {
+          console.error('E2EE: Auto-setup failed:', err);
+          clearPendingPassword();
+        })
+        .finally(() => {
+          setIsSettingUp(false);
+        });
+    }
+  }, [needsSetup, isSettingUp, getPendingPassword, clearPendingPassword, setupE2EE]);
 
   // Handle logout (also clears E2EE state)
   const handleLogout = () => {
+    clearPendingPassword();
     clearE2EE();
     logout();
   };
@@ -15636,26 +15697,74 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
     return <LoadingSpinner message="Checking encryption status..." />;
   }
 
-  // Show E2EE setup modal for users who haven't set up E2EE
-  if (needsSetup) {
+  // Show loading during auto-setup
+  if (needsSetup && isSettingUp) {
+    return <LoadingSpinner message="Setting up encryption..." />;
+  }
+
+  // Show loading during auto-unlock (only if we have a pending password)
+  if (needsPassphrase && isUnlocking && !autoUnlockFailed) {
+    return <LoadingSpinner message="Unlocking encryption..." />;
+  }
+
+  // Auto-unlock failed - show recovery modal
+  if (needsPassphrase && autoUnlockFailed && !showRecoveryModal) {
     return (
-      <E2EESetupModal
-        onSetup={async (passphrase, createRecoveryKey) => {
-          setIsSettingUp(true);
-          try {
-            return await setupE2EE(passphrase, createRecoveryKey);
-          } finally {
-            setIsSettingUp(false);
-          }
-        }}
-        onSkip={null}  // E2EE is mandatory, no skip option
-        isLoading={isSettingUp}
-      />
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column',
+        padding: '40px',
+        background: 'var(--bg-base)',
+      }}>
+        <div style={{
+          maxWidth: '500px',
+          padding: '32px',
+          background: 'var(--bg-surface)',
+          border: '2px solid var(--accent-orange)',
+        }}>
+          <h2 style={{ color: 'var(--accent-orange)', marginBottom: '16px' }}>
+            Encryption Key Mismatch
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
+            Your password has changed since E2EE was set up. You can recover your encryption keys
+            using your recovery passphrase, or log out and contact support.
+          </p>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <button
+              onClick={handleLogout}
+              style={{
+                padding: '10px 20px',
+                background: 'transparent',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}
+            >
+              Log Out
+            </button>
+            <button
+              onClick={() => setShowRecoveryModal(true)}
+              style={{
+                padding: '10px 20px',
+                background: 'var(--accent-teal)',
+                border: 'none',
+                color: 'var(--bg-base)',
+                cursor: 'pointer',
+              }}
+            >
+              Use Recovery Key
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
-  // Show passphrase unlock modal for users with E2EE set up
-  if (needsPassphrase) {
+  // Show recovery modal
+  if (needsPassphrase && showRecoveryModal) {
     return (
       <PassphraseUnlockModal
         onUnlock={unlockE2EE}
@@ -15663,8 +15772,17 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
         onLogout={handleLogout}
         isLoading={isUnlocking}
         error={unlockError}
+        recoveryOnly={true}
       />
     );
+  }
+
+  // Waiting for auto-unlock/setup - shouldn't get here but just in case
+  if (needsPassphrase && !autoUnlockAttempted) {
+    return <LoadingSpinner message="Preparing encryption..." />;
+  }
+  if (needsSetup && !isSettingUp) {
+    return <LoadingSpinner message="Preparing encryption setup..." />;
   }
 
   // E2EE is unlocked - render the main app

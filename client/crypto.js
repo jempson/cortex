@@ -537,6 +537,31 @@ export async function recoverPrivateKey(recoveryKey, encryptedPrivateKey, recove
   return unlockPrivateKey(normalizedKey, encryptedPrivateKey, recoverySalt);
 }
 
+// ============ Password Change Re-encryption ============
+
+/**
+ * Re-encrypt private key with a new password
+ * Used when user changes their login password
+ * @param {CryptoKey} privateKey - Already unlocked ECDH private key
+ * @param {string} newPassword - New password to encrypt with
+ * @returns {Promise<{encryptedPrivateKey: string, salt: string}>}
+ */
+export async function reencryptPrivateKey(privateKey, newPassword) {
+  // Generate new salt
+  const salt = generateSalt();
+
+  // Derive new wrapping key from new password
+  const wrappingKey = await deriveKeyFromPassphrase(newPassword, salt);
+
+  // Wrap private key with new key
+  const encryptedPrivateKey = await wrapPrivateKey(privateKey, wrappingKey);
+
+  return {
+    encryptedPrivateKey,
+    salt
+  };
+}
+
 // ============ Verification ============
 
 /**
@@ -565,4 +590,105 @@ export function isCryptoAvailable() {
     crypto.subtle &&
     typeof crypto.subtle.generateKey === 'function'
   );
+}
+
+// ============ Session Caching ============
+
+/**
+ * Export private key to JWK string for session caching
+ * @param {CryptoKey} privateKey
+ * @returns {Promise<string>} - JSON string of JWK
+ */
+export async function exportPrivateKeyForSession(privateKey) {
+  const jwk = await crypto.subtle.exportKey('jwk', privateKey);
+  return JSON.stringify(jwk);
+}
+
+/**
+ * Import private key from JWK string (from session cache)
+ * @param {string} jwkString - JSON string of JWK
+ * @returns {Promise<CryptoKey>}
+ */
+export async function importPrivateKeyFromSession(jwkString) {
+  const jwk = JSON.parse(jwkString);
+  return crypto.subtle.importKey(
+    'jwk',
+    jwk,
+    { name: 'ECDH', namedCurve: 'P-384' },
+    true,
+    ['deriveKey', 'deriveBits']
+  );
+}
+
+/**
+ * Generate a random session key for encrypting cached data
+ * @returns {Promise<{key: CryptoKey, keyBase64: string}>}
+ */
+export async function generateSessionKey() {
+  const key = await crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+  const exported = await crypto.subtle.exportKey('raw', key);
+  return { key, keyBase64: base64Encode(exported) };
+}
+
+/**
+ * Import session key from base64
+ * @param {string} keyBase64
+ * @returns {Promise<CryptoKey>}
+ */
+export async function importSessionKey(keyBase64) {
+  const keyData = base64Decode(keyBase64);
+  return crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+/**
+ * Encrypt data for session storage
+ * @param {string} data - Data to encrypt
+ * @param {CryptoKey} sessionKey
+ * @returns {Promise<string>} - Base64 encoded nonce:ciphertext
+ */
+export async function encryptForSession(data, sessionKey) {
+  const encoder = new TextEncoder();
+  const nonce = generateNonce();
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce },
+    sessionKey,
+    encoder.encode(data)
+  );
+
+  const combined = new Uint8Array(nonce.length + ciphertext.byteLength);
+  combined.set(nonce, 0);
+  combined.set(new Uint8Array(ciphertext), nonce.length);
+
+  return base64Encode(combined);
+}
+
+/**
+ * Decrypt data from session storage
+ * @param {string} encryptedBase64 - Base64 encoded nonce:ciphertext
+ * @param {CryptoKey} sessionKey
+ * @returns {Promise<string>} - Decrypted data
+ */
+export async function decryptFromSession(encryptedBase64, sessionKey) {
+  const combined = new Uint8Array(base64Decode(encryptedBase64));
+  const nonce = combined.slice(0, NONCE_LENGTH);
+  const ciphertext = combined.slice(NONCE_LENGTH);
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: nonce },
+    sessionKey,
+    ciphertext
+  );
+
+  const decoder = new TextDecoder();
+  return decoder.decode(decrypted);
 }

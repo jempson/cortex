@@ -5744,6 +5744,24 @@ export class DatabaseSQLite {
     return !!row;
   }
 
+  // Update encrypted private key (for password changes)
+  // Keeps the same public key but updates the encrypted private key and salt
+  updateEncryptedPrivateKey(userId, encryptedPrivateKey, salt) {
+    const now = new Date().toISOString();
+
+    const result = this.db.prepare(`
+      UPDATE user_encryption_keys
+      SET encrypted_private_key = ?, key_derivation_salt = ?, updated_at = ?
+      WHERE user_id = ?
+    `).run(encryptedPrivateKey, salt, now, userId);
+
+    if (result.changes === 0) {
+      throw new Error('No encryption keys found for user');
+    }
+
+    return { success: true };
+  }
+
   // Create wave encryption key for a participant
   createWaveEncryptionKey(waveId, userId, encryptedWaveKey, senderPublicKey, keyVersion = 1) {
     const id = uuidv4();
