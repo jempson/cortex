@@ -12392,7 +12392,10 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                         <div style={{ marginTop: '12px' }}>
                           <div style={{ marginBottom: '8px' }}>
                             <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
-                            <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="TOTP Code" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+                            <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '4px' }}>
+                              Enter the 6-digit code from your authenticator app:
+                            </div>
+                            <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.2em' }} />
                           </div>
                           <button onClick={handleDisableTotp} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
                             {mfaLoading ? 'DISABLING...' : 'DISABLE TOTP'}
@@ -12446,7 +12449,12 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                         <div style={{ marginTop: '8px' }}>
                           <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
                           {mfaStatus.totpEnabled && (
-                            <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="TOTP Code" style={{ ...inputStyle, fontFamily: 'monospace', marginBottom: '8px' }} />
+                            <>
+                              <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '4px' }}>
+                                Enter the 6-digit code from your authenticator app:
+                              </div>
+                              <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" style={{ ...inputStyle, fontFamily: 'monospace', marginBottom: '8px', letterSpacing: '0.2em' }} />
+                            </>
                           )}
                           <button onClick={handleRegenerateRecoveryCodes} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-amber)20', border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
                             {mfaLoading ? 'GENERATING...' : 'REGENERATE CODES'}
