@@ -466,32 +466,75 @@ export async function addParticipantToWave(waveKey, newParticipantPublicKey, sen
 
 // ============ Recovery Key Setup ============
 
+// Base32 alphabet (no 0, 1, O, I to avoid confusion)
+const RECOVERY_KEY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
 /**
- * Create a recovery key backup
- * @param {CryptoKey} privateKey - User's ECDH private key
- * @param {string} recoveryPassphrase - Separate recovery passphrase
- * @returns {Promise<{encryptedPrivateKey: string, recoverySalt: string}>}
+ * Generate a random recovery key
+ * Returns a formatted key like "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" (24 chars = 120 bits entropy)
+ * @returns {string} - Formatted recovery key
  */
-export async function createRecoveryBackup(privateKey, recoveryPassphrase) {
+export function generateRecoveryKey() {
+  const bytes = generateRandomBytes(15);  // 120 bits
+  let key = '';
+
+  // Convert each byte to base32 characters
+  for (let i = 0; i < bytes.length; i++) {
+    // Use 5 bits per character (32 = 2^5)
+    const index = bytes[i] % 32;
+    key += RECOVERY_KEY_ALPHABET[index];
+  }
+
+  // Add more characters to reach 24 (using remaining bits)
+  const extraBytes = generateRandomBytes(9);
+  for (let i = 0; i < extraBytes.length; i++) {
+    key += RECOVERY_KEY_ALPHABET[extraBytes[i] % 32];
+  }
+
+  // Format as XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
+  return key.substring(0, 24).match(/.{4}/g).join('-');
+}
+
+/**
+ * Normalize a recovery key (remove dashes, uppercase)
+ * @param {string} key - Recovery key with or without dashes
+ * @returns {string} - Normalized key (uppercase, no dashes)
+ */
+export function normalizeRecoveryKey(key) {
+  return key.replace(/-/g, '').toUpperCase();
+}
+
+/**
+ * Create a recovery key backup with a generated key
+ * @param {CryptoKey} privateKey - User's ECDH private key
+ * @returns {Promise<{recoveryKey: string, encryptedPrivateKey: string, recoverySalt: string}>}
+ */
+export async function createRecoveryBackup(privateKey) {
+  const recoveryKey = generateRecoveryKey();
   const recoverySalt = generateSalt();
-  const wrappingKey = await deriveKeyFromPassphrase(recoveryPassphrase, recoverySalt);
+
+  // Use the recovery key as the passphrase for key derivation
+  const normalizedKey = normalizeRecoveryKey(recoveryKey);
+  const wrappingKey = await deriveKeyFromPassphrase(normalizedKey, recoverySalt);
   const encryptedPrivateKey = await wrapPrivateKey(privateKey, wrappingKey);
 
   return {
-    encryptedPrivateKey,
-    recoverySalt
+    recoveryKey,           // Show this to user (formatted)
+    encryptedPrivateKey,   // Store on server
+    recoverySalt           // Store on server
   };
 }
 
 /**
- * Recover private key using recovery passphrase
- * @param {string} recoveryPassphrase
+ * Recover private key using recovery key
+ * @param {string} recoveryKey - User's recovery key (with or without dashes)
  * @param {string} encryptedPrivateKey
  * @param {string} recoverySalt
  * @returns {Promise<CryptoKey>}
  */
-export async function recoverPrivateKey(recoveryPassphrase, encryptedPrivateKey, recoverySalt) {
-  return unlockPrivateKey(recoveryPassphrase, encryptedPrivateKey, recoverySalt);
+export async function recoverPrivateKey(recoveryKey, encryptedPrivateKey, recoverySalt) {
+  const normalizedKey = normalizeRecoveryKey(recoveryKey);
+  return unlockPrivateKey(normalizedKey, encryptedPrivateKey, recoverySalt);
 }
 
 // ============ Verification ============

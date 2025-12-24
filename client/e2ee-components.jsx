@@ -11,11 +11,11 @@ import { useState } from 'react';
 export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
   const [passphrase, setPassphrase] = useState('');
   const [confirmPassphrase, setConfirmPassphrase] = useState('');
-  const [recoveryPassphrase, setRecoveryPassphrase] = useState('');
-  const [recoveryHint, setRecoveryHint] = useState('');
-  const [showRecovery, setShowRecovery] = useState(false);
   const [error, setError] = useState(null);
-  const [step, setStep] = useState(1);  // 1: main passphrase, 2: recovery (optional)
+  const [step, setStep] = useState(1);  // 1: passphrase, 2: show recovery key
+  const [recoveryKey, setRecoveryKey] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -31,22 +31,38 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
         setError('Passphrases do not match');
         return;
       }
-      // Move to recovery step
-      setStep(2);
+
+      // Setup E2EE and get recovery key
+      try {
+        const result = await onSetup(passphrase, true);  // true = create recovery key
+        if (result.recoveryKey) {
+          setRecoveryKey(result.recoveryKey);
+          setStep(2);
+        }
+      } catch (err) {
+        setError(err.message || 'Setup failed');
+      }
       return;
     }
+  };
 
-    // Step 2: Setup with optional recovery
+  const handleCopyKey = async () => {
     try {
-      const recovery = showRecovery && recoveryPassphrase.length >= 8 ? {
-        passphrase: recoveryPassphrase,
-        hint: recoveryHint
-      } : null;
-
-      await onSetup(passphrase, recovery?.passphrase, recovery?.hint);
+      await navigator.clipboard.writeText(recoveryKey);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      setError(err.message || 'Setup failed');
+      console.error('Failed to copy:', err);
     }
+  };
+
+  const handleComplete = () => {
+    if (!acknowledged) {
+      setError('Please confirm you have saved your recovery key');
+      return;
+    }
+    // Setup is already complete, just close
+    window.location.reload();
   };
 
   const modalStyle = {
@@ -99,11 +115,29 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
     marginTop: '8px'
   };
 
+  const recoveryKeyStyle = {
+    backgroundColor: 'var(--bg-base)',
+    border: '2px solid var(--accent-green)',
+    borderRadius: '8px',
+    padding: '16px',
+    textAlign: 'center',
+    marginBottom: '16px'
+  };
+
+  const keyTextStyle = {
+    fontFamily: 'monospace',
+    fontSize: '18px',
+    letterSpacing: '2px',
+    color: 'var(--accent-green)',
+    wordBreak: 'break-all',
+    userSelect: 'all'
+  };
+
   return (
     <div style={modalStyle}>
       <div style={contentStyle}>
         <h2 style={{ color: 'var(--accent-green)', marginBottom: '8px', fontSize: '20px' }}>
-          End-to-End Encryption
+          {step === 1 ? 'End-to-End Encryption' : 'Save Your Recovery Key'}
         </h2>
 
         {step === 1 ? (
@@ -115,7 +149,7 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
 
             <div style={{ backgroundColor: 'var(--overlay-amber)', padding: '12px', borderRadius: '4px', marginBottom: '16px', border: '1px solid var(--accent-amber)' }}>
               <p style={{ color: 'var(--accent-amber)', fontSize: '12px', margin: 0 }}>
-                <strong>Important:</strong> You will need this passphrase every time you log in. If you forget it, you will need your recovery passphrase to regain access to your encrypted messages.
+                <strong>Important:</strong> You will need this passphrase every time you log in. A recovery key will be generated for backup access.
               </p>
             </div>
 
@@ -151,74 +185,65 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
               )}
 
               <button type="submit" style={buttonStyle} disabled={isLoading}>
-                {isLoading ? 'Setting up...' : 'Continue'}
+                {isLoading ? 'Setting up...' : 'Create Encryption Keys'}
               </button>
             </form>
           </>
         ) : (
           <>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
-              Set up a recovery passphrase in case you forget your main passphrase.
+              Your encryption is set up! Save this recovery key somewhere safe. You'll need it if you forget your passphrase.
             </p>
 
-            <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '14px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={showRecovery}
-                    onChange={(e) => setShowRecovery(e.target.checked)}
-                    style={{ width: '16px', height: '16px' }}
-                  />
-                  Set up recovery passphrase (recommended)
-                </label>
-              </div>
+            <div style={recoveryKeyStyle}>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '11px', marginBottom: '8px', textTransform: 'uppercase' }}>
+                Recovery Key
+              </p>
+              <p style={keyTextStyle}>{recoveryKey}</p>
+            </div>
 
-              {showRecovery && (
-                <>
-                  <label style={{ color: 'var(--text-secondary)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                    Recovery Passphrase
-                  </label>
-                  <input
-                    type="password"
-                    value={recoveryPassphrase}
-                    onChange={(e) => setRecoveryPassphrase(e.target.value)}
-                    placeholder="Different from your main passphrase"
-                    style={inputStyle}
-                    autoComplete="new-password"
-                  />
+            <button
+              onClick={handleCopyKey}
+              style={{
+                ...buttonStyle,
+                backgroundColor: copied ? 'var(--accent-green)' : 'var(--bg-surface)',
+                border: '1px solid var(--accent-green)',
+                color: copied ? 'var(--bg-base)' : 'var(--accent-green)',
+                marginBottom: '16px'
+              }}
+            >
+              {copied ? '✓ Copied!' : 'Copy Recovery Key'}
+            </button>
 
-                  <label style={{ color: 'var(--text-secondary)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                    Recovery Hint (optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={recoveryHint}
-                    onChange={(e) => setRecoveryHint(e.target.value)}
-                    placeholder="A hint to remember your recovery passphrase"
-                    style={inputStyle}
-                    maxLength={100}
-                  />
-                </>
-              )}
+            <div style={{ backgroundColor: 'var(--overlay-orange)', padding: '12px', borderRadius: '4px', marginBottom: '16px', border: '1px solid var(--accent-orange)' }}>
+              <p style={{ color: 'var(--accent-orange)', fontSize: '12px', margin: 0 }}>
+                <strong>Warning:</strong> This key will only be shown once. If you lose both your passphrase and this recovery key, you will lose access to your encrypted messages permanently.
+              </p>
+            </div>
 
-              {error && (
-                <p style={{ color: 'var(--accent-orange)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>
-              )}
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', color: 'var(--text-secondary)', fontSize: '13px', cursor: 'pointer', marginBottom: '12px' }}>
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+                style={{ width: '18px', height: '18px', marginTop: '2px' }}
+              />
+              <span>I have saved my recovery key in a safe place</span>
+            </label>
 
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  style={{ ...buttonStyle, backgroundColor: 'transparent', border: '1px solid var(--border-secondary)', color: 'var(--text-secondary)', flex: 1 }}
-                >
-                  Back
-                </button>
-                <button type="submit" style={{ ...buttonStyle, flex: 2 }} disabled={isLoading}>
-                  {isLoading ? 'Setting up...' : 'Complete Setup'}
-                </button>
-              </div>
-            </form>
+            {error && (
+              <p style={{ color: 'var(--accent-orange)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>
+            )}
+
+            <button
+              onClick={handleComplete}
+              style={{
+                ...buttonStyle,
+                opacity: acknowledged ? 1 : 0.5
+              }}
+            >
+              Continue to Cortex
+            </button>
           </>
         )}
       </div>
@@ -228,10 +253,10 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
 
 // ============ Passphrase Unlock Modal ============
 // Shown on login when user has E2EE set up
-export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading, error: propError, recoveryHint }) {
+export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading, error: propError }) {
   const [passphrase, setPassphrase] = useState('');
   const [showRecovery, setShowRecovery] = useState(false);
-  const [recoveryPassphrase, setRecoveryPassphrase] = useState('');
+  const [recoveryKey, setRecoveryKey] = useState('');
   const [error, setError] = useState(propError);
 
   const handleUnlock = async (e) => {
@@ -249,10 +274,17 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
     e.preventDefault();
     setError(null);
 
+    // Validate recovery key format (should be 24 chars without dashes, or with dashes)
+    const cleanKey = recoveryKey.replace(/-/g, '').toUpperCase();
+    if (cleanKey.length !== 24) {
+      setError('Invalid recovery key format');
+      return;
+    }
+
     try {
-      await onRecover(recoveryPassphrase);
+      await onRecover(recoveryKey);
     } catch (err) {
-      setError(err.message || 'Recovery failed');
+      setError(err.message || 'Invalid recovery key');
     }
   };
 
@@ -290,6 +322,14 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
     fontFamily: 'inherit',
     fontSize: '14px',
     marginBottom: '12px'
+  };
+
+  const recoveryInputStyle = {
+    ...inputStyle,
+    fontFamily: 'monospace',
+    fontSize: '16px',
+    letterSpacing: '1px',
+    textTransform: 'uppercase'
   };
 
   const buttonStyle = {
@@ -346,7 +386,7 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
                 onClick={() => setShowRecovery(true)}
                 style={{ background: 'none', border: 'none', color: 'var(--accent-teal)', cursor: 'pointer', fontSize: '13px' }}
               >
-                Forgot passphrase? Use recovery
+                Forgot passphrase? Use recovery key
               </button>
             </div>
 
@@ -362,24 +402,16 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
         ) : (
           <>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
-              Enter your recovery passphrase to regain access.
+              Enter your recovery key to regain access.
             </p>
-
-            {recoveryHint && (
-              <div style={{ backgroundColor: 'var(--overlay-teal)', padding: '10px', borderRadius: '4px', marginBottom: '16px' }}>
-                <p style={{ color: 'var(--accent-teal)', fontSize: '12px', margin: 0 }}>
-                  <strong>Hint:</strong> {recoveryHint}
-                </p>
-              </div>
-            )}
 
             <form onSubmit={handleRecover}>
               <input
-                type="password"
-                value={recoveryPassphrase}
-                onChange={(e) => setRecoveryPassphrase(e.target.value)}
-                placeholder="Recovery passphrase"
-                style={inputStyle}
+                type="text"
+                value={recoveryKey}
+                onChange={(e) => setRecoveryKey(e.target.value)}
+                placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                style={recoveryInputStyle}
                 autoComplete="off"
                 autoFocus
                 required

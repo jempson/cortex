@@ -15334,7 +15334,6 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
   } = useE2EE();
 
   const [isSettingUp, setIsSettingUp] = useState(false);
-  const [recoveryHint, setRecoveryHint] = useState(null);
 
   // Check E2EE status on mount
   useEffect(() => {
@@ -15387,10 +15386,10 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
   if (needsSetup) {
     return (
       <E2EESetupModal
-        onSetup={async (passphrase, recoveryPassphrase, recoveryHint) => {
+        onSetup={async (passphrase, createRecoveryKey) => {
           setIsSettingUp(true);
           try {
-            await setupE2EE(passphrase, recoveryPassphrase, recoveryHint);
+            return await setupE2EE(passphrase, createRecoveryKey);
           } finally {
             setIsSettingUp(false);
           }
@@ -15410,7 +15409,6 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
         onLogout={handleLogout}
         isLoading={isUnlocking}
         error={unlockError}
-        recoveryHint={recoveryHint}
       />
     );
   }

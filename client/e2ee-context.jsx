@@ -78,7 +78,7 @@ export function E2EEProvider({ children, token, API_URL }) {
   }, [token, fetchAPI]);
 
   // ============ E2EE Setup ============
-  const setupE2EE = useCallback(async (passphrase, recoveryPassphrase = null, recoveryHint = null) => {
+  const setupE2EE = useCallback(async (passphrase, createRecoveryKey = true) => {
     if (!token) throw new Error('Not authenticated');
 
     try {
@@ -100,19 +100,21 @@ export function E2EEProvider({ children, token, API_URL }) {
         throw new Error(err.error || 'Failed to register keys');
       }
 
-      // Setup recovery if provided
-      if (recoveryPassphrase) {
-        const recovery = await crypto.createRecoveryBackup(keyPair.privateKey, recoveryPassphrase);
+      // Generate and store recovery key if requested
+      let recoveryKey = null;
+      if (createRecoveryKey) {
+        const recovery = await crypto.createRecoveryBackup(keyPair.privateKey);
         const recoveryRes = await fetchAPI('/e2ee/recovery/setup', {
           method: 'POST',
           body: JSON.stringify({
             encryptedPrivateKey: recovery.encryptedPrivateKey,
-            recoverySalt: recovery.recoverySalt,
-            hint: recoveryHint
+            recoverySalt: recovery.recoverySalt
           })
         });
 
-        if (!recoveryRes.ok) {
+        if (recoveryRes.ok) {
+          recoveryKey = recovery.recoveryKey;  // Return to show user
+        } else {
           console.warn('Recovery setup failed, but main keys are registered');
         }
       }
@@ -125,7 +127,7 @@ export function E2EEProvider({ children, token, API_URL }) {
       setNeedsPassphrase(false);
       setE2eeStatus({ enabled: true });
 
-      return { success: true };
+      return { success: true, recoveryKey };
     } catch (err) {
       console.error('E2EE setup error:', err);
       throw err;
