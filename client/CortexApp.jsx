@@ -15880,6 +15880,47 @@ function AppContent() {
   const [showLoginScreen, setShowLoginScreen] = useState(false);
   const [showRegisterScreen, setShowRegisterScreen] = useState(false);
 
+  // Check for ?clear=1 URL parameter to force clear all data
+  // This runs before anything else so it works even if the app is broken
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('clear') === '1') {
+      console.log('[Clear] Clearing all data via URL parameter...');
+
+      (async () => {
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+
+          // Clear IndexedDB
+          const databases = await indexedDB.databases?.() || [];
+          for (const db of databases) {
+            if (db.name) indexedDB.deleteDatabase(db.name);
+          }
+
+          // Unregister service workers
+          const registrations = await navigator.serviceWorker?.getRegistrations() || [];
+          for (const registration of registrations) {
+            await registration.unregister();
+          }
+
+          // Clear caches
+          const cacheNames = await caches?.keys() || [];
+          for (const cacheName of cacheNames) {
+            await caches.delete(cacheName);
+          }
+
+          // Remove the ?clear=1 param and reload
+          window.location.href = window.location.origin + window.location.pathname;
+        } catch (err) {
+          console.error('[Clear] Failed to clear data:', err);
+          alert('Failed to clear some data. Try clearing manually in browser settings.');
+        }
+      })();
+      return;
+    }
+  }, []);
+
   // Version check - clear stale data on major version upgrade
   useEffect(() => {
     const storedVersion = localStorage.getItem('cortex_app_version');
