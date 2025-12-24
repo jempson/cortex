@@ -206,6 +206,37 @@ export function E2EEProvider({ children, token, API_URL }) {
     }
   }, [token, fetchAPI]);
 
+  // Regenerate recovery key (requires unlocked E2EE)
+  const regenerateRecoveryKey = useCallback(async () => {
+    if (!token) throw new Error('Not authenticated');
+    if (!privateKey) throw new Error('E2EE not unlocked');
+
+    try {
+      // Generate new recovery backup using current private key
+      const recovery = await crypto.createRecoveryBackup(privateKey);
+
+      // Store on server
+      const res = await fetchAPI('/e2ee/recovery/regenerate', {
+        method: 'POST',
+        body: JSON.stringify({
+          encryptedPrivateKey: recovery.encryptedPrivateKey,
+          recoverySalt: recovery.recoverySalt
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to regenerate recovery key');
+      }
+
+      // Return the new recovery key to display to user
+      return { success: true, recoveryKey: recovery.recoveryKey };
+    } catch (err) {
+      console.error('E2EE recovery regeneration error:', err);
+      throw err;
+    }
+  }, [token, privateKey, fetchAPI]);
+
   // ============ Wave Key Management ============
   const getWaveKey = useCallback(async (waveId) => {
     // Check cache first
@@ -592,6 +623,7 @@ export function E2EEProvider({ children, token, API_URL }) {
     setupE2EE,
     unlockE2EE,
     recoverWithPassphrase,
+    regenerateRecoveryKey,
     clearE2EE,
 
     // Wave operations

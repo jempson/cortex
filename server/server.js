@@ -5137,6 +5137,37 @@ app.get('/api/e2ee/recovery/hint', authenticateToken, (req, res) => {
   }
 });
 
+// Regenerate recovery key (requires passphrase verification)
+app.post('/api/e2ee/recovery/regenerate', authenticateToken, (req, res) => {
+  try {
+    const { encryptedPrivateKey, recoverySalt } = req.body;
+
+    if (!encryptedPrivateKey || !recoverySalt) {
+      return res.status(400).json({ error: 'Missing required fields: encryptedPrivateKey, recoverySalt' });
+    }
+
+    // Update the recovery key info
+    const result = db.updateRecoveryKey(req.user.userId, encryptedPrivateKey, recoverySalt);
+
+    if (!result) {
+      return res.status(404).json({ error: 'No existing recovery key to regenerate' });
+    }
+
+    // Log recovery regeneration
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'e2ee_recovery_regenerated', 'user', req.user.userId, getRequestMeta(req));
+    }
+
+    res.json({
+      success: true,
+      message: 'Recovery key regenerated'
+    });
+  } catch (err) {
+    console.error('E2EE recovery regenerate error:', err);
+    res.status(500).json({ error: 'Failed to regenerate recovery key' });
+  }
+});
+
 // Get full recovery key info (for account recovery)
 app.get('/api/e2ee/recovery', authenticateToken, (req, res) => {
   try {

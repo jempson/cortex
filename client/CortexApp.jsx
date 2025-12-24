@@ -11817,8 +11817,14 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  // E2EE Recovery Key state (v1.19.0)
+  const [showE2EERecovery, setShowE2EERecovery] = useState(false);
+  const [e2eeRecoveryKey, setE2eeRecoveryKey] = useState(null);
+  const [e2eeRecoveryLoading, setE2eeRecoveryLoading] = useState(false);
+  const [e2eeRecoveryCopied, setE2eeRecoveryCopied] = useState(false);
   const fileInputRef = useRef(null);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
+  const e2ee = useE2EE();
 
   // Load blocked/muted users when section is expanded
   useEffect(() => {
@@ -12744,6 +12750,137 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           </div>
         )}
       </div>
+
+      {/* E2EE Recovery Key (v1.19.0) */}
+      {e2ee.isE2EEEnabled && (
+        <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+          <div
+            onClick={() => setShowE2EERecovery(!showE2EERecovery)}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          >
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>E2EE RECOVERY KEY</div>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showE2EERecovery ? '▼' : '▶'}</span>
+          </div>
+
+          {showE2EERecovery && (
+            <div style={{ marginTop: '16px' }}>
+              {/* Display regenerated recovery key */}
+              {e2eeRecoveryKey && (
+                <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--accent-green)10', border: '2px solid var(--accent-green)', borderRadius: '4px' }}>
+                  <div style={{ color: 'var(--accent-green)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px' }}>
+                    🔐 New Recovery Key Generated
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '12px' }}>
+                    Save this key in a safe place. You'll need it if you forget your encryption passphrase.
+                  </div>
+                  <div style={{ padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--accent-green)', borderRadius: '4px', textAlign: 'center', marginBottom: '12px' }}>
+                    <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', letterSpacing: '2px', color: 'var(--accent-green)', wordBreak: 'break-all', userSelect: 'all' }}>
+                      {e2eeRecoveryKey}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(e2eeRecoveryKey);
+                          setE2eeRecoveryCopied(true);
+                          setTimeout(() => setE2eeRecoveryCopied(false), 2000);
+                        } catch (err) {
+                          console.error('Failed to copy:', err);
+                        }
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        background: e2eeRecoveryCopied ? 'var(--accent-green)' : 'var(--accent-green)20',
+                        border: '1px solid var(--accent-green)',
+                        color: e2eeRecoveryCopied ? 'var(--bg-base)' : 'var(--accent-green)',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '0.75rem'
+                      }}
+                    >
+                      {e2eeRecoveryCopied ? '✓ COPIED' : 'COPY KEY'}
+                    </button>
+                    <button
+                      onClick={() => setE2eeRecoveryKey(null)}
+                      style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}
+                    >
+                      I'VE SAVED IT
+                    </button>
+                  </div>
+                  <div style={{ marginTop: '12px', padding: '8px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)', borderRadius: '4px' }}>
+                    <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem' }}>
+                      ⚠️ This key will only be shown once. Your old recovery key is now invalid.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Main recovery key info */}
+              {!e2eeRecoveryKey && (
+                <>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '16px' }}>
+                    Your recovery key allows you to regain access to your encrypted messages if you forget your passphrase.
+                    If you've lost your recovery key, you can generate a new one below.
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <span style={{ color: e2ee.isUnlocked ? 'var(--accent-green)' : 'var(--accent-amber)', fontSize: '0.85rem' }}>
+                      {e2ee.isUnlocked ? '🔓 E2EE Unlocked' : '🔒 E2EE Locked'}
+                    </span>
+                  </div>
+
+                  {!e2ee.isUnlocked && (
+                    <div style={{ padding: '12px', background: 'var(--accent-amber)10', border: '1px solid var(--accent-amber)', borderRadius: '4px', marginBottom: '16px' }}>
+                      <div style={{ color: 'var(--accent-amber)', fontSize: '0.8rem' }}>
+                        E2EE must be unlocked to regenerate your recovery key. Enter your passphrase to unlock.
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={async () => {
+                      if (!e2ee.isUnlocked) {
+                        showToast('Please unlock E2EE first', 'error');
+                        return;
+                      }
+                      setE2eeRecoveryLoading(true);
+                      try {
+                        const result = await e2ee.regenerateRecoveryKey();
+                        if (result.success) {
+                          setE2eeRecoveryKey(result.recoveryKey);
+                          showToast('New recovery key generated', 'success');
+                        }
+                      } catch (err) {
+                        console.error('Failed to regenerate recovery key:', err);
+                        showToast(err.message || 'Failed to regenerate recovery key', 'error');
+                      } finally {
+                        setE2eeRecoveryLoading(false);
+                      }
+                    }}
+                    disabled={!e2ee.isUnlocked || e2eeRecoveryLoading}
+                    style={{
+                      padding: '10px 20px',
+                      background: e2ee.isUnlocked ? 'var(--accent-teal)20' : 'transparent',
+                      border: `1px solid ${e2ee.isUnlocked ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+                      color: e2ee.isUnlocked ? 'var(--accent-teal)' : 'var(--text-muted)',
+                      cursor: e2ee.isUnlocked ? 'pointer' : 'not-allowed',
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    {e2eeRecoveryLoading ? 'GENERATING...' : '🔑 REGENERATE RECOVERY KEY'}
+                  </button>
+
+                  <div style={{ marginTop: '12px', color: 'var(--text-dim)', fontSize: '0.7rem' }}>
+                    Note: Generating a new recovery key will invalidate your previous recovery key.
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Active Sessions (v1.18.0) */}
       <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>

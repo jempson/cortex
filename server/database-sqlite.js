@@ -5919,6 +5919,24 @@ export class DatabaseSQLite {
     return row?.hint || null;
   }
 
+  // Update/regenerate recovery key (requires existing record)
+  updateRecoveryKey(userId, encryptedPrivateKey, recoverySalt) {
+    const existing = this.db.prepare('SELECT user_id FROM user_recovery_keys WHERE user_id = ?').get(userId);
+
+    if (!existing) {
+      return null; // No existing recovery key to update
+    }
+
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE user_recovery_keys
+      SET encrypted_private_key = ?, recovery_salt = ?, created_at = ?
+      WHERE user_id = ?
+    `).run(encryptedPrivateKey, recoverySalt, now, userId);
+
+    return { userId, regeneratedAt: now };
+  }
+
   // Get all participants' public keys for a wave (for key distribution)
   getWaveParticipantPublicKeys(waveId) {
     const rows = this.db.prepare(`
