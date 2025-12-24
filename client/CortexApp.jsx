@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.19.0';
+const VERSION = '1.19.1';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -3231,6 +3231,48 @@ const LoginScreen = ({ onAbout }) => {
             </button>
           </div>
         )}
+
+        {/* Clear All Data - for troubleshooting stale data issues */}
+        <div style={{ textAlign: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
+          <button
+            onClick={async () => {
+              if (confirm('This will clear all local data including saved login, encryption keys, and cached content. You will need to log in again. Continue?')) {
+                try {
+                  // Clear all storage
+                  localStorage.clear();
+                  sessionStorage.clear();
+
+                  // Clear IndexedDB
+                  const databases = await indexedDB.databases?.() || [];
+                  for (const db of databases) {
+                    if (db.name) indexedDB.deleteDatabase(db.name);
+                  }
+
+                  // Unregister service workers
+                  const registrations = await navigator.serviceWorker?.getRegistrations() || [];
+                  for (const registration of registrations) {
+                    await registration.unregister();
+                  }
+
+                  // Clear caches
+                  const cacheNames = await caches?.keys() || [];
+                  for (const cacheName of cacheNames) {
+                    await caches.delete(cacheName);
+                  }
+
+                  alert('All data cleared. The page will now reload.');
+                  window.location.reload();
+                } catch (err) {
+                  console.error('Failed to clear data:', err);
+                  alert('Failed to clear some data. Try clearing manually in browser settings.');
+                }
+              }
+            }}
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.7rem', opacity: 0.7 }}
+          >
+            Having trouble? Clear all data ✕
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -15837,6 +15879,35 @@ function AppContent() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [showLoginScreen, setShowLoginScreen] = useState(false);
   const [showRegisterScreen, setShowRegisterScreen] = useState(false);
+
+  // Version check - clear stale data on major version upgrade
+  useEffect(() => {
+    const storedVersion = localStorage.getItem('cortex_app_version');
+    const currentMajor = VERSION.split('.')[0];
+    const storedMajor = storedVersion?.split('.')[0];
+
+    if (storedVersion && storedMajor && currentMajor !== storedMajor) {
+      console.log(`[Version] Major version change detected: ${storedVersion} → ${VERSION}. Clearing stale data...`);
+
+      // Clear E2EE session data (but not localStorage entirely - that would log them out)
+      sessionStorage.clear();
+
+      // Clear service worker caches
+      caches?.keys().then(names => {
+        names.forEach(name => caches.delete(name));
+      });
+
+      // Update stored version
+      localStorage.setItem('cortex_app_version', VERSION);
+
+      // Force reload to get fresh assets
+      window.location.reload();
+      return;
+    }
+
+    // Store current version
+    localStorage.setItem('cortex_app_version', VERSION);
+  }, []);
 
   // Capture share parameter on mount - check both URL formats:
   // 1. /?share=dropletId (query param style)
