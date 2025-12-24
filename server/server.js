@@ -4653,8 +4653,8 @@ app.post('/api/auth/mfa/email/verify-setup', authenticateToken, mfaLimiter, (req
   }
 });
 
-// Disable email MFA (requires password)
-app.post('/api/auth/mfa/email/disable', authenticateToken, async (req, res) => {
+// Request email MFA disable - sends verification code (step 1)
+app.post('/api/auth/mfa/email/disable/request', authenticateToken, mfaLimiter, async (req, res) => {
   try {
     const { password } = req.body;
     if (!password) {
@@ -4669,6 +4669,68 @@ app.post('/api/auth/mfa/email/disable', authenticateToken, async (req, res) => {
     if (!validPassword) {
       return res.status(401).json({ error: 'Invalid password' });
     }
+
+    // Check email MFA is enabled
+    const settings = db.getMfaSettings(req.user.userId);
+    if (!settings?.emailMfaEnabled) {
+      return res.status(400).json({ error: 'Email MFA is not enabled' });
+    }
+
+    // Check email service
+    const emailService = getEmailService();
+    if (!emailService.configured) {
+      return res.status(400).json({ error: 'Email service is not configured. Contact administrator.' });
+    }
+
+    // Generate and send verification code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+
+    // Create challenge for verification
+    const challenge = db.createMfaChallenge(req.user.userId, 'email_disable', codeHash);
+
+    await emailService.sendMFACode(user.email, code, 'To disable Email MFA, enter this verification code');
+
+    res.json({
+      success: true,
+      message: 'Verification code sent to your email',
+      challengeId: challenge.id
+    });
+  } catch (err) {
+    console.error('Email MFA disable request error:', err);
+    res.status(500).json({ error: 'Failed to send verification code' });
+  }
+});
+
+// Disable email MFA - verify code and disable (step 2)
+app.post('/api/auth/mfa/email/disable', authenticateToken, mfaLimiter, async (req, res) => {
+  try {
+    const { challengeId, code } = req.body;
+    if (!challengeId || !code) {
+      return res.status(400).json({ error: 'Challenge ID and verification code are required' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Get and validate challenge
+    const challenge = db.getMfaChallenge(challengeId);
+    if (!challenge || challenge.userId !== req.user.userId) {
+      return res.status(400).json({ error: 'Invalid or expired verification' });
+    }
+
+    if (challenge.method !== 'email_disable') {
+      return res.status(400).json({ error: 'Invalid challenge type' });
+    }
+
+    // Verify code
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+    if (codeHash !== challenge.codeHash) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+
+    // Delete the challenge
+    db.deleteMfaChallenge(challengeId);
 
     // Disable email MFA
     db.disableEmailMfa(req.user.userId);

@@ -14,6 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `settings.totp_enabled` → `settings.totpEnabled`
   - `settings.email_mfa_enabled` → `settings.emailMfaEnabled`
 
+### Security
+
+- **Email MFA Disable Verification**: Disabling Email MFA now requires email verification code
+  - Previously only required password (inconsistent with TOTP disable which requires TOTP code)
+  - New two-step flow: enter password → receive email code → confirm disable
+  - Prevents unauthorized MFA disable if password is compromised
+
+### Improved
+
+- **MFA Code Input Clarity**: Changed confusing "TOTP Code" placeholder to clear instructions
+  - Added label: "Enter the 6-digit code from your authenticator app:"
+  - Applies to TOTP disable and recovery code regeneration
+
 ## [1.18.0] - 2025-12-24
 
 ### Added
