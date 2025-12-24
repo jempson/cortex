@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
 import { E2EEProvider, useE2EE } from './e2ee-context.jsx';
-import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWaveBadge, LegacyWaveNotice } from './e2ee-components.jsx';
+import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWaveBadge, LegacyWaveNotice, PartialEncryptionBanner } from './e2ee-components.jsx';
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
@@ -5565,6 +5565,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [showFederateModal, setShowFederateModal] = useState(false);
   const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For ripple activity badges
   const [decryptionErrors, setDecryptionErrors] = useState({}); // Track droplets that failed to decrypt
+
+  // E2EE Migration state
+  const [encryptionStatus, setEncryptionStatus] = useState(null); // { state, progress, participantsWithE2EE, totalParticipants }
+  const [isEnablingEncryption, setIsEnablingEncryption] = useState(false);
+  const [isEncryptingBatch, setIsEncryptingBatch] = useState(false);
+
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -6110,6 +6116,104 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
     if (!isRefresh) {
       setLoading(false);
+    }
+  };
+
+  // E2EE: Load encryption status for legacy/partial waves
+  const loadEncryptionStatus = useCallback(async () => {
+    if (!e2ee.isE2EEEnabled || !waveData) return;
+
+    // Only check for legacy (0) or partial (2) waves
+    if (waveData.encrypted === 1) {
+      setEncryptionStatus(null);
+      return;
+    }
+
+    try {
+      const status = await e2ee.getWaveEncryptionStatus(wave.id);
+      setEncryptionStatus(status);
+    } catch (err) {
+      console.error('Failed to load encryption status:', err);
+    }
+  }, [e2ee, wave.id, waveData]);
+
+  // Load encryption status when wave data changes
+  useEffect(() => {
+    if (waveData && e2ee.isE2EEEnabled && waveData.encrypted !== 1) {
+      loadEncryptionStatus();
+    }
+  }, [waveData?.id, waveData?.encrypted, e2ee.isE2EEEnabled, loadEncryptionStatus]);
+
+  // E2EE: Enable encryption for a legacy wave
+  const handleEnableEncryption = async () => {
+    if (!e2ee.isUnlocked) {
+      showToast('Please unlock E2EE first', 'error');
+      return;
+    }
+
+    setIsEnablingEncryption(true);
+    try {
+      const participantIds = waveData.participants
+        .filter(p => p.id !== currentUser.id)
+        .map(p => p.id);
+
+      const result = await e2ee.enableWaveEncryption(wave.id, participantIds);
+
+      if (result.success) {
+        showToast('Encryption enabled! Starting migration...', 'success');
+        // Refresh encryption status
+        await loadEncryptionStatus();
+        // Start encrypting first batch
+        await handleContinueEncryption();
+      }
+    } catch (err) {
+      console.error('Failed to enable encryption:', err);
+      showToast(err.message || 'Failed to enable encryption', 'error');
+    } finally {
+      setIsEnablingEncryption(false);
+    }
+  };
+
+  // E2EE: Continue encrypting droplets in batches
+  const handleContinueEncryption = async () => {
+    if (!e2ee.isUnlocked || isEncryptingBatch) return;
+
+    setIsEncryptingBatch(true);
+    try {
+      let hasMore = true;
+      let totalEncrypted = 0;
+
+      // Process batches until done or error
+      while (hasMore) {
+        const result = await e2ee.encryptLegacyWaveBatch(wave.id, 50);
+        totalEncrypted += result.encrypted;
+        hasMore = result.hasMore;
+
+        // Update progress
+        setEncryptionStatus(prev => ({
+          ...prev,
+          progress: result.progress,
+          encryptionState: result.encryptionState
+        }));
+
+        // Small delay between batches to avoid overwhelming
+        if (hasMore) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      if (totalEncrypted > 0) {
+        showToast(`Encrypted ${totalEncrypted} droplets`, 'success');
+      }
+
+      // Refresh wave data to show encrypted content
+      await loadWave(true);
+      await loadEncryptionStatus();
+    } catch (err) {
+      console.error('Failed to encrypt batch:', err);
+      showToast(err.message || 'Failed to encrypt droplets', 'error');
+    } finally {
+      setIsEncryptingBatch(false);
     }
   };
 
@@ -6923,9 +7027,22 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       {/* Messages */}
       <div ref={messagesRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '12px' : '20px' }}>
-        {/* E2EE: Show legacy wave notice for unencrypted waves when E2EE is enabled */}
-        {e2ee.isE2EEEnabled && !waveData?.encrypted && (
-          <LegacyWaveNotice />
+        {/* E2EE: Show encryption status banners */}
+        {e2ee.isE2EEEnabled && waveData?.encrypted === 0 && (
+          <LegacyWaveNotice
+            isCreator={waveData?.createdBy === currentUser?.id}
+            onEnableEncryption={e2ee.isUnlocked ? handleEnableEncryption : undefined}
+            isEnabling={isEnablingEncryption}
+          />
+        )}
+        {e2ee.isE2EEEnabled && waveData?.encrypted === 2 && encryptionStatus && (
+          <PartialEncryptionBanner
+            progress={encryptionStatus.progress || 0}
+            participantsWithE2EE={encryptionStatus.readyCount || 0}
+            totalParticipants={encryptionStatus.totalParticipants || 0}
+            onContinue={waveData?.createdBy === currentUser?.id && e2ee.isUnlocked ? handleContinueEncryption : undefined}
+            isContinuing={isEncryptingBatch}
+          />
         )}
         {/* Load Older Messages Button */}
         {hasMoreMessages && (

@@ -345,6 +345,157 @@ export function E2EEProvider({ children, token, API_URL }) {
     return crypto.decryptDroplet(ciphertext, nonce, waveKey);
   }, [getWaveKey, fetchAPI, privateKey]);
 
+  // ============ Legacy Wave Migration ============
+
+  // Get wave encryption status and progress
+  const getWaveEncryptionStatus = useCallback(async (waveId) => {
+    try {
+      const res = await fetchAPI(`/waves/${waveId}/encryption-status`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to get encryption status');
+      }
+      return await res.json();
+    } catch (err) {
+      console.error('Get encryption status error:', err);
+      throw err;
+    }
+  }, [fetchAPI]);
+
+  // Enable encryption for a legacy wave (starts the migration process)
+  const enableWaveEncryption = useCallback(async (waveId, participantIds) => {
+    if (!privateKey || !publicKeyBase64) {
+      throw new Error('E2EE not unlocked');
+    }
+
+    try {
+      // Get participant public keys
+      const participantKeys = await Promise.all(
+        participantIds.map(async (userId) => {
+          const res = await fetchAPI(`/e2ee/keys/user/${userId}`);
+          if (res.ok) {
+            const { publicKey } = await res.json();
+            return { userId, publicKey };
+          }
+          return { userId, publicKey: null };
+        })
+      );
+
+      // Add self
+      participantKeys.push({ userId: 'self', publicKey: publicKeyBase64 });
+
+      // Check if all participants have E2EE
+      const participantsWithE2EE = participantKeys.filter(p => p.publicKey);
+      const allHaveE2EE = participantsWithE2EE.length === participantKeys.length;
+
+      // Generate and distribute wave key
+      const { waveKey, keyDistribution } = await crypto.setupWaveEncryption(
+        participantsWithE2EE,
+        privateKey,
+        publicKeyBase64
+      );
+
+      // Format for API
+      const formattedDistribution = keyDistribution
+        .filter(k => !k.error)
+        .map(({ userId, encryptedWaveKey, nonce, senderPublicKey }) => ({
+          userId: userId === 'self' ? null : userId,
+          encryptedWaveKey: `${encryptedWaveKey}:${nonce}`,
+          senderPublicKey
+        }));
+
+      // Call encrypt endpoint to enable encryption on the wave
+      const res = await fetchAPI(`/waves/${waveId}/encrypt`, {
+        method: 'POST',
+        body: JSON.stringify({ keyDistribution: formattedDistribution })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to enable encryption');
+      }
+
+      // Cache the wave key
+      waveKeyCacheRef.current.set(waveId, { waveKey, version: 1 });
+
+      return { success: true, waveKey, allParticipantsHaveE2EE: allHaveE2EE };
+    } catch (err) {
+      console.error('Enable wave encryption error:', err);
+      throw err;
+    }
+  }, [privateKey, publicKeyBase64, fetchAPI]);
+
+  // Encrypt a batch of droplets from a legacy wave
+  const encryptLegacyWaveBatch = useCallback(async (waveId, batchSize = 50) => {
+    if (!privateKey) {
+      throw new Error('E2EE not unlocked');
+    }
+
+    try {
+      // Get wave key
+      const waveKey = await getWaveKey(waveId);
+      if (!waveKey) {
+        throw new Error('Wave key not found - enable encryption first');
+      }
+
+      // Fetch unencrypted droplets
+      const res = await fetchAPI(`/waves/${waveId}/unencrypted-droplets?limit=${batchSize}`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to fetch unencrypted droplets');
+      }
+
+      const { droplets, hasMore, remaining } = await res.json();
+
+      if (droplets.length === 0) {
+        return { success: true, encrypted: 0, hasMore: false, remaining: 0 };
+      }
+
+      // Encrypt each droplet
+      const encryptedDroplets = await Promise.all(
+        droplets.map(async (droplet) => {
+          const { ciphertext, nonce } = await crypto.encryptDroplet(droplet.content, waveKey);
+          return {
+            id: droplet.id,
+            content: ciphertext,
+            nonce
+          };
+        })
+      );
+
+      // Get current key version from cache
+      const cached = waveKeyCacheRef.current.get(waveId);
+      const keyVersion = cached?.version || 1;
+
+      // Send encrypted droplets to server
+      const uploadRes = await fetchAPI(`/waves/${waveId}/encrypt-droplets`, {
+        method: 'POST',
+        body: JSON.stringify({
+          droplets: encryptedDroplets,
+          keyVersion
+        })
+      });
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json();
+        throw new Error(err.error || 'Failed to upload encrypted droplets');
+      }
+
+      const result = await uploadRes.json();
+      return {
+        success: true,
+        encrypted: encryptedDroplets.length,
+        hasMore: result.hasMore,
+        remaining: result.remaining,
+        progress: result.progress,
+        encryptionState: result.encryptionState
+      };
+    } catch (err) {
+      console.error('Encrypt legacy batch error:', err);
+      throw err;
+    }
+  }, [privateKey, getWaveKey, fetchAPI]);
+
   // ============ Key Rotation ============
   const rotateWaveKey = useCallback(async (waveId, remainingParticipantIds) => {
     if (!privateKey || !publicKeyBase64) {
@@ -448,6 +599,11 @@ export function E2EEProvider({ children, token, API_URL }) {
     createWaveWithEncryption,
     invalidateWaveKey,
     rotateWaveKey,
+
+    // Legacy wave migration
+    getWaveEncryptionStatus,
+    enableWaveEncryption,
+    encryptLegacyWaveBatch,
 
     // Droplet operations
     encryptDroplet,

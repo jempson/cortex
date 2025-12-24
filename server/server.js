@@ -10508,23 +10508,176 @@ app.post('/api/waves/:id/encrypt', authenticateToken, (req, res) => {
       db.createWaveEncryptionKey(waveId, userId, encryptedWaveKey, senderPublicKey, 1);
     }
 
-    // Mark wave as encrypted
-    db.setWaveEncrypted(waveId, true);
+    // Check if there are existing droplets that need encryption
+    const encryptionStatus = db.getWaveEncryptionStatus(waveId);
+    if (encryptionStatus.totalDroplets > 0) {
+      // Has existing droplets - set to partial (2) until they're encrypted
+      db.setWaveEncryptionState(waveId, 2);
+    } else {
+      // No droplets - fully encrypted (1)
+      db.setWaveEncryptionState(waveId, 1);
+    }
 
     // Broadcast encryption enabled
     broadcastToWave(waveId, {
       type: 'wave_encrypted',
-      waveId
+      waveId,
+      encryptionState: encryptionStatus.totalDroplets > 0 ? 2 : 1
     });
 
     res.json({
       success: true,
       message: 'Wave encryption enabled',
-      keyVersion: 1
+      keyVersion: 1,
+      encryptionState: encryptionStatus.totalDroplets > 0 ? 2 : 1,
+      dropletsToEncrypt: encryptionStatus.totalDroplets
     });
   } catch (err) {
     console.error('Wave encryption error:', err);
     res.status(500).json({ error: 'Failed to enable wave encryption' });
+  }
+});
+
+// Get wave encryption status (for legacy wave migration)
+app.get('/api/waves/:id/encryption-status', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Check access
+    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get encryption status
+    const status = db.getWaveEncryptionStatus(waveId);
+
+    // Get participant E2EE status
+    const participants = db.getParticipantsE2EEStatus(waveId);
+    const allHaveE2EE = participants.every(p => p.hasE2EE);
+    const readyCount = participants.filter(p => p.hasE2EE).length;
+
+    res.json({
+      waveId,
+      encryptionState: status.state, // 0=legacy, 1=encrypted, 2=partial
+      totalDroplets: status.totalDroplets,
+      encryptedDroplets: status.encryptedDroplets,
+      progress: status.progress,
+      participants: participants,
+      allParticipantsReady: allHaveE2EE,
+      readyCount,
+      totalParticipants: participants.length,
+      canEnableEncryption: wave.created_by === req.user.userId && allHaveE2EE
+    });
+  } catch (err) {
+    console.error('Wave encryption status error:', err);
+    res.status(500).json({ error: 'Failed to get encryption status' });
+  }
+});
+
+// Get unencrypted droplets for batch encryption (legacy wave migration)
+app.get('/api/waves/:id/unencrypted-droplets', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Only wave creator can migrate encryption
+    if (wave.created_by !== req.user.userId) {
+      return res.status(403).json({ error: 'Only wave creator can migrate encryption' });
+    }
+
+    const droplets = db.getUnencryptedDroplets(waveId, limit);
+    const status = db.getWaveEncryptionStatus(waveId);
+
+    res.json({
+      droplets,
+      remaining: status.totalDroplets - status.encryptedDroplets,
+      progress: status.progress
+    });
+  } catch (err) {
+    console.error('Get unencrypted droplets error:', err);
+    res.status(500).json({ error: 'Failed to get unencrypted droplets' });
+  }
+});
+
+// Batch encrypt droplets (legacy wave migration)
+app.post('/api/waves/:id/encrypt-droplets', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+    const { droplets } = req.body;
+
+    if (!droplets || !Array.isArray(droplets)) {
+      return res.status(400).json({ error: 'Missing droplets array' });
+    }
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Only wave creator can migrate encryption
+    if (wave.created_by !== req.user.userId) {
+      return res.status(403).json({ error: 'Only wave creator can migrate encryption' });
+    }
+
+    // Check wave is in encryption state (1 or 2)
+    const status = db.getWaveEncryptionStatus(waveId);
+    if (status.state === 0) {
+      return res.status(400).json({ error: 'Wave encryption not enabled. Call /api/waves/:id/encrypt first.' });
+    }
+
+    // Get current key version
+    const keyVersion = db.getWaveKeyVersion(waveId);
+
+    // Update each droplet with encrypted content
+    let encryptedCount = 0;
+    for (const { id, content, nonce } of droplets) {
+      try {
+        db.encryptDropletContent(id, content, nonce, keyVersion);
+        encryptedCount++;
+      } catch (err) {
+        console.error(`Failed to encrypt droplet ${id}:`, err);
+      }
+    }
+
+    // Check if all droplets are now encrypted
+    const updatedStatus = db.getWaveEncryptionStatus(waveId);
+    let newState = status.state;
+    if (updatedStatus.encryptedDroplets === updatedStatus.totalDroplets) {
+      // All done - mark as fully encrypted
+      db.setWaveEncryptionState(waveId, 1);
+      newState = 1;
+    } else if (status.state !== 2) {
+      // Still have unencrypted droplets - mark as partial
+      db.setWaveEncryptionState(waveId, 2);
+      newState = 2;
+    }
+
+    const remaining = updatedStatus.totalDroplets - updatedStatus.encryptedDroplets;
+    res.json({
+      success: true,
+      encryptedCount,
+      totalDroplets: updatedStatus.totalDroplets,
+      encryptedDroplets: updatedStatus.encryptedDroplets,
+      progress: updatedStatus.progress,
+      hasMore: remaining > 0,
+      remaining,
+      encryptionState: newState,
+      complete: remaining === 0
+    });
+  } catch (err) {
+    console.error('Encrypt droplets error:', err);
+    res.status(500).json({ error: 'Failed to encrypt droplets' });
   }
 });
 

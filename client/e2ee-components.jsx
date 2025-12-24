@@ -487,22 +487,161 @@ export function EncryptedWaveBadge({ small }) {
 }
 
 // ============ Legacy Wave Notice ============
-// Shown on waves that predate E2EE
-export function LegacyWaveNotice() {
-  const style = {
+// Shown on waves that predate E2EE with option to enable encryption
+export function LegacyWaveNotice({ isCreator, onEnableEncryption, isEnabling }) {
+  const containerStyle = {
     backgroundColor: 'var(--overlay-amber)',
     border: '1px solid var(--accent-amber)',
     borderRadius: '4px',
-    padding: '8px 12px',
+    padding: '10px 12px',
     marginBottom: '12px',
     fontSize: '12px',
-    color: 'var(--accent-amber)',
-    textAlign: 'center'
+    color: 'var(--accent-amber)'
+  };
+
+  const contentStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '12px',
+    flexWrap: 'wrap'
+  };
+
+  const textStyle = {
+    flex: 1,
+    minWidth: '200px'
+  };
+
+  const buttonStyle = {
+    padding: '6px 12px',
+    backgroundColor: 'var(--accent-green)',
+    border: 'none',
+    borderRadius: '4px',
+    color: 'var(--bg-base)',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    cursor: isEnabling ? 'wait' : 'pointer',
+    opacity: isEnabling ? 0.7 : 1,
+    whiteSpace: 'nowrap'
   };
 
   return (
-    <div style={style}>
-      This wave predates end-to-end encryption. New droplets are not encrypted.
+    <div style={containerStyle}>
+      <div style={contentStyle}>
+        <span style={textStyle}>
+          This wave predates end-to-end encryption. {isCreator ? 'Enable encryption to secure existing and future droplets.' : 'New droplets are not encrypted.'}
+        </span>
+        {isCreator && onEnableEncryption && (
+          <button
+            style={buttonStyle}
+            onClick={onEnableEncryption}
+            disabled={isEnabling}
+          >
+            {isEnabling ? 'Enabling...' : '🔐 Enable Encryption'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============ Partial Encryption Banner ============
+// Shown when wave is being migrated to E2EE
+export function PartialEncryptionBanner({ progress, participantsWithE2EE, totalParticipants, onContinue, isContinuing }) {
+  const allHaveE2EE = participantsWithE2EE === totalParticipants;
+
+  const containerStyle = {
+    backgroundColor: 'var(--overlay-teal)',
+    border: '1px solid var(--accent-teal)',
+    borderRadius: '4px',
+    padding: '10px 12px',
+    marginBottom: '12px',
+    fontSize: '12px',
+    color: 'var(--accent-teal)'
+  };
+
+  const contentStyle = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px'
+  };
+
+  const headerStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '12px',
+    flexWrap: 'wrap'
+  };
+
+  const progressBarContainerStyle = {
+    width: '100%',
+    height: '6px',
+    backgroundColor: 'var(--bg-base)',
+    borderRadius: '3px',
+    overflow: 'hidden'
+  };
+
+  const progressBarStyle = {
+    height: '100%',
+    width: `${progress}%`,
+    backgroundColor: 'var(--accent-teal)',
+    borderRadius: '3px',
+    transition: 'width 0.3s ease'
+  };
+
+  const buttonStyle = {
+    padding: '6px 12px',
+    backgroundColor: 'var(--accent-teal)',
+    border: 'none',
+    borderRadius: '4px',
+    color: 'var(--bg-base)',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    cursor: isContinuing ? 'wait' : 'pointer',
+    opacity: isContinuing ? 0.7 : 1,
+    whiteSpace: 'nowrap'
+  };
+
+  const statusStyle = {
+    fontSize: '11px',
+    color: 'var(--text-secondary)'
+  };
+
+  return (
+    <div style={containerStyle}>
+      <div style={contentStyle}>
+        <div style={headerStyle}>
+          <span>
+            {progress < 100 ? (
+              <>Encrypting wave... {Math.round(progress)}% complete</>
+            ) : !allHaveE2EE ? (
+              <>Wave encrypted. Waiting for {totalParticipants - participantsWithE2EE} participant{totalParticipants - participantsWithE2EE > 1 ? 's' : ''} to enable E2EE.</>
+            ) : (
+              <>Wave fully encrypted!</>
+            )}
+          </span>
+          {progress < 100 && onContinue && (
+            <button
+              style={buttonStyle}
+              onClick={onContinue}
+              disabled={isContinuing}
+            >
+              {isContinuing ? 'Encrypting...' : 'Continue Encrypting'}
+            </button>
+          )}
+        </div>
+        {progress < 100 && (
+          <div style={progressBarContainerStyle}>
+            <div style={progressBarStyle} />
+          </div>
+        )}
+        {!allHaveE2EE && (
+          <div style={statusStyle}>
+            {participantsWithE2EE}/{totalParticipants} participants have E2EE enabled
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -512,5 +651,6 @@ export default {
   PassphraseUnlockModal,
   E2EEStatusIndicator,
   EncryptedWaveBadge,
-  LegacyWaveNotice
+  LegacyWaveNotice,
+  PartialEncryptionBanner
 };

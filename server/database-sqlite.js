@@ -5945,6 +5945,78 @@ export class DatabaseSQLite {
     this.db.prepare('UPDATE waves SET encrypted = ? WHERE id = ?').run(encrypted ? 1 : 0, waveId);
   }
 
+  // Set wave encryption state (0=legacy, 1=encrypted, 2=partial)
+  setWaveEncryptionState(waveId, state) {
+    this.db.prepare('UPDATE waves SET encrypted = ? WHERE id = ?').run(state, waveId);
+  }
+
+  // Get wave encryption status with progress info
+  getWaveEncryptionStatus(waveId) {
+    const wave = this.db.prepare('SELECT encrypted FROM waves WHERE id = ?').get(waveId);
+    if (!wave) return null;
+
+    const stats = this.db.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN encrypted = 1 THEN 1 ELSE 0 END) as encrypted_count
+      FROM droplets WHERE wave_id = ?
+    `).get(waveId);
+
+    return {
+      state: wave.encrypted, // 0=legacy, 1=encrypted, 2=partial
+      totalDroplets: stats.total || 0,
+      encryptedDroplets: stats.encrypted_count || 0,
+      progress: stats.total > 0 ? Math.round((stats.encrypted_count / stats.total) * 100) : 100
+    };
+  }
+
+  // Get E2EE status for all participants of a wave
+  getParticipantsE2EEStatus(waveId) {
+    const participants = this.db.prepare(`
+      SELECT
+        wp.user_id,
+        u.handle,
+        u.display_name,
+        CASE WHEN uek.user_id IS NOT NULL THEN 1 ELSE 0 END as has_e2ee
+      FROM wave_participants wp
+      JOIN users u ON wp.user_id = u.id
+      LEFT JOIN user_encryption_keys uek ON wp.user_id = uek.user_id
+      WHERE wp.wave_id = ?
+    `).all(waveId);
+
+    return participants.map(p => ({
+      userId: p.user_id,
+      handle: p.handle,
+      displayName: p.display_name,
+      hasE2EE: p.has_e2ee === 1
+    }));
+  }
+
+  // Get unencrypted droplets for a wave (for batch encryption)
+  getUnencryptedDroplets(waveId, limit = 50) {
+    return this.db.prepare(`
+      SELECT id, content, author_id, created_at
+      FROM droplets
+      WHERE wave_id = ? AND encrypted = 0
+      ORDER BY created_at ASC
+      LIMIT ?
+    `).all(waveId, limit).map(d => ({
+      id: d.id,
+      content: d.content,
+      authorId: d.author_id,
+      createdAt: d.created_at
+    }));
+  }
+
+  // Update a droplet with encrypted content
+  encryptDropletContent(dropletId, encryptedContent, nonce, keyVersion) {
+    this.db.prepare(`
+      UPDATE droplets
+      SET content = ?, nonce = ?, key_version = ?, encrypted = 1
+      WHERE id = ?
+    `).run(encryptedContent, nonce, keyVersion, dropletId);
+  }
+
   // Placeholder for JSON compatibility - not needed with SQLite
   saveUsers() {}
   saveWaves() {}
