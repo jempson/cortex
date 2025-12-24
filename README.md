@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 1.18.0** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 1.19.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
 ## Quick Start
 
@@ -42,8 +42,18 @@ Demo accounts (password: `demo123`):
 - **Groups & Contacts** - Organize connections with request/invitation workflows
 - **Search** - Full-text search across all droplets (SQLite FTS)
 - **PWA** - Installable app with offline support and push notifications
+- **E2EE** - End-to-end encryption for private conversations (v1.19.0)
 - **Federation** - Connect multiple Cortex servers to share waves (v1.13.0)
 - **Crawl Bar** - Live scrolling ticker with stocks, weather, and news (v1.15.0)
+
+### End-to-End Encryption (v1.19.0)
+- **Always-On E2EE** - All new waves encrypted by default when enabled
+- **Passphrase Protected** - Private keys secured with user passphrase
+- **Per-Wave Keys** - Each wave has unique AES-256-GCM encryption key
+- **Key Rotation** - Automatic re-encryption when participants removed
+- **Recovery System** - Optional recovery passphrase for key backup
+- **Zero-Knowledge Server** - Server never sees plaintext content
+- **Web Crypto API** - Native browser cryptography, no external libraries
 
 ### Federation (v1.13.0)
 - **Server-to-Server** - Multiple Cortex instances can exchange droplets
@@ -83,6 +93,7 @@ Demo accounts (password: `demo123`):
 
 ### Security
 - JWT authentication with 7-day tokens
+- **End-to-End Encryption** - Zero-knowledge message encryption (v1.19.0)
 - **Multi-Factor Authentication** - TOTP and email-based 2FA (v1.14.0)
 - **Password Recovery** - Email-based password reset (v1.14.0)
 - **Activity Logging** - Security audit trail with 90-day retention (v1.14.0)
@@ -774,6 +785,19 @@ server {
 ---
 
 ## Changelog
+
+### v1.19.0 (December 2025)
+- **End-to-End Encryption**: Zero-knowledge encryption for all waves
+  - ECDH P-384 keypairs for each user, protected by passphrase
+  - AES-256-GCM encryption for droplet content with unique nonces
+  - Per-wave symmetric keys distributed via ECDH key exchange
+  - Key rotation when participants are removed from waves
+  - Optional recovery passphrase for key backup
+  - Legacy wave notice for pre-E2EE content
+- **E2EE Setup Flow**: First-time passphrase creation with optional recovery
+- **Passphrase Unlock**: Private key decryption on login
+- **Wave Key Cache**: LRU cache (100 keys) for performance
+- **Database Schema**: New encryption tables for keys and metadata
 
 ### v1.18.0 (December 2025)
 - **Session Management**: View and revoke login sessions from any device

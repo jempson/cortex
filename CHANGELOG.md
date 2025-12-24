@@ -5,6 +5,73 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2025-12-24
+
+### Added
+
+#### End-to-End Encryption (E2EE)
+- **Always-On Encryption**: All new waves are encrypted by default when E2EE is enabled
+- **User Key Management**: ECDH P-384 keypairs generated per user, protected by passphrase
+- **Passphrase-Based Key Protection**: Private keys encrypted with PBKDF2-derived keys (600k iterations)
+- **Recovery System**: Generated recovery keys for backup access (24-character Base32 format)
+- **Per-Wave Keys**: Each wave has its own AES-256-GCM symmetric key
+- **Key Distribution**: Wave keys encrypted for each participant using ECDH key exchange
+- **Key Rotation**: Automatic key rotation when participants are removed from waves
+- **Legacy Wave Support**: Unencrypted waves from before E2EE show "Legacy Wave" notice
+
+#### E2EE Client Components
+- **E2EE Setup Modal**: Two-step setup flow (passphrase → save recovery key)
+- **Passphrase Unlock**: Login requires passphrase to decrypt private key
+- **Recovery Flow**: Recover access using recovery key if main passphrase forgotten
+- **E2EE Context Provider**: React context for encryption state and operations
+- **Wave Key Cache**: LRU cache (100 keys) for decrypted wave keys
+
+#### E2EE API Endpoints
+- `GET /api/e2ee/status` - Check E2EE status for current user
+- `POST /api/e2ee/keys/register` - Register user's encrypted keypair
+- `GET /api/e2ee/keys/me` - Get own encrypted private key (for new device setup)
+- `GET /api/e2ee/keys/user/:id` - Get another user's public key
+- `POST /api/e2ee/recovery/setup` - Configure recovery key
+- `GET /api/e2ee/recovery` - Get recovery data (encrypted key + salt)
+- `GET /api/waves/:id/key` - Get encrypted wave key for current user
+- `POST /api/waves/:id/key/rotate` - Rotate wave key (participant removal)
+- `GET /api/waves/:id/keys/all` - Get all key versions for wave (key rotation)
+
+#### Database Schema
+- New tables: `user_encryption_keys`, `wave_encryption_keys`, `wave_key_metadata`, `user_recovery_keys`
+- New fields on `droplets`: `encrypted`, `nonce`, `key_version`
+- New field on `waves`: `encrypted`
+
+#### Cryptographic Implementation
+- **Web Crypto API**: Native browser cryptography (no external JS libraries)
+- **ECDH P-384**: Asymmetric key exchange for user and wave key distribution
+- **AES-256-GCM**: Authenticated encryption for droplet content and private key wrapping
+- **PBKDF2-SHA256**: Password-based key derivation (600k iterations)
+- **Random Nonces**: Unique 12-byte nonces for each encrypted droplet
+
+### Security Notes
+
+#### What E2EE Protects
+- **Server Breach**: Server only stores ciphertext, never plaintext
+- **Database Leak**: Encrypted content is meaningless without keys
+- **MITM**: Content encrypted before transmission
+
+#### What E2EE Does NOT Protect
+- **Compromised Client Device**: Keys exist in memory during session
+- **Malicious Client Code**: Could capture plaintext before encryption
+- **Metadata**: Who talks to whom is still visible to server
+
+### Technical Details
+
+- Keys never leave client unencrypted (private keys wrapped before upload)
+- Wave keys cached with LRU eviction (max 100 keys)
+- Multi-version key support for reading old messages after rotation
+- Encrypted droplets show "[Unable to decrypt]" on key mismatch
+- Push notifications show "Encrypted message" for encrypted content
+- Client-side search deferred (would require IndexedDB implementation)
+
+---
+
 ## [1.18.1] - 2025-12-24
 
 ### Fixed

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
+import { E2EEProvider, useE2EE } from './e2ee-context.jsx';
+import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWaveBadge, LegacyWaveNotice, PartialEncryptionBanner } from './e2ee-components.jsx';
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.18.1';
+const VERSION = '1.19.0';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -5372,6 +5374,178 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
   );
 };
 
+// ============ INVITE TO WAVE MODAL ============
+const InviteToWaveModal = ({ isOpen, onClose, wave, contacts, participants, fetchAPI, showToast, isMobile, onParticipantsChange }) => {
+  const e2ee = useE2EE();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedUsers, setSelectedUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedUsers([]);
+      setSearchQuery('');
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !wave) return null;
+
+  // Get current participant IDs
+  const participantIds = participants.map(p => p.id);
+
+  // Filter contacts that are not already participants
+  const availableContacts = (contacts || []).filter(c => !participantIds.includes(c.id));
+
+  // Filter by search query
+  const filteredContacts = availableContacts.filter(c => {
+    const query = searchQuery.toLowerCase();
+    return (c.displayName || c.name || '').toLowerCase().includes(query) ||
+           (c.handle || '').toLowerCase().includes(query);
+  });
+
+  const toggleUser = (userId) => {
+    setSelectedUsers(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const handleInvite = async () => {
+    if (selectedUsers.length === 0) {
+      showToast('Select at least one user to invite', 'error');
+      return;
+    }
+
+    setLoading(true);
+    let successCount = 0;
+    let errors = [];
+
+    for (const userId of selectedUsers) {
+      try {
+        // Add participant to wave
+        await fetchAPI(`/waves/${wave.id}/participants`, {
+          method: 'POST',
+          body: { userId }
+        });
+
+        // If wave is encrypted, distribute wave key to new participant
+        if (wave.encrypted && e2ee.isUnlocked) {
+          try {
+            await e2ee.distributeKeyToParticipant(wave.id, userId);
+          } catch (keyErr) {
+            console.error('Failed to distribute E2EE key:', keyErr);
+            // Don't fail the whole operation, just warn
+            showToast(`Added ${availableContacts.find(c => c.id === userId)?.displayName || 'user'} but E2EE key distribution failed`, 'warning');
+          }
+        }
+
+        successCount++;
+      } catch (err) {
+        const user = availableContacts.find(c => c.id === userId);
+        errors.push(`${user?.displayName || user?.name || userId}: ${err.message}`);
+      }
+    }
+
+    setLoading(false);
+
+    if (successCount > 0) {
+      showToast(`Added ${successCount} participant${successCount > 1 ? 's' : ''} to wave`, 'success');
+      if (onParticipantsChange) onParticipantsChange();
+      onClose();
+    }
+    if (errors.length > 0) {
+      showToast(errors.join(', '), 'error');
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
+    }}>
+      <div style={{
+        width: '100%', maxWidth: '450px', maxHeight: '80vh', overflowY: 'auto',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '2px solid var(--accent-teal)40', padding: '24px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <GlowText color="var(--accent-teal)" size="1.1rem">Invite to Wave</GlowText>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search contacts..."
+            style={{
+              width: '100%', padding: '10px 12px', boxSizing: 'border-box',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'inherit',
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '16px', maxHeight: '300px', overflowY: 'auto' }}>
+          {filteredContacts.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', padding: '20px', textAlign: 'center' }}>
+              {availableContacts.length === 0 ? 'All contacts are already participants' : 'No matching contacts'}
+            </div>
+          ) : (
+            filteredContacts.map(contact => (
+              <div
+                key={contact.id}
+                onClick={() => toggleUser(contact.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px',
+                  cursor: 'pointer',
+                  background: selectedUsers.includes(contact.id) ? 'var(--accent-teal)15' : 'var(--bg-elevated)',
+                  border: `1px solid ${selectedUsers.includes(contact.id) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+                  marginBottom: '4px',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedUsers.includes(contact.id)}
+                  onChange={() => toggleUser(contact.id)}
+                  style={{ accentColor: 'var(--accent-teal)' }}
+                />
+                <Avatar letter={(contact.displayName || contact.name)?.[0] || '?'} color="var(--accent-teal)" size={28} imageUrl={contact.avatarUrl} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                    {contact.displayName || contact.name}
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                    @{contact.handle}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={onClose} disabled={loading} style={{
+            flex: 1, padding: '12px', background: 'transparent',
+            border: '1px solid var(--border-primary)', color: 'var(--text-dim)',
+            cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'monospace',
+            opacity: loading ? 0.5 : 1,
+          }}>CANCEL</button>
+          <button onClick={handleInvite} disabled={loading || selectedUsers.length === 0} style={{
+            flex: 1, padding: '12px', background: 'var(--accent-teal)20',
+            border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)',
+            cursor: (loading || selectedUsers.length === 0) ? 'not-allowed' : 'pointer',
+            fontFamily: 'monospace',
+            opacity: (loading || selectedUsers.length === 0) ? 0.5 : 1,
+          }}>
+            {loading ? 'ADDING...' : `INVITE ${selectedUsers.length > 0 ? `(${selectedUsers.length})` : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ============ SEARCH MODAL ============
 const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -5521,6 +5695,9 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 
 // ============ WAVE VIEW (Mobile Responsive) ============
 const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave, scrollToDropletId, onScrollToDropletComplete, federationEnabled }) => {
+  // E2EE context
+  const e2ee = useE2EE();
+
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -5558,7 +5735,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [reportTarget, setReportTarget] = useState(null); // { type, targetId, targetPreview }
   const [rippleTarget, setRippleTarget] = useState(null); // droplet to ripple
   const [showFederateModal, setShowFederateModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For ripple activity badges
+  const [decryptionErrors, setDecryptionErrors] = useState({}); // Track droplets that failed to decrypt
+
+  // E2EE Migration state
+  const [encryptionStatus, setEncryptionStatus] = useState(null); // { state, progress, participantsWithE2EE, totalParticipants }
+  const [isEnablingEncryption, setIsEnablingEncryption] = useState(false);
+  const [isEncryptingBatch, setIsEncryptingBatch] = useState(false);
+
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -5570,6 +5755,48 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Helper functions for blocked/muted status
   const isBlocked = (userId) => blockedUsers?.some(u => u.blockedUserId === userId) || false;
   const isMuted = (userId) => mutedUsers?.some(u => u.mutedUserId === userId) || false;
+
+  // E2EE: Helper to decrypt droplets
+  const decryptDroplets = useCallback(async (droplets, waveId) => {
+    if (!e2ee.isUnlocked) return droplets;
+
+    const errors = {};
+    const decrypted = await Promise.all(
+      droplets.map(async (droplet) => {
+        if (!droplet.encrypted || !droplet.nonce) {
+          return droplet; // Not encrypted
+        }
+        try {
+          const plaintext = await e2ee.decryptDroplet(
+            droplet.content,
+            droplet.nonce,
+            waveId,
+            droplet.keyVersion
+          );
+          return { ...droplet, content: plaintext, _decrypted: true };
+        } catch (err) {
+          console.error('Failed to decrypt droplet:', droplet.id, err);
+          errors[droplet.id] = err.message;
+          return { ...droplet, content: '[Unable to decrypt]', _decryptError: true };
+        }
+      })
+    );
+    setDecryptionErrors(prev => ({ ...prev, ...errors }));
+    return decrypted;
+  }, [e2ee]);
+
+  // E2EE: Helper to decrypt a tree of droplets recursively
+  const decryptDropletTree = useCallback(async (tree, waveId) => {
+    const decryptNode = async (node) => {
+      const decrypted = await decryptDroplets([node], waveId);
+      const result = decrypted[0];
+      if (result.children && result.children.length > 0) {
+        result.children = await Promise.all(result.children.map(child => decryptNode(child)));
+      }
+      return result;
+    };
+    return Promise.all(tree.map(node => decryptNode(node)));
+  }, [decryptDroplets]);
 
   // State for showing moderation menu
   const [showModMenu, setShowModMenu] = useState(null); // participant.id or null
@@ -6008,6 +6235,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       if (!data.all_messages) data.all_messages = [];
       if (!data.participants) data.participants = [];
 
+      // E2EE: Decrypt messages if wave is encrypted and E2EE is unlocked
+      if (data.encrypted && e2ee.isUnlocked) {
+        try {
+          // Decrypt all_messages flat list
+          data.all_messages = await decryptDroplets(data.all_messages, wave.id);
+          // Decrypt the tree structure
+          data.messages = await decryptDropletTree(data.messages, wave.id);
+        } catch (decryptErr) {
+          console.error('Failed to decrypt wave messages:', decryptErr);
+        }
+      }
+
       // Assign chronological indices based on created_at for proper playback order
       // Sort all_messages by created_at and create a map of id -> chronoIndex
       const sortedByTime = [...data.all_messages].sort((a, b) =>
@@ -6031,7 +6270,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         totalMessages: data.total_messages,
         hasMoreMessages: data.hasMoreMessages,
         messageCount: data.messages?.length,
-        allMessagesCount: data.all_messages?.length
+        allMessagesCount: data.all_messages?.length,
+        encrypted: data.encrypted
       });
       setWaveData(data);
       setHasMoreMessages(data.hasMoreMessages || false);
@@ -6052,6 +6292,104 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   };
 
+  // E2EE: Load encryption status for legacy/partial waves
+  const loadEncryptionStatus = useCallback(async () => {
+    if (!e2ee.isE2EEEnabled || !waveData) return;
+
+    // Only check for legacy (0) or partial (2) waves
+    if (waveData.encrypted === 1) {
+      setEncryptionStatus(null);
+      return;
+    }
+
+    try {
+      const status = await e2ee.getWaveEncryptionStatus(wave.id);
+      setEncryptionStatus(status);
+    } catch (err) {
+      console.error('Failed to load encryption status:', err);
+    }
+  }, [e2ee, wave.id, waveData]);
+
+  // Load encryption status when wave data changes
+  useEffect(() => {
+    if (waveData && e2ee.isE2EEEnabled && waveData.encrypted !== 1) {
+      loadEncryptionStatus();
+    }
+  }, [waveData?.id, waveData?.encrypted, e2ee.isE2EEEnabled, loadEncryptionStatus]);
+
+  // E2EE: Enable encryption for a legacy wave
+  const handleEnableEncryption = async () => {
+    if (!e2ee.isUnlocked) {
+      showToast('Please unlock E2EE first', 'error');
+      return;
+    }
+
+    setIsEnablingEncryption(true);
+    try {
+      const participantIds = waveData.participants
+        .filter(p => p.id !== currentUser.id)
+        .map(p => p.id);
+
+      const result = await e2ee.enableWaveEncryption(wave.id, participantIds);
+
+      if (result.success) {
+        showToast('Encryption enabled! Starting migration...', 'success');
+        // Refresh encryption status
+        await loadEncryptionStatus();
+        // Start encrypting first batch
+        await handleContinueEncryption();
+      }
+    } catch (err) {
+      console.error('Failed to enable encryption:', err);
+      showToast(err.message || 'Failed to enable encryption', 'error');
+    } finally {
+      setIsEnablingEncryption(false);
+    }
+  };
+
+  // E2EE: Continue encrypting droplets in batches
+  const handleContinueEncryption = async () => {
+    if (!e2ee.isUnlocked || isEncryptingBatch) return;
+
+    setIsEncryptingBatch(true);
+    try {
+      let hasMore = true;
+      let totalEncrypted = 0;
+
+      // Process batches until done or error
+      while (hasMore) {
+        const result = await e2ee.encryptLegacyWaveBatch(wave.id, 50);
+        totalEncrypted += result.encrypted;
+        hasMore = result.hasMore;
+
+        // Update progress
+        setEncryptionStatus(prev => ({
+          ...prev,
+          progress: result.progress,
+          encryptionState: result.encryptionState
+        }));
+
+        // Small delay between batches to avoid overwhelming
+        if (hasMore) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      if (totalEncrypted > 0) {
+        showToast(`Encrypted ${totalEncrypted} droplets`, 'success');
+      }
+
+      // Refresh wave data to show encrypted content
+      await loadWave(true);
+      await loadEncryptionStatus();
+    } catch (err) {
+      console.error('Failed to encrypt batch:', err);
+      showToast(err.message || 'Failed to encrypt droplets', 'error');
+    } finally {
+      setIsEncryptingBatch(false);
+    }
+  };
+
   // Load older messages (pagination)
   const loadMoreMessages = async () => {
     if (loadingMore || !waveData?.all_messages?.length) return;
@@ -6067,8 +6405,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         const container = messagesRef.current;
         const scrollHeightBefore = container?.scrollHeight || 0;
 
+        // E2EE: Decrypt new messages if wave is encrypted
+        let decryptedMessages = data.messages;
+        if (waveData?.encrypted && e2ee.isUnlocked) {
+          try {
+            decryptedMessages = await decryptDroplets(data.messages, wave.id);
+          } catch (decryptErr) {
+            console.error('Failed to decrypt older messages:', decryptErr);
+          }
+        }
+
         // Merge older messages with existing ones
-        const mergedMessages = [...data.messages, ...waveData.all_messages];
+        const mergedMessages = [...decryptedMessages, ...waveData.all_messages];
 
         // Rebuild the message tree - treat orphaned replies (parent not in set) as roots
         const messageIds = new Set(mergedMessages.map(m => m.id));
@@ -6211,9 +6559,31 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         scrollPositionToRestore.current = messagesRef.current.scrollTop;
       }
 
+      // E2EE: Encrypt message if wave is encrypted and E2EE is unlocked
+      let messageBody = { wave_id: wave.id, parent_id: replyingTo?.id || null, content: newMessage };
+
+      if (waveData?.encrypted && e2ee.isUnlocked) {
+        try {
+          const { ciphertext, nonce } = await e2ee.encryptDroplet(newMessage, wave.id);
+          const waveKeyVersion = await fetchAPI(`/waves/${wave.id}/key`).then(r => r.keyVersion).catch(() => 1);
+          messageBody = {
+            ...messageBody,
+            content: ciphertext,
+            encrypted: true,
+            nonce,
+            keyVersion: waveKeyVersion || 1
+          };
+        } catch (encryptErr) {
+          console.error('Failed to encrypt message:', encryptErr);
+          showToast('Failed to encrypt message', 'error');
+          userActionInProgressRef.current = false;
+          return;
+        }
+      }
+
       await fetchAPI('/droplets', {
         method: 'POST',
-        body: { wave_id: wave.id, parent_id: replyingTo?.id || null, content: newMessage },
+        body: messageBody,
       });
       setNewMessage('');
       setReplyingTo(null);
@@ -6635,6 +7005,61 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           gap: '8px',
           flexShrink: 0
         }}>
+          {/* Header with Invite button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', fontFamily: 'monospace' }}>
+              PARTICIPANTS ({participants.length})
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {/* Invite button - only for private waves by creator, or any wave by participants */}
+              {((waveData?.privacy === 'private' && waveData?.createdBy === currentUser?.id) ||
+                (waveData?.privacy !== 'private' && participants.some(p => p.id === currentUser?.id))) && (
+                <button
+                  onClick={() => setShowInviteModal(true)}
+                  style={{
+                    padding: isMobile ? '6px 10px' : '4px 8px',
+                    minHeight: isMobile ? '36px' : 'auto',
+                    background: 'var(--accent-teal)20',
+                    border: '1px solid var(--accent-teal)',
+                    color: 'var(--accent-teal)',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: '0.65rem',
+                  }}
+                >
+                  + INVITE
+                </button>
+              )}
+              {/* Leave button for non-creators */}
+              {waveData?.createdBy !== currentUser?.id && participants.some(p => p.id === currentUser?.id) && (
+                <button
+                  onClick={async () => {
+                    if (confirm('Are you sure you want to leave this wave?')) {
+                      try {
+                        await fetchAPI(`/waves/${wave.id}/participants/${currentUser.id}`, { method: 'DELETE' });
+                        showToast('You have left the wave', 'success');
+                        onBack();
+                      } catch (err) {
+                        showToast(err.message || 'Failed to leave wave', 'error');
+                      }
+                    }
+                  }}
+                  style={{
+                    padding: isMobile ? '6px 10px' : '4px 8px',
+                    minHeight: isMobile ? '36px' : 'auto',
+                    background: 'var(--accent-orange)20',
+                    border: '1px solid var(--accent-orange)',
+                    color: 'var(--accent-orange)',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: '0.65rem',
+                  }}
+                >
+                  LEAVE
+                </button>
+              )}
+            </div>
+          </div>
           {participants.map(p => {
             const latestDroplet = allDroplets.length > 0 ? allDroplets[allDroplets.length - 1] : null;
             const hasReadLatest = latestDroplet ? (latestDroplet.readBy || [latestDroplet.author_id]).includes(p.id) : true;
@@ -6801,6 +7226,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                             padding: isMobile ? '12px' : '8px 12px',
                             background: 'transparent',
                             border: 'none',
+                            borderBottom: waveData?.createdBy === currentUser?.id ? '1px solid var(--border-subtle)' : 'none',
                             color: userBlocked ? 'var(--accent-green)' : 'var(--accent-orange)',
                             cursor: 'pointer',
                             fontFamily: 'monospace',
@@ -6810,6 +7236,36 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                         >
                           {userBlocked ? '✓ UNBLOCK' : '⊘ BLOCK'}
                         </button>
+                        {/* Remove from wave - only for wave creator */}
+                        {waveData?.createdBy === currentUser?.id && (
+                          <button
+                            onClick={async () => {
+                              if (confirm(`Remove ${p.name} from this wave?`)) {
+                                try {
+                                  await fetchAPI(`/waves/${wave.id}/participants/${p.id}`, { method: 'DELETE' });
+                                  showToast(`${p.name} removed from wave`, 'success');
+                                  setShowModMenu(null);
+                                  loadWave(); // Refresh participants
+                                } catch (err) {
+                                  showToast(err.message || 'Failed to remove participant', 'error');
+                                }
+                              }
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: isMobile ? '12px' : '8px 12px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--accent-orange)',
+                              cursor: 'pointer',
+                              fontFamily: 'monospace',
+                              fontSize: '0.7rem',
+                              textAlign: 'left',
+                            }}
+                          >
+                            ✕ REMOVE
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -6830,6 +7286,23 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       {/* Messages */}
       <div ref={messagesRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '12px' : '20px' }}>
+        {/* E2EE: Show encryption status banners */}
+        {e2ee.isE2EEEnabled && waveData?.encrypted === 0 && (
+          <LegacyWaveNotice
+            isCreator={waveData?.createdBy === currentUser?.id}
+            onEnableEncryption={e2ee.isUnlocked ? handleEnableEncryption : undefined}
+            isEnabling={isEnablingEncryption}
+          />
+        )}
+        {e2ee.isE2EEEnabled && waveData?.encrypted === 2 && encryptionStatus && (
+          <PartialEncryptionBanner
+            progress={encryptionStatus.progress || 0}
+            participantsWithE2EE={encryptionStatus.readyCount || 0}
+            totalParticipants={encryptionStatus.totalParticipants || 0}
+            onContinue={waveData?.createdBy === currentUser?.id && e2ee.isUnlocked ? handleContinueEncryption : undefined}
+            isContinuing={isEncryptingBatch}
+          />
+        )}
         {/* Load Older Messages Button */}
         {hasMoreMessages && (
           <div style={{ textAlign: 'center', marginBottom: '16px' }}>
@@ -7288,6 +7761,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           }}
         />
       )}
+
+      <InviteToWaveModal
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        wave={waveData}
+        contacts={contacts}
+        participants={participants}
+        fetchAPI={fetchAPI}
+        showToast={showToast}
+        isMobile={isMobile}
+        onParticipantsChange={() => loadWave(true)}
+      />
 
       {showFederateModal && waveData && (
         <InviteFederatedModal
@@ -11603,8 +12088,14 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  // E2EE Recovery Key state (v1.19.0)
+  const [showE2EERecovery, setShowE2EERecovery] = useState(false);
+  const [e2eeRecoveryKey, setE2eeRecoveryKey] = useState(null);
+  const [e2eeRecoveryLoading, setE2eeRecoveryLoading] = useState(false);
+  const [e2eeRecoveryCopied, setE2eeRecoveryCopied] = useState(false);
   const fileInputRef = useRef(null);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
+  const e2ee = useE2EE();
 
   // Load blocked/muted users when section is expanded
   useEffect(() => {
@@ -12060,7 +12551,20 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
     }
     try {
       await fetchAPI('/profile/password', { method: 'POST', body: { currentPassword, newPassword } });
-      showToast('Password changed', 'success');
+
+      // Re-encrypt E2EE private key with new password
+      if (e2ee.isUnlocked && e2ee.reencryptWithPassword) {
+        try {
+          await e2ee.reencryptWithPassword(newPassword);
+          showToast('Password and encryption updated', 'success');
+        } catch (e2eeErr) {
+          console.error('E2EE re-encryption failed:', e2eeErr);
+          showToast('Password changed, but encryption update failed. You may need to use your recovery key on next login.', 'error');
+        }
+      } else {
+        showToast('Password changed', 'success');
+      }
+
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -12530,6 +13034,130 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           </div>
         )}
       </div>
+
+      {/* E2EE Recovery Key (v1.19.0) */}
+      {e2ee.isE2EEEnabled && (
+        <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+          <div
+            onClick={() => setShowE2EERecovery(!showE2EERecovery)}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          >
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>E2EE RECOVERY KEY</div>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showE2EERecovery ? '▼' : '▶'}</span>
+          </div>
+
+          {showE2EERecovery && (
+            <div style={{ marginTop: '16px' }}>
+              {/* Display regenerated recovery key */}
+              {e2eeRecoveryKey && (
+                <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--accent-green)10', border: '2px solid var(--accent-green)', borderRadius: '4px' }}>
+                  <div style={{ color: 'var(--accent-green)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px' }}>
+                    🔐 New Recovery Key Generated
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '12px' }}>
+                    Save this key in a safe place. You'll need it to recover access if your password changes.
+                  </div>
+                  <div style={{ padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--accent-green)', borderRadius: '4px', textAlign: 'center', marginBottom: '12px' }}>
+                    <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', letterSpacing: '2px', color: 'var(--accent-green)', wordBreak: 'break-all', userSelect: 'all' }}>
+                      {e2eeRecoveryKey}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(e2eeRecoveryKey);
+                          setE2eeRecoveryCopied(true);
+                          setTimeout(() => setE2eeRecoveryCopied(false), 2000);
+                        } catch (err) {
+                          console.error('Failed to copy:', err);
+                        }
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        background: e2eeRecoveryCopied ? 'var(--accent-green)' : 'var(--accent-green)20',
+                        border: '1px solid var(--accent-green)',
+                        color: e2eeRecoveryCopied ? 'var(--bg-base)' : 'var(--accent-green)',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '0.75rem'
+                      }}
+                    >
+                      {e2eeRecoveryCopied ? '✓ COPIED' : 'COPY KEY'}
+                    </button>
+                    <button
+                      onClick={() => setE2eeRecoveryKey(null)}
+                      style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}
+                    >
+                      I'VE SAVED IT
+                    </button>
+                  </div>
+                  <div style={{ marginTop: '12px', padding: '8px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)', borderRadius: '4px' }}>
+                    <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem' }}>
+                      ⚠️ This key will only be shown once. Your old recovery key is now invalid.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Main recovery key info */}
+              {!e2eeRecoveryKey && (
+                <>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '16px' }}>
+                    Your recovery key allows you to regain access to your encrypted messages.
+                    Your encryption is tied to your login password - if you change your password, the encryption is automatically updated.
+                    If you've lost your recovery key, you can generate a new one below.
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <span style={{ color: 'var(--accent-green)', fontSize: '0.85rem' }}>
+                      🔐 End-to-End Encryption Active
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      if (!e2ee.isUnlocked) {
+                        showToast('Please unlock E2EE first', 'error');
+                        return;
+                      }
+                      setE2eeRecoveryLoading(true);
+                      try {
+                        const result = await e2ee.regenerateRecoveryKey();
+                        if (result.success) {
+                          setE2eeRecoveryKey(result.recoveryKey);
+                          showToast('New recovery key generated', 'success');
+                        }
+                      } catch (err) {
+                        console.error('Failed to regenerate recovery key:', err);
+                        showToast(err.message || 'Failed to regenerate recovery key', 'error');
+                      } finally {
+                        setE2eeRecoveryLoading(false);
+                      }
+                    }}
+                    disabled={!e2ee.isUnlocked || e2eeRecoveryLoading}
+                    style={{
+                      padding: '10px 20px',
+                      background: e2ee.isUnlocked ? 'var(--accent-teal)20' : 'transparent',
+                      border: `1px solid ${e2ee.isUnlocked ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+                      color: e2ee.isUnlocked ? 'var(--accent-teal)' : 'var(--text-muted)',
+                      cursor: e2ee.isUnlocked ? 'pointer' : 'not-allowed',
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    {e2eeRecoveryLoading ? 'GENERATING...' : '🔑 REGENERATE RECOVERY KEY'}
+                  </button>
+
+                  <div style={{ marginTop: '12px', color: 'var(--text-dim)', fontSize: '0.7rem' }}>
+                    Note: Generating a new recovery key will invalidate your previous recovery key.
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Active Sessions (v1.18.0) */}
       <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
@@ -13783,6 +14411,7 @@ const ConnectionStatus = ({ wsConnected, apiConnected }) => (
 function MainApp({ shareDropletId }) {
   const { user, token, logout, updateUser } = useAuth();
   const { fetchAPI } = useAPI();
+  const e2ee = useE2EE();
   const [toast, setToast] = useState(null);
   const [activeView, setActiveView] = useState('waves');
   const [apiConnected, setApiConnected] = useState(false);
@@ -13974,6 +14603,51 @@ function MainApp({ shareDropletId }) {
     } else if (data.type === 'wave_deleted') {
       showToastMsg(`Wave "${data.wave?.title || 'Unknown'}" was deleted`, 'info');
       if (selectedWave?.id === data.waveId) {
+        setSelectedWave(null);
+        setActiveView('waves');
+      }
+      loadWaves();
+    } else if (data.type === 'wave_key_rotated') {
+      // E2EE: Wave key was rotated, invalidate cached key
+      if (e2ee.isUnlocked && data.waveId) {
+        e2ee.invalidateWaveKey(data.waveId);
+        // Reload wave if currently viewing it to re-fetch and re-decrypt with new key
+        if (selectedWave?.id === data.waveId) {
+          setWaveReloadTrigger(prev => prev + 1);
+        }
+        showToastMsg('Wave encryption key was rotated', 'info');
+      }
+    } else if (data.type === 'participant_added') {
+      // Someone was added to a wave we're in
+      if (selectedWave?.id === data.waveId) {
+        setWaveReloadTrigger(prev => prev + 1);
+      }
+      showToastMsg(`${data.participant?.name || 'Someone'} was added to the wave`, 'info');
+    } else if (data.type === 'participant_removed') {
+      // Someone was removed from a wave we're in
+      if (data.userId === user?.id) {
+        // We were removed
+        if (selectedWave?.id === data.waveId) {
+          setSelectedWave(null);
+          setActiveView('waves');
+        }
+        showToastMsg('You were removed from the wave', 'info');
+        loadWaves();
+      } else {
+        // Someone else was removed
+        if (selectedWave?.id === data.waveId) {
+          setWaveReloadTrigger(prev => prev + 1);
+        }
+        showToastMsg(data.wasSelf ? 'A participant left the wave' : 'A participant was removed from the wave', 'info');
+      }
+    } else if (data.type === 'added_to_wave') {
+      // We were added to a wave
+      showToastMsg(`You were added to "${data.wave?.title || 'a wave'}"`, 'success');
+      loadWaves();
+    } else if (data.type === 'removed_from_wave') {
+      // We were removed from a wave (by someone else)
+      showToastMsg(`You were removed from "${data.wave?.title || 'a wave'}"`, 'info');
+      if (selectedWave?.id === data.wave?.id) {
         setSelectedWave(null);
         setActiveView('waves');
       }
@@ -14328,10 +15002,31 @@ function MainApp({ shareDropletId }) {
 
   const handleCreateWave = async (data) => {
     try {
-      await fetchAPI('/waves', { method: 'POST', body: data });
+      // E2EE: If E2EE is set up, create encrypted wave with keys
+      if (e2ee.isUnlocked && e2ee.isE2EEEnabled) {
+        // Get participant IDs from the data
+        const participantIds = data.participants || [];
+
+        // Set up encryption for this wave
+        const { keyDistribution } = await e2ee.createWaveWithEncryption(participantIds);
+
+        // Create wave with encryption enabled
+        await fetchAPI('/waves', {
+          method: 'POST',
+          body: {
+            ...data,
+            encrypted: true,
+            keyDistribution
+          }
+        });
+      } else {
+        // Create unencrypted wave
+        await fetchAPI('/waves', { method: 'POST', body: data });
+      }
       showToastMsg('Wave created', 'success');
       loadWaves();
     } catch (err) {
+      console.error('Failed to create wave:', err);
       showToastMsg(err.message || 'Failed to create wave', 'error');
     }
   };
@@ -15010,6 +15705,8 @@ function AuthProvider({ children }) {
   const [user, setUser] = useState(storage.getUser());
   const [token, setToken] = useState(storage.getToken());
   const [loading, setLoading] = useState(true);
+  // Temporary password storage for E2EE unlock (cleared after use)
+  const pendingPasswordRef = useRef(null);
 
   useEffect(() => {
     if (token) {
@@ -15026,6 +15723,17 @@ function AuthProvider({ children }) {
     }
   }, [token]);
 
+  // Get pending password for E2EE unlock (one-time read, clears after access)
+  const getPendingPassword = () => {
+    const pwd = pendingPasswordRef.current;
+    return pwd;
+  };
+
+  // Clear pending password after E2EE has used it
+  const clearPendingPassword = () => {
+    pendingPasswordRef.current = null;
+  };
+
   const login = async (handle, password) => {
     const res = await fetch(`${API_URL}/auth/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -15035,8 +15743,12 @@ function AuthProvider({ children }) {
     if (!res.ok) throw new Error(data.error || 'Login failed');
     // Check if MFA is required
     if (data.mfaRequired) {
+      // Store password for later E2EE unlock after MFA
+      pendingPasswordRef.current = password;
       return { mfaRequired: true, mfaChallenge: data.mfaChallenge, mfaMethods: data.mfaMethods };
     }
+    // Store password for E2EE unlock
+    pendingPasswordRef.current = password;
     storage.setToken(data.token); storage.setUser(data.user);
     setToken(data.token); setUser(data.user);
     return { success: true };
@@ -15061,6 +15773,8 @@ function AuthProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
+    // Store password for E2EE setup
+    pendingPasswordRef.current = password;
     storage.setToken(data.token); storage.setUser(data.user);
     setToken(data.token); setUser(data.user);
   };
@@ -15077,7 +15791,8 @@ function AuthProvider({ children }) {
         console.error('Logout API error:', err);
       }
     }
-    // Clear local storage
+    // Clear password and local storage
+    pendingPasswordRef.current = null;
     storage.removeToken(); storage.removeUser();
     setToken(null); setUser(null);
   };
@@ -15091,7 +15806,7 @@ function AuthProvider({ children }) {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, completeMfaLogin, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, login, completeMfaLogin, register, logout, updateUser, getPendingPassword, clearPendingPassword }}>
       {children}
     </AuthContext.Provider>
   );
@@ -15101,13 +15816,24 @@ function AuthProvider({ children }) {
 export default function CortexApp() {
   return (
     <AuthProvider>
-      <AppContent />
+      <E2EEWrapper />
     </AuthProvider>
   );
 }
 
+// E2EE wrapper that has access to AuthContext
+function E2EEWrapper() {
+  const { token } = useAuth();
+
+  return (
+    <E2EEProvider token={token} API_URL={API_URL}>
+      <AppContent />
+    </E2EEProvider>
+  );
+}
+
 function AppContent() {
-  const { user } = useAuth();
+  const { user, token, logout } = useAuth();
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [showLoginScreen, setShowLoginScreen] = useState(false);
   const [showRegisterScreen, setShowRegisterScreen] = useState(false);
@@ -15167,5 +15893,153 @@ function AppContent() {
     );
   }
 
-  return user ? <MainApp shareDropletId={shareDropletId} /> : <LoginScreen onAbout={() => navigate('/about')} />;
+  // Show login screen for unauthenticated users
+  if (!user) {
+    return <LoginScreen onAbout={() => navigate('/about')} />;
+  }
+
+  // User is authenticated - wrap with E2EE flow
+  return <E2EEAuthenticatedApp shareDropletId={shareDropletId} logout={logout} />;
+}
+
+// E2EE authenticated app wrapper - handles E2EE setup/unlock before showing main app
+function E2EEAuthenticatedApp({ shareDropletId, logout }) {
+  const { getPendingPassword, clearPendingPassword } = useAuth();
+  const {
+    e2eeStatus,
+    isUnlocked,
+    needsPassphrase,
+    needsSetup,
+    isUnlocking,
+    unlockError,
+    checkE2EEStatus,
+    setupE2EE,
+    unlockE2EE,
+    recoverWithPassphrase,
+    clearE2EE,
+    isCryptoAvailable
+  } = useE2EE();
+
+  const [isSettingUp, setIsSettingUp] = useState(false);
+  const [autoUnlockAttempted, setAutoUnlockAttempted] = useState(false);
+  const [autoUnlockFailed, setAutoUnlockFailed] = useState(false);
+
+  // Check E2EE status on mount
+  useEffect(() => {
+    checkE2EEStatus();
+  }, [checkE2EEStatus]);
+
+  // Auto-unlock E2EE with pending password (from login)
+  useEffect(() => {
+    const pendingPassword = getPendingPassword();
+    if (needsPassphrase && pendingPassword && !autoUnlockAttempted && !isUnlocking) {
+      setAutoUnlockAttempted(true);
+      console.log('E2EE: Auto-unlocking with login password...');
+      unlockE2EE(pendingPassword)
+        .then(() => {
+          console.log('E2EE: Auto-unlock successful');
+          clearPendingPassword();
+        })
+        .catch((err) => {
+          console.error('E2EE: Auto-unlock failed:', err);
+          setAutoUnlockFailed(true);
+          clearPendingPassword();
+        });
+    }
+  }, [needsPassphrase, autoUnlockAttempted, isUnlocking, getPendingPassword, clearPendingPassword, unlockE2EE]);
+
+  // Auto-setup E2EE with pending password (from registration)
+  useEffect(() => {
+    const pendingPassword = getPendingPassword();
+    if (needsSetup && pendingPassword && !isSettingUp) {
+      console.log('E2EE: Auto-setting up with login password...');
+      setIsSettingUp(true);
+      setupE2EE(pendingPassword, true)
+        .then((result) => {
+          console.log('E2EE: Auto-setup successful');
+          clearPendingPassword();
+          // Note: Recovery key is still generated and available, but we don't show the modal
+          // Users can regenerate it from Profile Settings if needed
+        })
+        .catch((err) => {
+          console.error('E2EE: Auto-setup failed:', err);
+          clearPendingPassword();
+        })
+        .finally(() => {
+          setIsSettingUp(false);
+        });
+    }
+  }, [needsSetup, isSettingUp, getPendingPassword, clearPendingPassword, setupE2EE]);
+
+  // Handle logout (also clears E2EE state)
+  const handleLogout = () => {
+    clearPendingPassword();
+    clearE2EE();
+    logout();
+  };
+
+  // Check if Web Crypto is available
+  if (!isCryptoAvailable) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-primary)' }}>
+        <h2 style={{ color: 'var(--accent-orange)' }}>Encryption Not Available</h2>
+        <p style={{ color: 'var(--text-secondary)' }}>
+          Your browser does not support the Web Crypto API required for end-to-end encryption.
+          Please use a modern browser (Chrome, Firefox, Safari, Edge) with HTTPS.
+        </p>
+        <button
+          onClick={handleLogout}
+          style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: 'var(--accent-orange)', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+        >
+          Log Out
+        </button>
+      </div>
+    );
+  }
+
+  // Show loading while checking E2EE status
+  if (e2eeStatus === null) {
+    return <LoadingSpinner message="Checking encryption status..." />;
+  }
+
+  // Show loading during auto-setup
+  if (needsSetup && isSettingUp) {
+    return <LoadingSpinner message="Setting up encryption..." />;
+  }
+
+  // Show loading during auto-unlock (only if we have a pending password)
+  if (needsPassphrase && isUnlocking && !autoUnlockFailed) {
+    return <LoadingSpinner message="Unlocking encryption..." />;
+  }
+
+  // Auto-unlock failed - show unlock modal with option for old passphrase or recovery key
+  // This happens when existing users had a different passphrase than their login password
+  if (needsPassphrase && autoUnlockFailed) {
+    return (
+      <PassphraseUnlockModal
+        onUnlock={async (passphrase) => {
+          const result = await unlockE2EE(passphrase);
+          // After successful unlock with old passphrase, offer to re-encrypt with password
+          // For now, just unlock - they can change password later to sync
+          return result;
+        }}
+        onRecover={recoverWithPassphrase}
+        onLogout={handleLogout}
+        isLoading={isUnlocking}
+        error={unlockError}
+        showMigrationNotice={true}
+      />
+    );
+  }
+
+  // Waiting for auto-unlock/setup - shouldn't get here but just in case
+  if (needsPassphrase && !autoUnlockAttempted) {
+    return <LoadingSpinner message="Preparing encryption..." />;
+  }
+  if (needsSetup && !isSettingUp) {
+    return <LoadingSpinner message="Preparing encryption setup..." />;
+  }
+
+  // E2EE is unlocked - render the main app
+  return <MainApp shareDropletId={shareDropletId} />;
 }

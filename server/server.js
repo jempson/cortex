@@ -4958,6 +4958,272 @@ app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
   }
 });
 
+// ============ E2EE Routes (v1.19.0) ============
+
+// Register user's encryption keys (E2EE setup)
+app.post('/api/e2ee/keys/register', authenticateToken, (req, res) => {
+  try {
+    const { publicKey, encryptedPrivateKey, salt } = req.body;
+
+    if (!publicKey || !encryptedPrivateKey || !salt) {
+      return res.status(400).json({ error: 'Missing required fields: publicKey, encryptedPrivateKey, salt' });
+    }
+
+    // Validate Base64 format (basic check)
+    const base64Regex = /^[A-Za-z0-9+/=]+$/;
+    if (!base64Regex.test(publicKey) || !base64Regex.test(encryptedPrivateKey) || !base64Regex.test(salt)) {
+      return res.status(400).json({ error: 'Invalid key format (must be Base64)' });
+    }
+
+    const result = db.createUserEncryptionKeys(req.user.userId, publicKey, encryptedPrivateKey, salt);
+
+    // Log E2EE setup activity
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'e2ee_setup', 'user', req.user.userId, {
+        ...getRequestMeta(req),
+        keyVersion: result.keyVersion
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Encryption keys registered',
+      keyVersion: result.keyVersion
+    });
+  } catch (err) {
+    console.error('E2EE key registration error:', err);
+    res.status(500).json({ error: 'Failed to register encryption keys' });
+  }
+});
+
+// Get own encryption keys (for device sync / passphrase unlock)
+app.get('/api/e2ee/keys/me', authenticateToken, (req, res) => {
+  try {
+    const keys = db.getUserEncryptionKeys(req.user.userId);
+
+    if (!keys) {
+      return res.status(404).json({ error: 'No encryption keys found', needsSetup: true });
+    }
+
+    res.json({
+      publicKey: keys.publicKey,
+      encryptedPrivateKey: keys.encryptedPrivateKey,
+      keyDerivationSalt: keys.keyDerivationSalt,
+      keyVersion: keys.keyVersion,
+      createdAt: keys.createdAt
+    });
+  } catch (err) {
+    console.error('E2EE key fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch encryption keys' });
+  }
+});
+
+// Get another user's public key (for encrypting wave keys)
+app.get('/api/e2ee/keys/user/:id', authenticateToken, (req, res) => {
+  try {
+    const publicKey = db.getUserPublicKey(req.params.id);
+
+    if (!publicKey) {
+      return res.status(404).json({ error: 'User has not set up E2EE' });
+    }
+
+    res.json({ publicKey });
+  } catch (err) {
+    console.error('E2EE public key fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch public key' });
+  }
+});
+
+// Check if user has E2EE set up
+app.get('/api/e2ee/status', authenticateToken, (req, res) => {
+  try {
+    const hasKeys = db.hasUserEncryptionKeys(req.user.userId);
+    const keys = hasKeys ? db.getUserEncryptionKeys(req.user.userId) : null;
+
+    res.json({
+      e2eeEnabled: hasKeys,
+      keyVersion: keys?.keyVersion || null,
+      createdAt: keys?.createdAt || null
+    });
+  } catch (err) {
+    console.error('E2EE status check error:', err);
+    res.status(500).json({ error: 'Failed to check E2EE status' });
+  }
+});
+
+// Rotate user keypair (generate new keys with new passphrase)
+app.post('/api/e2ee/keys/rotate', authenticateToken, (req, res) => {
+  try {
+    const { publicKey, encryptedPrivateKey, salt } = req.body;
+
+    if (!publicKey || !encryptedPrivateKey || !salt) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Check if user already has keys
+    if (!db.hasUserEncryptionKeys(req.user.userId)) {
+      return res.status(400).json({ error: 'No existing keys to rotate. Use /api/e2ee/keys/register instead.' });
+    }
+
+    const result = db.createUserEncryptionKeys(req.user.userId, publicKey, encryptedPrivateKey, salt);
+
+    // Log key rotation
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'e2ee_key_rotation', 'user', req.user.userId, {
+        ...getRequestMeta(req),
+        newKeyVersion: result.keyVersion
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Keys rotated successfully',
+      keyVersion: result.keyVersion
+    });
+  } catch (err) {
+    console.error('E2EE key rotation error:', err);
+    res.status(500).json({ error: 'Failed to rotate keys' });
+  }
+});
+
+// Update encrypted private key (for password changes)
+// This keeps the same public key but re-encrypts the private key with a new password
+app.post('/api/e2ee/keys/update', authenticateToken, (req, res) => {
+  try {
+    const { encryptedPrivateKey, salt } = req.body;
+
+    if (!encryptedPrivateKey || !salt) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Check if user has keys
+    if (!db.hasUserEncryptionKeys(req.user.userId)) {
+      return res.status(400).json({ error: 'No encryption keys found. Use /api/e2ee/keys/register first.' });
+    }
+
+    // Update only the encrypted private key and salt (not the public key)
+    db.updateEncryptedPrivateKey(req.user.userId, encryptedPrivateKey, salt);
+
+    // Log the update
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'e2ee_key_reencrypt', 'user', req.user.userId, {
+        ...getRequestMeta(req)
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Encryption keys updated successfully'
+    });
+  } catch (err) {
+    console.error('E2EE key update error:', err);
+    res.status(500).json({ error: 'Failed to update keys' });
+  }
+});
+
+// Setup recovery key
+app.post('/api/e2ee/recovery/setup', authenticateToken, (req, res) => {
+  try {
+    const { encryptedPrivateKey, recoverySalt, hint } = req.body;
+
+    if (!encryptedPrivateKey || !recoverySalt) {
+      return res.status(400).json({ error: 'Missing required fields: encryptedPrivateKey, recoverySalt' });
+    }
+
+    // Validate hint length if provided
+    const sanitizedHint = hint ? sanitizeInput(hint).slice(0, 100) : null;
+
+    const result = db.createRecoveryKey(req.user.userId, encryptedPrivateKey, recoverySalt, sanitizedHint);
+
+    // Log recovery setup
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'e2ee_recovery_setup', 'user', req.user.userId, getRequestMeta(req));
+    }
+
+    res.json({
+      success: true,
+      message: 'Recovery key configured',
+      hasHint: result.hasHint
+    });
+  } catch (err) {
+    console.error('E2EE recovery setup error:', err);
+    res.status(500).json({ error: 'Failed to setup recovery key' });
+  }
+});
+
+// Get recovery hint (without revealing the key)
+app.get('/api/e2ee/recovery/hint', authenticateToken, (req, res) => {
+  try {
+    const hint = db.getRecoveryHint(req.user.userId);
+
+    if (hint === null) {
+      // Check if recovery is set up at all
+      const recoveryInfo = db.getRecoveryKeyInfo(req.user.userId);
+      if (!recoveryInfo) {
+        return res.status(404).json({ error: 'No recovery key configured' });
+      }
+      return res.json({ hint: null, hasRecovery: true });
+    }
+
+    res.json({ hint, hasRecovery: true });
+  } catch (err) {
+    console.error('E2EE recovery hint error:', err);
+    res.status(500).json({ error: 'Failed to get recovery hint' });
+  }
+});
+
+// Regenerate recovery key (requires passphrase verification)
+app.post('/api/e2ee/recovery/regenerate', authenticateToken, (req, res) => {
+  try {
+    const { encryptedPrivateKey, recoverySalt } = req.body;
+
+    if (!encryptedPrivateKey || !recoverySalt) {
+      return res.status(400).json({ error: 'Missing required fields: encryptedPrivateKey, recoverySalt' });
+    }
+
+    // Update the recovery key info
+    const result = db.updateRecoveryKey(req.user.userId, encryptedPrivateKey, recoverySalt);
+
+    if (!result) {
+      return res.status(404).json({ error: 'No existing recovery key to regenerate' });
+    }
+
+    // Log recovery regeneration
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'e2ee_recovery_regenerated', 'user', req.user.userId, getRequestMeta(req));
+    }
+
+    res.json({
+      success: true,
+      message: 'Recovery key regenerated'
+    });
+  } catch (err) {
+    console.error('E2EE recovery regenerate error:', err);
+    res.status(500).json({ error: 'Failed to regenerate recovery key' });
+  }
+});
+
+// Get full recovery key info (for account recovery)
+app.get('/api/e2ee/recovery', authenticateToken, (req, res) => {
+  try {
+    const recoveryInfo = db.getRecoveryKeyInfo(req.user.userId);
+
+    if (!recoveryInfo) {
+      return res.status(404).json({ error: 'No recovery key configured' });
+    }
+
+    res.json({
+      encryptedPrivateKey: recoveryInfo.encryptedPrivateKey,
+      recoverySalt: recoveryInfo.recoverySalt,
+      hint: recoveryInfo.hint,
+      createdAt: recoveryInfo.createdAt
+    });
+  } catch (err) {
+    console.error('E2EE recovery fetch error:', err);
+    res.status(500).json({ error: 'Failed to get recovery key' });
+  }
+});
+
 // ============ Profile Routes ============
 app.put('/api/profile', authenticateToken, (req, res) => {
   const updates = {};
@@ -9740,13 +10006,33 @@ app.post('/api/waves', authenticateToken, async (req, res) => {
   // Determine if this is a federated wave
   const hasFederatedParticipants = federatedParticipants.length > 0;
 
+  // E2EE: Check if wave should be encrypted
+  const encrypted = !!req.body.encrypted;
+  const keyDistribution = req.body.keyDistribution;
+
   const wave = db.createWave({
     title,
     privacy: hasFederatedParticipants ? 'crossServer' : privacy, // Force cross-server if federated
     groupId: privacy === 'group' ? sanitizeInput(req.body.groupId) : null,
     createdBy: req.user.userId,
     participants: localParticipantIds,
+    encrypted,
   });
+
+  // E2EE: Store wave keys if encrypted
+  if (encrypted && keyDistribution && Array.isArray(keyDistribution)) {
+    // Create key metadata
+    db.createWaveKeyMetadata(wave.id);
+
+    // Store encrypted keys for each participant
+    for (const { userId, encryptedWaveKey, senderPublicKey } of keyDistribution) {
+      if (encryptedWaveKey && senderPublicKey) {
+        // If userId is null, it's the creator's own key
+        const targetUserId = userId || req.user.userId;
+        db.createWaveEncryptionKey(wave.id, targetUserId, encryptedWaveKey, senderPublicKey, 1);
+      }
+    }
+  }
 
   // If federated, mark as origin and send invites
   if (hasFederatedParticipants) {
@@ -10064,6 +10350,547 @@ app.delete('/api/waves/:id', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
+// ============ Wave Participant Management ============
+
+// Add participant to wave
+app.post('/api/waves/:id/participants', authenticateToken, async (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'User ID required' });
+  }
+
+  const wave = db.getWave(waveId);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Only wave creator can add participants to private waves
+  if (wave.privacy === 'private' && wave.createdBy !== req.user.userId) {
+    return res.status(403).json({ error: 'Only wave creator can add participants to private waves' });
+  }
+
+  // Check if requester is a participant
+  if (!db.isWaveParticipant(waveId, req.user.userId)) {
+    return res.status(403).json({ error: 'You must be a participant to add others' });
+  }
+
+  // Check if user exists
+  const userToAdd = db.findUserById(userId);
+  if (!userToAdd) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  // Check if already a participant
+  if (db.isWaveParticipant(waveId, userId)) {
+    return res.status(400).json({ error: 'User is already a participant' });
+  }
+
+  // Add participant
+  const added = db.addWaveParticipant(waveId, userId);
+  if (!added) {
+    return res.status(500).json({ error: 'Failed to add participant' });
+  }
+
+  // Get updated participant list
+  const participants = db.getWaveParticipants(waveId);
+
+  // Broadcast to wave
+  broadcastToWave(waveId, {
+    type: 'participant_added',
+    waveId,
+    participant: {
+      id: userToAdd.id,
+      handle: userToAdd.handle,
+      name: userToAdd.displayName || userToAdd.handle,
+      avatar: userToAdd.avatar,
+      avatarUrl: userToAdd.avatarUrl
+    },
+    addedBy: req.user.userId
+  });
+
+  // Notify the added user
+  broadcastToUser(userId, {
+    type: 'added_to_wave',
+    wave: {
+      id: wave.id,
+      title: wave.title,
+      privacy: wave.privacy
+    },
+    addedBy: req.user.userId
+  });
+
+  if (db.logActivity) db.logActivity(req.user.userId, 'add_participant', 'wave', waveId, getRequestMeta(req), { addedUserId: userId });
+
+  res.json({ success: true, participants });
+});
+
+// Remove participant from wave
+app.delete('/api/waves/:id/participants/:userId', authenticateToken, async (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const userId = sanitizeInput(req.params.userId);
+
+  const wave = db.getWave(waveId);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Check permissions:
+  // - Wave creator can remove anyone (except themselves)
+  // - Users can remove themselves (leave wave)
+  const isCreator = wave.createdBy === req.user.userId;
+  const isSelf = userId === req.user.userId;
+
+  if (!isCreator && !isSelf) {
+    return res.status(403).json({ error: 'Only wave creator can remove other participants' });
+  }
+
+  // Creator cannot remove themselves
+  if (isCreator && isSelf) {
+    return res.status(400).json({ error: 'Wave creator cannot leave. Delete the wave instead.' });
+  }
+
+  // Check if target is a participant
+  if (!db.isWaveParticipant(waveId, userId)) {
+    return res.status(400).json({ error: 'User is not a participant' });
+  }
+
+  // Remove participant
+  const removed = db.removeWaveParticipant(waveId, userId);
+  if (!removed) {
+    return res.status(500).json({ error: 'Failed to remove participant' });
+  }
+
+  // Get user info for broadcast
+  const removedUser = db.findUserById(userId);
+
+  // Get updated participant list
+  const participants = db.getWaveParticipants(waveId);
+
+  // Broadcast to wave
+  broadcastToWave(waveId, {
+    type: 'participant_removed',
+    waveId,
+    userId,
+    removedBy: req.user.userId,
+    wasSelf: isSelf
+  });
+
+  // Notify the removed user if they were removed by someone else
+  if (!isSelf) {
+    broadcastToUser(userId, {
+      type: 'removed_from_wave',
+      wave: {
+        id: wave.id,
+        title: wave.title
+      },
+      removedBy: req.user.userId
+    });
+  }
+
+  if (db.logActivity) db.logActivity(req.user.userId, isSelf ? 'leave_wave' : 'remove_participant', 'wave', waveId, getRequestMeta(req), { removedUserId: userId });
+
+  res.json({ success: true, participants });
+});
+
+// ============ Wave E2EE Key Routes (v1.19.0) ============
+
+// Get wave key for current user
+app.get('/api/waves/:id/key', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+    const wave = db.getWave(waveId);
+
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Check wave access
+    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Check if wave is encrypted
+    if (!db.isWaveEncrypted(waveId)) {
+      return res.json({ encrypted: false, message: 'Wave is not encrypted' });
+    }
+
+    // Get encrypted wave key for this user
+    const keyData = db.getWaveKeyForUser(waveId, req.user.userId);
+
+    if (!keyData) {
+      return res.status(404).json({ error: 'No encryption key found for this user' });
+    }
+
+    res.json({
+      encrypted: true,
+      encryptedWaveKey: keyData.encryptedWaveKey,
+      senderPublicKey: keyData.senderPublicKey,
+      keyVersion: keyData.keyVersion,
+      currentKeyVersion: keyData.currentKeyVersion
+    });
+  } catch (err) {
+    console.error('Wave key fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch wave key' });
+  }
+});
+
+// Get all wave keys for a user (for decrypting old messages after key rotation)
+app.get('/api/waves/:id/keys/all', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+
+    // Check wave access
+    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const keys = db.getAllWaveKeysForUser(waveId, req.user.userId);
+    const currentVersion = db.getWaveKeyVersion(waveId);
+
+    res.json({
+      keys,
+      currentKeyVersion: currentVersion
+    });
+  } catch (err) {
+    console.error('Wave keys fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch wave keys' });
+  }
+});
+
+// Distribute wave key to a new participant
+app.post('/api/waves/:id/key/distribute', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+    const { userId, encryptedWaveKey, senderPublicKey } = req.body;
+
+    if (!userId || !encryptedWaveKey || !senderPublicKey) {
+      return res.status(400).json({ error: 'Missing required fields: userId, encryptedWaveKey, senderPublicKey' });
+    }
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Only existing participants can distribute keys
+    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Only wave participants can distribute keys' });
+    }
+
+    // Check if the new participant exists
+    const newParticipant = db.findUserById(userId);
+    if (!newParticipant) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get current key version
+    const currentVersion = db.getWaveKeyVersion(waveId);
+
+    // Store the encrypted key for the new participant
+    db.createWaveEncryptionKey(waveId, userId, encryptedWaveKey, senderPublicKey, currentVersion);
+
+    res.json({
+      success: true,
+      message: 'Wave key distributed to participant',
+      keyVersion: currentVersion
+    });
+  } catch (err) {
+    console.error('Wave key distribution error:', err);
+    res.status(500).json({ error: 'Failed to distribute wave key' });
+  }
+});
+
+// Rotate wave key (when participant is removed)
+app.post('/api/waves/:id/key/rotate', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+    const { keyDistribution } = req.body;
+
+    if (!keyDistribution || !Array.isArray(keyDistribution)) {
+      return res.status(400).json({ error: 'Missing keyDistribution array' });
+    }
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Only wave creator or admin can rotate keys
+    if (wave.createdBy !== req.user.userId) {
+      const user = db.findUserById(req.user.userId);
+      if (!user?.isAdmin) {
+        return res.status(403).json({ error: 'Only wave creator can rotate keys' });
+      }
+    }
+
+    // Validate distribution data
+    for (const { userId, encryptedWaveKey, senderPublicKey } of keyDistribution) {
+      if (!userId || !encryptedWaveKey || !senderPublicKey) {
+        return res.status(400).json({ error: 'Invalid key distribution data' });
+      }
+    }
+
+    // Rotate the wave key
+    const result = db.rotateWaveKey(waveId, keyDistribution);
+
+    // Broadcast key rotation to all participants
+    broadcastToWave(waveId, {
+      type: 'wave_key_rotated',
+      waveId,
+      newKeyVersion: result.newKeyVersion
+    });
+
+    // Log activity
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'wave_key_rotation', 'wave', waveId, {
+        ...getRequestMeta(req),
+        newKeyVersion: result.newKeyVersion
+      });
+    }
+
+    res.json({
+      success: true,
+      newKeyVersion: result.newKeyVersion
+    });
+  } catch (err) {
+    console.error('Wave key rotation error:', err);
+    res.status(500).json({ error: 'Failed to rotate wave key' });
+  }
+});
+
+// Get participant public keys for a wave (for key distribution)
+app.get('/api/waves/:id/participants/keys', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+
+    // Check wave access
+    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const participantKeys = db.getWaveParticipantPublicKeys(waveId);
+
+    res.json({
+      participants: participantKeys
+    });
+  } catch (err) {
+    console.error('Participant keys fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch participant keys' });
+  }
+});
+
+// Initialize wave encryption (set wave as encrypted and create metadata)
+app.post('/api/waves/:id/encrypt', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+    const { keyDistribution } = req.body;
+
+    if (!keyDistribution || !Array.isArray(keyDistribution)) {
+      return res.status(400).json({ error: 'Missing keyDistribution array' });
+    }
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Only wave creator can enable encryption
+    if (wave.created_by !== req.user.userId) {
+      return res.status(403).json({ error: 'Only wave creator can enable encryption' });
+    }
+
+    // Check if already encrypted
+    if (db.isWaveEncrypted(waveId)) {
+      return res.status(400).json({ error: 'Wave is already encrypted' });
+    }
+
+    // Create wave key metadata
+    db.createWaveKeyMetadata(waveId);
+
+    // Store encrypted keys for each participant
+    for (const { userId, encryptedWaveKey, senderPublicKey } of keyDistribution) {
+      db.createWaveEncryptionKey(waveId, userId, encryptedWaveKey, senderPublicKey, 1);
+    }
+
+    // Check if there are existing droplets that need encryption
+    const encryptionStatus = db.getWaveEncryptionStatus(waveId);
+    if (encryptionStatus.totalDroplets > 0) {
+      // Has existing droplets - set to partial (2) until they're encrypted
+      db.setWaveEncryptionState(waveId, 2);
+    } else {
+      // No droplets - fully encrypted (1)
+      db.setWaveEncryptionState(waveId, 1);
+    }
+
+    // Broadcast encryption enabled
+    broadcastToWave(waveId, {
+      type: 'wave_encrypted',
+      waveId,
+      encryptionState: encryptionStatus.totalDroplets > 0 ? 2 : 1
+    });
+
+    res.json({
+      success: true,
+      message: 'Wave encryption enabled',
+      keyVersion: 1,
+      encryptionState: encryptionStatus.totalDroplets > 0 ? 2 : 1,
+      dropletsToEncrypt: encryptionStatus.totalDroplets
+    });
+  } catch (err) {
+    console.error('Wave encryption error:', err);
+    res.status(500).json({ error: 'Failed to enable wave encryption' });
+  }
+});
+
+// Get wave encryption status (for legacy wave migration)
+app.get('/api/waves/:id/encryption-status', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Check access
+    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get encryption status
+    const status = db.getWaveEncryptionStatus(waveId);
+
+    // Get participant E2EE status
+    const participants = db.getParticipantsE2EEStatus(waveId);
+    const allHaveE2EE = participants.every(p => p.hasE2EE);
+    const readyCount = participants.filter(p => p.hasE2EE).length;
+
+    res.json({
+      waveId,
+      encryptionState: status.state, // 0=legacy, 1=encrypted, 2=partial
+      totalDroplets: status.totalDroplets,
+      encryptedDroplets: status.encryptedDroplets,
+      progress: status.progress,
+      participants: participants,
+      allParticipantsReady: allHaveE2EE,
+      readyCount,
+      totalParticipants: participants.length,
+      canEnableEncryption: wave.created_by === req.user.userId && allHaveE2EE
+    });
+  } catch (err) {
+    console.error('Wave encryption status error:', err);
+    res.status(500).json({ error: 'Failed to get encryption status' });
+  }
+});
+
+// Get unencrypted droplets for batch encryption (legacy wave migration)
+app.get('/api/waves/:id/unencrypted-droplets', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Only wave creator can migrate encryption
+    if (wave.created_by !== req.user.userId) {
+      return res.status(403).json({ error: 'Only wave creator can migrate encryption' });
+    }
+
+    const droplets = db.getUnencryptedDroplets(waveId, limit);
+    const status = db.getWaveEncryptionStatus(waveId);
+
+    res.json({
+      droplets,
+      remaining: status.totalDroplets - status.encryptedDroplets,
+      progress: status.progress
+    });
+  } catch (err) {
+    console.error('Get unencrypted droplets error:', err);
+    res.status(500).json({ error: 'Failed to get unencrypted droplets' });
+  }
+});
+
+// Batch encrypt droplets (legacy wave migration)
+app.post('/api/waves/:id/encrypt-droplets', authenticateToken, (req, res) => {
+  try {
+    const waveId = req.params.id;
+    const { droplets } = req.body;
+
+    if (!droplets || !Array.isArray(droplets)) {
+      return res.status(400).json({ error: 'Missing droplets array' });
+    }
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Only wave creator can migrate encryption
+    if (wave.created_by !== req.user.userId) {
+      return res.status(403).json({ error: 'Only wave creator can migrate encryption' });
+    }
+
+    // Check wave is in encryption state (1 or 2)
+    const status = db.getWaveEncryptionStatus(waveId);
+    if (status.state === 0) {
+      return res.status(400).json({ error: 'Wave encryption not enabled. Call /api/waves/:id/encrypt first.' });
+    }
+
+    // Get current key version
+    const keyVersion = db.getWaveKeyVersion(waveId);
+
+    // Update each droplet with encrypted content
+    let encryptedCount = 0;
+    for (const { id, content, nonce } of droplets) {
+      try {
+        db.encryptDropletContent(id, content, nonce, keyVersion);
+        encryptedCount++;
+      } catch (err) {
+        console.error(`Failed to encrypt droplet ${id}:`, err);
+      }
+    }
+
+    // Check if all droplets are now encrypted
+    const updatedStatus = db.getWaveEncryptionStatus(waveId);
+    let newState = status.state;
+    if (updatedStatus.encryptedDroplets === updatedStatus.totalDroplets) {
+      // All done - mark as fully encrypted
+      db.setWaveEncryptionState(waveId, 1);
+      newState = 1;
+    } else if (status.state !== 2) {
+      // Still have unencrypted droplets - mark as partial
+      db.setWaveEncryptionState(waveId, 2);
+      newState = 2;
+    }
+
+    const remaining = updatedStatus.totalDroplets - updatedStatus.encryptedDroplets;
+    res.json({
+      success: true,
+      encryptedCount,
+      totalDroplets: updatedStatus.totalDroplets,
+      encryptedDroplets: updatedStatus.encryptedDroplets,
+      progress: updatedStatus.progress,
+      hasMore: remaining > 0,
+      remaining,
+      encryptionState: newState,
+      complete: remaining === 0
+    });
+  } catch (err) {
+    console.error('Encrypt droplets error:', err);
+    res.status(500).json({ error: 'Failed to encrypt droplets' });
+  }
+});
+
 // ============ Droplet Routes (v1.10.0) ============
 // Note: /api/messages endpoints below are backward-compatible aliases
 
@@ -10085,7 +10912,9 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
     db.addWaveParticipant(waveId, req.user.userId);
   }
 
-  if (content.length > 10000) return res.status(400).json({ error: 'Droplet too long' });
+  // E2EE: encrypted content is base64 and may be longer than plaintext
+  const maxLength = req.body.encrypted ? 20000 : 10000;
+  if (content.length > maxLength) return res.status(400).json({ error: 'Droplet too long' });
 
   // For rippled waves, default parent to root droplet if no parent specified
   let parentId = req.body.parent_id ? sanitizeInput(req.body.parent_id) : null;
@@ -10099,6 +10928,9 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
     authorId: req.user.userId,
     content,
     privacy: wave.privacy,
+    encrypted: !!req.body.encrypted,
+    nonce: req.body.nonce || null,
+    keyVersion: req.body.keyVersion || null,
   });
 
   // Create in-app notifications for mentions, replies, and wave activity
@@ -10109,13 +10941,17 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
 
   // Create push notification payload
   const senderName = droplet.sender_name || db.findUserById(req.user.userId)?.displayName || 'Someone';
-  const contentPreview = content.replace(/<[^>]*>/g, '').substring(0, 100);
+  // For encrypted droplets, don't reveal content in push notification
+  const contentPreview = req.body.encrypted
+    ? 'Encrypted message'
+    : content.replace(/<[^>]*>/g, '').substring(0, 100);
   const pushPayload = {
     title: `New droplet in ${wave.title}`,
-    body: `${senderName}: ${contentPreview}${content.length > 100 ? '...' : ''}`,
+    body: `${senderName}: ${contentPreview}${!req.body.encrypted && content.length > 100 ? '...' : ''}`,
     url: `/?wave=${waveId}`,
     waveId,
-    dropletId: droplet.id
+    dropletId: droplet.id,
+    encrypted: !!req.body.encrypted
   };
 
   // Broadcast to connected users and send push to offline users
