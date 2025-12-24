@@ -1029,6 +1029,18 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Droplets E2EE columns added');
     }
+
+    // Add key_version column to droplets table if it doesn't exist (v1.19.0)
+    // Re-fetch column info in case previous migration just ran
+    const dropletColumnsForKeyVersion = this.db.prepare(`PRAGMA table_info(droplets)`).all();
+    const hasKeyVersion = dropletColumnsForKeyVersion.some(c => c.name === 'key_version');
+    if (!hasKeyVersion) {
+      console.log('📝 Adding key_version column to droplets table (v1.19.0)...');
+      this.db.exec(`
+        ALTER TABLE droplets ADD COLUMN key_version INTEGER DEFAULT 1;
+      `);
+      console.log('✅ Droplets key_version column added');
+    }
   }
 
   prepareStatements() {

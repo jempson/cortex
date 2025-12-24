@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS droplets (
     original_wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL,
     -- E2EE fields (v1.19.0)
     encrypted INTEGER DEFAULT 0,           -- 1 if content is encrypted
-    nonce TEXT                             -- Base64 AES-GCM nonce (12 bytes)
+    nonce TEXT,                            -- Base64 AES-GCM nonce (12 bytes)
+    key_version INTEGER DEFAULT 1          -- Wave key version used for encryption
 );
 
 -- Droplet read tracking (many-to-many)
