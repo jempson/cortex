@@ -227,8 +227,9 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
 
 // ============ Passphrase Unlock Modal ============
 // Shown on login when user has E2EE set up
-// recoveryOnly: skip passphrase input and show recovery only (when auto-unlock fails)
-export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading, error: propError, recoveryOnly = false }) {
+// recoveryOnly: skip passphrase input and show recovery only
+// showMigrationNotice: show notice for users migrating from old passphrase system
+export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading, error: propError, recoveryOnly = false, showMigrationNotice = false }) {
   const [passphrase, setPassphrase] = useState('');
   const [showRecovery, setShowRecovery] = useState(recoveryOnly);
   const [recoveryKey, setRecoveryKey] = useState('');
@@ -329,19 +330,33 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
 
         {!showRecovery ? (
           <>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
-              Your encryption needs to be unlocked. This can happen if your password was changed on another device.
-            </p>
+            {showMigrationNotice ? (
+              <>
+                <div style={{ backgroundColor: 'var(--overlay-amber)', padding: '12px', borderRadius: '4px', marginBottom: '16px', border: '1px solid var(--accent-amber)' }}>
+                  <p style={{ color: 'var(--accent-amber)', fontSize: '12px', margin: 0 }}>
+                    <strong>System Update:</strong> Cortex now uses your login password for encryption.
+                    Since you set up E2EE before this change, please enter your <strong>original encryption passphrase</strong> to unlock.
+                  </p>
+                </div>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '13px' }}>
+                  After unlocking, go to Profile Settings and change your password to sync your encryption with your login.
+                </p>
+              </>
+            ) : (
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
+                Your encryption needs to be unlocked. This can happen if your password was changed on another device.
+              </p>
+            )}
 
             <form onSubmit={handleUnlock}>
               <label style={{ color: 'var(--text-secondary)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                Current Password
+                {showMigrationNotice ? 'Original Encryption Passphrase' : 'Current Password'}
               </label>
               <input
                 type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Enter your password"
+                placeholder={showMigrationNotice ? "Enter your original passphrase" : "Enter your password"}
                 style={inputStyle}
                 autoComplete="current-password"
                 autoFocus

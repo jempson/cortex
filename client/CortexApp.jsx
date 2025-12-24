@@ -15617,7 +15617,6 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [autoUnlockAttempted, setAutoUnlockAttempted] = useState(false);
   const [autoUnlockFailed, setAutoUnlockFailed] = useState(false);
-  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
 
   // Check E2EE status on mount
   useEffect(() => {
@@ -15707,72 +15706,22 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
     return <LoadingSpinner message="Unlocking encryption..." />;
   }
 
-  // Auto-unlock failed - show recovery modal
-  if (needsPassphrase && autoUnlockFailed && !showRecoveryModal) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'column',
-        padding: '40px',
-        background: 'var(--bg-base)',
-      }}>
-        <div style={{
-          maxWidth: '500px',
-          padding: '32px',
-          background: 'var(--bg-surface)',
-          border: '2px solid var(--accent-orange)',
-        }}>
-          <h2 style={{ color: 'var(--accent-orange)', marginBottom: '16px' }}>
-            Encryption Key Mismatch
-          </h2>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
-            Your password has changed since E2EE was set up. You can recover your encryption keys
-            using your recovery passphrase, or log out and contact support.
-          </p>
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-            <button
-              onClick={handleLogout}
-              style={{
-                padding: '10px 20px',
-                background: 'transparent',
-                border: '1px solid var(--border-subtle)',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-              }}
-            >
-              Log Out
-            </button>
-            <button
-              onClick={() => setShowRecoveryModal(true)}
-              style={{
-                padding: '10px 20px',
-                background: 'var(--accent-teal)',
-                border: 'none',
-                color: 'var(--bg-base)',
-                cursor: 'pointer',
-              }}
-            >
-              Use Recovery Key
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Show recovery modal
-  if (needsPassphrase && showRecoveryModal) {
+  // Auto-unlock failed - show unlock modal with option for old passphrase or recovery key
+  // This happens when existing users had a different passphrase than their login password
+  if (needsPassphrase && autoUnlockFailed) {
     return (
       <PassphraseUnlockModal
-        onUnlock={unlockE2EE}
+        onUnlock={async (passphrase) => {
+          const result = await unlockE2EE(passphrase);
+          // After successful unlock with old passphrase, offer to re-encrypt with password
+          // For now, just unlock - they can change password later to sync
+          return result;
+        }}
         onRecover={recoverWithPassphrase}
         onLogout={handleLogout}
         isLoading={isUnlocking}
         error={unlockError}
-        recoveryOnly={true}
+        showMigrationNotice={true}
       />
     );
   }
