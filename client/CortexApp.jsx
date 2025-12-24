@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, createContext, use
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.18.0';
+const VERSION = '1.18.1';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -11583,7 +11583,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   // MFA state
   const [showMfaSetup, setShowMfaSetup] = useState(false);
   const [mfaStatus, setMfaStatus] = useState(null);
-  const [mfaSetupStep, setMfaSetupStep] = useState(null); // 'totp-setup', 'totp-verify', 'email-setup', 'email-verify'
+  const [mfaSetupStep, setMfaSetupStep] = useState(null); // 'totp-setup', 'totp-verify', 'email-setup', 'email-verify', 'email-disable'
   const [totpSetupData, setTotpSetupData] = useState(null);
   const [totpVerifyCode, setTotpVerifyCode] = useState('');
   const [emailVerifyCode, setEmailVerifyCode] = useState('');
@@ -11748,19 +11748,39 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
     setMfaLoading(false);
   };
 
-  const handleDisableEmailMfa = async () => {
+  const handleRequestDisableEmailMfa = async () => {
     if (!mfaDisablePassword) {
       showToast('Password is required', 'error');
       return;
     }
     setMfaLoading(true);
     try {
-      await fetchAPI('/auth/mfa/email/disable', { method: 'POST', body: { password: mfaDisablePassword } });
+      const data = await fetchAPI('/auth/mfa/email/disable/request', { method: 'POST', body: { password: mfaDisablePassword } });
+      setEmailChallengeId(data.challengeId);
+      setMfaSetupStep('email-disable');
       setMfaDisablePassword('');
+      showToast('Verification code sent to your email', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to send verification code', 'error');
+    }
+    setMfaLoading(false);
+  };
+
+  const handleConfirmDisableEmailMfa = async () => {
+    if (!emailVerifyCode || emailVerifyCode.length !== 6) {
+      showToast('Please enter the 6-digit code', 'error');
+      return;
+    }
+    setMfaLoading(true);
+    try {
+      await fetchAPI('/auth/mfa/email/disable', { method: 'POST', body: { challengeId: emailChallengeId, code: emailVerifyCode } });
+      setMfaSetupStep(null);
+      setEmailChallengeId(null);
+      setEmailVerifyCode('');
       loadMfaStatus();
       showToast('Email MFA disabled successfully', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to disable email MFA', 'error');
+      showToast(err.message || 'Invalid verification code', 'error');
     }
     setMfaLoading(false);
   };
@@ -12375,6 +12395,43 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   </div>
                 )}
 
+                {/* Email MFA Disable Verify UI */}
+                {mfaSetupStep === 'email-disable' && (
+                  <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--accent-orange)' }}>
+                    <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px' }}>
+                      Confirm Email MFA Disable
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '16px' }}>
+                      Enter the 6-digit code we sent to your email to confirm disabling Email MFA.
+                    </div>
+                    <div style={{ marginBottom: '16px' }}>
+                      <input
+                        type="text"
+                        value={emailVerifyCode}
+                        onChange={(e) => setEmailVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        style={{ ...inputStyle, fontFamily: 'monospace', textAlign: 'center', letterSpacing: '0.3em' }}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={handleConfirmDisableEmailMfa}
+                        disabled={emailVerifyCode.length !== 6 || mfaLoading}
+                        style={{ padding: '10px 20px', background: emailVerifyCode.length === 6 ? 'var(--accent-orange)20' : 'transparent', border: `1px solid ${emailVerifyCode.length === 6 ? 'var(--accent-orange)' : 'var(--border-primary)'}`, color: emailVerifyCode.length === 6 ? 'var(--accent-orange)' : 'var(--text-muted)', cursor: emailVerifyCode.length === 6 ? 'pointer' : 'not-allowed', fontFamily: 'monospace' }}
+                      >
+                        {mfaLoading ? 'DISABLING...' : 'CONFIRM DISABLE'}
+                      </button>
+                      <button
+                        onClick={() => { setMfaSetupStep(null); setEmailChallengeId(null); setEmailVerifyCode(''); }}
+                        style={{ padding: '10px 20px', background: 'transparent', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace' }}
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* MFA Status Display */}
                 {!mfaSetupStep && (
                   <>
@@ -12392,7 +12449,10 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                         <div style={{ marginTop: '12px' }}>
                           <div style={{ marginBottom: '8px' }}>
                             <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
-                            <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="TOTP Code" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+                            <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '4px' }}>
+                              Enter the 6-digit code from your authenticator app:
+                            </div>
+                            <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.2em' }} />
                           </div>
                           <button onClick={handleDisableTotp} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
                             {mfaLoading ? 'DISABLING...' : 'DISABLE TOTP'}
@@ -12418,8 +12478,8 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                       {mfaStatus.emailMfaEnabled ? (
                         <div style={{ marginTop: '12px' }}>
                           <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
-                          <button onClick={handleDisableEmailMfa} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                            {mfaLoading ? 'DISABLING...' : 'DISABLE EMAIL MFA'}
+                          <button onClick={handleRequestDisableEmailMfa} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)', color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {mfaLoading ? 'SENDING CODE...' : 'DISABLE EMAIL MFA'}
                           </button>
                         </div>
                       ) : (
@@ -12446,7 +12506,12 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                         <div style={{ marginTop: '8px' }}>
                           <input type="password" value={mfaDisablePassword} onChange={(e) => setMfaDisablePassword(e.target.value)} placeholder="Password" style={{ ...inputStyle, marginBottom: '8px' }} />
                           {mfaStatus.totpEnabled && (
-                            <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="TOTP Code" style={{ ...inputStyle, fontFamily: 'monospace', marginBottom: '8px' }} />
+                            <>
+                              <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '4px' }}>
+                                Enter the 6-digit code from your authenticator app:
+                              </div>
+                              <input type="text" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" style={{ ...inputStyle, fontFamily: 'monospace', marginBottom: '8px', letterSpacing: '0.2em' }} />
+                            </>
                           )}
                           <button onClick={handleRegenerateRecoveryCodes} disabled={mfaLoading} style={{ padding: '8px 16px', background: 'var(--accent-amber)20', border: '1px solid var(--accent-amber)', color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
                             {mfaLoading ? 'GENERATING...' : 'REGENERATE CODES'}

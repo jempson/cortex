@@ -196,15 +196,17 @@ class EmailService {
    * Send an MFA verification code via email
    * @param {string} email - Recipient email
    * @param {string} code - 6-digit verification code
+   * @param {string} [customMessage] - Optional custom message to display
    * @returns {Promise<{success: boolean, error?: string}>}
    */
-  async sendMFACode(email, code) {
+  async sendMFACode(email, code, customMessage = null) {
     const subject = 'Cortex - Your Verification Code';
+    const message = customMessage || 'Your login verification code is:';
     const html = `
       <div style="font-family: 'Courier New', monospace; max-width: 600px; margin: 0 auto; padding: 20px; background: #050805; color: #e8e8e8;">
         <h1 style="color: #ffd23f; text-align: center; border-bottom: 1px solid #3a4a3a; padding-bottom: 20px;">CORTEX</h1>
         <h2 style="color: #0ead69;">Verification Code</h2>
-        <p>Your login verification code is:</p>
+        <p>${message}</p>
         <p style="margin: 30px 0; text-align: center;">
           <span style="display: inline-block; padding: 16px 32px; background: #0ead6920; border: 2px solid #0ead69; color: #0ead69; font-size: 2em; letter-spacing: 8px; font-weight: bold;">
             ${code}
