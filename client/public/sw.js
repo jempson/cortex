@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.19.0
+// Cortex Service Worker v1.19.1
 // Includes: Push notifications, offline caching, stale-while-revalidate
-// v1.19.0: End-to-end encryption support
-const CACHE_NAME = 'cortex-v1.19.0';
+// v1.19.1: Added clear data support for troubleshooting
+const CACHE_NAME = 'cortex-v1.19.1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,7 @@ const STATIC_ASSETS = [
 
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.19.0...');
+  console.log('[SW] Installing service worker v1.19.1...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');
@@ -19,6 +19,22 @@ self.addEventListener('install', (event) => {
   );
   // Activate immediately without waiting
   self.skipWaiting();
+});
+
+// Message handler for client communication
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'CLEAR_ALL_CACHES') {
+    console.log('[SW] Clearing all caches...');
+    caches.keys().then((names) => {
+      return Promise.all(names.map((name) => caches.delete(name)));
+    }).then(() => {
+      console.log('[SW] All caches cleared');
+      event.ports[0]?.postMessage({ success: true });
+    }).catch((err) => {
+      console.error('[SW] Failed to clear caches:', err);
+      event.ports[0]?.postMessage({ success: false, error: err.message });
+    });
+  }
 });
 
 // Activate: Clean old caches
