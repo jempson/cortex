@@ -4404,9 +4404,9 @@ app.get('/api/auth/mfa/status', authenticateToken, (req, res) => {
     const settings = db.getMfaSettings(req.user.userId);
     const methods = db.getEnabledMfaMethods(req.user.userId);
     res.json({
-      totpEnabled: settings?.totp_enabled === 1,
-      emailMfaEnabled: settings?.email_mfa_enabled === 1,
-      hasRecoveryCodes: settings?.recovery_codes ? JSON.parse(settings.recovery_codes).length > 0 : false,
+      totpEnabled: settings?.totpEnabled || false,
+      emailMfaEnabled: settings?.emailMfaEnabled || false,
+      hasRecoveryCodes: settings?.hasRecoveryCodes || false,
       enabledMethods: methods
     });
   } catch (err) {

@@ -5,6 +5,43 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.1] - 2025-12-24
+
+### Fixed
+
+- **MFA Status Display**: Fixed MFA status showing "Not Set Up" when TOTP or Email MFA was actually enabled
+  - Root cause: Property name mismatch between `getMfaSettings()` return value (camelCase) and endpoint check (snake_case)
+  - `settings.totp_enabled` → `settings.totpEnabled`
+  - `settings.email_mfa_enabled` → `settings.emailMfaEnabled`
+
+## [1.18.0] - 2025-12-24
+
+### Added
+
+#### Session Management
+- View all active sessions with device info, IP addresses, and timestamps
+- Revoke individual sessions or logout all other devices at once
+- Sessions automatically cleaned up when they expire
+- Current session clearly marked in the session list
+
+#### GDPR Compliance
+- **Download My Data**: Export all personal data as JSON (profile, droplets, wave participation, contacts, and more)
+- **Delete Account**: Permanently delete your account with proper data handling
+  - Droplets preserved but attributed to "[Deleted User]"
+  - Waves transferred to other participants
+  - Empty waves and groups automatically cleaned up
+
+### Security
+- HSTS (HTTP Strict Transport Security) headers enabled
+- Optional HTTPS enforcement via `ENFORCE_HTTPS=true`
+- Stricter CORS defaults - `ALLOWED_ORIGINS` required in production
+- Session tokens hashed before storage (never stored in plain text)
+
+### Improved
+- Logout now properly revokes session on the server
+- Better error handling throughout security features
+- Rate limiting on account management endpoints
+
 ## [1.15.0] - 2025-12-17
 
 ### Added
