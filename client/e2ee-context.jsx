@@ -721,6 +721,59 @@ export function E2EEProvider({ children, token, API_URL }) {
     waveKeyCacheRef.current.delete(waveId);
   }, []);
 
+  // ============ Distribute key to new participant ============
+  const distributeKeyToParticipant = useCallback(async (waveId, userId) => {
+    if (!privateKey || !publicKeyBase64) {
+      throw new Error('E2EE not unlocked');
+    }
+
+    // Get the cached wave key
+    const waveKey = waveKeyCacheRef.current.get(waveId);
+    if (!waveKey) {
+      throw new Error('Wave key not found in cache - reload the wave first');
+    }
+
+    try {
+      // Get the new participant's public key
+      const res = await fetchAPI(`/e2ee/keys/user/${userId}`);
+      if (!res.ok) {
+        throw new Error('Failed to get participant public key - they may not have E2EE set up');
+      }
+      const { publicKey: participantPublicKey } = await res.json();
+      if (!participantPublicKey) {
+        throw new Error('Participant does not have E2EE set up');
+      }
+
+      // Encrypt wave key for the new participant
+      const { encryptedWaveKey, nonce, senderPublicKey } = await crypto.addParticipantToWave(
+        waveKey,
+        participantPublicKey,
+        privateKey,
+        publicKeyBase64
+      );
+
+      // Call the distribute endpoint
+      const distributeRes = await fetchAPI(`/waves/${waveId}/key/distribute`, {
+        method: 'POST',
+        body: {
+          userId,
+          encryptedWaveKey: `${encryptedWaveKey}:${nonce}`,
+          senderPublicKey
+        }
+      });
+
+      if (!distributeRes.ok) {
+        const error = await distributeRes.json().catch(() => ({}));
+        throw new Error(error.error || 'Failed to distribute key');
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Distribute key to participant error:', err);
+      throw err;
+    }
+  }, [privateKey, publicKeyBase64, fetchAPI]);
+
   // ============ Context Value ============
   const value = {
     // Status
@@ -749,6 +802,7 @@ export function E2EEProvider({ children, token, API_URL }) {
     createWaveWithEncryption,
     invalidateWaveKey,
     rotateWaveKey,
+    distributeKeyToParticipant,
 
     // Legacy wave migration
     getWaveEncryptionStatus,

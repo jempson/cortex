@@ -10350,6 +10350,150 @@ app.delete('/api/waves/:id', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
+// ============ Wave Participant Management ============
+
+// Add participant to wave
+app.post('/api/waves/:id/participants', authenticateToken, async (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'User ID required' });
+  }
+
+  const wave = db.getWave(waveId);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Only wave creator can add participants to private waves
+  if (wave.privacy === 'private' && wave.createdBy !== req.user.userId) {
+    return res.status(403).json({ error: 'Only wave creator can add participants to private waves' });
+  }
+
+  // Check if requester is a participant
+  if (!db.isWaveParticipant(waveId, req.user.userId)) {
+    return res.status(403).json({ error: 'You must be a participant to add others' });
+  }
+
+  // Check if user exists
+  const userToAdd = db.findUserById(userId);
+  if (!userToAdd) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  // Check if already a participant
+  if (db.isWaveParticipant(waveId, userId)) {
+    return res.status(400).json({ error: 'User is already a participant' });
+  }
+
+  // Add participant
+  const added = db.addWaveParticipant(waveId, userId);
+  if (!added) {
+    return res.status(500).json({ error: 'Failed to add participant' });
+  }
+
+  // Get updated participant list
+  const participants = db.getWaveParticipants(waveId);
+
+  // Broadcast to wave
+  broadcastToWave(waveId, {
+    type: 'participant_added',
+    waveId,
+    participant: {
+      id: userToAdd.id,
+      handle: userToAdd.handle,
+      name: userToAdd.displayName || userToAdd.handle,
+      avatar: userToAdd.avatar,
+      avatarUrl: userToAdd.avatarUrl
+    },
+    addedBy: req.user.userId
+  });
+
+  // Notify the added user
+  broadcastToUser(userId, {
+    type: 'added_to_wave',
+    wave: {
+      id: wave.id,
+      title: wave.title,
+      privacy: wave.privacy
+    },
+    addedBy: req.user.userId
+  });
+
+  if (db.logActivity) db.logActivity(req.user.userId, 'add_participant', 'wave', waveId, getRequestMeta(req), { addedUserId: userId });
+
+  res.json({ success: true, participants });
+});
+
+// Remove participant from wave
+app.delete('/api/waves/:id/participants/:userId', authenticateToken, async (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const userId = sanitizeInput(req.params.userId);
+
+  const wave = db.getWave(waveId);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Check permissions:
+  // - Wave creator can remove anyone (except themselves)
+  // - Users can remove themselves (leave wave)
+  const isCreator = wave.createdBy === req.user.userId;
+  const isSelf = userId === req.user.userId;
+
+  if (!isCreator && !isSelf) {
+    return res.status(403).json({ error: 'Only wave creator can remove other participants' });
+  }
+
+  // Creator cannot remove themselves
+  if (isCreator && isSelf) {
+    return res.status(400).json({ error: 'Wave creator cannot leave. Delete the wave instead.' });
+  }
+
+  // Check if target is a participant
+  if (!db.isWaveParticipant(waveId, userId)) {
+    return res.status(400).json({ error: 'User is not a participant' });
+  }
+
+  // Remove participant
+  const removed = db.removeWaveParticipant(waveId, userId);
+  if (!removed) {
+    return res.status(500).json({ error: 'Failed to remove participant' });
+  }
+
+  // Get user info for broadcast
+  const removedUser = db.findUserById(userId);
+
+  // Get updated participant list
+  const participants = db.getWaveParticipants(waveId);
+
+  // Broadcast to wave
+  broadcastToWave(waveId, {
+    type: 'participant_removed',
+    waveId,
+    userId,
+    removedBy: req.user.userId,
+    wasSelf: isSelf
+  });
+
+  // Notify the removed user if they were removed by someone else
+  if (!isSelf) {
+    broadcastToUser(userId, {
+      type: 'removed_from_wave',
+      wave: {
+        id: wave.id,
+        title: wave.title
+      },
+      removedBy: req.user.userId
+    });
+  }
+
+  if (db.logActivity) db.logActivity(req.user.userId, isSelf ? 'leave_wave' : 'remove_participant', 'wave', waveId, getRequestMeta(req), { removedUserId: userId });
+
+  res.json({ success: true, participants });
+});
+
 // ============ Wave E2EE Key Routes (v1.19.0) ============
 
 // Get wave key for current user

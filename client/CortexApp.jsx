@@ -5374,6 +5374,178 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
   );
 };
 
+// ============ INVITE TO WAVE MODAL ============
+const InviteToWaveModal = ({ isOpen, onClose, wave, contacts, participants, fetchAPI, showToast, isMobile, onParticipantsChange }) => {
+  const e2ee = useE2EE();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedUsers, setSelectedUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedUsers([]);
+      setSearchQuery('');
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !wave) return null;
+
+  // Get current participant IDs
+  const participantIds = participants.map(p => p.id);
+
+  // Filter contacts that are not already participants
+  const availableContacts = (contacts || []).filter(c => !participantIds.includes(c.id));
+
+  // Filter by search query
+  const filteredContacts = availableContacts.filter(c => {
+    const query = searchQuery.toLowerCase();
+    return (c.displayName || c.name || '').toLowerCase().includes(query) ||
+           (c.handle || '').toLowerCase().includes(query);
+  });
+
+  const toggleUser = (userId) => {
+    setSelectedUsers(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const handleInvite = async () => {
+    if (selectedUsers.length === 0) {
+      showToast('Select at least one user to invite', 'error');
+      return;
+    }
+
+    setLoading(true);
+    let successCount = 0;
+    let errors = [];
+
+    for (const userId of selectedUsers) {
+      try {
+        // Add participant to wave
+        await fetchAPI(`/waves/${wave.id}/participants`, {
+          method: 'POST',
+          body: { userId }
+        });
+
+        // If wave is encrypted, distribute wave key to new participant
+        if (wave.encrypted && e2ee.isUnlocked) {
+          try {
+            await e2ee.distributeKeyToParticipant(wave.id, userId);
+          } catch (keyErr) {
+            console.error('Failed to distribute E2EE key:', keyErr);
+            // Don't fail the whole operation, just warn
+            showToast(`Added ${availableContacts.find(c => c.id === userId)?.displayName || 'user'} but E2EE key distribution failed`, 'warning');
+          }
+        }
+
+        successCount++;
+      } catch (err) {
+        const user = availableContacts.find(c => c.id === userId);
+        errors.push(`${user?.displayName || user?.name || userId}: ${err.message}`);
+      }
+    }
+
+    setLoading(false);
+
+    if (successCount > 0) {
+      showToast(`Added ${successCount} participant${successCount > 1 ? 's' : ''} to wave`, 'success');
+      if (onParticipantsChange) onParticipantsChange();
+      onClose();
+    }
+    if (errors.length > 0) {
+      showToast(errors.join(', '), 'error');
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
+    }}>
+      <div style={{
+        width: '100%', maxWidth: '450px', maxHeight: '80vh', overflowY: 'auto',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        border: '2px solid var(--accent-teal)40', padding: '24px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <GlowText color="var(--accent-teal)" size="1.1rem">Invite to Wave</GlowText>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search contacts..."
+            style={{
+              width: '100%', padding: '10px 12px', boxSizing: 'border-box',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'inherit',
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '16px', maxHeight: '300px', overflowY: 'auto' }}>
+          {filteredContacts.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', padding: '20px', textAlign: 'center' }}>
+              {availableContacts.length === 0 ? 'All contacts are already participants' : 'No matching contacts'}
+            </div>
+          ) : (
+            filteredContacts.map(contact => (
+              <div
+                key={contact.id}
+                onClick={() => toggleUser(contact.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px',
+                  cursor: 'pointer',
+                  background: selectedUsers.includes(contact.id) ? 'var(--accent-teal)15' : 'var(--bg-elevated)',
+                  border: `1px solid ${selectedUsers.includes(contact.id) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+                  marginBottom: '4px',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedUsers.includes(contact.id)}
+                  onChange={() => toggleUser(contact.id)}
+                  style={{ accentColor: 'var(--accent-teal)' }}
+                />
+                <Avatar letter={(contact.displayName || contact.name)?.[0] || '?'} color="var(--accent-teal)" size={28} imageUrl={contact.avatarUrl} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                    {contact.displayName || contact.name}
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                    @{contact.handle}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={onClose} disabled={loading} style={{
+            flex: 1, padding: '12px', background: 'transparent',
+            border: '1px solid var(--border-primary)', color: 'var(--text-dim)',
+            cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'monospace',
+            opacity: loading ? 0.5 : 1,
+          }}>CANCEL</button>
+          <button onClick={handleInvite} disabled={loading || selectedUsers.length === 0} style={{
+            flex: 1, padding: '12px', background: 'var(--accent-teal)20',
+            border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)',
+            cursor: (loading || selectedUsers.length === 0) ? 'not-allowed' : 'pointer',
+            fontFamily: 'monospace',
+            opacity: (loading || selectedUsers.length === 0) ? 0.5 : 1,
+          }}>
+            {loading ? 'ADDING...' : `INVITE ${selectedUsers.length > 0 ? `(${selectedUsers.length})` : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ============ SEARCH MODAL ============
 const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -5563,6 +5735,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [reportTarget, setReportTarget] = useState(null); // { type, targetId, targetPreview }
   const [rippleTarget, setRippleTarget] = useState(null); // droplet to ripple
   const [showFederateModal, setShowFederateModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For ripple activity badges
   const [decryptionErrors, setDecryptionErrors] = useState({}); // Track droplets that failed to decrypt
 
@@ -6832,6 +7005,61 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           gap: '8px',
           flexShrink: 0
         }}>
+          {/* Header with Invite button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', fontFamily: 'monospace' }}>
+              PARTICIPANTS ({participants.length})
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {/* Invite button - only for private waves by creator, or any wave by participants */}
+              {((waveData?.privacy === 'private' && waveData?.createdBy === currentUser?.id) ||
+                (waveData?.privacy !== 'private' && participants.some(p => p.id === currentUser?.id))) && (
+                <button
+                  onClick={() => setShowInviteModal(true)}
+                  style={{
+                    padding: isMobile ? '6px 10px' : '4px 8px',
+                    minHeight: isMobile ? '36px' : 'auto',
+                    background: 'var(--accent-teal)20',
+                    border: '1px solid var(--accent-teal)',
+                    color: 'var(--accent-teal)',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: '0.65rem',
+                  }}
+                >
+                  + INVITE
+                </button>
+              )}
+              {/* Leave button for non-creators */}
+              {waveData?.createdBy !== currentUser?.id && participants.some(p => p.id === currentUser?.id) && (
+                <button
+                  onClick={async () => {
+                    if (confirm('Are you sure you want to leave this wave?')) {
+                      try {
+                        await fetchAPI(`/waves/${wave.id}/participants/${currentUser.id}`, { method: 'DELETE' });
+                        showToast('You have left the wave', 'success');
+                        onBack();
+                      } catch (err) {
+                        showToast(err.message || 'Failed to leave wave', 'error');
+                      }
+                    }
+                  }}
+                  style={{
+                    padding: isMobile ? '6px 10px' : '4px 8px',
+                    minHeight: isMobile ? '36px' : 'auto',
+                    background: 'var(--accent-orange)20',
+                    border: '1px solid var(--accent-orange)',
+                    color: 'var(--accent-orange)',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: '0.65rem',
+                  }}
+                >
+                  LEAVE
+                </button>
+              )}
+            </div>
+          </div>
           {participants.map(p => {
             const latestDroplet = allDroplets.length > 0 ? allDroplets[allDroplets.length - 1] : null;
             const hasReadLatest = latestDroplet ? (latestDroplet.readBy || [latestDroplet.author_id]).includes(p.id) : true;
@@ -6998,6 +7226,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                             padding: isMobile ? '12px' : '8px 12px',
                             background: 'transparent',
                             border: 'none',
+                            borderBottom: waveData?.createdBy === currentUser?.id ? '1px solid var(--border-subtle)' : 'none',
                             color: userBlocked ? 'var(--accent-green)' : 'var(--accent-orange)',
                             cursor: 'pointer',
                             fontFamily: 'monospace',
@@ -7007,6 +7236,36 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                         >
                           {userBlocked ? '✓ UNBLOCK' : '⊘ BLOCK'}
                         </button>
+                        {/* Remove from wave - only for wave creator */}
+                        {waveData?.createdBy === currentUser?.id && (
+                          <button
+                            onClick={async () => {
+                              if (confirm(`Remove ${p.name} from this wave?`)) {
+                                try {
+                                  await fetchAPI(`/waves/${wave.id}/participants/${p.id}`, { method: 'DELETE' });
+                                  showToast(`${p.name} removed from wave`, 'success');
+                                  setShowModMenu(null);
+                                  loadWave(); // Refresh participants
+                                } catch (err) {
+                                  showToast(err.message || 'Failed to remove participant', 'error');
+                                }
+                              }
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: isMobile ? '12px' : '8px 12px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--accent-orange)',
+                              cursor: 'pointer',
+                              fontFamily: 'monospace',
+                              fontSize: '0.7rem',
+                              textAlign: 'left',
+                            }}
+                          >
+                            ✕ REMOVE
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -7502,6 +7761,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           }}
         />
       )}
+
+      <InviteToWaveModal
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        wave={waveData}
+        contacts={contacts}
+        participants={participants}
+        fetchAPI={fetchAPI}
+        showToast={showToast}
+        isMobile={isMobile}
+        onParticipantsChange={() => loadWave(true)}
+      />
 
       {showFederateModal && waveData && (
         <InviteFederatedModal
@@ -14346,6 +14617,41 @@ function MainApp({ shareDropletId }) {
         }
         showToastMsg('Wave encryption key was rotated', 'info');
       }
+    } else if (data.type === 'participant_added') {
+      // Someone was added to a wave we're in
+      if (selectedWave?.id === data.waveId) {
+        setWaveReloadTrigger(prev => prev + 1);
+      }
+      showToastMsg(`${data.participant?.name || 'Someone'} was added to the wave`, 'info');
+    } else if (data.type === 'participant_removed') {
+      // Someone was removed from a wave we're in
+      if (data.userId === user?.id) {
+        // We were removed
+        if (selectedWave?.id === data.waveId) {
+          setSelectedWave(null);
+          setActiveView('waves');
+        }
+        showToastMsg('You were removed from the wave', 'info');
+        loadWaves();
+      } else {
+        // Someone else was removed
+        if (selectedWave?.id === data.waveId) {
+          setWaveReloadTrigger(prev => prev + 1);
+        }
+        showToastMsg(data.wasSelf ? 'A participant left the wave' : 'A participant was removed from the wave', 'info');
+      }
+    } else if (data.type === 'added_to_wave') {
+      // We were added to a wave
+      showToastMsg(`You were added to "${data.wave?.title || 'a wave'}"`, 'success');
+      loadWaves();
+    } else if (data.type === 'removed_from_wave') {
+      // We were removed from a wave (by someone else)
+      showToastMsg(`You were removed from "${data.wave?.title || 'a wave'}"`, 'info');
+      if (selectedWave?.id === data.wave?.id) {
+        setSelectedWave(null);
+        setActiveView('waves');
+      }
+      loadWaves();
     } else if (data.type === 'user_typing') {
       // Handle typing indicator
       const { waveId, userId, userName } = data;

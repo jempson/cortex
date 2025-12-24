@@ -3187,6 +3187,11 @@ export class DatabaseSQLite {
     }
   }
 
+  removeWaveParticipant(waveId, userId) {
+    const result = this.db.prepare('DELETE FROM wave_participants WHERE wave_id = ? AND user_id = ?').run(waveId, userId);
+    return result.changes > 0;
+  }
+
   archiveWaveForUser(waveId, userId, archived = true) {
     const result = this.db.prepare('UPDATE wave_participants SET archived = ? WHERE wave_id = ? AND user_id = ?').run(archived ? 1 : 0, waveId, userId);
     return result.changes > 0;
