@@ -12264,6 +12264,10 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [showHandleRequests, setShowHandleRequests] = useState(false);
   const [showBlockedMuted, setShowBlockedMuted] = useState(false);
   const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
+  const [showSecurity, setShowSecurity] = useState(false);
+  const [showDisplayPrefs, setShowDisplayPrefs] = useState(false);
+  const [showCrawlBar, setShowCrawlBar] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [notificationPrefs, setNotificationPrefs] = useState(null);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [mutedUsers, setMutedUsers] = useState([]);
@@ -12935,52 +12939,44 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         }}>REQUEST CHANGE</button>
       </CollapsibleSection>
 
-      {/* Password Change */}
-      <CollapsibleSection title="CHANGE PASSWORD" defaultOpen={false} isMobile={isMobile}>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CURRENT PASSWORD</label>
-          <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={inputStyle} />
-        </div>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>NEW PASSWORD</label>
-          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Min 8 chars, upper, lower, number" style={inputStyle} />
-        </div>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CONFIRM NEW PASSWORD</label>
-          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Re-enter new password" style={{
-              ...inputStyle,
-              borderColor: confirmPassword && newPassword !== confirmPassword ? 'var(--accent-orange)' : 'var(--border-subtle)',
-            }} />
-          {confirmPassword && newPassword !== confirmPassword && (
-            <div style={{ color: 'var(--accent-orange)', fontSize: '0.7rem', marginTop: '4px' }}>
-              Passwords do not match
-            </div>
-          )}
-        </div>
-        <button onClick={handleChangePassword} disabled={!currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword} style={{
-          padding: '10px 20px',
-          background: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)20' : 'transparent',
-          border: `1px solid ${currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
-          color: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)' : 'var(--text-muted)',
-          cursor: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
-        }}>CHANGE PASSWORD</button>
-      </CollapsibleSection>
+      {/* Security Section */}
+      <CollapsibleSection title="🔒 SECURITY" defaultOpen={false} isMobile={isMobile} accentColor="var(--accent-orange)">
+        {/* Change Password Sub-section */}
+        <CollapsibleSection title="CHANGE PASSWORD" defaultOpen={false} isMobile={isMobile}>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CURRENT PASSWORD</label>
+            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={inputStyle} />
+          </div>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>NEW PASSWORD</label>
+            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Min 8 chars, upper, lower, number" style={inputStyle} />
+          </div>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CONFIRM NEW PASSWORD</label>
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Re-enter new password" style={{
+                ...inputStyle,
+                borderColor: confirmPassword && newPassword !== confirmPassword ? 'var(--accent-orange)' : 'var(--border-subtle)',
+              }} />
+            {confirmPassword && newPassword !== confirmPassword && (
+              <div style={{ color: 'var(--accent-orange)', fontSize: '0.7rem', marginTop: '4px' }}>
+                Passwords do not match
+              </div>
+            )}
+          </div>
+          <button onClick={handleChangePassword} disabled={!currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword} style={{
+            padding: '10px 20px',
+            background: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)20' : 'transparent',
+            border: `1px solid ${currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+            color: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)' : 'var(--text-muted)',
+            cursor: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+          }}>CHANGE PASSWORD</button>
+        </CollapsibleSection>
 
-      {/* Two-Factor Authentication */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div
-          onClick={() => setShowMfaSetup(!showMfaSetup)}
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-        >
-          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>TWO-FACTOR AUTHENTICATION</div>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showMfaSetup ? '▼' : '▶'}</span>
-        </div>
-
-        {showMfaSetup && (
-          <div style={{ marginTop: '16px' }}>
-            {mfaStatus ? (
+        {/* Two-Factor Authentication Sub-section */}
+        <CollapsibleSection title="TWO-FACTOR AUTHENTICATION" defaultOpen={false} isMobile={isMobile}>
+          {mfaStatus ? (
               <>
                 {/* Recovery Codes Modal/Display */}
                 {recoveryCodes && (
@@ -13231,28 +13227,17 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   </>
                 )}
               </>
-            ) : (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
-                Loading MFA settings...
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          ) : (
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
+              Loading MFA settings...
+            </div>
+          )}
+        </CollapsibleSection>
 
-      {/* E2EE Recovery Key (v1.19.0) */}
-      {e2ee.isE2EEEnabled && (
-        <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-          <div
-            onClick={() => setShowE2EERecovery(!showE2EERecovery)}
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-          >
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>E2EE RECOVERY KEY</div>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showE2EERecovery ? '▼' : '▶'}</span>
-          </div>
-
-          {showE2EERecovery && (
-            <div style={{ marginTop: '16px' }}>
+        {/* E2EE Recovery Key Sub-section */}
+        {e2ee.isE2EEEnabled && (
+          <CollapsibleSection title="E2EE RECOVERY KEY" defaultOpen={false} isMobile={isMobile}>
+            <div>
               {/* Display regenerated recovery key */}
               {e2eeRecoveryKey && (
                 <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--accent-green)10', border: '2px solid var(--accent-green)', borderRadius: '4px' }}>
@@ -13360,23 +13345,12 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                 </>
               )}
             </div>
-          )}
-        </div>
-      )}
+          </CollapsibleSection>
+        )}
 
-      {/* Active Sessions (v1.18.0) */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div
-          onClick={() => setShowSessions(!showSessions)}
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-        >
-          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>ACTIVE SESSIONS</div>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showSessions ? '▼' : '▶'}</span>
-        </div>
-
-        {showSessions && (
-          <div style={{ marginTop: '16px' }}>
-            {!sessionsEnabled ? (
+        {/* Active Sessions Sub-section */}
+        <CollapsibleSection title="ACTIVE SESSIONS" defaultOpen={false} isMobile={isMobile}>
+          {!sessionsEnabled ? (
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
                 Session management is not enabled on this server.
               </div>
@@ -13476,13 +13450,105 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                 )}
               </>
             )}
+        </CollapsibleSection>
+
+        {/* Blocked & Muted Users Sub-section */}
+        <CollapsibleSection title="BLOCKED & MUTED USERS" defaultOpen={false} isMobile={isMobile}>
+          {/* Blocked Users */}
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>⊘</span> BLOCKED ({blockedUsers.length})
+            </div>
+            {blockedUsers.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
+                No blocked users. Blocked users cannot send you contact requests, invite you to groups, or have their messages shown to you.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {blockedUsers.map(u => (
+                  <div key={u.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    background: 'var(--accent-orange)10',
+                    border: '1px solid var(--accent-orange)30',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="var(--accent-orange)" size={28} />
+                      <div>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '0.8rem' }}>{u.displayName}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleUnblock(u.blockedUserId, u.displayName)}
+                      style={{
+                        padding: isMobile ? '8px 12px' : '6px 10px',
+                        minHeight: isMobile ? '40px' : 'auto',
+                        background: 'var(--accent-green)20',
+                        border: '1px solid var(--accent-green)',
+                        color: 'var(--accent-green)',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '0.65rem',
+                      }}
+                    >UNBLOCK</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+
+          {/* Muted Users */}
+          <div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>🔇</span> MUTED ({mutedUsers.length})
+            </div>
+            {mutedUsers.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
+                No muted users. Muted users can still interact with you, but their messages will be hidden from view.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {mutedUsers.map(u => (
+                  <div key={u.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-subtle)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="var(--text-dim)" size={28} />
+                      <div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{u.displayName}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleUnmute(u.mutedUserId, u.displayName)}
+                      style={{
+                        padding: isMobile ? '8px 12px' : '6px 10px',
+                        minHeight: isMobile ? '40px' : 'auto',
+                        background: 'var(--accent-green)20',
+                        border: '1px solid var(--accent-green)',
+                        color: 'var(--accent-green)',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '0.65rem',
+                      }}
+                    >UNMUTE</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CollapsibleSection>
+
+      </CollapsibleSection>
 
       {/* Display Preferences */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '12px' }}>DISPLAY PREFERENCES</div>
+      <CollapsibleSection title="DISPLAY PREFERENCES" defaultOpen={false} isMobile={isMobile}>
 
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>THEME</label>
@@ -13571,61 +13637,13 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           </div>
         </div>
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PUSH NOTIFICATIONS</label>
-          <button
-            onClick={async () => {
-              const token = storage.getToken();
-              if (pushEnabled) {
-                // Disable push
-                storage.setPushEnabled(false);
-                setPushEnabled(false);
-                await unsubscribeFromPush(token);
-                showToast('Push notifications disabled', 'success');
-              } else {
-                // Enable push
-                const result = await subscribeToPush(token);
-                if (result.success) {
-                  storage.setPushEnabled(true);
-                  setPushEnabled(true);
-                  showToast('Push notifications enabled', 'success');
-                } else {
-                  showToast(result.reason || 'Failed to enable push notifications', 'error');
-                }
-              }
-            }}
-            style={{
-              padding: isMobile ? '10px 16px' : '8px 16px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: pushEnabled ? 'var(--accent-green)20' : 'transparent',
-              border: `1px solid ${pushEnabled ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
-              color: pushEnabled ? 'var(--accent-green)' : 'var(--text-dim)',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: isMobile ? '0.9rem' : '0.85rem',
-            }}
-          >
-            {pushEnabled ? '🔔 ENABLED' : '🔕 DISABLED'}
-          </button>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
-            Receive notifications when the app is closed or in background
-          </div>
-          {/* iOS warning */}
-          {/iPad|iPhone|iPod/.test(navigator.userAgent) && (
-            <div style={{ color: 'var(--accent-orange)', fontSize: '0.65rem', marginTop: '6px', padding: '6px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
-              ⚠️ iOS does not support push notifications for web apps. This is a platform limitation by Apple.
-            </div>
-          )}
-        </div>
-
         <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
           ℹ️ Theme customization will change colors throughout the app (coming soon). Other changes take effect immediately.
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Crawl Bar Preferences */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '12px' }}>CRAWL BAR</div>
+      <CollapsibleSection title="CRAWL BAR" defaultOpen={false} isMobile={isMobile}>
 
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>ENABLE CRAWL BAR</label>
@@ -13790,7 +13808,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
             </div>
           </>
         )}
-      </div>
+      </CollapsibleSection>
 
       {/* Notification Preferences */}
       <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
@@ -13906,6 +13924,53 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                     Don't show wave activity notifications when you're viewing that wave
                   </div>
                 </div>
+
+                {/* Push Notifications */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                    📲 PUSH NOTIFICATIONS
+                  </label>
+                  <button
+                    onClick={async () => {
+                      const token = storage.getToken();
+                      if (pushEnabled) {
+                        storage.setPushEnabled(false);
+                        setPushEnabled(false);
+                        await unsubscribeFromPush(token);
+                        showToast('Push notifications disabled', 'success');
+                      } else {
+                        const result = await subscribeToPush(token);
+                        if (result.success) {
+                          storage.setPushEnabled(true);
+                          setPushEnabled(true);
+                          showToast('Push notifications enabled', 'success');
+                        } else {
+                          showToast(result.reason || 'Failed to enable push notifications', 'error');
+                        }
+                      }
+                    }}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 16px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: pushEnabled ? 'var(--accent-green)20' : 'transparent',
+                      border: `1px solid ${pushEnabled ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                      color: pushEnabled ? 'var(--accent-green)' : 'var(--text-dim)',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                    }}
+                  >
+                    {pushEnabled ? '🔔 ENABLED' : '🔕 DISABLED'}
+                  </button>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
+                    Receive notifications when the app is closed or in background
+                  </div>
+                  {/iPad|iPhone|iPod/.test(navigator.userAgent) && (
+                    <div style={{ color: 'var(--accent-orange)', fontSize: '0.65rem', marginTop: '6px', padding: '6px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
+                      ⚠️ iOS does not support push notifications for web apps. This is a platform limitation by Apple.
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
@@ -13922,127 +13987,10 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         )}
       </div>
 
-      {/* Blocked & Muted Users */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>BLOCKED & MUTED USERS</div>
-          <button
-            onClick={() => setShowBlockedMuted(!showBlockedMuted)}
-            style={{
-              padding: isMobile ? '8px 12px' : '6px 10px',
-              background: showBlockedMuted ? 'var(--accent-orange)20' : 'transparent',
-              border: `1px solid ${showBlockedMuted ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
-              color: showBlockedMuted ? 'var(--accent-orange)' : 'var(--text-dim)',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: '0.7rem',
-            }}
-          >
-            {showBlockedMuted ? '▼ HIDE' : '▶ SHOW'}
-          </button>
-        </div>
-
-        {showBlockedMuted && (
-          <div>
-            {/* Blocked Users */}
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>⊘</span> BLOCKED ({blockedUsers.length})
-              </div>
-              {blockedUsers.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
-                  No blocked users. Blocked users cannot send you contact requests, invite you to groups, or have their messages shown to you.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {blockedUsers.map(u => (
-                    <div key={u.id} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 12px',
-                      background: 'var(--accent-orange)10',
-                      border: '1px solid var(--accent-orange)30',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="var(--accent-orange)" size={28} />
-                        <div>
-                          <div style={{ color: 'var(--text-primary)', fontSize: '0.8rem' }}>{u.displayName}</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleUnblock(u.blockedUserId, u.displayName)}
-                        style={{
-                          padding: isMobile ? '8px 12px' : '6px 10px',
-                          minHeight: isMobile ? '40px' : 'auto',
-                          background: 'var(--accent-green)20',
-                          border: '1px solid var(--accent-green)',
-                          color: 'var(--accent-green)',
-                          cursor: 'pointer',
-                          fontFamily: 'monospace',
-                          fontSize: '0.65rem',
-                        }}
-                      >UNBLOCK</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Muted Users */}
-            <div>
-              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>🔇</span> MUTED ({mutedUsers.length})
-              </div>
-              {mutedUsers.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
-                  No muted users. Muted users can still interact with you, but their messages will be hidden from view.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {mutedUsers.map(u => (
-                    <div key={u.id} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 12px',
-                      background: 'var(--bg-elevated)',
-                      border: '1px solid var(--border-subtle)',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="var(--text-dim)" size={28} />
-                        <div>
-                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{u.displayName}</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleUnmute(u.mutedUserId, u.displayName)}
-                        style={{
-                          padding: isMobile ? '8px 12px' : '6px 10px',
-                          minHeight: isMobile ? '40px' : 'auto',
-                          background: 'var(--accent-green)20',
-                          border: '1px solid var(--accent-green)',
-                          color: 'var(--accent-green)',
-                          cursor: 'pointer',
-                          fontFamily: 'monospace',
-                          fontSize: '0.65rem',
-                        }}
-                      >UNMUTE</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Admin Panel */}
       {user?.isAdmin && (
-        <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-hover), var(--bg-surface))', border: '2px solid var(--accent-amber)40' }}>
-          <GlowText color="var(--accent-amber)" size={isMobile ? '1rem' : '0.9rem'}>ADMIN PANEL</GlowText>
-
-          <div style={{ marginTop: '16px' }}>
+        <CollapsibleSection title="⚙️ ADMIN PANEL" defaultOpen={false} isMobile={isMobile} accentColor="var(--accent-amber)" titleColor="var(--accent-amber)">
+          <div style={{ marginTop: '8px' }}>
             <button
               onClick={() => setShowHandleRequests(!showHandleRequests)}
               style={{
@@ -14080,7 +14028,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
           {/* Federation Admin Panel */}
           <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} />
-        </div>
+        </CollapsibleSection>
       )}
 
       {/* My Reports Section */}
