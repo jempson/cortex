@@ -344,19 +344,19 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
               </>
             ) : (
               <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
-                Your encryption needs to be unlocked. This can happen if your password was changed on another device.
+                Enter your password to unlock your encrypted messages.
               </p>
             )}
 
             <form onSubmit={handleUnlock}>
               <label style={{ color: 'var(--text-secondary)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                {showMigrationNotice ? 'Original Encryption Passphrase' : 'Current Password'}
+                {showMigrationNotice ? 'Original Encryption Passphrase' : 'Password'}
               </label>
               <input
                 type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
-                placeholder={showMigrationNotice ? "Enter your original passphrase" : "Enter your password"}
+                placeholder={showMigrationNotice ? "Enter your original passphrase" : "Enter your login password"}
                 style={inputStyle}
                 autoComplete="current-password"
                 autoFocus
