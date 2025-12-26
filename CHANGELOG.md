@@ -5,6 +5,49 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.5] - 2025-12-26
+
+### Added
+
+#### Tenor GIF Support
+- **Configurable GIF Provider**: Server-side configuration to use GIPHY, Tenor, or both
+  - `GIF_PROVIDER` environment variable: `giphy`, `tenor`, or `both`
+  - `TENOR_API_KEY` for Tenor API v2 integration
+- **Dynamic Attribution**: GIF search modal shows "Powered by Tenor" or "Powered by GIPHY" based on active provider
+- **Tenor API v2**: Full support for Tenor's search and featured/trending endpoints
+
+#### TikTok Thumbnails
+- **Video Previews**: TikTok links now display video thumbnails via oEmbed API
+- **Rich Link Cards**: Styled cards show thumbnail, author name, and video title
+- **Click to Open**: Cards link to TikTok in new tab (embed.js incompatible with React)
+
+### Fixed
+
+#### Critical: Unread Count Bug
+- **Wave List Not Updating**: Fixed bug where unread counts were always 0 for users without blocked/muted users
+  - Root cause: SQL `NOT IN (NULL)` returns NULL instead of TRUE, excluding all rows
+  - Fix: Conditional SQL clauses only added when blocked/muted arrays have items
+- **Immediate Updates**: Wave list now correctly refreshes after marking droplets as read
+
+#### GIF Embedding
+- **Tenor CDN URLs**: Fixed direct Tenor/GIPHY CDN URLs (media.tenor.com, i.giphy.com) being properly embedded as images
+- **Tenor Short URLs**: Fixed tenor.com/xxx.gif URLs being incorrectly treated as images (they're redirect pages)
+- **oEmbed Public Access**: Made `/api/embeds/oembed` endpoint public (no auth required) for embed previews
+- **Trending GIFs**: Fixed GIF modal to always load fresh trending when opened (removed stale data check)
+
+#### TikTok oEmbed
+- **Field Normalization**: Fixed mismatch between server response fields (`thumbnail`, `author`) and client expectations (`thumbnail_url`, `author_name`)
+
+### Configuration
+
+New environment variables in `.env`:
+```
+TENOR_API_KEY=your-tenor-api-key
+GIF_PROVIDER=tenor  # Options: giphy, tenor, both
+```
+
+---
+
 ## [1.19.4] - 2025-12-26
 
 ### Improved
