@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 1.19.3** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 1.19.4** | A privacy-first, federated communication platform inspired by Google Wave.
 
 ## Quick Start
 
@@ -785,6 +785,11 @@ server {
 ---
 
 ## Changelog
+
+### v1.19.4 (December 2025)
+- **E2EE Unlock Modal Improvement**: Clearer password prompt text
+  - Shows "Enter your password to unlock" instead of confusing "Original Encryption Passphrase"
+  - Migration notice only shown when password actually mismatches
 
 ### v1.19.3 (December 2025)
 - **E2EE Unlock Fix**: Fixed stuck spinner when reopening PWA

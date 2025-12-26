@@ -5,6 +5,18 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.4] - 2025-12-26
+
+### Improved
+
+#### E2EE Unlock Modal Text
+- **Clearer password prompt**: On PWA reopen, now shows simple "Enter your password to unlock your encrypted messages" instead of confusing "Original Encryption Passphrase"
+- **Migration notice only when needed**: The "Original Encryption Passphrase" message now only appears when auto-unlock actually fails due to password mismatch (for users who set up E2EE before password-based encryption)
+- **Better labels**: Changed "Current Password" to just "Password" with placeholder "Enter your login password"
+- Added `passwordMismatch` state to distinguish between failed unlock vs no pending password
+
+---
+
 ## [1.19.3] - 2025-12-26
 
 ### Fixed
