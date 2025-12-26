@@ -6297,7 +6297,10 @@ async function trendingGiphy(limit, offset) {
 
 // Helper: Get trending/featured GIFs from Tenor
 async function trendingTenor(limit, offset) {
-  if (!TENOR_API_KEY) return null;
+  if (!TENOR_API_KEY) {
+    console.log('🎬 Tenor trending: No API key');
+    return null;
+  }
 
   const featuredUrl = new URL('https://tenor.googleapis.com/v2/featured');
   featuredUrl.searchParams.set('key', TENOR_API_KEY);
@@ -6306,11 +6309,15 @@ async function trendingTenor(limit, offset) {
   featuredUrl.searchParams.set('contentfilter', 'medium');
   featuredUrl.searchParams.set('media_filter', 'gif,tinygif');
 
+  console.log(`🎬 Tenor trending: Fetching ${limit} GIFs...`);
   const response = await fetch(featuredUrl.toString(), {
     headers: { 'Accept': 'application/json' }
   });
 
-  if (!response.ok) return null;
+  if (!response.ok) {
+    console.error(`🎬 Tenor trending: API error ${response.status}`);
+    return null;
+  }
 
   const data = await response.json();
   return (data.results || []).map(gif => ({
@@ -6413,6 +6420,8 @@ app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, r
   const useProvider = provider || GIF_PROVIDER;
   const hasGiphy = GIPHY_API_KEY && (useProvider === 'giphy' || useProvider === 'both');
   const hasTenor = TENOR_API_KEY && (useProvider === 'tenor' || useProvider === 'both');
+
+  console.log(`🎬 GIF trending: provider=${useProvider}, hasGiphy=${hasGiphy}, hasTenor=${hasTenor}`);
 
   if (!hasGiphy && !hasTenor) {
     return res.status(503).json({

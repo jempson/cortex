@@ -1160,14 +1160,15 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showTrending, setShowTrending] = useState(true);
+  const [provider, setProvider] = useState('giphy'); // Track which provider returned results
   const searchTimeoutRef = useRef(null);
 
-  // Load trending GIFs on mount
+  // Load trending GIFs when modal opens
   useEffect(() => {
-    if (isOpen && showTrending && gifs.length === 0) {
+    if (isOpen && showTrending) {
       loadTrending();
     }
-  }, [isOpen, showTrending]);
+  }, [isOpen]);
 
   const loadTrending = async () => {
     setLoading(true);
@@ -1175,6 +1176,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
     try {
       const data = await fetchAPI('/gifs/trending?limit=20');
       setGifs(data.gifs || []);
+      setProvider(data.provider || 'giphy');
     } catch (err) {
       setError(err.message || 'Failed to load trending GIFs');
     } finally {
@@ -1194,6 +1196,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
     try {
       const data = await fetchAPI(`/gifs/search?q=${encodeURIComponent(query)}&limit=20`);
       setGifs(data.gifs || []);
+      setProvider(data.provider || 'giphy');
     } catch (err) {
       setError(err.message || 'Failed to search GIFs');
     } finally {
@@ -1358,7 +1361,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
           )}
         </div>
 
-        {/* Footer - GIPHY Attribution */}
+        {/* Footer - Provider Attribution */}
         <div style={{
           padding: '8px 16px',
           borderTop: '1px solid var(--border-subtle)',
@@ -1366,7 +1369,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
           color: 'var(--text-muted)',
           fontSize: '0.6rem',
         }}>
-          Powered by GIPHY
+          Powered by {provider === 'tenor' ? 'Tenor' : provider === 'both' ? 'GIPHY & Tenor' : 'GIPHY'}
         </div>
       </div>
     </div>
