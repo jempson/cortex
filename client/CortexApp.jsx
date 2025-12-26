@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.19.3';
+const VERSION = '1.19.4';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -16035,6 +16035,7 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [autoUnlockAttempted, setAutoUnlockAttempted] = useState(false);
   const [autoUnlockFailed, setAutoUnlockFailed] = useState(false);
+  const [passwordMismatch, setPasswordMismatch] = useState(false); // True if auto-unlock failed due to wrong password
 
   // Check E2EE status on mount
   useEffect(() => {
@@ -16055,6 +16056,7 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
         .catch((err) => {
           console.error('E2EE: Auto-unlock failed:', err);
           setAutoUnlockFailed(true);
+          setPasswordMismatch(true); // Login password didn't match E2EE passphrase
           clearPendingPassword();
         });
     }
@@ -16064,6 +16066,7 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
       console.log('E2EE: No pending password, showing unlock modal');
       setAutoUnlockAttempted(true);
       setAutoUnlockFailed(true); // This triggers the unlock modal
+      // Don't set passwordMismatch - this is just a reopen, not a failed unlock
     }
   }, [needsPassphrase, autoUnlockAttempted, isUnlocking, getPendingPassword, clearPendingPassword, unlockE2EE]);
 
@@ -16131,22 +16134,21 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
     return <LoadingSpinner message="Unlocking encryption..." />;
   }
 
-  // Auto-unlock failed - show unlock modal with option for old passphrase or recovery key
-  // This happens when existing users had a different passphrase than their login password
+  // Show unlock modal - either password mismatch or PWA reopen
   if (needsPassphrase && autoUnlockFailed) {
     return (
       <PassphraseUnlockModal
         onUnlock={async (passphrase) => {
           const result = await unlockE2EE(passphrase);
-          // After successful unlock with old passphrase, offer to re-encrypt with password
-          // For now, just unlock - they can change password later to sync
+          // After successful unlock, clear the mismatch state
+          setPasswordMismatch(false);
           return result;
         }}
         onRecover={recoverWithPassphrase}
         onLogout={handleLogout}
         isLoading={isUnlocking}
         error={unlockError}
-        showMigrationNotice={true}
+        showMigrationNotice={passwordMismatch}
       />
     );
   }
