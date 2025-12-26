@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.19.4';
+const VERSION = '1.19.5';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -563,12 +563,27 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
   const [error, setError] = useState(false);
   const [oembedHtml, setOembedHtml] = useState(null);
   const [oembedLoading, setOembedLoading] = useState(false);
+  const [tiktokData, setTiktokData] = useState(null);
   const platform = EMBED_PLATFORMS[embed.platform] || { icon: '🔗', color: '#666', name: 'Link' };
   const embedContainerRef = useRef(null);
 
   // Platforms that require oEmbed HTML injection (no direct iframe embed URL)
   // Note: TikTok removed - their embed.js doesn't work well with React's virtual DOM
   const requiresOembed = ['twitter', 'soundcloud'].includes(embed.platform);
+
+  // Fetch TikTok oEmbed data for thumbnail and title
+  useEffect(() => {
+    if (embed.platform === 'tiktok' && !tiktokData) {
+      fetch(`${API_URL}/embeds/oembed?url=${encodeURIComponent(embed.url)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.thumbnail_url || data.author_name || data.title) {
+            setTiktokData(data);
+          }
+        })
+        .catch(() => {}); // Silently fail - link card still works without thumbnail
+    }
+  }, [embed.platform, embed.url, tiktokData]);
 
   // Determine iframe dimensions based on platform
   const getDimensions = () => {
@@ -630,8 +645,12 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
     }
   }, [oembedHtml, embed.platform]);
 
-  // TikTok doesn't work with React - show a styled link card instead
+  // TikTok doesn't work with React - show a styled link card with thumbnail
   if (embed.platform === 'tiktok') {
+    const hasThumbnail = tiktokData?.thumbnail_url;
+    const authorName = tiktokData?.author_name || '';
+    const title = tiktokData?.title || 'Click to open in TikTok';
+
     return (
       <a
         href={embed.url}
@@ -639,9 +658,8 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
         rel="noopener noreferrer"
         style={{
           display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '12px 16px',
+          alignItems: 'stretch',
+          gap: '0',
           background: 'linear-gradient(135deg, var(--bg-elevated), var(--bg-base))',
           border: '1px solid #ff0050',
           borderRadius: '8px',
@@ -649,28 +667,92 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
           textDecoration: 'none',
           marginTop: '8px',
           maxWidth: '400px',
+          overflow: 'hidden',
         }}
       >
+        {/* Thumbnail or fallback icon */}
         <div style={{
-          width: '48px',
-          height: '48px',
-          borderRadius: '8px',
-          background: '#ff0050',
+          width: hasThumbnail ? '100px' : '60px',
+          minHeight: hasThumbnail ? '130px' : '60px',
+          flexShrink: 0,
+          background: hasThumbnail ? '#000' : '#ff0050',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '24px',
-          flexShrink: 0,
+          position: 'relative',
+          overflow: 'hidden',
         }}>
-          ♪
+          {hasThumbnail ? (
+            <>
+              <img
+                src={tiktokData.thumbnail_url}
+                alt=""
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                }}
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+              {/* Play button overlay */}
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: 'rgba(255, 0, 80, 0.9)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '14px',
+                color: 'white',
+              }}>
+                ▶
+              </div>
+            </>
+          ) : (
+            <span style={{ fontSize: '24px' }}>♪</span>
+          )}
         </div>
-        <div style={{ overflow: 'hidden' }}>
-          <div style={{ color: '#ff0050', fontSize: '0.75rem', marginBottom: '2px' }}>TikTok</div>
-          <div style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            Click to open in TikTok
+        {/* Text content */}
+        <div style={{
+          padding: '12px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          flex: 1,
+        }}>
+          <div style={{ color: '#ff0050', fontSize: '0.7rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span>♪</span> TikTok
+          </div>
+          {authorName && (
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+              @{authorName}
+            </div>
+          )}
+          <div style={{
+            fontSize: '0.85rem',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            lineHeight: '1.3',
+          }}>
+            {title}
           </div>
         </div>
-        <div style={{ marginLeft: 'auto', color: '#ff0050', fontSize: '1.2rem' }}>→</div>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 12px',
+          color: '#ff0050',
+          fontSize: '1.2rem',
+        }}>→</div>
       </a>
     );
   }
