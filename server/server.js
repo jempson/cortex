@@ -467,9 +467,17 @@ function detectAndEmbedMedia(content) {
   // Shared image style - thumbnails by default, click to view full size
   const imgStyle = 'max-width:200px;max-height:150px;border-radius:4px;cursor:pointer;object-fit:cover;display:block;border:1px solid #3a4a3a;';
 
+  // Non-CDN hosts that use image extensions but aren't direct image URLs (redirect pages)
+  const nonImageHosts = /(^https?:\/\/)(www\.)?(tenor\.com|giphy\.com|gfycat\.com)\/(?!media)/i;
+
   content = content.replace(urlRegex, (match) => {
     // Clean up URL (remove trailing punctuation that might have been included)
     let cleanUrl = match.replace(/[.,;:!?)\]]+$/, '');
+
+    // Skip non-CDN hosts even if they have image extensions (they're redirect pages, not images)
+    if (nonImageHosts.test(cleanUrl)) {
+      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
+    }
 
     // Check if this URL should be embedded as an image
     if (imageExtensions.test(cleanUrl) || imageHosts.test(cleanUrl)) {
