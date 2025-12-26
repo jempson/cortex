@@ -5,6 +5,52 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.2] - 2025-12-26
+
+### Fixed
+
+#### PWA Caching Issue
+- **Network-First for HTML**: Service worker now uses network-first strategy for HTML/navigation requests
+  - Fixes spinning circle issue where stale cached HTML referenced non-existent JS bundles
+  - PWA now always fetches fresh HTML on launch, with cache fallback only when offline
+- **Cache-First for Hashed Assets**: JS/CSS files with content hashes still use cache-first (safe because immutable)
+- **Emergency Recovery**: `?clear=1` URL parameter clears all localStorage, sessionStorage, IndexedDB, service workers, and caches
+
+### Technical Details
+- Service worker version updated to v1.19.2
+- Navigation requests (`request.mode === 'navigate'`) always hit network first
+- Hashed asset detection via regex: `/\.[a-f0-9]{8,}\.(js|css)$/i`
+
+---
+
+## [1.19.1] - 2025-12-26
+
+### Added
+
+#### Wave Participant Management
+- **Invite Participants**: INVITE button in participant panel allows wave creators to add contacts
+  - `POST /api/waves/:id/participants` endpoint
+  - InviteToWaveModal component with contact search
+  - E2EE key distribution for new participants via `distributeKeyToParticipant()`
+- **Remove Participants**: Wave creators can remove participants with REMOVE button
+  - `DELETE /api/waves/:id/participants/:userId` endpoint
+  - Automatic wave key rotation when participant is removed
+- **Leave Wave**: All participants can leave waves with LEAVE button
+  - Uses same DELETE endpoint as removal
+  - WebSocket events: `participant_added`, `participant_removed`, `added_to_wave`, `removed_from_wave`
+
+#### Stale Data Recovery
+- **Clear Data Button**: Login screen shows "Clear all data" button for recovery from broken cached state
+- **Version Check**: Automatic data clearing when major version changes (e.g., 1.18.x → 1.19.x)
+- **URL Parameter Recovery**: `?clear=1` clears all cached data on any page load
+  - Clears: localStorage, sessionStorage, IndexedDB, service worker registrations, caches
+  - Redirects to clean URL after clearing
+
+### Database
+- Added `removeWaveParticipant()` method to SQLite database class
+
+---
+
 ## [1.19.0] - 2025-12-24
 
 ### Added
