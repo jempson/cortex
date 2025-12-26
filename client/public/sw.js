@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.19.1
-// Includes: Push notifications, offline caching, stale-while-revalidate
-// v1.19.1: Added clear data support for troubleshooting
-const CACHE_NAME = 'cortex-v1.19.1';
+// Cortex Service Worker v1.19.2
+// Includes: Push notifications, offline caching
+// v1.19.2: Network-first for HTML to fix PWA update issues
+const CACHE_NAME = 'cortex-v1.19.2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,7 @@ const STATIC_ASSETS = [
 
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.19.1...');
+  console.log('[SW] Installing service worker v1.19.2...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');
@@ -56,7 +56,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch: Network-first for API, cache-first for static assets
+// Fetch: Network-first for HTML, cache-first for hashed assets
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -75,12 +75,55 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: Stale-while-revalidate strategy
+  // Navigation requests (HTML): Network-first, fall back to cache
+  // This ensures users always get the latest app version
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          // Cache the fresh HTML for offline use
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          // Offline: try to serve cached HTML
+          return caches.match(request).then((cached) => cached || caches.match('/'));
+        })
+    );
+    return;
+  }
+
+  // Hashed assets (JS/CSS with hash in filename): Cache-first (immutable)
+  // These files have unique hashes so cached versions are always valid
+  if (url.pathname.match(/\.[a-f0-9]{8,}\.(js|css)$/i)) {
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return fetch(request).then((response) => {
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return response;
+        });
+      })
+    );
+    return;
+  }
+
+  // Other assets: Network-first with cache fallback
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      // Start network fetch in parallel
-      const networkFetch = fetch(request).then((response) => {
-        // Cache successful responses
+    fetch(request)
+      .then((response) => {
         if (response.ok && response.type === 'basic') {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -88,25 +131,10 @@ self.addEventListener('fetch', (event) => {
           });
         }
         return response;
-      }).catch((error) => {
-        console.log('[SW] Network fetch failed:', error);
-        // Return cached response or offline fallback
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        // For navigation requests, return cached index.html
-        if (request.mode === 'navigate') {
-          return caches.match('/');
-        }
-        return new Response('Offline', {
-          status: 503,
-          statusText: 'Service Unavailable'
-        });
-      });
-
-      // Return cached response immediately if available, otherwise wait for network
-      return cachedResponse || networkFetch;
-    })
+      })
+      .catch(() => {
+        return caches.match(request);
+      })
   );
 });
 

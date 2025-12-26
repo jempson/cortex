@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.19.1';
+const VERSION = '1.19.2';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
