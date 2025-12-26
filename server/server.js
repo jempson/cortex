@@ -7376,8 +7376,9 @@ app.post('/api/embeds/detect', authenticateToken, (req, res) => {
   res.json({ embeds });
 });
 
-// oEmbed proxy endpoint with caching
-app.get('/api/embeds/oembed', authenticateToken, oembedLimiter, async (req, res) => {
+// oEmbed proxy endpoint with caching (public - no auth required, just rate limited)
+// This is safe because it only proxies public oEmbed APIs and doesn't expose user data
+app.get('/api/embeds/oembed', oembedLimiter, async (req, res) => {
   const { url } = req.query;
 
   if (!url || typeof url !== 'string') {
