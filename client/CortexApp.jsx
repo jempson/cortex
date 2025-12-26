@@ -588,8 +588,13 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
       fetch(`${API_URL}/embeds/oembed?url=${encodeURIComponent(embed.url)}`)
         .then(res => res.json())
         .then(data => {
-          if (data.thumbnail_url || data.author_name || data.title) {
-            setTiktokData(data);
+          // Server returns 'thumbnail' and 'author', normalize to what we expect
+          if (data.thumbnail || data.author || data.title) {
+            setTiktokData({
+              thumbnail_url: data.thumbnail,
+              author_name: data.author,
+              title: data.title,
+            });
           }
         })
         .catch(() => {}); // Silently fail - link card still works without thumbnail
