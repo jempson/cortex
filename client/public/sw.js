@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.19.2
+// Cortex Service Worker v1.19.3
 // Includes: Push notifications, offline caching
-// v1.19.2: Network-first for HTML to fix PWA update issues
-const CACHE_NAME = 'cortex-v1.19.2';
+// v1.19.3: Fix E2EE unlock on PWA reopen
+const CACHE_NAME = 'cortex-v1.19.3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,7 @@ const STATIC_ASSETS = [
 
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.19.2...');
+  console.log('[SW] Installing service worker v1.19.3...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');
