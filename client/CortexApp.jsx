@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.19.2';
+const VERSION = '1.19.3';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -16057,6 +16057,13 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
           setAutoUnlockFailed(true);
           clearPendingPassword();
         });
+    }
+    // If we need passphrase but there's no pending password (page refresh/PWA reopen),
+    // mark auto-unlock as attempted so we show the unlock modal
+    if (needsPassphrase && !pendingPassword && !autoUnlockAttempted && !isUnlocking) {
+      console.log('E2EE: No pending password, showing unlock modal');
+      setAutoUnlockAttempted(true);
+      setAutoUnlockFailed(true); // This triggers the unlock modal
     }
   }, [needsPassphrase, autoUnlockAttempted, isUnlocking, getPendingPassword, clearPendingPassword, unlockE2EE]);
 
