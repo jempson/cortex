@@ -5,6 +5,19 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.3] - 2025-12-26
+
+### Fixed
+
+#### E2EE Unlock on PWA Reopen
+- **Fixed stuck spinner on PWA reopen**: When reopening the PWA or refreshing the page, the app was stuck on "Preparing encryption..." spinner
+  - Root cause: Auto-unlock logic only triggered when there was a pending password from login
+  - On page refresh or PWA reopen, there's no pending password, so auto-unlock never triggered
+  - Fix: If passphrase is needed but no pending password exists, immediately show the unlock modal
+- Service worker version updated to v1.19.3
+
+---
+
 ## [1.19.2] - 2025-12-26
 
 ### Fixed
