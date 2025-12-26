@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 1.19.0** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 1.19.2** | A privacy-first, federated communication platform inspired by Google Wave.
 
 ## Quick Start
 
@@ -785,6 +785,24 @@ server {
 ---
 
 ## Changelog
+
+### v1.19.2 (December 2025)
+- **PWA Caching Fix**: Service worker now uses network-first for HTML
+  - Fixes spinning circle issue where stale cached HTML prevented app loading
+  - Hashed assets (JS/CSS) still use cache-first (safe because immutable)
+  - Users can navigate to `?clear=1` to force clear all cached data
+
+### v1.19.1 (December 2025)
+- **Wave Participant Management**: Invite and remove participants from waves
+  - INVITE button in participant panel to add contacts to waves
+  - REMOVE button for wave creators to remove participants
+  - LEAVE button for participants to leave waves
+  - E2EE key distribution when adding participants
+  - Key rotation when participants are removed
+- **Stale Data Recovery**: Clear cached data on major version upgrade
+  - "Clear all data" button on login screen
+  - `?clear=1` URL parameter for emergency recovery
+  - Automatic data clearing when major version changes
 
 ### v1.19.0 (December 2025)
 - **End-to-End Encryption**: Zero-knowledge encryption for all waves
