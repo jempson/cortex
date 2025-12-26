@@ -47,8 +47,10 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const SESSION_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
 const SESSION_TRACKING_ENABLED = process.env.SESSION_TRACKING_ENABLED !== 'false'; // Default true
 
-// GIPHY API configuration
+// GIF API configuration (GIPHY and/or Tenor)
 const GIPHY_API_KEY = process.env.GIPHY_API_KEY || null;
+const TENOR_API_KEY = process.env.TENOR_API_KEY || null;
+const GIF_PROVIDER = process.env.GIF_PROVIDER || 'giphy'; // 'giphy', 'tenor', or 'both'
 
 // Crawl Bar API configuration (v1.15.0)
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || null;
@@ -442,19 +444,47 @@ function detectAndEmbedMedia(content) {
   const urlRegex = /(?<!["'>])(https?:\/\/[^\s<]+)(?![^<]*>|[^<>]*<\/)/gi;
 
   // Track which URLs are images to embed them
-  const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg)(\?[^\s]*)?$/i;
-  const imageHosts = /(media\.giphy\.com|i\.giphy\.com|media\.tenor\.com|c\.tenor\.com)/i;
+  const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|webm|mp4)(\?[^\s]*)?$/i;
+
+  // Extended GIF/image CDN hosts - includes GIPHY, Tenor, Imgur, Discord, etc.
+  const imageHosts = new RegExp(
+    '(' +
+    // GIPHY CDN hosts
+    'media[0-9]?\\.giphy\\.com|i\\.giphy\\.com|' +
+    // Tenor CDN hosts
+    'media[0-9]?\\.tenor\\.com|c\\.tenor\\.com|' +
+    // Imgur
+    'i\\.imgur\\.com|' +
+    // Discord CDN
+    'cdn\\.discordapp\\.com/attachments|media\\.discordapp\\.net|' +
+    // Other common image CDNs
+    'pbs\\.twimg\\.com|' +
+    // Gfycat
+    'giant\\.gfycat\\.com|thumbs\\.gfycat\\.com' +
+    ')', 'i'
+  );
 
   // Shared image style - thumbnails by default, click to view full size
   const imgStyle = 'max-width:200px;max-height:150px;border-radius:4px;cursor:pointer;object-fit:cover;display:block;border:1px solid #3a4a3a;';
 
+  // Non-CDN hosts that use image extensions but aren't direct image URLs (redirect pages)
+  const nonImageHosts = /(^https?:\/\/)(www\.)?(tenor\.com|giphy\.com|gfycat\.com)\/(?!media)/i;
+
   content = content.replace(urlRegex, (match) => {
+    // Clean up URL (remove trailing punctuation that might have been included)
+    let cleanUrl = match.replace(/[.,;:!?)\]]+$/, '');
+
+    // Skip non-CDN hosts even if they have image extensions (they're redirect pages, not images)
+    if (nonImageHosts.test(cleanUrl)) {
+      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
+    }
+
     // Check if this URL should be embedded as an image
-    if (imageExtensions.test(match) || imageHosts.test(match)) {
-      return `<img src="${match}" alt="Embedded media" style="${imgStyle}" class="zoomable-image" />`;
+    if (imageExtensions.test(cleanUrl) || imageHosts.test(cleanUrl)) {
+      return `<img src="${cleanUrl}" alt="Embedded media" style="${imgStyle}" class="zoomable-image" />`;
     }
     // Otherwise, make it a clickable link
-    return `<a href="${match}" target="_blank" rel="noopener noreferrer">${match}</a>`;
+    return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
   });
 
   // Also detect and embed relative upload paths (e.g., /uploads/messages/...)
@@ -515,6 +545,20 @@ const EMBED_PATTERNS = {
       /(?:https?:\/\/)?(?:www\.)?soundcloud\.com\/[\w-]+\/[\w-]+/i,
     ],
     oembedUrl: (url) => `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(url)}`,
+  },
+  tenor: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?tenor\.com\/view\/[\w-]+-(\d+)/i,
+      /(?:https?:\/\/)?tenor\.com\/([a-zA-Z0-9]+)\.gif/i,
+    ],
+    oembedUrl: (url) => `https://tenor.com/oembed?url=${encodeURIComponent(url)}`,
+  },
+  giphy: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?giphy\.com\/gifs\/(?:[\w-]+-)*([a-zA-Z0-9]+)/i,
+      /(?:https?:\/\/)?gph\.is\/([a-zA-Z0-9]+)/i,
+    ],
+    oembedUrl: (url) => `https://giphy.com/services/oembed?url=${encodeURIComponent(url)}`,
   },
 };
 
@@ -6155,61 +6199,209 @@ app.get('/api/users/muted', authenticateToken, (req, res) => {
   res.json({ mutedUsers });
 });
 
-// ============ GIF Search (GIPHY API Proxy) ============
+// ============ GIF Search (GIPHY and Tenor API Proxy) ============
+
+// Helper: Search GIFs from GIPHY
+async function searchGiphy(query, limit, offset) {
+  if (!GIPHY_API_KEY) return null;
+
+  const searchUrl = new URL('https://api.giphy.com/v1/gifs/search');
+  searchUrl.searchParams.set('api_key', GIPHY_API_KEY);
+  searchUrl.searchParams.set('q', query);
+  searchUrl.searchParams.set('limit', limit.toString());
+  searchUrl.searchParams.set('offset', offset.toString());
+  searchUrl.searchParams.set('rating', 'pg-13');
+  searchUrl.searchParams.set('lang', 'en');
+
+  const response = await fetch(searchUrl.toString(), {
+    headers: { 'Accept': 'application/json' }
+  });
+
+  if (!response.ok) {
+    console.error('GIPHY API error:', response.status);
+    return null;
+  }
+
+  const data = await response.json();
+  return (data.data || []).map(gif => ({
+    id: gif.id,
+    title: gif.title,
+    url: gif.images?.original?.url || '',
+    preview: gif.images?.fixed_height_small?.url || gif.images?.fixed_height?.url || '',
+    width: parseInt(gif.images?.fixed_height_small?.width || gif.images?.fixed_height?.width || 100),
+    height: parseInt(gif.images?.fixed_height_small?.height || gif.images?.fixed_height?.height || 100),
+    provider: 'giphy'
+  })).filter(gif => gif.url && gif.preview);
+}
+
+// Helper: Search GIFs from Tenor
+async function searchTenor(query, limit, offset) {
+  if (!TENOR_API_KEY) return null;
+
+  const searchUrl = new URL('https://tenor.googleapis.com/v2/search');
+  searchUrl.searchParams.set('key', TENOR_API_KEY);
+  searchUrl.searchParams.set('q', query);
+  searchUrl.searchParams.set('limit', limit.toString());
+  searchUrl.searchParams.set('pos', offset.toString());
+  searchUrl.searchParams.set('contentfilter', 'medium'); // PG-13 equivalent
+  searchUrl.searchParams.set('media_filter', 'gif,tinygif');
+
+  const response = await fetch(searchUrl.toString(), {
+    headers: { 'Accept': 'application/json' }
+  });
+
+  if (!response.ok) {
+    console.error('Tenor API error:', response.status);
+    return null;
+  }
+
+  const data = await response.json();
+  return (data.results || []).map(gif => ({
+    id: gif.id,
+    title: gif.title || gif.content_description || '',
+    url: gif.media_formats?.gif?.url || '',
+    preview: gif.media_formats?.tinygif?.url || gif.media_formats?.nanogif?.url || '',
+    width: gif.media_formats?.tinygif?.dims?.[0] || 100,
+    height: gif.media_formats?.tinygif?.dims?.[1] || 100,
+    provider: 'tenor'
+  })).filter(gif => gif.url && gif.preview);
+}
+
+// Helper: Get trending GIFs from GIPHY
+async function trendingGiphy(limit, offset) {
+  if (!GIPHY_API_KEY) return null;
+
+  const trendingUrl = new URL('https://api.giphy.com/v1/gifs/trending');
+  trendingUrl.searchParams.set('api_key', GIPHY_API_KEY);
+  trendingUrl.searchParams.set('limit', limit.toString());
+  trendingUrl.searchParams.set('offset', offset.toString());
+  trendingUrl.searchParams.set('rating', 'pg-13');
+
+  const response = await fetch(trendingUrl.toString(), {
+    headers: { 'Accept': 'application/json' }
+  });
+
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  return (data.data || []).map(gif => ({
+    id: gif.id,
+    title: gif.title,
+    url: gif.images?.original?.url || '',
+    preview: gif.images?.fixed_height_small?.url || gif.images?.fixed_height?.url || '',
+    width: parseInt(gif.images?.fixed_height_small?.width || gif.images?.fixed_height?.width || 100),
+    height: parseInt(gif.images?.fixed_height_small?.height || gif.images?.fixed_height?.height || 100),
+    provider: 'giphy'
+  })).filter(gif => gif.url && gif.preview);
+}
+
+// Helper: Get trending/featured GIFs from Tenor
+async function trendingTenor(limit, offset) {
+  if (!TENOR_API_KEY) {
+    console.log('🎬 Tenor trending: No API key');
+    return null;
+  }
+
+  const featuredUrl = new URL('https://tenor.googleapis.com/v2/featured');
+  featuredUrl.searchParams.set('key', TENOR_API_KEY);
+  featuredUrl.searchParams.set('limit', limit.toString());
+  featuredUrl.searchParams.set('pos', offset.toString());
+  featuredUrl.searchParams.set('contentfilter', 'medium');
+  featuredUrl.searchParams.set('media_filter', 'gif,tinygif');
+
+  console.log(`🎬 Tenor trending: Fetching ${limit} GIFs...`);
+  const response = await fetch(featuredUrl.toString(), {
+    headers: { 'Accept': 'application/json' }
+  });
+
+  if (!response.ok) {
+    console.error(`🎬 Tenor trending: API error ${response.status}`);
+    return null;
+  }
+
+  const data = await response.json();
+  return (data.results || []).map(gif => ({
+    id: gif.id,
+    title: gif.title || gif.content_description || '',
+    url: gif.media_formats?.gif?.url || '',
+    preview: gif.media_formats?.tinygif?.url || gif.media_formats?.nanogif?.url || '',
+    width: gif.media_formats?.tinygif?.dims?.[0] || 100,
+    height: gif.media_formats?.tinygif?.dims?.[1] || 100,
+    provider: 'tenor'
+  })).filter(gif => gif.url && gif.preview);
+}
+
+// Get GIF provider configuration
+app.get('/api/gifs/config', authenticateToken, (req, res) => {
+  const providers = [];
+  if (GIPHY_API_KEY && (GIF_PROVIDER === 'giphy' || GIF_PROVIDER === 'both')) {
+    providers.push('giphy');
+  }
+  if (TENOR_API_KEY && (GIF_PROVIDER === 'tenor' || GIF_PROVIDER === 'both')) {
+    providers.push('tenor');
+  }
+  res.json({
+    providers,
+    defaultProvider: GIF_PROVIDER,
+    enabled: providers.length > 0
+  });
+});
+
+// Search GIFs
 app.get('/api/gifs/search', authenticateToken, gifSearchLimiter, async (req, res) => {
-  const { q, limit = 20, offset = 0 } = req.query;
+  const { q, limit = 20, offset = 0, provider } = req.query;
 
   if (!q || typeof q !== 'string' || q.trim().length === 0) {
     return res.status(400).json({ error: 'Search query is required' });
   }
 
-  if (!GIPHY_API_KEY) {
+  const maxLimit = Math.min(parseInt(limit) || 20, 50);
+  const startOffset = parseInt(offset) || 0;
+  const query = q.trim();
+
+  // Determine which provider(s) to use
+  const useProvider = provider || GIF_PROVIDER;
+  const hasGiphy = GIPHY_API_KEY && (useProvider === 'giphy' || useProvider === 'both');
+  const hasTenor = TENOR_API_KEY && (useProvider === 'tenor' || useProvider === 'both');
+
+  if (!hasGiphy && !hasTenor) {
     return res.status(503).json({
-      error: 'GIF search is not configured. Set GIPHY_API_KEY environment variable.'
+      error: 'GIF search is not configured. Set GIPHY_API_KEY or TENOR_API_KEY environment variable.'
     });
   }
 
   try {
-    const searchUrl = new URL('https://api.giphy.com/v1/gifs/search');
-    searchUrl.searchParams.set('api_key', GIPHY_API_KEY);
-    searchUrl.searchParams.set('q', q.trim());
-    searchUrl.searchParams.set('limit', Math.min(parseInt(limit) || 20, 50).toString());
-    searchUrl.searchParams.set('offset', (parseInt(offset) || 0).toString());
-    searchUrl.searchParams.set('rating', 'pg-13'); // Content rating filter
-    searchUrl.searchParams.set('lang', 'en');
+    let gifs = [];
 
-    const response = await fetch(searchUrl.toString(), {
-      headers: {
-        'Accept': 'application/json',
+    if (useProvider === 'both' && hasGiphy && hasTenor) {
+      // Fetch from both and interleave results
+      const halfLimit = Math.ceil(maxLimit / 2);
+      const [giphyGifs, tenorGifs] = await Promise.all([
+        searchGiphy(query, halfLimit, Math.floor(startOffset / 2)),
+        searchTenor(query, halfLimit, Math.floor(startOffset / 2))
+      ]);
+
+      // Interleave results
+      const g = giphyGifs || [];
+      const t = tenorGifs || [];
+      for (let i = 0; i < Math.max(g.length, t.length); i++) {
+        if (i < g.length) gifs.push(g[i]);
+        if (i < t.length) gifs.push(t[i]);
       }
-    });
-
-    if (!response.ok) {
-      console.error('GIPHY API error:', response.status, response.statusText);
-      const errorText = await response.text().catch(() => '');
-      console.error('GIPHY API response:', errorText);
-      return res.status(502).json({ error: 'Failed to fetch GIFs from provider' });
+    } else if (hasGiphy) {
+      gifs = await searchGiphy(query, maxLimit, startOffset) || [];
+    } else if (hasTenor) {
+      gifs = await searchTenor(query, maxLimit, startOffset) || [];
     }
-
-    const data = await response.json();
-
-    // Transform response to only include what we need
-    const gifs = (data.data || []).map(gif => ({
-      id: gif.id,
-      title: gif.title,
-      url: gif.images?.original?.url || '',
-      preview: gif.images?.fixed_height_small?.url || gif.images?.fixed_height?.url || '',
-      width: parseInt(gif.images?.fixed_height_small?.width || gif.images?.fixed_height?.width || 100),
-      height: parseInt(gif.images?.fixed_height_small?.height || gif.images?.fixed_height?.height || 100),
-    })).filter(gif => gif.url && gif.preview);
 
     res.json({
       gifs,
       pagination: {
-        total_count: data.pagination?.total_count || 0,
-        count: data.pagination?.count || gifs.length,
-        offset: data.pagination?.offset || 0,
-      }
+        total_count: gifs.length * 10, // Estimate
+        count: gifs.length,
+        offset: startOffset,
+      },
+      provider: useProvider
     });
   } catch (err) {
     console.error('GIF search error:', err);
@@ -6219,52 +6411,54 @@ app.get('/api/gifs/search', authenticateToken, gifSearchLimiter, async (req, res
 
 // Get trending GIFs
 app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, res) => {
-  const { limit = 20, offset = 0 } = req.query;
+  const { limit = 20, offset = 0, provider } = req.query;
 
-  if (!GIPHY_API_KEY) {
+  const maxLimit = Math.min(parseInt(limit) || 20, 50);
+  const startOffset = parseInt(offset) || 0;
+
+  // Determine which provider(s) to use
+  const useProvider = provider || GIF_PROVIDER;
+  const hasGiphy = GIPHY_API_KEY && (useProvider === 'giphy' || useProvider === 'both');
+  const hasTenor = TENOR_API_KEY && (useProvider === 'tenor' || useProvider === 'both');
+
+  console.log(`🎬 GIF trending: provider=${useProvider}, hasGiphy=${hasGiphy}, hasTenor=${hasTenor}`);
+
+  if (!hasGiphy && !hasTenor) {
     return res.status(503).json({
-      error: 'GIF search is not configured. Set GIPHY_API_KEY environment variable.'
+      error: 'GIF search is not configured. Set GIPHY_API_KEY or TENOR_API_KEY environment variable.'
     });
   }
 
   try {
-    const trendingUrl = new URL('https://api.giphy.com/v1/gifs/trending');
-    trendingUrl.searchParams.set('api_key', GIPHY_API_KEY);
-    trendingUrl.searchParams.set('limit', Math.min(parseInt(limit) || 20, 50).toString());
-    trendingUrl.searchParams.set('offset', (parseInt(offset) || 0).toString());
-    trendingUrl.searchParams.set('rating', 'pg-13');
+    let gifs = [];
 
-    const response = await fetch(trendingUrl.toString(), {
-      headers: {
-        'Accept': 'application/json',
+    if (useProvider === 'both' && hasGiphy && hasTenor) {
+      const halfLimit = Math.ceil(maxLimit / 2);
+      const [giphyGifs, tenorGifs] = await Promise.all([
+        trendingGiphy(halfLimit, Math.floor(startOffset / 2)),
+        trendingTenor(halfLimit, Math.floor(startOffset / 2))
+      ]);
+
+      const g = giphyGifs || [];
+      const t = tenorGifs || [];
+      for (let i = 0; i < Math.max(g.length, t.length); i++) {
+        if (i < g.length) gifs.push(g[i]);
+        if (i < t.length) gifs.push(t[i]);
       }
-    });
-
-    if (!response.ok) {
-      console.error('GIPHY API error:', response.status, response.statusText);
-      const errorText = await response.text().catch(() => '');
-      console.error('GIPHY API response:', errorText);
-      return res.status(502).json({ error: 'Failed to fetch trending GIFs' });
+    } else if (hasGiphy) {
+      gifs = await trendingGiphy(maxLimit, startOffset) || [];
+    } else if (hasTenor) {
+      gifs = await trendingTenor(maxLimit, startOffset) || [];
     }
-
-    const data = await response.json();
-
-    const gifs = (data.data || []).map(gif => ({
-      id: gif.id,
-      title: gif.title,
-      url: gif.images?.original?.url || '',
-      preview: gif.images?.fixed_height_small?.url || gif.images?.fixed_height?.url || '',
-      width: parseInt(gif.images?.fixed_height_small?.width || gif.images?.fixed_height?.width || 100),
-      height: parseInt(gif.images?.fixed_height_small?.height || gif.images?.fixed_height?.height || 100),
-    })).filter(gif => gif.url && gif.preview);
 
     res.json({
       gifs,
       pagination: {
-        total_count: data.pagination?.total_count || 0,
-        count: data.pagination?.count || gifs.length,
-        offset: data.pagination?.offset || 0,
-      }
+        total_count: gifs.length * 10,
+        count: gifs.length,
+        offset: startOffset,
+      },
+      provider: useProvider
     });
   } catch (err) {
     console.error('Trending GIFs error:', err);
@@ -7213,8 +7407,9 @@ app.post('/api/embeds/detect', authenticateToken, (req, res) => {
   res.json({ embeds });
 });
 
-// oEmbed proxy endpoint with caching
-app.get('/api/embeds/oembed', authenticateToken, oembedLimiter, async (req, res) => {
+// oEmbed proxy endpoint with caching (public - no auth required, just rate limited)
+// This is safe because it only proxies public oEmbed APIs and doesn't expose user data
+app.get('/api/embeds/oembed', oembedLimiter, async (req, res) => {
   const { url } = req.query;
 
   if (!url || typeof url !== 'string') {

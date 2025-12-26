@@ -3017,13 +3017,20 @@ export class DatabaseSQLite {
       const participants = this.getWaveParticipants(r.id);
 
       // Calculate unread count
+      // Note: NOT IN (NULL) returns NULL in SQL, not TRUE, so we must use proper conditionals
+      const blockedClause = blockedIds.length > 0
+        ? `AND d.author_id NOT IN (${blockedIds.map(() => '?').join(',')})`
+        : '';
+      const mutedClause = mutedIds.length > 0
+        ? `AND d.author_id NOT IN (${mutedIds.map(() => '?').join(',')})`
+        : '';
       const unreadCount = this.db.prepare(`
         SELECT COUNT(*) as count FROM droplets d
         WHERE d.wave_id = ?
           AND d.deleted = 0
           AND d.author_id != ?
-          AND d.author_id NOT IN (${blockedIds.map(() => '?').join(',') || 'NULL'})
-          AND d.author_id NOT IN (${mutedIds.map(() => '?').join(',') || 'NULL'})
+          ${blockedClause}
+          ${mutedClause}
           AND NOT EXISTS (SELECT 1 FROM droplet_read_by drb WHERE drb.droplet_id = d.id AND drb.user_id = ?)
       `).get(r.id, userId, ...blockedIds, ...mutedIds, userId).count;
 

@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.19.4';
+const VERSION = '1.19.5';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -473,6 +473,8 @@ const EMBED_PLATFORMS = {
   tiktok: { icon: '♪', color: '#ff0050', name: 'TikTok' },
   twitter: { icon: '𝕏', color: '#1da1f2', name: 'X/Twitter' },
   soundcloud: { icon: '☁', color: '#ff5500', name: 'SoundCloud' },
+  tenor: { icon: '🎬', color: '#5856d6', name: 'Tenor' },
+  giphy: { icon: '🎬', color: '#00ff99', name: 'GIPHY' },
 };
 
 // URL patterns for detecting embeddable content (mirrors server)
@@ -498,6 +500,14 @@ const EMBED_URL_PATTERNS = {
   ],
   soundcloud: [
     /(?:https?:\/\/)?(?:www\.)?soundcloud\.com\/[\w-]+\/[\w-]+/i,
+  ],
+  tenor: [
+    /(?:https?:\/\/)?(?:www\.)?tenor\.com\/view\/[\w-]+-(\d+)/i,
+    /(?:https?:\/\/)?tenor\.com\/([a-zA-Z0-9]+)\.gif/i,
+  ],
+  giphy: [
+    /(?:https?:\/\/)?(?:www\.)?giphy\.com\/gifs\/(?:[\w-]+-)*([a-zA-Z0-9]+)/i,
+    /(?:https?:\/\/)?gph\.is\/([a-zA-Z0-9]+)/i,
   ],
 };
 
@@ -563,12 +573,49 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
   const [error, setError] = useState(false);
   const [oembedHtml, setOembedHtml] = useState(null);
   const [oembedLoading, setOembedLoading] = useState(false);
+  const [tiktokData, setTiktokData] = useState(null);
+  const [gifData, setGifData] = useState(null);
   const platform = EMBED_PLATFORMS[embed.platform] || { icon: '🔗', color: '#666', name: 'Link' };
   const embedContainerRef = useRef(null);
 
   // Platforms that require oEmbed HTML injection (no direct iframe embed URL)
   // Note: TikTok removed - their embed.js doesn't work well with React's virtual DOM
   const requiresOembed = ['twitter', 'soundcloud'].includes(embed.platform);
+
+  // Fetch TikTok oEmbed data for thumbnail and title
+  useEffect(() => {
+    if (embed.platform === 'tiktok' && !tiktokData) {
+      fetch(`${API_URL}/embeds/oembed?url=${encodeURIComponent(embed.url)}`)
+        .then(res => res.json())
+        .then(data => {
+          // Server returns 'thumbnail' and 'author', normalize to what we expect
+          if (data.thumbnail || data.author || data.title) {
+            setTiktokData({
+              thumbnail_url: data.thumbnail,
+              author_name: data.author,
+              title: data.title,
+            });
+          }
+        })
+        .catch(() => {}); // Silently fail - link card still works without thumbnail
+    }
+  }, [embed.platform, embed.url, tiktokData]);
+
+  // Fetch Tenor/GIPHY oEmbed data to get the actual GIF URL
+  useEffect(() => {
+    if (['tenor', 'giphy'].includes(embed.platform) && !gifData) {
+      fetch(`${API_URL}/embeds/oembed?url=${encodeURIComponent(embed.url)}`)
+        .then(res => res.json())
+        .then(data => {
+          // Tenor returns 'url' field with direct GIF URL
+          // GIPHY returns 'url' field with direct GIF URL
+          if (data.url || data.thumbnail) {
+            setGifData(data);
+          }
+        })
+        .catch(() => {}); // Silently fail
+    }
+  }, [embed.platform, embed.url, gifData]);
 
   // Determine iframe dimensions based on platform
   const getDimensions = () => {
@@ -630,8 +677,59 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
     }
   }, [oembedHtml, embed.platform]);
 
-  // TikTok doesn't work with React - show a styled link card instead
+  // Tenor/GIPHY - show the GIF directly as an image
+  if (['tenor', 'giphy'].includes(embed.platform)) {
+    const gifUrl = gifData?.url || gifData?.thumbnail;
+    const imgStyle = 'max-width:200px;max-height:150px;border-radius:4px;cursor:pointer;object-fit:cover;display:block;border:1px solid var(--border-primary);';
+
+    if (gifUrl) {
+      // GIF loaded - show it
+      return (
+        <div style={{ marginTop: '8px' }}>
+          <img
+            src={gifUrl}
+            alt={gifData?.title || 'GIF'}
+            style={{
+              maxWidth: '200px',
+              maxHeight: '150px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              objectFit: 'cover',
+              display: 'block',
+              border: '1px solid var(--border-primary)',
+            }}
+            className="zoomable-image"
+            loading="lazy"
+          />
+        </div>
+      );
+    }
+
+    // Loading state - show placeholder with platform branding
+    return (
+      <div style={{
+        marginTop: '8px',
+        padding: '12px',
+        background: 'var(--bg-elevated)',
+        border: `1px solid ${platform.color}40`,
+        borderRadius: '4px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        maxWidth: '200px',
+      }}>
+        <span style={{ color: platform.color }}>{platform.icon}</span>
+        <span style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>Loading {platform.name}...</span>
+      </div>
+    );
+  }
+
+  // TikTok doesn't work with React - show a styled link card with thumbnail
   if (embed.platform === 'tiktok') {
+    const hasThumbnail = tiktokData?.thumbnail_url;
+    const authorName = tiktokData?.author_name || '';
+    const title = tiktokData?.title || 'Click to open in TikTok';
+
     return (
       <a
         href={embed.url}
@@ -639,9 +737,8 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
         rel="noopener noreferrer"
         style={{
           display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '12px 16px',
+          alignItems: 'stretch',
+          gap: '0',
           background: 'linear-gradient(135deg, var(--bg-elevated), var(--bg-base))',
           border: '1px solid #ff0050',
           borderRadius: '8px',
@@ -649,28 +746,92 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
           textDecoration: 'none',
           marginTop: '8px',
           maxWidth: '400px',
+          overflow: 'hidden',
         }}
       >
+        {/* Thumbnail or fallback icon */}
         <div style={{
-          width: '48px',
-          height: '48px',
-          borderRadius: '8px',
-          background: '#ff0050',
+          width: hasThumbnail ? '100px' : '60px',
+          minHeight: hasThumbnail ? '130px' : '60px',
+          flexShrink: 0,
+          background: hasThumbnail ? '#000' : '#ff0050',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '24px',
-          flexShrink: 0,
+          position: 'relative',
+          overflow: 'hidden',
         }}>
-          ♪
+          {hasThumbnail ? (
+            <>
+              <img
+                src={tiktokData.thumbnail_url}
+                alt=""
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                }}
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+              {/* Play button overlay */}
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: 'rgba(255, 0, 80, 0.9)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '14px',
+                color: 'white',
+              }}>
+                ▶
+              </div>
+            </>
+          ) : (
+            <span style={{ fontSize: '24px' }}>♪</span>
+          )}
         </div>
-        <div style={{ overflow: 'hidden' }}>
-          <div style={{ color: '#ff0050', fontSize: '0.75rem', marginBottom: '2px' }}>TikTok</div>
-          <div style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            Click to open in TikTok
+        {/* Text content */}
+        <div style={{
+          padding: '12px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          flex: 1,
+        }}>
+          <div style={{ color: '#ff0050', fontSize: '0.7rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span>♪</span> TikTok
+          </div>
+          {authorName && (
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+              @{authorName}
+            </div>
+          )}
+          <div style={{
+            fontSize: '0.85rem',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            lineHeight: '1.3',
+          }}>
+            {title}
           </div>
         </div>
-        <div style={{ marginLeft: 'auto', color: '#ff0050', fontSize: '1.2rem' }}>→</div>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 12px',
+          color: '#ff0050',
+          fontSize: '1.2rem',
+        }}>→</div>
       </a>
     );
   }
@@ -999,14 +1160,15 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showTrending, setShowTrending] = useState(true);
+  const [provider, setProvider] = useState('giphy'); // Track which provider returned results
   const searchTimeoutRef = useRef(null);
 
-  // Load trending GIFs on mount
+  // Load trending GIFs when modal opens
   useEffect(() => {
-    if (isOpen && showTrending && gifs.length === 0) {
+    if (isOpen && showTrending) {
       loadTrending();
     }
-  }, [isOpen, showTrending]);
+  }, [isOpen]);
 
   const loadTrending = async () => {
     setLoading(true);
@@ -1014,6 +1176,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
     try {
       const data = await fetchAPI('/gifs/trending?limit=20');
       setGifs(data.gifs || []);
+      setProvider(data.provider || 'giphy');
     } catch (err) {
       setError(err.message || 'Failed to load trending GIFs');
     } finally {
@@ -1033,6 +1196,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
     try {
       const data = await fetchAPI(`/gifs/search?q=${encodeURIComponent(query)}&limit=20`);
       setGifs(data.gifs || []);
+      setProvider(data.provider || 'giphy');
     } catch (err) {
       setError(err.message || 'Failed to search GIFs');
     } finally {
@@ -1197,7 +1361,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
           )}
         </div>
 
-        {/* Footer - GIPHY Attribution */}
+        {/* Footer - Provider Attribution */}
         <div style={{
           padding: '8px 16px',
           borderTop: '1px solid var(--border-subtle)',
@@ -1205,7 +1369,7 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
           color: 'var(--text-muted)',
           fontSize: '0.6rem',
         }}>
-          Powered by GIPHY
+          Powered by {provider === 'tenor' ? 'Tenor' : provider === 'both' ? 'GIPHY & Tenor' : 'GIPHY'}
         </div>
       </div>
     </div>
@@ -6851,7 +7015,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     try {
       console.log(`📖 Marking droplet ${messageId} as read...`);
       await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
-      console.log(`✅ Droplet ${messageId} marked as read, refreshing wave`);
       // Reload wave to update unread status
       await loadWave(true);
       // Also refresh wave list to update unread counts
