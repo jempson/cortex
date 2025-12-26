@@ -473,6 +473,8 @@ const EMBED_PLATFORMS = {
   tiktok: { icon: '♪', color: '#ff0050', name: 'TikTok' },
   twitter: { icon: '𝕏', color: '#1da1f2', name: 'X/Twitter' },
   soundcloud: { icon: '☁', color: '#ff5500', name: 'SoundCloud' },
+  tenor: { icon: '🎬', color: '#5856d6', name: 'Tenor' },
+  giphy: { icon: '🎬', color: '#00ff99', name: 'GIPHY' },
 };
 
 // URL patterns for detecting embeddable content (mirrors server)
@@ -498,6 +500,14 @@ const EMBED_URL_PATTERNS = {
   ],
   soundcloud: [
     /(?:https?:\/\/)?(?:www\.)?soundcloud\.com\/[\w-]+\/[\w-]+/i,
+  ],
+  tenor: [
+    /(?:https?:\/\/)?(?:www\.)?tenor\.com\/view\/[\w-]+-(\d+)/i,
+    /(?:https?:\/\/)?tenor\.com\/([a-zA-Z0-9]+)\.gif/i,
+  ],
+  giphy: [
+    /(?:https?:\/\/)?(?:www\.)?giphy\.com\/gifs\/(?:[\w-]+-)*([a-zA-Z0-9]+)/i,
+    /(?:https?:\/\/)?gph\.is\/([a-zA-Z0-9]+)/i,
   ],
 };
 
@@ -564,6 +574,7 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
   const [oembedHtml, setOembedHtml] = useState(null);
   const [oembedLoading, setOembedLoading] = useState(false);
   const [tiktokData, setTiktokData] = useState(null);
+  const [gifData, setGifData] = useState(null);
   const platform = EMBED_PLATFORMS[embed.platform] || { icon: '🔗', color: '#666', name: 'Link' };
   const embedContainerRef = useRef(null);
 
@@ -584,6 +595,22 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
         .catch(() => {}); // Silently fail - link card still works without thumbnail
     }
   }, [embed.platform, embed.url, tiktokData]);
+
+  // Fetch Tenor/GIPHY oEmbed data to get the actual GIF URL
+  useEffect(() => {
+    if (['tenor', 'giphy'].includes(embed.platform) && !gifData) {
+      fetch(`${API_URL}/embeds/oembed?url=${encodeURIComponent(embed.url)}`)
+        .then(res => res.json())
+        .then(data => {
+          // Tenor returns 'url' field with direct GIF URL
+          // GIPHY returns 'url' field with direct GIF URL
+          if (data.url || data.thumbnail) {
+            setGifData(data);
+          }
+        })
+        .catch(() => {}); // Silently fail
+    }
+  }, [embed.platform, embed.url, gifData]);
 
   // Determine iframe dimensions based on platform
   const getDimensions = () => {
@@ -644,6 +671,53 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
       // SoundCloud doesn't need external script - oEmbed returns iframe directly
     }
   }, [oembedHtml, embed.platform]);
+
+  // Tenor/GIPHY - show the GIF directly as an image
+  if (['tenor', 'giphy'].includes(embed.platform)) {
+    const gifUrl = gifData?.url || gifData?.thumbnail;
+    const imgStyle = 'max-width:200px;max-height:150px;border-radius:4px;cursor:pointer;object-fit:cover;display:block;border:1px solid var(--border-primary);';
+
+    if (gifUrl) {
+      // GIF loaded - show it
+      return (
+        <div style={{ marginTop: '8px' }}>
+          <img
+            src={gifUrl}
+            alt={gifData?.title || 'GIF'}
+            style={{
+              maxWidth: '200px',
+              maxHeight: '150px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              objectFit: 'cover',
+              display: 'block',
+              border: '1px solid var(--border-primary)',
+            }}
+            className="zoomable-image"
+            loading="lazy"
+          />
+        </div>
+      );
+    }
+
+    // Loading state - show placeholder with platform branding
+    return (
+      <div style={{
+        marginTop: '8px',
+        padding: '12px',
+        background: 'var(--bg-elevated)',
+        border: `1px solid ${platform.color}40`,
+        borderRadius: '4px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        maxWidth: '200px',
+      }}>
+        <span style={{ color: platform.color }}>{platform.icon}</span>
+        <span style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>Loading {platform.name}...</span>
+      </div>
+    );
+  }
 
   // TikTok doesn't work with React - show a styled link card with thumbnail
   if (embed.platform === 'tiktok') {
@@ -6933,7 +7007,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     try {
       console.log(`📖 Marking droplet ${messageId} as read...`);
       await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
-      console.log(`✅ Droplet ${messageId} marked as read, refreshing wave`);
       // Reload wave to update unread status
       await loadWave(true);
       // Also refresh wave list to update unread counts

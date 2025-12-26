@@ -546,6 +546,20 @@ const EMBED_PATTERNS = {
     ],
     oembedUrl: (url) => `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(url)}`,
   },
+  tenor: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?tenor\.com\/view\/[\w-]+-(\d+)/i,
+      /(?:https?:\/\/)?tenor\.com\/([a-zA-Z0-9]+)\.gif/i,
+    ],
+    oembedUrl: (url) => `https://tenor.com/oembed?url=${encodeURIComponent(url)}`,
+  },
+  giphy: {
+    patterns: [
+      /(?:https?:\/\/)?(?:www\.)?giphy\.com\/gifs\/(?:[\w-]+-)*([a-zA-Z0-9]+)/i,
+      /(?:https?:\/\/)?gph\.is\/([a-zA-Z0-9]+)/i,
+    ],
+    oembedUrl: (url) => `https://giphy.com/services/oembed?url=${encodeURIComponent(url)}`,
+  },
 };
 
 // Simple in-memory cache for oEmbed responses (15 min TTL)
