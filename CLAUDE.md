@@ -619,6 +619,15 @@ Automatic embedding of videos and media from popular platforms.
   - Renames `threads` → `waves`
   - Adds UUID system and handle history
 
+- **v1.19.5 (December 2025)** - Tenor GIF Support & Bug Fixes
+  - **Tenor GIF Provider**: Alternative to GIPHY with server-side configuration
+    - `TENOR_API_KEY` and `GIF_PROVIDER` environment variables
+    - Dynamic attribution in GIF search modal
+  - **TikTok Thumbnails**: Video previews via oEmbed API
+  - **Critical Bug Fix**: Unread counts were always 0 for users without blocked/muted users
+    - SQL `NOT IN (NULL)` returns NULL instead of TRUE
+  - **GIF Embedding Fixes**: Proper handling of Tenor/GIPHY CDN and short URLs
+
 - **v1.19.0 (December 2025)** - End-to-End Encryption (E2EE)
   - **E2EE Core**: Zero-knowledge encryption for all wave content
     - ECDH P-384 keypairs per user, protected by passphrase
