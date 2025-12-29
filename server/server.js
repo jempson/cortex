@@ -2636,9 +2636,11 @@ class Database {
   }
 
   // === Wave Methods ===
-  getWavesForUser(userId, includeArchived = false) {
+  getWavesForUser(userId, showArchived = false) {
+    // When showArchived=true, return ONLY archived waves
+    // When showArchived=false, return ONLY non-archived waves
     const participantWaveIds = this.waves.participants
-      .filter(p => p.userId === userId && (includeArchived || !p.archived))
+      .filter(p => p.userId === userId && (showArchived ? p.archived : !p.archived))
       .map(p => p.waveId);
 
     // Get user's groups
