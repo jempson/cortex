@@ -2722,6 +2722,11 @@ class Database {
     return this.waves.participants.some(p => p.waveId === waveId && p.userId === userId);
   }
 
+  isWaveArchivedForUser(waveId, userId) {
+    const participant = this.waves.participants.find(p => p.waveId === waveId && p.userId === userId);
+    return participant?.archived || false;
+  }
+
   canAccessWave(waveId, userId) {
     const wave = this.getWave(waveId);
     if (!wave) return false;
@@ -10012,6 +10017,9 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
   const creator = db.findUserById(wave.createdBy);
   const participants = db.getWaveParticipants(wave.id);
 
+  // Get user's archive status for this wave (uses method that works for both JSON and SQLite)
+  const isArchived = db.isWaveArchivedForUser(waveId, req.user.userId);
+
   // For breakout waves, use special method that fetches from original wave's droplet tree
   const allMessages = wave.rootDropletId && db.getDropletsForBreakoutWave
     ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
@@ -10048,6 +10056,7 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
     creator_name: creator?.displayName || 'Unknown',
     creator_handle: creator?.handle || 'unknown',
     participants,
+    is_archived: isArchived,
     // New droplet terminology
     droplets: buildDropletTree(limitedDroplets),
     all_droplets: limitedDroplets,

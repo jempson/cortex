@@ -3115,6 +3115,13 @@ export class DatabaseSQLite {
     return !!row;
   }
 
+  isWaveArchivedForUser(waveId, userId) {
+    const row = this.db.prepare(`
+      SELECT archived FROM wave_participants WHERE wave_id = ? AND user_id = ?
+    `).get(waveId, userId);
+    return row?.archived === 1;
+  }
+
   canAccessWave(waveId, userId) {
     const wave = this.getWave(waveId);
     if (!wave) return false;
