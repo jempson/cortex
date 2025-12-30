@@ -12325,8 +12325,13 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
 };
 
 // ============ HANDLE REQUESTS LIST (ADMIN) ============
-const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const HandleRequestsList = ({ fetchAPI, showToast, isMobile, isOpen: controlledIsOpen, onToggle }) => {
+  // Support both controlled (isOpen/onToggle props) and uncontrolled modes
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isControlled = controlledIsOpen !== undefined;
+  const isOpen = isControlled ? controlledIsOpen : internalIsOpen;
+  const handleToggle = isControlled ? onToggle : () => setInternalIsOpen(!internalIsOpen);
+
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -12372,16 +12377,16 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
   };
 
   return (
-    <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-purple)40' }}>
+    <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-amber)40' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ color: 'var(--accent-purple)', fontSize: '0.8rem', fontWeight: 500 }}>HANDLE CHANGE REQUESTS</div>
+        <div style={{ color: 'var(--accent-amber)', fontSize: '0.8rem', fontWeight: 500 }}>HANDLE REQUESTS</div>
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={handleToggle}
           style={{
             padding: isMobile ? '8px 12px' : '6px 10px',
-            background: isOpen ? 'var(--accent-purple)20' : 'transparent',
-            border: `1px solid ${isOpen ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
-            color: isOpen ? 'var(--accent-purple)' : 'var(--text-dim)',
+            background: isOpen ? 'var(--accent-amber)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-amber)' : 'var(--text-dim)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontSize: '0.7rem',
@@ -12471,7 +12476,6 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [newHandle, setNewHandle] = useState('');
-  const [showHandleRequests, setShowHandleRequests] = useState(false);
   const [showBlockedMuted, setShowBlockedMuted] = useState(false);
   // Accordion state - only one top-level section open at a time
   const [openSection, setOpenSection] = useState(null); // 'handle' | 'security' | 'display' | 'crawl' | 'notifications' | 'admin' | 'account' | null
@@ -12480,7 +12484,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [openSecuritySection, setOpenSecuritySection] = useState(null); // 'password' | 'mfa' | 'e2ee' | 'sessions' | 'blocked' | null
   const toggleSecuritySection = (section) => setOpenSecuritySection(prev => prev === section ? null : section);
   // Accordion state for Admin Panel subsections
-  const [openAdminSection, setOpenAdminSection] = useState(null); // 'users' | 'reports' | 'activity' | 'crawl' | 'alerts' | 'subscriptions' | 'federation' | null
+  const [openAdminSection, setOpenAdminSection] = useState(null); // 'users' | 'reports' | 'activity' | 'handles' | 'crawl' | 'alerts' | 'subscriptions' | 'federation' | null
   const toggleAdminSection = (section) => setOpenAdminSection(prev => prev === section ? null : section);
   const [notificationPrefs, setNotificationPrefs] = useState(null);
   const [blockedUsers, setBlockedUsers] = useState([]);
@@ -14227,23 +14231,8 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                 System Configuration
               </div>
 
-              <div style={{ marginTop: '8px' }}>
-                <button
-                  onClick={() => setShowHandleRequests(!showHandleRequests)}
-                  style={{
-                    padding: isMobile ? '12px 20px' : '10px 20px',
-                    minHeight: isMobile ? '44px' : 'auto',
-                    background: showHandleRequests ? 'var(--accent-amber)20' : 'transparent',
-                    border: `1px solid ${showHandleRequests ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
-                    color: showHandleRequests ? 'var(--accent-amber)' : 'var(--text-dim)',
-                    cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.9rem' : '0.85rem',
-                  }}
-                >
-                  {showHandleRequests ? 'HIDE' : 'SHOW'} HANDLE REQUESTS
-                </button>
-              </div>
-
-              {showHandleRequests && <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />}
+              {/* Handle Requests Panel */}
+              <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'handles'} onToggle={() => toggleAdminSection('handles')} />
 
               {/* Crawl Bar Admin Panel */}
               <CrawlBarAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'crawl'} onToggle={() => toggleAdminSection('crawl')} />
