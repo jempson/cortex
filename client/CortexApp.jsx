@@ -3611,14 +3611,18 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
     <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
       <GlowText color="var(--accent-amber)" size={isMobile ? '1rem' : '0.9rem'}>WAVES</GlowText>
       <div style={{ display: 'flex', gap: '8px' }}>
-        <button onClick={onToggleArchived} style={{
-          padding: isMobile ? '12px 14px' : '6px 10px',
-          minHeight: isMobile ? '44px' : 'auto',
-          minWidth: isMobile ? '44px' : 'auto',
-          background: showArchived ? 'var(--accent-teal)20' : 'transparent',
-          border: `1px solid ${showArchived ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
-          color: showArchived ? 'var(--accent-teal)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-        }}>{showArchived ? '📦' : '📬'}</button>
+        <button
+          onClick={onToggleArchived}
+          title={showArchived ? 'Show active waves' : 'Show archived waves'}
+          style={{
+            padding: isMobile ? '12px 14px' : '6px 10px',
+            minHeight: isMobile ? '44px' : 'auto',
+            minWidth: isMobile ? '44px' : 'auto',
+            background: showArchived ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${showArchived ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: showArchived ? 'var(--accent-teal)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+          }}
+        >{showArchived ? '📦 ARCHIVED' : '📬'}</button>
         <button onClick={onNewWave} style={{
           padding: isMobile ? '12px 16px' : '6px 12px',
           minHeight: isMobile ? '44px' : 'auto',
@@ -7078,12 +7082,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         </div>
         <PrivacyBadge level={wave.privacy} compact={isMobile} />
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button onClick={handleArchive} style={{
-            padding: isMobile ? '10px 12px' : '6px 10px',
-            minHeight: isMobile ? '44px' : 'auto',
-            background: 'transparent', border: '1px solid var(--border-primary)',
-            color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-          }}>{waveData.is_archived ? '📬' : '📦'}</button>
+          <button
+            onClick={handleArchive}
+            title={waveData.is_archived ? 'Restore this wave from archive' : 'Archive this wave'}
+            style={{
+              padding: isMobile ? '10px 12px' : '6px 10px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: waveData.is_archived ? 'var(--accent-teal)20' : 'transparent',
+              border: `1px solid ${waveData.is_archived ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+              color: waveData.is_archived ? 'var(--accent-teal)' : 'var(--text-dim)',
+              cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+            }}
+          >{waveData.is_archived ? '📬 RESTORE' : '📦'}</button>
           {/* Settings and Delete buttons only show for wave creator (all privacy levels) */}
           {waveData.can_edit && (
             <>
