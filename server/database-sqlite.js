@@ -2972,7 +2972,7 @@ export class DatabaseSQLite {
   }
 
   // === Wave Methods ===
-  getWavesForUser(userId, includeArchived = false) {
+  getWavesForUser(userId, showArchived = false) {
     // Get user's group IDs
     const userGroupIds = this.db.prepare('SELECT group_id FROM group_members WHERE user_id = ?').all(userId).map(r => r.group_id);
 
@@ -3004,7 +3004,11 @@ export class DatabaseSQLite {
 
     const params = [userId, ...userGroupIds];
 
-    if (!includeArchived) {
+    // When showArchived=true, return ONLY archived waves
+    // When showArchived=false, return ONLY non-archived waves
+    if (showArchived) {
+      sql += ' AND wp.archived = 1';
+    } else {
       sql += ' AND (wp.archived IS NULL OR wp.archived = 0)';
     }
 
@@ -3109,6 +3113,13 @@ export class DatabaseSQLite {
       SELECT 1 FROM wave_participants WHERE wave_id = ? AND user_id = ?
     `).get(waveId, userId);
     return !!row;
+  }
+
+  isWaveArchivedForUser(waveId, userId) {
+    const row = this.db.prepare(`
+      SELECT archived FROM wave_participants WHERE wave_id = ? AND user_id = ?
+    `).get(waveId, userId);
+    return row?.archived === 1;
   }
 
   canAccessWave(waveId, userId) {
