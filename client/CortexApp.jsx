@@ -1080,8 +1080,13 @@ const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [],
 };
 
 // ============ COLLAPSIBLE SECTION COMPONENT ============
-const CollapsibleSection = ({ title, children, defaultOpen = true, isMobile, titleColor = 'var(--text-dim)', accentColor, badge }) => {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+// Supports controlled mode (isOpen + onToggle) or uncontrolled mode (defaultOpen)
+const CollapsibleSection = ({ title, children, defaultOpen = true, isOpen: controlledIsOpen, onToggle, isMobile, titleColor = 'var(--text-dim)', accentColor, badge }) => {
+  const [internalIsOpen, setInternalIsOpen] = useState(defaultOpen);
+
+  // Use controlled mode if onToggle is provided, otherwise use internal state
+  const isOpen = onToggle ? controlledIsOpen : internalIsOpen;
+  const handleToggle = onToggle || (() => setInternalIsOpen(!internalIsOpen));
 
   return (
     <div style={{
@@ -1109,7 +1114,7 @@ const CollapsibleSection = ({ title, children, defaultOpen = true, isMobile, tit
           )}
         </div>
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={handleToggle}
           style={{
             padding: isMobile ? '8px 12px' : '6px 10px',
             background: isOpen ? (accentColor ? `${accentColor}20` : 'var(--accent-amber)20') : 'transparent',
@@ -12363,11 +12368,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [newHandle, setNewHandle] = useState('');
   const [showHandleRequests, setShowHandleRequests] = useState(false);
   const [showBlockedMuted, setShowBlockedMuted] = useState(false);
-  const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
-  const [showSecurity, setShowSecurity] = useState(false);
-  const [showDisplayPrefs, setShowDisplayPrefs] = useState(false);
-  const [showCrawlBar, setShowCrawlBar] = useState(false);
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  // Accordion state - only one top-level section open at a time
+  const [openSection, setOpenSection] = useState(null); // 'handle' | 'security' | 'display' | 'crawl' | 'notifications' | 'admin' | 'account' | null
+  const toggleSection = (section) => setOpenSection(prev => prev === section ? null : section);
   const [notificationPrefs, setNotificationPrefs] = useState(null);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [mutedUsers, setMutedUsers] = useState([]);
@@ -12423,12 +12426,12 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
   // Load notification preferences when section is expanded
   useEffect(() => {
-    if (showNotificationPrefs && !notificationPrefs) {
+    if (openSection === 'notifications' && !notificationPrefs) {
       fetchAPI('/notifications/preferences')
         .then(data => setNotificationPrefs(data.preferences))
         .catch(err => console.error('Failed to load notification preferences:', err));
     }
-  }, [showNotificationPrefs, notificationPrefs, fetchAPI]);
+  }, [openSection, notificationPrefs, fetchAPI]);
 
   // Load MFA status when section is expanded
   useEffect(() => {
@@ -13022,7 +13025,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       </div>
 
       {/* Handle Change */}
-      <CollapsibleSection title="HANDLE CHANGE" defaultOpen={false} isMobile={isMobile}>
+      <CollapsibleSection title="HANDLE CHANGE" isOpen={openSection === 'handle'} onToggle={() => toggleSection('handle')} isMobile={isMobile}>
         <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
           Handle changes require admin approval. You can change your handle once every 30 days.
         </div>
@@ -13040,7 +13043,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       </CollapsibleSection>
 
       {/* Security Section */}
-      <CollapsibleSection title="🔒 SECURITY" defaultOpen={false} isMobile={isMobile} accentColor="var(--accent-orange)">
+      <CollapsibleSection title="🔒 SECURITY" isOpen={openSection === 'security'} onToggle={() => toggleSection('security')} isMobile={isMobile} accentColor="var(--accent-orange)">
         {/* Change Password Sub-section */}
         <CollapsibleSection title="CHANGE PASSWORD" defaultOpen={false} isMobile={isMobile}>
           <div style={{ marginBottom: '16px' }}>
@@ -13648,7 +13651,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       </CollapsibleSection>
 
       {/* Display Preferences */}
-      <CollapsibleSection title="DISPLAY PREFERENCES" defaultOpen={false} isMobile={isMobile}>
+      <CollapsibleSection title="DISPLAY PREFERENCES" isOpen={openSection === 'display'} onToggle={() => toggleSection('display')} isMobile={isMobile}>
 
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>THEME</label>
@@ -13743,7 +13746,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       </CollapsibleSection>
 
       {/* Crawl Bar Preferences */}
-      <CollapsibleSection title="CRAWL BAR" defaultOpen={false} isMobile={isMobile}>
+      <CollapsibleSection title="CRAWL BAR" isOpen={openSection === 'crawl'} onToggle={() => toggleSection('crawl')} isMobile={isMobile}>
 
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>ENABLE CRAWL BAR</label>
@@ -13911,26 +13914,26 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       </CollapsibleSection>
 
       {/* Notification Preferences */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>NOTIFICATION PREFERENCES</div>
+      <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', fontWeight: 500 }}>NOTIFICATION PREFERENCES</div>
           <button
-            onClick={() => setShowNotificationPrefs(!showNotificationPrefs)}
+            onClick={() => toggleSection('notifications')}
             style={{
               padding: isMobile ? '8px 12px' : '6px 10px',
-              background: showNotificationPrefs ? 'var(--accent-amber)20' : 'transparent',
-              border: `1px solid ${showNotificationPrefs ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
-              color: showNotificationPrefs ? 'var(--accent-amber)' : 'var(--text-dim)',
+              background: openSection === 'notifications' ? 'var(--accent-amber)20' : 'transparent',
+              border: `1px solid ${openSection === 'notifications' ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+              color: openSection === 'notifications' ? 'var(--accent-amber)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: '0.7rem',
             }}
           >
-            {showNotificationPrefs ? '▼ HIDE' : '▶ SHOW'}
+            {openSection === 'notifications' ? '▼ HIDE' : '▶ SHOW'}
           </button>
         </div>
 
-        {showNotificationPrefs && notificationPrefs && (
+        {openSection === 'notifications' && notificationPrefs && (
           <div>
             {/* Global Enable */}
             <div style={{ marginBottom: '16px' }}>
@@ -14080,7 +14083,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           </div>
         )}
 
-        {showNotificationPrefs && !notificationPrefs && (
+        {openSection === 'notifications' && !notificationPrefs && (
           <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', padding: '20px', textAlign: 'center' }}>
             Loading preferences...
           </div>
@@ -14089,7 +14092,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
       {/* Admin Panel */}
       {user?.isAdmin && (
-        <CollapsibleSection title="⚙️ ADMIN PANEL" defaultOpen={false} isMobile={isMobile} accentColor="var(--accent-amber)" titleColor="var(--accent-amber)">
+        <CollapsibleSection title="⚙️ ADMIN PANEL" isOpen={openSection === 'admin'} onToggle={() => toggleSection('admin')} isMobile={isMobile} accentColor="var(--accent-amber)" titleColor="var(--accent-amber)">
           <div style={{ marginTop: '8px' }}>
             <button
               onClick={() => setShowHandleRequests(!showHandleRequests)}
@@ -14164,22 +14167,22 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', fontWeight: 500 }}>ACCOUNT MANAGEMENT</div>
           <button
-            onClick={() => setShowAccountManagement(!showAccountManagement)}
+            onClick={() => toggleSection('account')}
             style={{
               padding: isMobile ? '8px 12px' : '6px 10px',
-              background: showAccountManagement ? 'var(--accent-orange)20' : 'transparent',
-              border: `1px solid ${showAccountManagement ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
-              color: showAccountManagement ? 'var(--accent-orange)' : 'var(--text-dim)',
+              background: openSection === 'account' ? 'var(--accent-orange)20' : 'transparent',
+              border: `1px solid ${openSection === 'account' ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+              color: openSection === 'account' ? 'var(--accent-orange)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: '0.7rem',
             }}
           >
-            {showAccountManagement ? '▼ HIDE' : '▶ SHOW'}
+            {openSection === 'account' ? '▼ HIDE' : '▶ SHOW'}
           </button>
         </div>
 
-        {showAccountManagement && (
+        {openSection === 'account' && (
           <div style={{ marginTop: '16px' }}>
             {/* Data Export */}
             <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
