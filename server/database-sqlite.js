@@ -2178,7 +2178,7 @@ export class DatabaseSQLite {
     if (!query || query.length < 1) return [];
     const pattern = `%${query}%`;
     const rows = this.db.prepare(`
-      SELECT u.id, u.handle, u.display_name, u.email, u.avatar, u.avatar_url, u.is_admin, u.created_at,
+      SELECT u.id, u.handle, u.display_name, u.email, u.avatar, u.avatar_url, u.is_admin, u.role, u.created_at,
              CASE WHEN m.totp_enabled = 1 OR m.email_mfa_enabled = 1 THEN 1 ELSE 0 END as mfa_enabled,
              m.totp_enabled, m.email_mfa_enabled
       FROM users u
@@ -2188,19 +2188,24 @@ export class DatabaseSQLite {
       LIMIT 20
     `).all(pattern, pattern, pattern);
 
-    return rows.map(r => ({
-      id: r.id,
-      handle: r.handle,
-      displayName: r.display_name,
-      email: r.email,
-      avatar: r.avatar,
-      avatarUrl: r.avatar_url,
-      isAdmin: r.is_admin === 1,
-      createdAt: r.created_at,
-      mfaEnabled: r.mfa_enabled === 1,
-      totpEnabled: r.totp_enabled === 1,
-      emailMfaEnabled: r.email_mfa_enabled === 1,
-    }));
+    return rows.map(r => {
+      // Determine role: use role column if present, otherwise derive from is_admin for backward compat
+      const role = r.role || (r.is_admin === 1 ? 'admin' : 'user');
+      return {
+        id: r.id,
+        handle: r.handle,
+        displayName: r.display_name,
+        email: r.email,
+        avatar: r.avatar,
+        avatarUrl: r.avatar_url,
+        isAdmin: role === 'admin',
+        role: role,
+        createdAt: r.created_at,
+        mfaEnabled: r.mfa_enabled === 1,
+        totpEnabled: r.totp_enabled === 1,
+        emailMfaEnabled: r.email_mfa_enabled === 1,
+      };
+    });
   }
 
   // === Contact Methods ===
