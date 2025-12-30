@@ -1090,16 +1090,11 @@ const CollapsibleSection = ({ title, children, defaultOpen = true, isMobile, tit
       background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
       border: accentColor ? `1px solid ${accentColor}40` : '1px solid var(--border-subtle)',
     }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          cursor: 'pointer',
-          userSelect: 'none',
-        }}
-      >
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ color: titleColor, fontSize: '0.8rem', fontWeight: 500 }}>{title}</div>
           {badge && (
@@ -1113,9 +1108,20 @@ const CollapsibleSection = ({ title, children, defaultOpen = true, isMobile, tit
             }}>{badge}</span>
           )}
         </div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>
-          {isOpen ? '▼' : '▶'}
-        </span>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? (accentColor ? `${accentColor}20` : 'var(--accent-amber)20') : 'transparent',
+            border: `1px solid ${isOpen ? (accentColor || 'var(--accent-amber)') : 'var(--border-primary)'}`,
+            color: isOpen ? (accentColor || 'var(--accent-amber)') : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
       </div>
       {isOpen && (
         <div style={{ marginTop: '16px' }}>
@@ -5093,12 +5099,22 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
 
   return (
     <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-orange)40' }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', fontWeight: 500 }}>REPORTS DASHBOARD</div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>{isOpen ? '▼' : '▶'}</span>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-orange)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-orange)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
       </div>
 
       {isOpen && (
@@ -8120,25 +8136,33 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
 
   return (
     <div style={{
-      marginBottom: '24px', padding: '16px',
+      marginBottom: '24px', padding: isMobile ? '16px' : '20px',
       background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
-      border: '1px solid var(--accent-amber)30',
+      border: '1px solid var(--accent-amber)40',
     }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
-          background: 'transparent', border: 'none', cursor: 'pointer',
-          padding: 0, fontFamily: 'monospace',
-        }}>
-        <span style={{ color: 'var(--accent-amber)', fontSize: '0.85rem' }}>
-          {expanded ? '▼' : '▶'} PENDING SENT REQUESTS
-        </span>
-        <span style={{
-          background: 'var(--accent-amber)', color: '#000', fontSize: '0.65rem',
-          padding: '2px 6px', borderRadius: '10px', fontWeight: 700,
-        }}>{requests.length}</span>
-      </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ color: 'var(--accent-amber)', fontSize: '0.8rem', fontWeight: 500 }}>PENDING SENT REQUESTS</span>
+          <span style={{
+            background: 'var(--accent-amber)', color: '#000', fontSize: '0.65rem',
+            padding: '2px 6px', borderRadius: '10px', fontWeight: 700,
+          }}>{requests.length}</span>
+        </div>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: expanded ? 'var(--accent-amber)20' : 'transparent',
+            border: `1px solid ${expanded ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+            color: expanded ? 'var(--accent-amber)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {expanded ? '▼ HIDE' : '▶ SHOW'}
+        </button>
+      </div>
       {expanded && (
         <div style={{ marginTop: '12px' }}>
           {requests.map(request => (
@@ -9803,21 +9827,36 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
   };
 
   return (
-    <div style={{ marginTop: '20px' }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          ...buttonStyle,
-          background: expanded ? 'var(--accent-purple)20' : 'transparent',
-          border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
-          color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
-        }}
-      >
-        {expanded ? '▼' : '▶'} USER MANAGEMENT
-      </button>
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-purple)40',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div style={{ color: 'var(--accent-purple)', fontSize: '0.8rem', fontWeight: 500 }}>USER MANAGEMENT</div>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: expanded ? 'var(--accent-purple)20' : 'transparent',
+            border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+            color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {expanded ? '▼ HIDE' : '▶ SHOW'}
+        </button>
+      </div>
 
       {expanded && (
-        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ marginTop: '16px' }}>
           {/* Search */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
             <input
@@ -10054,28 +10093,41 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, defaultOpen = false }
   };
 
   return (
-    <div style={{ marginTop: '20px', padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          cursor: 'pointer',
-          userSelect: 'none',
-        }}
-      >
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-teal)40',
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ color: 'var(--accent-teal)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+          <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>
             📊 ACTIVITY LOG
           </div>
           {stats && (
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
               Last 7 days: {stats.totalActivities} events | {stats.uniqueUsers} users
             </div>
           )}
         </div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{isOpen ? '▼' : '▶'}</span>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-teal)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
       </div>
 
       {isOpen && (
@@ -10287,30 +10339,36 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
   };
 
   return (
-    <div style={{ marginTop: '16px' }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          width: '100%',
-          padding: isMobile ? '12px 20px' : '10px 20px',
-          minHeight: isMobile ? '44px' : 'auto',
-          background: expanded ? 'var(--accent-teal)20' : 'transparent',
-          border: `1px solid ${expanded ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
-          color: expanded ? 'var(--accent-teal)' : 'var(--text-dim)',
-          cursor: 'pointer',
-          fontFamily: 'monospace',
-          fontSize: isMobile ? '0.9rem' : '0.85rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <span>📊 CRAWL BAR CONFIG</span>
-        <span>{expanded ? '▼' : '▶'}</span>
-      </button>
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-teal)40',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>📊 CRAWL BAR CONFIG</div>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: expanded ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${expanded ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: expanded ? 'var(--accent-teal)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {expanded ? '▼ HIDE' : '▶ SHOW'}
+        </button>
+      </div>
 
       {expanded && (
-        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ marginTop: '16px' }}>
           {loading ? (
             <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
           ) : (
@@ -10700,30 +10758,36 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
   };
 
   return (
-    <div style={{ marginTop: '16px' }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          width: '100%',
-          padding: isMobile ? '12px 20px' : '10px 20px',
-          minHeight: isMobile ? '44px' : 'auto',
-          background: expanded ? 'var(--accent-amber)20' : 'transparent',
-          border: `1px solid ${expanded ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
-          color: expanded ? 'var(--accent-amber)' : 'var(--text-dim)',
-          cursor: 'pointer',
-          fontFamily: 'monospace',
-          fontSize: isMobile ? '0.9rem' : '0.85rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <span>🚨 SYSTEM ALERTS</span>
-        <span>{expanded ? '▼' : '▶'}</span>
-      </button>
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-amber)40',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div style={{ color: 'var(--accent-amber)', fontSize: '0.8rem', fontWeight: 500 }}>🚨 SYSTEM ALERTS</div>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: expanded ? 'var(--accent-amber)20' : 'transparent',
+            border: `1px solid ${expanded ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+            color: expanded ? 'var(--accent-amber)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {expanded ? '▼ HIDE' : '▶ SHOW'}
+        </button>
+      </div>
 
       {expanded && (
-        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ marginTop: '16px' }}>
           {loading ? (
             <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
           ) : (
@@ -11146,30 +11210,36 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
   const availableNodes = federationNodes.filter(n => !subscribedNodes.includes(n.node_name) && n.status === 'active');
 
   return (
-    <div style={{ marginTop: '16px' }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          width: '100%',
-          padding: isMobile ? '12px 20px' : '10px 20px',
-          minHeight: isMobile ? '44px' : 'auto',
-          background: expanded ? 'var(--accent-purple)20' : 'transparent',
-          border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
-          color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
-          cursor: 'pointer',
-          fontFamily: 'monospace',
-          fontSize: isMobile ? '0.9rem' : '0.85rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <span>◇ ALERT SUBSCRIPTIONS</span>
-        <span>{expanded ? '▼' : '▶'}</span>
-      </button>
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-purple)40',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div style={{ color: 'var(--accent-purple)', fontSize: '0.8rem', fontWeight: 500 }}>◇ ALERT SUBSCRIPTIONS</div>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: expanded ? 'var(--accent-purple)20' : 'transparent',
+            border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+            color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {expanded ? '▼ HIDE' : '▶ SHOW'}
+        </button>
+      </div>
 
       {expanded && (
-        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ marginTop: '16px' }}>
           {loading ? (
             <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
           ) : (
@@ -11590,12 +11660,22 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
 
   return (
     <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-teal)40' }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>FEDERATION</div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>{isOpen ? '▼' : '▶'}</span>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-teal)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
       </div>
 
       {isOpen && (
@@ -12183,12 +12263,22 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
 
   return (
     <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-purple)40' }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--accent-purple)', fontSize: '0.8rem', fontWeight: 500 }}>HANDLE CHANGE REQUESTS</div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>{isOpen ? '▼' : '▶'}</span>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-purple)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-purple)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
       </div>
 
       {isOpen && (
@@ -14070,13 +14160,23 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       </div>
 
       {/* Account Management (v1.18.0) */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-orange)40' }}>
-        <div
-          onClick={() => setShowAccountManagement(!showAccountManagement)}
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-        >
-          <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem' }}>ACCOUNT MANAGEMENT</div>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showAccountManagement ? '▼' : '▶'}</span>
+      <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-orange)40' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', fontWeight: 500 }}>ACCOUNT MANAGEMENT</div>
+          <button
+            onClick={() => setShowAccountManagement(!showAccountManagement)}
+            style={{
+              padding: isMobile ? '8px 12px' : '6px 10px',
+              background: showAccountManagement ? 'var(--accent-orange)20' : 'transparent',
+              border: `1px solid ${showAccountManagement ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+              color: showAccountManagement ? 'var(--accent-orange)' : 'var(--text-dim)',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '0.7rem',
+            }}
+          >
+            {showAccountManagement ? '▼ HIDE' : '▶ SHOW'}
+          </button>
         </div>
 
         {showAccountManagement && (
