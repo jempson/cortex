@@ -1,5 +1,5 @@
 -- Cortex SQLite Database Schema
--- Version 1.19.0
+-- Version 1.20.0
 
 -- ============ Users ============
 CREATE TABLE IF NOT EXISTS users (
@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     node_name TEXT DEFAULT 'Local',
     status TEXT DEFAULT 'offline',
     is_admin INTEGER DEFAULT 0,
+    role TEXT DEFAULT 'user',
     created_at TEXT NOT NULL,
     last_seen TEXT,
     last_handle_change TEXT,
@@ -376,6 +377,7 @@ CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_version ON wave_encryption_k
 CREATE INDEX IF NOT EXISTS idx_users_handle ON users(handle);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
 -- Handle history lookup
 CREATE INDEX IF NOT EXISTS idx_handle_history_user ON handle_history(user_id);
