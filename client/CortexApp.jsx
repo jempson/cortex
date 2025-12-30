@@ -15420,7 +15420,7 @@ function MainApp({ shareDropletId }) {
                   cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', textTransform: 'uppercase',
                   position: 'relative',
                 }}>
-                  {view === 'profile' ? '⚙' : view.slice(0, 10)}
+                  {view.slice(0, 10)}
                   {badgeCount > 0 && (
                     <span style={{
                       position: 'absolute',
