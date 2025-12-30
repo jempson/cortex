@@ -5019,8 +5019,7 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
 };
 
 // ============ ADMIN REPORTS PANEL ============
-const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const AdminReportsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('pending');
@@ -5107,7 +5106,7 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', fontWeight: 500 }}>REPORTS DASHBOARD</div>
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={onToggle}
           style={{
             padding: isMobile ? '8px 12px' : '6px 10px',
             background: isOpen ? 'var(--accent-orange)20' : 'transparent',
@@ -9753,8 +9752,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
 };
 
 // ============ USER MANAGEMENT ADMIN PANEL ============
-const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
-  const [expanded, setExpanded] = useState(false);
+const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -9845,22 +9843,22 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
       }}>
         <div style={{ color: 'var(--accent-purple)', fontSize: '0.8rem', fontWeight: 500 }}>USER MANAGEMENT</div>
         <button
-          onClick={() => setExpanded(!expanded)}
+          onClick={onToggle}
           style={{
             padding: isMobile ? '8px 12px' : '6px 10px',
-            background: expanded ? 'var(--accent-purple)20' : 'transparent',
-            border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
-            color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
+            background: isOpen ? 'var(--accent-purple)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-purple)' : 'var(--text-dim)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontSize: '0.7rem',
           }}
         >
-          {expanded ? '▼ HIDE' : '▶ SHOW'}
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
         </button>
       </div>
 
-      {expanded && (
+      {isOpen && (
         <div style={{ marginTop: '16px' }}>
           {/* Search */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -10012,8 +10010,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ ACTIVITY LOG ADMIN PANEL ============
-const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, defaultOpen = false }) => {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState(null);
@@ -10120,7 +10117,7 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, defaultOpen = false }
           )}
         </div>
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={onToggle}
           style={{
             padding: isMobile ? '8px 12px' : '6px 10px',
             background: isOpen ? 'var(--accent-teal)20' : 'transparent',
@@ -10276,11 +10273,10 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, defaultOpen = false }
 };
 
 // ============ CRAWL BAR ADMIN PANEL ============
-const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
+const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   const [stockSymbols, setStockSymbols] = useState('');
   const [defaultLocation, setDefaultLocation] = useState('');
 
@@ -10300,10 +10296,10 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
   }, [fetchAPI, showToast]);
 
   useEffect(() => {
-    if (expanded && !config) {
+    if (isOpen && !config) {
       loadConfig();
     }
-  }, [expanded, config, loadConfig]);
+  }, [isOpen, config, loadConfig]);
 
   const handleSave = async (updates) => {
     setSaving(true);
@@ -10357,22 +10353,22 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
       }}>
         <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>📊 CRAWL BAR CONFIG</div>
         <button
-          onClick={() => setExpanded(!expanded)}
+          onClick={onToggle}
           style={{
             padding: isMobile ? '8px 12px' : '6px 10px',
-            background: expanded ? 'var(--accent-teal)20' : 'transparent',
-            border: `1px solid ${expanded ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
-            color: expanded ? 'var(--accent-teal)' : 'var(--text-dim)',
+            background: isOpen ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-teal)' : 'var(--text-dim)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontSize: '0.7rem',
           }}
         >
-          {expanded ? '▼ HIDE' : '▶ SHOW'}
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
         </button>
       </div>
 
-      {expanded && (
+      {isOpen && (
         <div style={{ marginTop: '16px' }}>
           {loading ? (
             <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
@@ -10616,10 +10612,9 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ ALERTS ADMIN PANEL ============
-const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
+const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingAlert, setEditingAlert] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -10647,10 +10642,10 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
   }, [fetchAPI, showToast]);
 
   useEffect(() => {
-    if (expanded && alerts.length === 0) {
+    if (isOpen && alerts.length === 0) {
       loadAlerts();
     }
-  }, [expanded, alerts.length, loadAlerts]);
+  }, [isOpen, alerts.length, loadAlerts]);
 
   const resetForm = () => {
     setFormTitle('');
@@ -10776,22 +10771,22 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
       }}>
         <div style={{ color: 'var(--accent-amber)', fontSize: '0.8rem', fontWeight: 500 }}>🚨 SYSTEM ALERTS</div>
         <button
-          onClick={() => setExpanded(!expanded)}
+          onClick={onToggle}
           style={{
             padding: isMobile ? '8px 12px' : '6px 10px',
-            background: expanded ? 'var(--accent-amber)20' : 'transparent',
-            border: `1px solid ${expanded ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
-            color: expanded ? 'var(--accent-amber)' : 'var(--text-dim)',
+            background: isOpen ? 'var(--accent-amber)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-amber)' : 'var(--text-dim)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontSize: '0.7rem',
           }}
         >
-          {expanded ? '▼ HIDE' : '▶ SHOW'}
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
         </button>
       </div>
 
-      {expanded && (
+      {isOpen && (
         <div style={{ marginTop: '16px' }}>
           {loading ? (
             <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
@@ -11085,11 +11080,10 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ ALERT SUBSCRIPTIONS PANEL ============
-const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
+const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [subscriptions, setSubscriptions] = useState([]);
   const [federationNodes, setFederationNodes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSub, setEditingSub] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -11121,10 +11115,10 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
   const loadSubscriptions = loadData; // Alias for refresh
 
   useEffect(() => {
-    if (expanded && subscriptions.length === 0 && federationNodes.length === 0) {
+    if (isOpen && subscriptions.length === 0 && federationNodes.length === 0) {
       loadData();
     }
-  }, [expanded, subscriptions.length, federationNodes.length, loadData]);
+  }, [isOpen, subscriptions.length, federationNodes.length, loadData]);
 
   const resetForm = () => {
     setFormSourceNode('');
@@ -11228,22 +11222,22 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
       }}>
         <div style={{ color: 'var(--accent-purple)', fontSize: '0.8rem', fontWeight: 500 }}>◇ ALERT SUBSCRIPTIONS</div>
         <button
-          onClick={() => setExpanded(!expanded)}
+          onClick={onToggle}
           style={{
             padding: isMobile ? '8px 12px' : '6px 10px',
-            background: expanded ? 'var(--accent-purple)20' : 'transparent',
-            border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
-            color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
+            background: isOpen ? 'var(--accent-purple)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-purple)' : 'var(--text-dim)',
             cursor: 'pointer',
             fontFamily: 'monospace',
             fontSize: '0.7rem',
           }}
         >
-          {expanded ? '▼ HIDE' : '▶ SHOW'}
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
         </button>
       </div>
 
-      {expanded && (
+      {isOpen && (
         <div style={{ marginTop: '16px' }}>
           {loading ? (
             <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
@@ -11469,8 +11463,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ FEDERATION ADMIN PANEL ============
-const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0, isOpen, onToggle }) => {
   const [status, setStatus] = useState(null);
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -11668,7 +11661,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>FEDERATION</div>
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={onToggle}
           style={{
             padding: isMobile ? '8px 12px' : '6px 10px',
             background: isOpen ? 'var(--accent-teal)20' : 'transparent',
@@ -12374,6 +12367,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   // Accordion state for Security subsections
   const [openSecuritySection, setOpenSecuritySection] = useState(null); // 'password' | 'mfa' | 'e2ee' | 'sessions' | 'blocked' | null
   const toggleSecuritySection = (section) => setOpenSecuritySection(prev => prev === section ? null : section);
+  // Accordion state for Admin Panel subsections
+  const [openAdminSection, setOpenAdminSection] = useState(null); // 'users' | 'reports' | 'activity' | 'crawl' | 'alerts' | 'subscriptions' | 'federation' | null
+  const toggleAdminSection = (section) => setOpenAdminSection(prev => prev === section ? null : section);
   const [notificationPrefs, setNotificationPrefs] = useState(null);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [mutedUsers, setMutedUsers] = useState([]);
@@ -12438,16 +12434,16 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
   // Load MFA status when section is expanded
   useEffect(() => {
-    if (showMfaSetup && !mfaStatus) {
+    if (openSecuritySection === 'mfa' && !mfaStatus) {
       fetchAPI('/auth/mfa/status')
         .then(data => setMfaStatus(data))
         .catch(err => console.error('Failed to load MFA status:', err));
     }
-  }, [showMfaSetup, mfaStatus, fetchAPI]);
+  }, [openSecuritySection, mfaStatus, fetchAPI]);
 
   // Load sessions when section is expanded (v1.18.0)
   useEffect(() => {
-    if (showSessions) {
+    if (openSecuritySection === 'sessions') {
       setSessionsLoading(true);
       fetchAPI('/auth/sessions')
         .then(data => {
@@ -12460,7 +12456,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         })
         .finally(() => setSessionsLoading(false));
     }
-  }, [showSessions, fetchAPI]);
+  }, [openSecuritySection, fetchAPI]);
 
   // Sync crawl bar location when user preferences change
   useEffect(() => {
@@ -14115,25 +14111,25 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           {showHandleRequests && <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />}
 
           {/* User Management Panel */}
-          <UserManagementPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <UserManagementPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'users'} onToggle={() => toggleAdminSection('users')} />
 
           {/* Admin Reports Dashboard */}
-          <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'reports'} onToggle={() => toggleAdminSection('reports')} />
 
           {/* Activity Log Panel */}
-          <ActivityLogPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <ActivityLogPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'activity'} onToggle={() => toggleAdminSection('activity')} />
 
           {/* Crawl Bar Admin Panel */}
-          <CrawlBarAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <CrawlBarAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'crawl'} onToggle={() => toggleAdminSection('crawl')} />
 
           {/* Alerts Admin Panel */}
-          <AlertsAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <AlertsAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'alerts'} onToggle={() => toggleAdminSection('alerts')} />
 
           {/* Alert Subscriptions Panel */}
-          <AlertSubscriptionsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <AlertSubscriptionsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'subscriptions'} onToggle={() => toggleAdminSection('subscriptions')} />
 
           {/* Federation Admin Panel */}
-          <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} />
+          <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} isOpen={openAdminSection === 'federation'} onToggle={() => toggleAdminSection('federation')} />
         </CollapsibleSection>
       )}
 
