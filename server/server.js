@@ -162,6 +162,41 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 const ENFORCE_HTTPS = process.env.ENFORCE_HTTPS === 'true';
 const CORS_STRICT_MODE = process.env.CORS_STRICT_MODE !== 'false'; // Default true
 
+// ============ Role-Based Authorization (v1.20.0) ============
+const ROLES = { ADMIN: 'admin', MODERATOR: 'moderator', USER: 'user' };
+const ROLE_HIERARCHY = { admin: 3, moderator: 2, user: 1 };
+
+/**
+ * Get user's role (backward compatible with isAdmin boolean)
+ */
+function getUserRole(user) {
+  if (!user) return null;
+  if (user.role) return user.role;
+  return user.isAdmin ? ROLES.ADMIN : ROLES.USER;
+}
+
+/**
+ * Check if user has at least the specified role level
+ */
+function hasRole(user, requiredRole) {
+  const userRole = getUserRole(user);
+  if (!userRole) return false;
+  return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[requiredRole];
+}
+
+/**
+ * Authorization check with 403 response - returns false if unauthorized
+ * Usage: if (!requireRole(user, ROLES.ADMIN, res)) return;
+ */
+function requireRole(user, role, res) {
+  if (!hasRole(user, role)) {
+    const roleName = role.charAt(0).toUpperCase() + role.slice(1);
+    res.status(403).json({ error: `${roleName} access required` });
+    return false;
+  }
+  return true;
+}
+
 // ============ Security: Rate Limiting ============
 // Configurable via .env - set higher values for development/testing
 const RATE_LIMIT_LOGIN_MAX = parseInt(process.env.RATE_LIMIT_LOGIN_MAX) || 30;
@@ -5802,10 +5837,10 @@ app.post('/api/push/test', authenticateToken, async (req, res) => {
   res.json({ success: true, sent, total: subscriptions.length });
 });
 
-// Admin handle request management
+// Admin handle request management (admin only)
 app.get('/api/admin/handle-requests', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user?.isAdmin) return res.status(403).json({ error: 'Not authorized' });
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   const requests = db.getPendingHandleRequests().map(r => {
     const requestUser = db.findUserById(r.userId);
@@ -6478,9 +6513,7 @@ app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, r
 // Get crawl bar configuration (admin only)
 app.get('/api/admin/crawl/config', authenticateToken, (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.ADMIN, res)) return;
 
   const config = db.getCrawlConfig();
   // Return config in snake_case format for client compatibility
@@ -6512,9 +6545,7 @@ app.get('/api/admin/crawl/config', authenticateToken, (req, res) => {
 // Update crawl bar configuration (admin only)
 app.put('/api/admin/crawl/config', authenticateToken, async (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.ADMIN, res)) return;
 
   // Accept both snake_case and camelCase for flexibility
   const {
@@ -6826,9 +6857,7 @@ app.put('/api/profile/crawl-preferences', authenticateToken, (req, res) => {
 // Get all alerts (admin only)
 app.get('/api/admin/alerts', authenticateToken, (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.ADMIN, res)) return;
 
   const { limit = 50, offset = 0, status = 'all' } = req.query;
   const alerts = db.getAllAlerts({
@@ -6843,9 +6872,7 @@ app.get('/api/admin/alerts', authenticateToken, (req, res) => {
 // Create alert (admin only)
 app.post('/api/admin/alerts', authenticateToken, async (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.ADMIN, res)) return;
 
   const { title, content, priority, category, scope, startTime, endTime } = req.body;
 
@@ -6943,9 +6970,7 @@ app.post('/api/admin/alerts', authenticateToken, async (req, res) => {
 // Update alert (admin only)
 app.put('/api/admin/alerts/:id', authenticateToken, async (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.ADMIN, res)) return;
 
   const alertId = req.params.id;
   const existingAlert = db.getAlert(alertId);
@@ -7050,9 +7075,7 @@ app.put('/api/admin/alerts/:id', authenticateToken, async (req, res) => {
 // Delete alert (admin only)
 app.delete('/api/admin/alerts/:id', authenticateToken, async (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.ADMIN, res)) return;
 
   const alertId = req.params.id;
   const alert = db.getAlert(alertId);
@@ -7116,9 +7139,7 @@ app.post('/api/alerts/:id/dismiss', authenticateToken, (req, res) => {
 // Get all alert subscriptions (admin only)
 app.get('/api/admin/alert-subscriptions', authenticateToken, (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.ADMIN, res)) return;
 
   const subscriptions = db.getAllAlertSubscriptions();
   res.json({ subscriptions });
@@ -7127,9 +7148,7 @@ app.get('/api/admin/alert-subscriptions', authenticateToken, (req, res) => {
 // Subscribe to alerts from a federated node (admin only)
 app.post('/api/admin/alert-subscriptions', authenticateToken, async (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.ADMIN, res)) return;
 
   const { sourceNode, categories } = req.body;
 
@@ -7193,9 +7212,7 @@ app.post('/api/admin/alert-subscriptions', authenticateToken, async (req, res) =
 // Update alert subscription (admin only)
 app.put('/api/admin/alert-subscriptions/:id', authenticateToken, async (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.ADMIN, res)) return;
 
   const subscriptionId = req.params.id;
   const existing = db.getAlertSubscription(subscriptionId);
@@ -7233,9 +7250,7 @@ app.put('/api/admin/alert-subscriptions/:id', authenticateToken, async (req, res
 // Delete alert subscription (admin only)
 app.delete('/api/admin/alert-subscriptions/:id', authenticateToken, async (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.ADMIN, res)) return;
 
   const subscriptionId = req.params.id;
   const subscription = db.getAlertSubscription(subscriptionId);
@@ -7559,12 +7574,10 @@ app.get('/api/reports', authenticateToken, (req, res) => {
   res.json({ reports, count: reports.length });
 });
 
-// Get reports (admin only)
+// Get reports (moderator+)
 app.get('/api/admin/reports', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.MODERATOR, res)) return;
 
   const status = req.query.status ? sanitizeInput(req.query.status) : null;
   const limit = req.query.limit ? parseInt(req.query.limit) : 50;
@@ -7585,12 +7598,10 @@ app.get('/api/admin/reports', authenticateToken, (req, res) => {
   res.json({ reports, count: reports.length });
 });
 
-// Resolve report (admin only)
+// Resolve report (moderator+)
 app.post('/api/admin/reports/:id/resolve', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.MODERATOR, res)) return;
 
   const reportId = sanitizeInput(req.params.id);
   const { resolution, notes } = req.body;
@@ -7620,12 +7631,10 @@ app.post('/api/admin/reports/:id/resolve', authenticateToken, (req, res) => {
   res.json({ success: true, report: updatedReport });
 });
 
-// Dismiss report (admin only)
+// Dismiss report (moderator+)
 app.post('/api/admin/reports/:id/dismiss', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.MODERATOR, res)) return;
 
   const reportId = sanitizeInput(req.params.id);
   const { reason } = req.body;
@@ -7651,12 +7660,10 @@ app.post('/api/admin/reports/:id/dismiss', authenticateToken, (req, res) => {
   res.json({ success: true, report: updatedReport });
 });
 
-// Issue warning to user (admin only)
+// Issue warning to user (moderator+)
 app.post('/api/admin/users/:id/warn', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.MODERATOR, res)) return;
 
   const targetUserId = sanitizeInput(req.params.id);
   const { reason, reportId } = req.body;
@@ -7690,12 +7697,10 @@ app.post('/api/admin/users/:id/warn', authenticateToken, (req, res) => {
   res.json({ success: true, warning });
 });
 
-// Get warnings for a user (admin only)
+// Get warnings for a user (moderator+)
 app.get('/api/admin/users/:id/warnings', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.MODERATOR, res)) return;
 
   const targetUserId = sanitizeInput(req.params.id);
   const warnings = db.getWarningsByUser(targetUserId);
@@ -7703,13 +7708,11 @@ app.get('/api/admin/users/:id/warnings', authenticateToken, (req, res) => {
   res.json({ warnings, count: warnings.length });
 });
 
-// Admin user search (admin only)
+// Admin user search (moderator+)
 // Returns users with admin-level details including email, isAdmin, and MFA status
 app.get('/api/admin/users/search', authenticateToken, (req, res) => {
   const admin = db.findUserById(req.user.userId);
-  if (!admin || !admin.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(admin, ROLES.MODERATOR, res)) return;
 
   const query = sanitizeInput(req.query.q);
   if (!query || query.length < 1) {
@@ -7720,14 +7723,12 @@ app.get('/api/admin/users/search', authenticateToken, (req, res) => {
   res.json({ users });
 });
 
-// Admin password reset (admin only)
-// Allows admins to reset a user's password and optionally send them a temporary password
+// Admin password reset (moderator+)
+// Allows moderators/admins to reset a user's password and optionally send them a temporary password
 app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, res) => {
   try {
     const admin = db.findUserById(req.user.userId);
-    if (!admin || !admin.isAdmin) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
+    if (!requireRole(admin, ROLES.MODERATOR, res)) return;
 
     const targetUserId = sanitizeInput(req.params.id);
     const { temporaryPassword, sendEmail: shouldSendEmail } = req.body;
@@ -7797,13 +7798,11 @@ app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, r
   }
 });
 
-// Force logout all sessions for a user (admin only)
+// Force logout all sessions for a user (moderator+)
 app.post('/api/admin/users/:id/force-logout', authenticateToken, (req, res) => {
   try {
     const admin = db.findUserById(req.user.userId);
-    if (!admin || !admin.isAdmin) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
+    if (!requireRole(admin, ROLES.MODERATOR, res)) return;
 
     const targetUserId = sanitizeInput(req.params.id);
     const targetUser = db.findUserById(targetUserId);
@@ -7838,13 +7837,11 @@ app.post('/api/admin/users/:id/force-logout', authenticateToken, (req, res) => {
   }
 });
 
-// Disable MFA for a user (admin only - emergency lockout recovery)
+// Disable MFA for a user (moderator+ - emergency lockout recovery)
 app.post('/api/admin/users/:id/disable-mfa', authenticateToken, (req, res) => {
   try {
     const admin = db.findUserById(req.user.userId);
-    if (!admin || !admin.isAdmin) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
+    if (!requireRole(admin, ROLES.MODERATOR, res)) return;
 
     const targetUserId = sanitizeInput(req.params.id);
     const targetUser = db.findUserById(targetUserId);
@@ -7884,12 +7881,61 @@ app.post('/api/admin/users/:id/disable-mfa', authenticateToken, (req, res) => {
   }
 });
 
-// Get moderation log (admin only)
+// Update user role (admin only) - v1.20.0
+app.put('/api/admin/users/:id/role', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const targetUserId = sanitizeInput(req.params.id);
+    const { role } = req.body;
+
+    // Validate role
+    const validRoles = ['admin', 'moderator', 'user'];
+    if (!role || !validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be: admin, moderator, or user' });
+    }
+
+    // Cannot change your own role
+    if (targetUserId === admin.id) {
+      return res.status(400).json({ error: 'Cannot change your own role' });
+    }
+
+    const result = db.updateUserRole(targetUserId, role);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Log the action
+    if (db.logModerationAction) {
+      db.logModerationAction(admin.id, 'change_role', 'user', targetUserId, `Changed role to ${role}`);
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'admin_change_role', 'user', targetUserId, getRequestMeta(req));
+
+    console.log(`Admin ${admin.handle} changed role of user ${result.user.handle} to ${role}`);
+
+    res.json({
+      success: true,
+      user: {
+        id: result.user.id,
+        handle: result.user.handle,
+        displayName: result.user.displayName,
+        role: result.user.role,
+        isAdmin: result.user.isAdmin
+      }
+    });
+  } catch (err) {
+    console.error('Admin change role error:', err);
+    res.status(500).json({ error: 'Failed to change user role' });
+  }
+});
+
+// Get moderation log (moderator+)
 app.get('/api/admin/moderation-log', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.MODERATOR, res)) return;
 
   const limit = Math.min(parseInt(req.query.limit) || 50, 100);
   const offset = parseInt(req.query.offset) || 0;
@@ -7899,12 +7945,10 @@ app.get('/api/admin/moderation-log', authenticateToken, (req, res) => {
   res.json({ logs, count: logs.length });
 });
 
-// Get moderation log for specific target (admin only)
+// Get moderation log for specific target (moderator+)
 app.get('/api/admin/moderation-log/:targetType/:targetId', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.MODERATOR, res)) return;
 
   const targetType = sanitizeInput(req.params.targetType);
   const targetId = sanitizeInput(req.params.targetId);
@@ -7918,12 +7962,10 @@ app.get('/api/admin/moderation-log/:targetType/:targetId', authenticateToken, (r
   res.json({ logs, count: logs.length });
 });
 
-// Get activity log (admin only)
+// Get activity log (moderator+)
 app.get('/api/admin/activity-log', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.MODERATOR, res)) return;
 
   if (!db.getActivityLog) {
     return res.status(501).json({ error: 'Activity logging not available in this database mode' });
@@ -7953,12 +7995,10 @@ app.get('/api/admin/activity-log', authenticateToken, (req, res) => {
   }
 });
 
-// Get activity stats (admin only)
+// Get activity stats (moderator+)
 app.get('/api/admin/activity-stats', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.MODERATOR, res)) return;
 
   if (!db.getActivityStats) {
     return res.status(501).json({ error: 'Activity logging not available in this database mode' });
@@ -7975,12 +8015,10 @@ app.get('/api/admin/activity-stats', authenticateToken, (req, res) => {
   }
 });
 
-// Get activity log for a specific user (admin only)
+// Get activity log for a specific user (moderator+)
 app.get('/api/admin/activity-log/user/:userId', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.MODERATOR, res)) return;
 
   if (!db.getUserActivityLog) {
     return res.status(501).json({ error: 'Activity logging not available in this database mode' });
@@ -8407,9 +8445,7 @@ app.get('/api/federation/identity', (req, res) => {
 // Get federation status (admin only)
 app.get('/api/admin/federation/status', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   const identity = db.getServerIdentity();
   const nodes = db.getFederationNodes();
@@ -8439,9 +8475,7 @@ app.get('/api/admin/federation/status', authenticateToken, (req, res) => {
 // 4. Include node name in UUID generation (would require migration)
 app.post('/api/admin/federation/identity', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   const nodeName = sanitizeInput(req.body.nodeName);
   if (!nodeName || nodeName.length < 3) {
@@ -8482,9 +8516,7 @@ app.post('/api/admin/federation/identity', authenticateToken, (req, res) => {
 // List trusted federation nodes (admin only)
 app.get('/api/admin/federation/nodes', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   const status = req.query.status ? sanitizeInput(req.query.status) : null;
   const nodes = db.getFederationNodes({ status });
@@ -8495,9 +8527,7 @@ app.get('/api/admin/federation/nodes', authenticateToken, (req, res) => {
 // Add a trusted federation node (admin only)
 app.post('/api/admin/federation/nodes', authenticateToken, async (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   const nodeName = sanitizeInput(req.body.nodeName);
   const baseUrl = sanitizeInput(req.body.baseUrl);
@@ -8529,9 +8559,7 @@ app.post('/api/admin/federation/nodes', authenticateToken, async (req, res) => {
 // Get a specific federation node (admin only)
 app.get('/api/admin/federation/nodes/:id', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   const nodeId = sanitizeInput(req.params.id);
   const node = db.getFederationNode(nodeId);
@@ -8546,9 +8574,7 @@ app.get('/api/admin/federation/nodes/:id', authenticateToken, (req, res) => {
 // Update a federation node (admin only)
 app.put('/api/admin/federation/nodes/:id', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   const nodeId = sanitizeInput(req.params.id);
   const updates = {};
@@ -8571,9 +8597,7 @@ app.put('/api/admin/federation/nodes/:id', authenticateToken, (req, res) => {
 // Delete a federation node (admin only)
 app.delete('/api/admin/federation/nodes/:id', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   const nodeId = sanitizeInput(req.params.id);
   const deleted = db.deleteFederationNode(nodeId);
@@ -8589,9 +8613,7 @@ app.delete('/api/admin/federation/nodes/:id', authenticateToken, (req, res) => {
 // Fetches the remote server's public key
 app.post('/api/admin/federation/nodes/:id/handshake', authenticateToken, async (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   if (!FEDERATION_ENABLED) {
     return res.status(400).json({ error: 'Federation is not enabled on this server' });
@@ -8692,9 +8714,7 @@ const federationRequestLimiter = rateLimit({
 // Send a federation request to another server (admin only)
 app.post('/api/admin/federation/request', authenticateToken, async (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   if (!FEDERATION_ENABLED) {
     return res.status(400).json({ error: 'Federation is not enabled on this server' });
@@ -8966,9 +8986,7 @@ app.post('/api/federation/inbox/request', federationRequestLimiter, async (req, 
 // Get pending federation requests (admin only)
 app.get('/api/admin/federation/requests', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   if (!FEDERATION_ENABLED) {
     return res.status(400).json({ error: 'Federation is not enabled on this server' });
@@ -8981,9 +8999,7 @@ app.get('/api/admin/federation/requests', authenticateToken, (req, res) => {
 // Accept a federation request (admin only)
 app.post('/api/admin/federation/requests/:id/accept', authenticateToken, async (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   if (!FEDERATION_ENABLED) {
     return res.status(400).json({ error: 'Federation is not enabled on this server' });
@@ -9077,9 +9093,7 @@ app.post('/api/admin/federation/requests/:id/accept', authenticateToken, async (
 // Decline a federation request (admin only)
 app.post('/api/admin/federation/requests/:id/decline', authenticateToken, async (req, res) => {
   const user = db.findUserById(req.user.userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
 
   if (!FEDERATION_ENABLED) {
     return res.status(400).json({ error: 'Federation is not enabled on this server' });
@@ -10829,7 +10843,7 @@ app.post('/api/waves/:id/key/rotate', authenticateToken, (req, res) => {
     // Only wave creator or admin can rotate keys
     if (wave.createdBy !== req.user.userId) {
       const user = db.findUserById(req.user.userId);
-      if (!user?.isAdmin) {
+      if (!hasRole(user, ROLES.ADMIN)) {
         return res.status(403).json({ error: 'Only wave creator can rotate keys' });
       }
     }

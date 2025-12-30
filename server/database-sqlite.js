@@ -1041,6 +1041,22 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Droplets key_version column added');
     }
+
+    // Add role column to users table if it doesn't exist (v1.20.0)
+    const userColumnsForRole = this.db.prepare(`PRAGMA table_info(users)`).all();
+    const hasRoleColumn = userColumnsForRole.some(c => c.name === 'role');
+    if (!hasRoleColumn) {
+      console.log('📝 Adding role column to users table (v1.20.0)...');
+      this.db.exec(`
+        ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user';
+        CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+      `);
+      // Migrate existing admins to have 'admin' role
+      const migratedCount = this.db.prepare(`
+        UPDATE users SET role = CASE WHEN is_admin = 1 THEN 'admin' ELSE 'user' END
+      `).run().changes;
+      console.log(`✅ Role column added, migrated ${migratedCount} users`);
+    }
   }
 
   prepareStatements() {
@@ -1051,11 +1067,11 @@ export class DatabaseSQLite {
       `),
       findUserById: this.db.prepare('SELECT * FROM users WHERE id = ?'),
       insertUser: this.db.prepare(`
-        INSERT INTO users (id, handle, email, password_hash, display_name, avatar, avatar_url, bio, node_name, status, is_admin, created_at, last_seen, last_handle_change, preferences)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (id, handle, email, password_hash, display_name, avatar, avatar_url, bio, node_name, status, is_admin, role, created_at, last_seen, last_handle_change, preferences)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `),
       updateUser: this.db.prepare(`
-        UPDATE users SET handle = ?, email = ?, display_name = ?, avatar = ?, avatar_url = ?, bio = ?, node_name = ?, status = ?, is_admin = ?, last_seen = ?, last_handle_change = ?, preferences = ?
+        UPDATE users SET handle = ?, email = ?, display_name = ?, avatar = ?, avatar_url = ?, bio = ?, node_name = ?, status = ?, is_admin = ?, role = ?, last_seen = ?, last_handle_change = ?, preferences = ?
         WHERE id = ?
       `),
       updateUserStatus: this.db.prepare('UPDATE users SET status = ?, last_seen = ? WHERE id = ?'),
@@ -1170,6 +1186,8 @@ export class DatabaseSQLite {
   // Helper to convert SQLite row to user object
   rowToUser(row) {
     if (!row) return null;
+    // Determine role: use role column if present, otherwise derive from is_admin for backward compat
+    const role = row.role || (row.is_admin === 1 ? 'admin' : 'user');
     return {
       id: row.id,
       handle: row.handle,
@@ -1181,7 +1199,8 @@ export class DatabaseSQLite {
       bio: row.bio,
       nodeName: row.node_name,
       status: row.status,
-      isAdmin: row.is_admin === 1,
+      isAdmin: role === 'admin',  // Backward compat: computed from role
+      role: role,  // New: explicit role field
       createdAt: row.created_at,
       lastSeen: row.last_seen,
       lastHandleChange: row.last_handle_change,
@@ -1228,6 +1247,7 @@ export class DatabaseSQLite {
   createUser(userData) {
     const now = new Date().toISOString();
     const isFirstUser = this.stmts.countUsers.get().count === 0;
+    const role = isFirstUser ? 'admin' : 'user';
 
     const user = {
       id: userData.id,
@@ -1240,7 +1260,8 @@ export class DatabaseSQLite {
       bio: userData.bio || null,
       nodeName: userData.nodeName || 'Local',
       status: userData.status || 'online',
-      isAdmin: isFirstUser,
+      isAdmin: role === 'admin',  // Backward compat
+      role: role,
       createdAt: now,
       lastSeen: now,
       lastHandleChange: null,
@@ -1251,7 +1272,7 @@ export class DatabaseSQLite {
     this.stmts.insertUser.run(
       user.id, user.handle, user.email, user.passwordHash, user.displayName,
       user.avatar, user.avatarUrl, user.bio, user.nodeName, user.status,
-      user.isAdmin ? 1 : 0, user.createdAt, user.lastSeen, user.lastHandleChange,
+      user.isAdmin ? 1 : 0, user.role, user.createdAt, user.lastSeen, user.lastHandleChange,
       JSON.stringify(user.preferences)
     );
 
@@ -1263,16 +1284,20 @@ export class DatabaseSQLite {
     if (!user) return null;
 
     const updated = { ...user, ...updates };
+    // Ensure role is synced with isAdmin for backward compat
+    if (updates.isAdmin !== undefined && updates.role === undefined) {
+      updated.role = updates.isAdmin ? 'admin' : 'user';
+    }
 
     this.db.prepare(`
       UPDATE users SET
         handle = ?, email = ?, display_name = ?, avatar = ?, avatar_url = ?,
-        bio = ?, node_name = ?, status = ?, is_admin = ?, last_seen = ?,
+        bio = ?, node_name = ?, status = ?, is_admin = ?, role = ?, last_seen = ?,
         last_handle_change = ?, preferences = ?
       WHERE id = ?
     `).run(
       updated.handle, updated.email, updated.displayName, updated.avatar, updated.avatarUrl,
-      updated.bio, updated.nodeName, updated.status, updated.isAdmin ? 1 : 0, updated.lastSeen,
+      updated.bio, updated.nodeName, updated.status, updated.isAdmin ? 1 : 0, updated.role || 'user', updated.lastSeen,
       updated.lastHandleChange, JSON.stringify(updated.preferences), userId
     );
 
@@ -1282,6 +1307,37 @@ export class DatabaseSQLite {
   updateUserStatus(userId, status) {
     const now = new Date().toISOString();
     this.stmts.updateUserStatus.run(status, now, userId);
+  }
+
+  /**
+   * Update user's role (admin only operation)
+   * @param {string} userId - User ID to update
+   * @param {string} role - New role ('admin', 'moderator', 'user')
+   * @returns {{ success: boolean, user?: object, error?: string }}
+   */
+  updateUserRole(userId, role) {
+    const validRoles = ['admin', 'moderator', 'user'];
+    if (!validRoles.includes(role)) {
+      return { success: false, error: 'Invalid role' };
+    }
+
+    const user = this.findUserById(userId);
+    if (!user) {
+      return { success: false, error: 'User not found' };
+    }
+
+    // Prevent demoting the last admin
+    if (user.role === 'admin' && role !== 'admin') {
+      const adminCount = this.db.prepare('SELECT COUNT(*) as count FROM users WHERE role = ?').get('admin').count;
+      if (adminCount <= 1) {
+        return { success: false, error: 'Cannot demote the last admin' };
+      }
+    }
+
+    const isAdmin = role === 'admin' ? 1 : 0;
+    this.db.prepare('UPDATE users SET role = ?, is_admin = ? WHERE id = ?').run(role, isAdmin, userId);
+
+    return { success: true, user: this.findUserById(userId) };
   }
 
   updateUserPreferences(userId, preferences) {

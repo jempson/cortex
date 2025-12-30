@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.19.5';
+const VERSION = '1.20.0';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -93,6 +93,16 @@ const FONT_SIZES = {
   medium: { name: 'Medium', multiplier: 1 },
   large: { name: 'Large', multiplier: 1.15 },
   xlarge: { name: 'X-Large', multiplier: 1.3 },
+};
+
+// ============ ROLE-BASED ACCESS (v1.20.0) ============
+const ROLE_HIERARCHY = { admin: 3, moderator: 2, user: 1 };
+
+// Check if user has required role level (admin > moderator > user)
+const canAccess = (user, requiredRole) => {
+  if (!user) return false;
+  const userRole = user.role || (user.isAdmin ? 'admin' : 'user');
+  return (ROLE_HIERARCHY[userRole] || 0) >= (ROLE_HIERARCHY[requiredRole] || 0);
 };
 
 // ============ THREADING DEPTH LIMIT ============
@@ -9752,13 +9762,14 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
 };
 
 // ============ USER MANAGEMENT ADMIN PANEL ============
-const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
+const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, currentUser }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(null); // 'reset-password' | 'disable-mfa' | null
+  const [showConfirm, setShowConfirm] = useState(null); // 'reset-password' | 'disable-mfa' | 'change-role' | null
+  const [pendingRole, setPendingRole] = useState(null);
 
   const searchUsers = async () => {
     if (!searchQuery.trim()) return;
@@ -9809,6 +9820,32 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }
       setActionLoading(false);
     }
   };
+
+  const handleChangeRole = async () => {
+    if (!selectedUser || !pendingRole) return;
+    setActionLoading(true);
+    try {
+      const data = await fetchAPI(`/admin/users/${selectedUser.id}/role`, {
+        method: 'PUT',
+        body: { role: pendingRole }
+      });
+      showToast(`Role changed to ${pendingRole} for @${data.user.handle}`, 'success');
+      // Update search results with new role
+      setSearchResults(prev => prev.map(u =>
+        u.id === selectedUser.id ? { ...u, role: pendingRole, isAdmin: pendingRole === 'admin' } : u
+      ));
+      setShowConfirm(null);
+      setSelectedUser(null);
+      setPendingRole(null);
+    } catch (err) {
+      showToast(err.message || 'Failed to change role', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Check if current user can assign roles (admin only)
+  const canAssignRoles = canAccess(currentUser, 'admin');
 
   const inputStyle = {
     padding: '8px 12px',
@@ -9890,32 +9927,45 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }
               <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
                 Found {searchResults.length} user(s)
               </div>
-              {searchResults.map(u => (
-                <div
-                  key={u.id}
-                  onClick={() => setSelectedUser(selectedUser?.id === u.id ? null : u)}
-                  style={{
-                    padding: '10px 12px',
-                    marginBottom: '4px',
-                    background: selectedUser?.id === u.id ? 'var(--accent-purple)20' : 'var(--bg-elevated)',
-                    border: `1px solid ${selectedUser?.id === u.id ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <div>
-                    <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{u.displayName || u.handle}</div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>@{u.handle}</div>
-                  </div>
-                  {u.isAdmin && (
-                    <span style={{ color: 'var(--accent-amber)', fontSize: '0.7rem', padding: '2px 6px', border: '1px solid var(--accent-amber)', borderRadius: '3px' }}>
-                      ADMIN
+              {searchResults.map(u => {
+                const userRole = u.role || (u.isAdmin ? 'admin' : 'user');
+                const roleColors = {
+                  admin: 'var(--accent-amber)',
+                  moderator: 'var(--accent-teal)',
+                  user: 'var(--text-muted)'
+                };
+                return (
+                  <div
+                    key={u.id}
+                    onClick={() => setSelectedUser(selectedUser?.id === u.id ? null : u)}
+                    style={{
+                      padding: '10px 12px',
+                      marginBottom: '4px',
+                      background: selectedUser?.id === u.id ? 'var(--accent-purple)20' : 'var(--bg-elevated)',
+                      border: `1px solid ${selectedUser?.id === u.id ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div>
+                      <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{u.displayName || u.handle}</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>@{u.handle}</div>
+                    </div>
+                    <span style={{
+                      color: roleColors[userRole],
+                      fontSize: '0.7rem',
+                      padding: '2px 6px',
+                      border: `1px solid ${roleColors[userRole]}`,
+                      borderRadius: '3px',
+                      textTransform: 'uppercase'
+                    }}>
+                      {userRole}
                     </span>
-                  )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -9924,6 +9974,11 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }
             <div style={{ padding: '12px', background: 'var(--bg-hover)', border: '1px solid var(--border-secondary)' }}>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '12px' }}>
                 Actions for <strong style={{ color: 'var(--text-primary)' }}>@{selectedUser.handle}</strong>
+                {selectedUser.role && (
+                  <span style={{ marginLeft: '8px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                    (role: {selectedUser.role || (selectedUser.isAdmin ? 'admin' : 'user')})
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button
@@ -9938,6 +9993,14 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }
                 >
                   DISABLE MFA
                 </button>
+                {canAssignRoles && selectedUser.id !== currentUser?.id && (
+                  <button
+                    onClick={() => setShowConfirm('change-role')}
+                    style={{ ...buttonStyle, border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}
+                  >
+                    CHANGE ROLE
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -9995,6 +10058,55 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }
                 </button>
                 <button
                   onClick={() => setShowConfirm(null)}
+                  disabled={actionLoading}
+                  style={buttonStyle}
+                >
+                  CANCEL
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showConfirm === 'change-role' && (
+            <div style={{ padding: '16px', background: 'var(--accent-purple)10', border: '1px solid var(--accent-purple)40' }}>
+              <div style={{ color: 'var(--accent-purple)', marginBottom: '12px', fontSize: '0.85rem' }}>
+                Change role for @{selectedUser.handle}
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
+                Current role: <strong>{selectedUser.role || (selectedUser.isAdmin ? 'admin' : 'user')}</strong>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <select
+                  value={pendingRole || ''}
+                  onChange={(e) => setPendingRole(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    width: '100%',
+                    cursor: 'pointer',
+                    background: 'var(--bg-elevated)',
+                  }}
+                >
+                  <option value="">Select new role...</option>
+                  <option value="user">User - Regular user</option>
+                  <option value="moderator">Moderator - Reports, warnings, user management</option>
+                  <option value="admin">Admin - Full access</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleChangeRole}
+                  disabled={actionLoading || !pendingRole}
+                  style={{
+                    ...buttonStyle,
+                    border: '1px solid var(--accent-purple)',
+                    color: 'var(--accent-purple)',
+                    opacity: !pendingRole ? 0.5 : 1
+                  }}
+                >
+                  {actionLoading ? '...' : 'CONFIRM CHANGE'}
+                </button>
+                <button
+                  onClick={() => { setShowConfirm(null); setPendingRole(null); }}
                   disabled={actionLoading}
                   style={buttonStyle}
                 >
@@ -14089,47 +14201,63 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         )}
       </div>
 
-      {/* Admin Panel */}
-      {user?.isAdmin && (
+      {/* Admin Panel (visible to moderator+) */}
+      {canAccess(user, 'moderator') && (
         <CollapsibleSection title="⚙️ ADMIN PANEL" isOpen={openSection === 'admin'} onToggle={() => toggleSection('admin')} isMobile={isMobile} accentColor="var(--accent-amber)" titleColor="var(--accent-amber)">
-          <div style={{ marginTop: '8px' }}>
-            <button
-              onClick={() => setShowHandleRequests(!showHandleRequests)}
-              style={{
-                padding: isMobile ? '12px 20px' : '10px 20px',
-                minHeight: isMobile ? '44px' : 'auto',
-                background: showHandleRequests ? 'var(--accent-amber)20' : 'transparent',
-                border: `1px solid ${showHandleRequests ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
-                color: showHandleRequests ? 'var(--accent-amber)' : 'var(--text-dim)',
-                cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.9rem' : '0.85rem',
-              }}
-            >
-              {showHandleRequests ? 'HIDE' : 'SHOW'} HANDLE REQUESTS
-            </button>
+          {/* MODERATION SECTION - Available to moderator+ */}
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Moderation
+            </div>
+
+            {/* User Management Panel */}
+            <UserManagementPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'users'} onToggle={() => toggleAdminSection('users')} currentUser={user} />
+
+            {/* Admin Reports Dashboard */}
+            <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'reports'} onToggle={() => toggleAdminSection('reports')} />
+
+            {/* Activity Log Panel */}
+            <ActivityLogPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'activity'} onToggle={() => toggleAdminSection('activity')} />
           </div>
 
-          {showHandleRequests && <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />}
+          {/* SYSTEM CONFIGURATION - Admin only */}
+          {canAccess(user, 'admin') && (
+            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                System Configuration
+              </div>
 
-          {/* User Management Panel */}
-          <UserManagementPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'users'} onToggle={() => toggleAdminSection('users')} />
+              <div style={{ marginTop: '8px' }}>
+                <button
+                  onClick={() => setShowHandleRequests(!showHandleRequests)}
+                  style={{
+                    padding: isMobile ? '12px 20px' : '10px 20px',
+                    minHeight: isMobile ? '44px' : 'auto',
+                    background: showHandleRequests ? 'var(--accent-amber)20' : 'transparent',
+                    border: `1px solid ${showHandleRequests ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                    color: showHandleRequests ? 'var(--accent-amber)' : 'var(--text-dim)',
+                    cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.9rem' : '0.85rem',
+                  }}
+                >
+                  {showHandleRequests ? 'HIDE' : 'SHOW'} HANDLE REQUESTS
+                </button>
+              </div>
 
-          {/* Admin Reports Dashboard */}
-          <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'reports'} onToggle={() => toggleAdminSection('reports')} />
+              {showHandleRequests && <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />}
 
-          {/* Activity Log Panel */}
-          <ActivityLogPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'activity'} onToggle={() => toggleAdminSection('activity')} />
+              {/* Crawl Bar Admin Panel */}
+              <CrawlBarAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'crawl'} onToggle={() => toggleAdminSection('crawl')} />
 
-          {/* Crawl Bar Admin Panel */}
-          <CrawlBarAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'crawl'} onToggle={() => toggleAdminSection('crawl')} />
+              {/* Alerts Admin Panel */}
+              <AlertsAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'alerts'} onToggle={() => toggleAdminSection('alerts')} />
 
-          {/* Alerts Admin Panel */}
-          <AlertsAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'alerts'} onToggle={() => toggleAdminSection('alerts')} />
+              {/* Alert Subscriptions Panel */}
+              <AlertSubscriptionsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'subscriptions'} onToggle={() => toggleAdminSection('subscriptions')} />
 
-          {/* Alert Subscriptions Panel */}
-          <AlertSubscriptionsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'subscriptions'} onToggle={() => toggleAdminSection('subscriptions')} />
-
-          {/* Federation Admin Panel */}
-          <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} isOpen={openAdminSection === 'federation'} onToggle={() => toggleAdminSection('federation')} />
+              {/* Federation Admin Panel */}
+              <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} isOpen={openAdminSection === 'federation'} onToggle={() => toggleAdminSection('federation')} />
+            </div>
+          )}
         </CollapsibleSection>
       )}
 
