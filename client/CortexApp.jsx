@@ -12371,6 +12371,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   // Accordion state - only one top-level section open at a time
   const [openSection, setOpenSection] = useState(null); // 'handle' | 'security' | 'display' | 'crawl' | 'notifications' | 'admin' | 'account' | null
   const toggleSection = (section) => setOpenSection(prev => prev === section ? null : section);
+  // Accordion state for Security subsections
+  const [openSecuritySection, setOpenSecuritySection] = useState(null); // 'password' | 'mfa' | 'e2ee' | 'sessions' | 'blocked' | null
+  const toggleSecuritySection = (section) => setOpenSecuritySection(prev => prev === section ? null : section);
   const [notificationPrefs, setNotificationPrefs] = useState(null);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [mutedUsers, setMutedUsers] = useState([]);
@@ -13045,7 +13048,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       {/* Security Section */}
       <CollapsibleSection title="🔒 SECURITY" isOpen={openSection === 'security'} onToggle={() => toggleSection('security')} isMobile={isMobile} accentColor="var(--accent-orange)">
         {/* Change Password Sub-section */}
-        <CollapsibleSection title="CHANGE PASSWORD" defaultOpen={false} isMobile={isMobile}>
+        <CollapsibleSection title="CHANGE PASSWORD" isOpen={openSecuritySection === 'password'} onToggle={() => toggleSecuritySection('password')} isMobile={isMobile}>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CURRENT PASSWORD</label>
             <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={inputStyle} />
@@ -13078,7 +13081,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         </CollapsibleSection>
 
         {/* Two-Factor Authentication Sub-section */}
-        <CollapsibleSection title="TWO-FACTOR AUTHENTICATION" defaultOpen={false} isMobile={isMobile}>
+        <CollapsibleSection title="TWO-FACTOR AUTHENTICATION" isOpen={openSecuritySection === 'mfa'} onToggle={() => toggleSecuritySection('mfa')} isMobile={isMobile}>
           {mfaStatus ? (
               <>
                 {/* Recovery Codes Modal/Display */}
@@ -13339,7 +13342,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
         {/* E2EE Recovery Key Sub-section */}
         {e2ee.isE2EEEnabled && (
-          <CollapsibleSection title="E2EE RECOVERY KEY" defaultOpen={false} isMobile={isMobile}>
+          <CollapsibleSection title="E2EE RECOVERY KEY" isOpen={openSecuritySection === 'e2ee'} onToggle={() => toggleSecuritySection('e2ee')} isMobile={isMobile}>
             <div>
               {/* Display regenerated recovery key */}
               {e2eeRecoveryKey && (
@@ -13452,7 +13455,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         )}
 
         {/* Active Sessions Sub-section */}
-        <CollapsibleSection title="ACTIVE SESSIONS" defaultOpen={false} isMobile={isMobile}>
+        <CollapsibleSection title="ACTIVE SESSIONS" isOpen={openSecuritySection === 'sessions'} onToggle={() => toggleSecuritySection('sessions')} isMobile={isMobile}>
           {!sessionsEnabled ? (
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
                 Session management is not enabled on this server.
@@ -13556,7 +13559,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         </CollapsibleSection>
 
         {/* Blocked & Muted Users Sub-section */}
-        <CollapsibleSection title="BLOCKED & MUTED USERS" defaultOpen={false} isMobile={isMobile}>
+        <CollapsibleSection title="BLOCKED & MUTED USERS" isOpen={openSecuritySection === 'blocked'} onToggle={() => toggleSecuritySection('blocked')} isMobile={isMobile}>
           {/* Blocked Users */}
           <div style={{ marginBottom: '16px' }}>
             <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
