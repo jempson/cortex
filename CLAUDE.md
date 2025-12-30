@@ -178,6 +178,33 @@ SQLite database with tables for:
 - **Droplets**: Messages within waves, threaded with parent/child
 - **Groups**: User collections for group waves
 
+### Role-Based Access Control (v1.20.0)
+
+**Roles hierarchy**: Admin > Moderator > User
+
+| Role | Level | Permissions |
+|------|-------|-------------|
+| **User** | 1 | Normal access to own data |
+| **Moderator** | 2 | Reports, warnings, user management, activity log |
+| **Admin** | 3 | All moderator permissions + handle requests, crawl bar, alerts, federation, role assignment |
+
+**Server-side usage**:
+```javascript
+// Authorization helpers (server.js)
+const ROLES = { ADMIN: 'admin', MODERATOR: 'moderator', USER: 'user' };
+if (!requireRole(user, ROLES.MODERATOR, res)) return;  // Returns 403 if not moderator+
+if (!hasRole(user, ROLES.ADMIN)) { ... }  // Boolean check
+```
+
+**Client-side usage**:
+```javascript
+// Role access helper (CortexApp.jsx)
+if (canAccess(user, 'moderator')) { ... }  // Show admin panel
+if (canAccess(user, 'admin')) { ... }      // Show system config
+```
+
+**Database**: `role` column in users table. First user gets `admin` role. Migration auto-converts `is_admin` flag.
+
 ---
 
 ## Environment Variables
