@@ -1080,8 +1080,13 @@ const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [],
 };
 
 // ============ COLLAPSIBLE SECTION COMPONENT ============
-const CollapsibleSection = ({ title, children, defaultOpen = true, isMobile, titleColor = 'var(--text-dim)', accentColor, badge }) => {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+// Supports controlled mode (isOpen + onToggle) or uncontrolled mode (defaultOpen)
+const CollapsibleSection = ({ title, children, defaultOpen = true, isOpen: controlledIsOpen, onToggle, isMobile, titleColor = 'var(--text-dim)', accentColor, badge }) => {
+  const [internalIsOpen, setInternalIsOpen] = useState(defaultOpen);
+
+  // Use controlled mode if onToggle is provided, otherwise use internal state
+  const isOpen = onToggle ? controlledIsOpen : internalIsOpen;
+  const handleToggle = onToggle || (() => setInternalIsOpen(!internalIsOpen));
 
   return (
     <div style={{
@@ -1090,16 +1095,11 @@ const CollapsibleSection = ({ title, children, defaultOpen = true, isMobile, tit
       background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
       border: accentColor ? `1px solid ${accentColor}40` : '1px solid var(--border-subtle)',
     }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          cursor: 'pointer',
-          userSelect: 'none',
-        }}
-      >
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ color: titleColor, fontSize: '0.8rem', fontWeight: 500 }}>{title}</div>
           {badge && (
@@ -1113,9 +1113,20 @@ const CollapsibleSection = ({ title, children, defaultOpen = true, isMobile, tit
             }}>{badge}</span>
           )}
         </div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>
-          {isOpen ? '▼' : '▶'}
-        </span>
+        <button
+          onClick={handleToggle}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? (accentColor ? `${accentColor}20` : 'var(--accent-amber)20') : 'transparent',
+            border: `1px solid ${isOpen ? (accentColor || 'var(--accent-amber)') : 'var(--border-primary)'}`,
+            color: isOpen ? (accentColor || 'var(--accent-amber)') : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
       </div>
       {isOpen && (
         <div style={{ marginTop: '16px' }}>
@@ -3611,14 +3622,18 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
     <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
       <GlowText color="var(--accent-amber)" size={isMobile ? '1rem' : '0.9rem'}>WAVES</GlowText>
       <div style={{ display: 'flex', gap: '8px' }}>
-        <button onClick={onToggleArchived} style={{
-          padding: isMobile ? '12px 14px' : '6px 10px',
-          minHeight: isMobile ? '44px' : 'auto',
-          minWidth: isMobile ? '44px' : 'auto',
-          background: showArchived ? 'var(--accent-teal)20' : 'transparent',
-          border: `1px solid ${showArchived ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
-          color: showArchived ? 'var(--accent-teal)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-        }}>{showArchived ? '📦' : '📬'}</button>
+        <button
+          onClick={onToggleArchived}
+          title={showArchived ? 'Show active waves' : 'Show archived waves'}
+          style={{
+            padding: isMobile ? '12px 14px' : '6px 10px',
+            minHeight: isMobile ? '44px' : 'auto',
+            minWidth: isMobile ? '44px' : 'auto',
+            background: showArchived ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${showArchived ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: showArchived ? 'var(--accent-teal)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+          }}
+        >{showArchived ? '📦 ARCHIVED' : '📬'}</button>
         <button onClick={onNewWave} style={{
           padding: isMobile ? '12px 16px' : '6px 12px',
           minHeight: isMobile ? '44px' : 'auto',
@@ -5004,8 +5019,7 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
 };
 
 // ============ ADMIN REPORTS PANEL ============
-const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const AdminReportsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('pending');
@@ -5089,12 +5103,22 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
 
   return (
     <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-orange)40' }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', fontWeight: 500 }}>REPORTS DASHBOARD</div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>{isOpen ? '▼' : '▶'}</span>
+        <button
+          onClick={onToggle}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-orange)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-orange)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
       </div>
 
       {isOpen && (
@@ -7078,12 +7102,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         </div>
         <PrivacyBadge level={wave.privacy} compact={isMobile} />
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button onClick={handleArchive} style={{
-            padding: isMobile ? '10px 12px' : '6px 10px',
-            minHeight: isMobile ? '44px' : 'auto',
-            background: 'transparent', border: '1px solid var(--border-primary)',
-            color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-          }}>{waveData.is_archived ? '📬' : '📦'}</button>
+          <button
+            onClick={handleArchive}
+            title={waveData.is_archived ? 'Restore this wave from archive' : 'Archive this wave'}
+            style={{
+              padding: isMobile ? '10px 12px' : '6px 10px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: waveData.is_archived ? 'var(--accent-teal)20' : 'transparent',
+              border: `1px solid ${waveData.is_archived ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+              color: waveData.is_archived ? 'var(--accent-teal)' : 'var(--text-dim)',
+              cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+            }}
+          >{waveData.is_archived ? '📬 RESTORE' : '📦'}</button>
           {/* Settings and Delete buttons only show for wave creator (all privacy levels) */}
           {waveData.can_edit && (
             <>
@@ -8110,25 +8140,33 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
 
   return (
     <div style={{
-      marginBottom: '24px', padding: '16px',
+      marginBottom: '24px', padding: isMobile ? '16px' : '20px',
       background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
-      border: '1px solid var(--accent-amber)30',
+      border: '1px solid var(--accent-amber)40',
     }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
-          background: 'transparent', border: 'none', cursor: 'pointer',
-          padding: 0, fontFamily: 'monospace',
-        }}>
-        <span style={{ color: 'var(--accent-amber)', fontSize: '0.85rem' }}>
-          {expanded ? '▼' : '▶'} PENDING SENT REQUESTS
-        </span>
-        <span style={{
-          background: 'var(--accent-amber)', color: '#000', fontSize: '0.65rem',
-          padding: '2px 6px', borderRadius: '10px', fontWeight: 700,
-        }}>{requests.length}</span>
-      </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ color: 'var(--accent-amber)', fontSize: '0.8rem', fontWeight: 500 }}>PENDING SENT REQUESTS</span>
+          <span style={{
+            background: 'var(--accent-amber)', color: '#000', fontSize: '0.65rem',
+            padding: '2px 6px', borderRadius: '10px', fontWeight: 700,
+          }}>{requests.length}</span>
+        </div>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: expanded ? 'var(--accent-amber)20' : 'transparent',
+            border: `1px solid ${expanded ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+            color: expanded ? 'var(--accent-amber)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {expanded ? '▼ HIDE' : '▶ SHOW'}
+        </button>
+      </div>
       {expanded && (
         <div style={{ marginTop: '12px' }}>
           {requests.map(request => (
@@ -9714,8 +9752,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
 };
 
 // ============ USER MANAGEMENT ADMIN PANEL ============
-const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
-  const [expanded, setExpanded] = useState(false);
+const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -9793,21 +9830,36 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
   };
 
   return (
-    <div style={{ marginTop: '20px' }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          ...buttonStyle,
-          background: expanded ? 'var(--accent-purple)20' : 'transparent',
-          border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
-          color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
-        }}
-      >
-        {expanded ? '▼' : '▶'} USER MANAGEMENT
-      </button>
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-purple)40',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div style={{ color: 'var(--accent-purple)', fontSize: '0.8rem', fontWeight: 500 }}>USER MANAGEMENT</div>
+        <button
+          onClick={onToggle}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-purple)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-purple)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
+      </div>
 
-      {expanded && (
-        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+      {isOpen && (
+        <div style={{ marginTop: '16px' }}>
           {/* Search */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
             <input
@@ -9958,8 +10010,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ ACTIVITY LOG ADMIN PANEL ============
-const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, defaultOpen = false }) => {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState(null);
@@ -10044,28 +10095,41 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, defaultOpen = false }
   };
 
   return (
-    <div style={{ marginTop: '20px', padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          cursor: 'pointer',
-          userSelect: 'none',
-        }}
-      >
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-teal)40',
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ color: 'var(--accent-teal)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+          <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>
             📊 ACTIVITY LOG
           </div>
           {stats && (
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
               Last 7 days: {stats.totalActivities} events | {stats.uniqueUsers} users
             </div>
           )}
         </div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{isOpen ? '▼' : '▶'}</span>
+        <button
+          onClick={onToggle}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-teal)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
       </div>
 
       {isOpen && (
@@ -10209,11 +10273,10 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, defaultOpen = false }
 };
 
 // ============ CRAWL BAR ADMIN PANEL ============
-const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
+const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   const [stockSymbols, setStockSymbols] = useState('');
   const [defaultLocation, setDefaultLocation] = useState('');
 
@@ -10233,10 +10296,10 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
   }, [fetchAPI, showToast]);
 
   useEffect(() => {
-    if (expanded && !config) {
+    if (isOpen && !config) {
       loadConfig();
     }
-  }, [expanded, config, loadConfig]);
+  }, [isOpen, config, loadConfig]);
 
   const handleSave = async (updates) => {
     setSaving(true);
@@ -10277,30 +10340,36 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
   };
 
   return (
-    <div style={{ marginTop: '16px' }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          width: '100%',
-          padding: isMobile ? '12px 20px' : '10px 20px',
-          minHeight: isMobile ? '44px' : 'auto',
-          background: expanded ? 'var(--accent-teal)20' : 'transparent',
-          border: `1px solid ${expanded ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
-          color: expanded ? 'var(--accent-teal)' : 'var(--text-dim)',
-          cursor: 'pointer',
-          fontFamily: 'monospace',
-          fontSize: isMobile ? '0.9rem' : '0.85rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <span>📊 CRAWL BAR CONFIG</span>
-        <span>{expanded ? '▼' : '▶'}</span>
-      </button>
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-teal)40',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>📊 CRAWL BAR CONFIG</div>
+        <button
+          onClick={onToggle}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-teal)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
+      </div>
 
-      {expanded && (
-        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)' }}>
+      {isOpen && (
+        <div style={{ marginTop: '16px' }}>
           {loading ? (
             <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
           ) : (
@@ -10543,10 +10612,9 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ ALERTS ADMIN PANEL ============
-const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
+const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingAlert, setEditingAlert] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -10574,10 +10642,10 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
   }, [fetchAPI, showToast]);
 
   useEffect(() => {
-    if (expanded && alerts.length === 0) {
+    if (isOpen && alerts.length === 0) {
       loadAlerts();
     }
-  }, [expanded, alerts.length, loadAlerts]);
+  }, [isOpen, alerts.length, loadAlerts]);
 
   const resetForm = () => {
     setFormTitle('');
@@ -10690,30 +10758,36 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
   };
 
   return (
-    <div style={{ marginTop: '16px' }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          width: '100%',
-          padding: isMobile ? '12px 20px' : '10px 20px',
-          minHeight: isMobile ? '44px' : 'auto',
-          background: expanded ? 'var(--accent-amber)20' : 'transparent',
-          border: `1px solid ${expanded ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
-          color: expanded ? 'var(--accent-amber)' : 'var(--text-dim)',
-          cursor: 'pointer',
-          fontFamily: 'monospace',
-          fontSize: isMobile ? '0.9rem' : '0.85rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <span>🚨 SYSTEM ALERTS</span>
-        <span>{expanded ? '▼' : '▶'}</span>
-      </button>
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-amber)40',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div style={{ color: 'var(--accent-amber)', fontSize: '0.8rem', fontWeight: 500 }}>🚨 SYSTEM ALERTS</div>
+        <button
+          onClick={onToggle}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-amber)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-amber)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
+      </div>
 
-      {expanded && (
-        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)' }}>
+      {isOpen && (
+        <div style={{ marginTop: '16px' }}>
           {loading ? (
             <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
           ) : (
@@ -11006,11 +11080,10 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ ALERT SUBSCRIPTIONS PANEL ============
-const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
+const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [subscriptions, setSubscriptions] = useState([]);
   const [federationNodes, setFederationNodes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSub, setEditingSub] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -11042,10 +11115,10 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
   const loadSubscriptions = loadData; // Alias for refresh
 
   useEffect(() => {
-    if (expanded && subscriptions.length === 0 && federationNodes.length === 0) {
+    if (isOpen && subscriptions.length === 0 && federationNodes.length === 0) {
       loadData();
     }
-  }, [expanded, subscriptions.length, federationNodes.length, loadData]);
+  }, [isOpen, subscriptions.length, federationNodes.length, loadData]);
 
   const resetForm = () => {
     setFormSourceNode('');
@@ -11136,30 +11209,36 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
   const availableNodes = federationNodes.filter(n => !subscribedNodes.includes(n.node_name) && n.status === 'active');
 
   return (
-    <div style={{ marginTop: '16px' }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          width: '100%',
-          padding: isMobile ? '12px 20px' : '10px 20px',
-          minHeight: isMobile ? '44px' : 'auto',
-          background: expanded ? 'var(--accent-purple)20' : 'transparent',
-          border: `1px solid ${expanded ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
-          color: expanded ? 'var(--accent-purple)' : 'var(--text-dim)',
-          cursor: 'pointer',
-          fontFamily: 'monospace',
-          fontSize: isMobile ? '0.9rem' : '0.85rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <span>◇ ALERT SUBSCRIPTIONS</span>
-        <span>{expanded ? '▼' : '▶'}</span>
-      </button>
+    <div style={{
+      marginTop: '20px',
+      padding: isMobile ? '16px' : '20px',
+      background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+      border: '1px solid var(--accent-purple)40',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div style={{ color: 'var(--accent-purple)', fontSize: '0.8rem', fontWeight: 500 }}>◇ ALERT SUBSCRIPTIONS</div>
+        <button
+          onClick={onToggle}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-purple)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-purple)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
+      </div>
 
-      {expanded && (
-        <div style={{ marginTop: '12px', padding: '16px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)' }}>
+      {isOpen && (
+        <div style={{ marginTop: '16px' }}>
           {loading ? (
             <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Loading...</div>
           ) : (
@@ -11384,8 +11463,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile }) => {
 };
 
 // ============ FEDERATION ADMIN PANEL ============
-const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0, isOpen, onToggle }) => {
   const [status, setStatus] = useState(null);
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -11580,12 +11658,22 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
 
   return (
     <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-teal)40' }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>FEDERATION</div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>{isOpen ? '▼' : '▶'}</span>
+        <button
+          onClick={onToggle}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-teal)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-teal)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
       </div>
 
       {isOpen && (
@@ -12173,12 +12261,22 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile }) => {
 
   return (
     <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-purple)40' }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--accent-purple)', fontSize: '0.8rem', fontWeight: 500 }}>HANDLE CHANGE REQUESTS</div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', transition: 'transform 0.2s' }}>{isOpen ? '▼' : '▶'}</span>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            background: isOpen ? 'var(--accent-purple)20' : 'transparent',
+            border: `1px solid ${isOpen ? 'var(--accent-purple)' : 'var(--border-primary)'}`,
+            color: isOpen ? 'var(--accent-purple)' : 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+          }}
+        >
+          {isOpen ? '▼ HIDE' : '▶ SHOW'}
+        </button>
       </div>
 
       {isOpen && (
@@ -12263,7 +12361,15 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [newHandle, setNewHandle] = useState('');
   const [showHandleRequests, setShowHandleRequests] = useState(false);
   const [showBlockedMuted, setShowBlockedMuted] = useState(false);
-  const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
+  // Accordion state - only one top-level section open at a time
+  const [openSection, setOpenSection] = useState(null); // 'handle' | 'security' | 'display' | 'crawl' | 'notifications' | 'admin' | 'account' | null
+  const toggleSection = (section) => setOpenSection(prev => prev === section ? null : section);
+  // Accordion state for Security subsections
+  const [openSecuritySection, setOpenSecuritySection] = useState(null); // 'password' | 'mfa' | 'e2ee' | 'sessions' | 'blocked' | null
+  const toggleSecuritySection = (section) => setOpenSecuritySection(prev => prev === section ? null : section);
+  // Accordion state for Admin Panel subsections
+  const [openAdminSection, setOpenAdminSection] = useState(null); // 'users' | 'reports' | 'activity' | 'crawl' | 'alerts' | 'subscriptions' | 'federation' | null
+  const toggleAdminSection = (section) => setOpenAdminSection(prev => prev === section ? null : section);
   const [notificationPrefs, setNotificationPrefs] = useState(null);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [mutedUsers, setMutedUsers] = useState([]);
@@ -12319,25 +12425,25 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
   // Load notification preferences when section is expanded
   useEffect(() => {
-    if (showNotificationPrefs && !notificationPrefs) {
+    if (openSection === 'notifications' && !notificationPrefs) {
       fetchAPI('/notifications/preferences')
         .then(data => setNotificationPrefs(data.preferences))
         .catch(err => console.error('Failed to load notification preferences:', err));
     }
-  }, [showNotificationPrefs, notificationPrefs, fetchAPI]);
+  }, [openSection, notificationPrefs, fetchAPI]);
 
   // Load MFA status when section is expanded
   useEffect(() => {
-    if (showMfaSetup && !mfaStatus) {
+    if (openSecuritySection === 'mfa' && !mfaStatus) {
       fetchAPI('/auth/mfa/status')
         .then(data => setMfaStatus(data))
         .catch(err => console.error('Failed to load MFA status:', err));
     }
-  }, [showMfaSetup, mfaStatus, fetchAPI]);
+  }, [openSecuritySection, mfaStatus, fetchAPI]);
 
   // Load sessions when section is expanded (v1.18.0)
   useEffect(() => {
-    if (showSessions) {
+    if (openSecuritySection === 'sessions') {
       setSessionsLoading(true);
       fetchAPI('/auth/sessions')
         .then(data => {
@@ -12350,7 +12456,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         })
         .finally(() => setSessionsLoading(false));
     }
-  }, [showSessions, fetchAPI]);
+  }, [openSecuritySection, fetchAPI]);
 
   // Sync crawl bar location when user preferences change
   useEffect(() => {
@@ -12918,7 +13024,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       </div>
 
       {/* Handle Change */}
-      <CollapsibleSection title="HANDLE CHANGE" defaultOpen={false} isMobile={isMobile}>
+      <CollapsibleSection title="HANDLE CHANGE" isOpen={openSection === 'handle'} onToggle={() => toggleSection('handle')} isMobile={isMobile}>
         <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
           Handle changes require admin approval. You can change your handle once every 30 days.
         </div>
@@ -12935,52 +13041,44 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         }}>REQUEST CHANGE</button>
       </CollapsibleSection>
 
-      {/* Password Change */}
-      <CollapsibleSection title="CHANGE PASSWORD" defaultOpen={false} isMobile={isMobile}>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CURRENT PASSWORD</label>
-          <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={inputStyle} />
-        </div>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>NEW PASSWORD</label>
-          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Min 8 chars, upper, lower, number" style={inputStyle} />
-        </div>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CONFIRM NEW PASSWORD</label>
-          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Re-enter new password" style={{
-              ...inputStyle,
-              borderColor: confirmPassword && newPassword !== confirmPassword ? 'var(--accent-orange)' : 'var(--border-subtle)',
-            }} />
-          {confirmPassword && newPassword !== confirmPassword && (
-            <div style={{ color: 'var(--accent-orange)', fontSize: '0.7rem', marginTop: '4px' }}>
-              Passwords do not match
-            </div>
-          )}
-        </div>
-        <button onClick={handleChangePassword} disabled={!currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword} style={{
-          padding: '10px 20px',
-          background: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)20' : 'transparent',
-          border: `1px solid ${currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
-          color: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)' : 'var(--text-muted)',
-          cursor: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
-        }}>CHANGE PASSWORD</button>
-      </CollapsibleSection>
+      {/* Security Section */}
+      <CollapsibleSection title="🔒 SECURITY" isOpen={openSection === 'security'} onToggle={() => toggleSection('security')} isMobile={isMobile} accentColor="var(--accent-orange)">
+        {/* Change Password Sub-section */}
+        <CollapsibleSection title="CHANGE PASSWORD" isOpen={openSecuritySection === 'password'} onToggle={() => toggleSecuritySection('password')} isMobile={isMobile}>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CURRENT PASSWORD</label>
+            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={inputStyle} />
+          </div>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>NEW PASSWORD</label>
+            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Min 8 chars, upper, lower, number" style={inputStyle} />
+          </div>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CONFIRM NEW PASSWORD</label>
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Re-enter new password" style={{
+                ...inputStyle,
+                borderColor: confirmPassword && newPassword !== confirmPassword ? 'var(--accent-orange)' : 'var(--border-subtle)',
+              }} />
+            {confirmPassword && newPassword !== confirmPassword && (
+              <div style={{ color: 'var(--accent-orange)', fontSize: '0.7rem', marginTop: '4px' }}>
+                Passwords do not match
+              </div>
+            )}
+          </div>
+          <button onClick={handleChangePassword} disabled={!currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword} style={{
+            padding: '10px 20px',
+            background: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)20' : 'transparent',
+            border: `1px solid ${currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+            color: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'var(--accent-orange)' : 'var(--text-muted)',
+            cursor: currentPassword && newPassword && confirmPassword && newPassword === confirmPassword ? 'pointer' : 'not-allowed', fontFamily: 'monospace',
+          }}>CHANGE PASSWORD</button>
+        </CollapsibleSection>
 
-      {/* Two-Factor Authentication */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div
-          onClick={() => setShowMfaSetup(!showMfaSetup)}
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-        >
-          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>TWO-FACTOR AUTHENTICATION</div>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showMfaSetup ? '▼' : '▶'}</span>
-        </div>
-
-        {showMfaSetup && (
-          <div style={{ marginTop: '16px' }}>
-            {mfaStatus ? (
+        {/* Two-Factor Authentication Sub-section */}
+        <CollapsibleSection title="TWO-FACTOR AUTHENTICATION" isOpen={openSecuritySection === 'mfa'} onToggle={() => toggleSecuritySection('mfa')} isMobile={isMobile}>
+          {mfaStatus ? (
               <>
                 {/* Recovery Codes Modal/Display */}
                 {recoveryCodes && (
@@ -13231,28 +13329,17 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   </>
                 )}
               </>
-            ) : (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
-                Loading MFA settings...
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          ) : (
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
+              Loading MFA settings...
+            </div>
+          )}
+        </CollapsibleSection>
 
-      {/* E2EE Recovery Key (v1.19.0) */}
-      {e2ee.isE2EEEnabled && (
-        <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-          <div
-            onClick={() => setShowE2EERecovery(!showE2EERecovery)}
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-          >
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>E2EE RECOVERY KEY</div>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showE2EERecovery ? '▼' : '▶'}</span>
-          </div>
-
-          {showE2EERecovery && (
-            <div style={{ marginTop: '16px' }}>
+        {/* E2EE Recovery Key Sub-section */}
+        {e2ee.isE2EEEnabled && (
+          <CollapsibleSection title="E2EE RECOVERY KEY" isOpen={openSecuritySection === 'e2ee'} onToggle={() => toggleSecuritySection('e2ee')} isMobile={isMobile}>
+            <div>
               {/* Display regenerated recovery key */}
               {e2eeRecoveryKey && (
                 <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--accent-green)10', border: '2px solid var(--accent-green)', borderRadius: '4px' }}>
@@ -13360,23 +13447,12 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                 </>
               )}
             </div>
-          )}
-        </div>
-      )}
+          </CollapsibleSection>
+        )}
 
-      {/* Active Sessions (v1.18.0) */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div
-          onClick={() => setShowSessions(!showSessions)}
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-        >
-          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>ACTIVE SESSIONS</div>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showSessions ? '▼' : '▶'}</span>
-        </div>
-
-        {showSessions && (
-          <div style={{ marginTop: '16px' }}>
-            {!sessionsEnabled ? (
+        {/* Active Sessions Sub-section */}
+        <CollapsibleSection title="ACTIVE SESSIONS" isOpen={openSecuritySection === 'sessions'} onToggle={() => toggleSecuritySection('sessions')} isMobile={isMobile}>
+          {!sessionsEnabled ? (
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>
                 Session management is not enabled on this server.
               </div>
@@ -13476,13 +13552,105 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                 )}
               </>
             )}
+        </CollapsibleSection>
+
+        {/* Blocked & Muted Users Sub-section */}
+        <CollapsibleSection title="BLOCKED & MUTED USERS" isOpen={openSecuritySection === 'blocked'} onToggle={() => toggleSecuritySection('blocked')} isMobile={isMobile}>
+          {/* Blocked Users */}
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>⊘</span> BLOCKED ({blockedUsers.length})
+            </div>
+            {blockedUsers.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
+                No blocked users. Blocked users cannot send you contact requests, invite you to groups, or have their messages shown to you.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {blockedUsers.map(u => (
+                  <div key={u.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    background: 'var(--accent-orange)10',
+                    border: '1px solid var(--accent-orange)30',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="var(--accent-orange)" size={28} />
+                      <div>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '0.8rem' }}>{u.displayName}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleUnblock(u.blockedUserId, u.displayName)}
+                      style={{
+                        padding: isMobile ? '8px 12px' : '6px 10px',
+                        minHeight: isMobile ? '40px' : 'auto',
+                        background: 'var(--accent-green)20',
+                        border: '1px solid var(--accent-green)',
+                        color: 'var(--accent-green)',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '0.65rem',
+                      }}
+                    >UNBLOCK</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+
+          {/* Muted Users */}
+          <div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>🔇</span> MUTED ({mutedUsers.length})
+            </div>
+            {mutedUsers.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
+                No muted users. Muted users can still interact with you, but their messages will be hidden from view.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {mutedUsers.map(u => (
+                  <div key={u.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-subtle)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="var(--text-dim)" size={28} />
+                      <div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{u.displayName}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleUnmute(u.mutedUserId, u.displayName)}
+                      style={{
+                        padding: isMobile ? '8px 12px' : '6px 10px',
+                        minHeight: isMobile ? '40px' : 'auto',
+                        background: 'var(--accent-green)20',
+                        border: '1px solid var(--accent-green)',
+                        color: 'var(--accent-green)',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '0.65rem',
+                      }}
+                    >UNMUTE</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CollapsibleSection>
+
+      </CollapsibleSection>
 
       {/* Display Preferences */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '12px' }}>DISPLAY PREFERENCES</div>
+      <CollapsibleSection title="DISPLAY PREFERENCES" isOpen={openSection === 'display'} onToggle={() => toggleSection('display')} isMobile={isMobile}>
 
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>THEME</label>
@@ -13571,61 +13739,13 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           </div>
         </div>
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PUSH NOTIFICATIONS</label>
-          <button
-            onClick={async () => {
-              const token = storage.getToken();
-              if (pushEnabled) {
-                // Disable push
-                storage.setPushEnabled(false);
-                setPushEnabled(false);
-                await unsubscribeFromPush(token);
-                showToast('Push notifications disabled', 'success');
-              } else {
-                // Enable push
-                const result = await subscribeToPush(token);
-                if (result.success) {
-                  storage.setPushEnabled(true);
-                  setPushEnabled(true);
-                  showToast('Push notifications enabled', 'success');
-                } else {
-                  showToast(result.reason || 'Failed to enable push notifications', 'error');
-                }
-              }
-            }}
-            style={{
-              padding: isMobile ? '10px 16px' : '8px 16px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: pushEnabled ? 'var(--accent-green)20' : 'transparent',
-              border: `1px solid ${pushEnabled ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
-              color: pushEnabled ? 'var(--accent-green)' : 'var(--text-dim)',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: isMobile ? '0.9rem' : '0.85rem',
-            }}
-          >
-            {pushEnabled ? '🔔 ENABLED' : '🔕 DISABLED'}
-          </button>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
-            Receive notifications when the app is closed or in background
-          </div>
-          {/* iOS warning */}
-          {/iPad|iPhone|iPod/.test(navigator.userAgent) && (
-            <div style={{ color: 'var(--accent-orange)', fontSize: '0.65rem', marginTop: '6px', padding: '6px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
-              ⚠️ iOS does not support push notifications for web apps. This is a platform limitation by Apple.
-            </div>
-          )}
-        </div>
-
         <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
           ℹ️ Theme customization will change colors throughout the app (coming soon). Other changes take effect immediately.
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Crawl Bar Preferences */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '12px' }}>CRAWL BAR</div>
+      <CollapsibleSection title="CRAWL BAR" isOpen={openSection === 'crawl'} onToggle={() => toggleSection('crawl')} isMobile={isMobile}>
 
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>ENABLE CRAWL BAR</label>
@@ -13790,29 +13910,29 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
             </div>
           </>
         )}
-      </div>
+      </CollapsibleSection>
 
       {/* Notification Preferences */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>NOTIFICATION PREFERENCES</div>
+      <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', fontWeight: 500 }}>NOTIFICATION PREFERENCES</div>
           <button
-            onClick={() => setShowNotificationPrefs(!showNotificationPrefs)}
+            onClick={() => toggleSection('notifications')}
             style={{
               padding: isMobile ? '8px 12px' : '6px 10px',
-              background: showNotificationPrefs ? 'var(--accent-amber)20' : 'transparent',
-              border: `1px solid ${showNotificationPrefs ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
-              color: showNotificationPrefs ? 'var(--accent-amber)' : 'var(--text-dim)',
+              background: openSection === 'notifications' ? 'var(--accent-amber)20' : 'transparent',
+              border: `1px solid ${openSection === 'notifications' ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+              color: openSection === 'notifications' ? 'var(--accent-amber)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: '0.7rem',
             }}
           >
-            {showNotificationPrefs ? '▼ HIDE' : '▶ SHOW'}
+            {openSection === 'notifications' ? '▼ HIDE' : '▶ SHOW'}
           </button>
         </div>
 
-        {showNotificationPrefs && notificationPrefs && (
+        {openSection === 'notifications' && notificationPrefs && (
           <div>
             {/* Global Enable */}
             <div style={{ marginBottom: '16px' }}>
@@ -13906,6 +14026,53 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                     Don't show wave activity notifications when you're viewing that wave
                   </div>
                 </div>
+
+                {/* Push Notifications */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                    📲 PUSH NOTIFICATIONS
+                  </label>
+                  <button
+                    onClick={async () => {
+                      const token = storage.getToken();
+                      if (pushEnabled) {
+                        storage.setPushEnabled(false);
+                        setPushEnabled(false);
+                        await unsubscribeFromPush(token);
+                        showToast('Push notifications disabled', 'success');
+                      } else {
+                        const result = await subscribeToPush(token);
+                        if (result.success) {
+                          storage.setPushEnabled(true);
+                          setPushEnabled(true);
+                          showToast('Push notifications enabled', 'success');
+                        } else {
+                          showToast(result.reason || 'Failed to enable push notifications', 'error');
+                        }
+                      }
+                    }}
+                    style={{
+                      padding: isMobile ? '10px 16px' : '8px 16px',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      background: pushEnabled ? 'var(--accent-green)20' : 'transparent',
+                      border: `1px solid ${pushEnabled ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                      color: pushEnabled ? 'var(--accent-green)' : 'var(--text-dim)',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: isMobile ? '0.9rem' : '0.85rem',
+                    }}
+                  >
+                    {pushEnabled ? '🔔 ENABLED' : '🔕 DISABLED'}
+                  </button>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
+                    Receive notifications when the app is closed or in background
+                  </div>
+                  {/iPad|iPhone|iPod/.test(navigator.userAgent) && (
+                    <div style={{ color: 'var(--accent-orange)', fontSize: '0.65rem', marginTop: '6px', padding: '6px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
+                      ⚠️ iOS does not support push notifications for web apps. This is a platform limitation by Apple.
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
@@ -13915,134 +14082,17 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           </div>
         )}
 
-        {showNotificationPrefs && !notificationPrefs && (
+        {openSection === 'notifications' && !notificationPrefs && (
           <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', padding: '20px', textAlign: 'center' }}>
             Loading preferences...
           </div>
         )}
       </div>
 
-      {/* Blocked & Muted Users */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>BLOCKED & MUTED USERS</div>
-          <button
-            onClick={() => setShowBlockedMuted(!showBlockedMuted)}
-            style={{
-              padding: isMobile ? '8px 12px' : '6px 10px',
-              background: showBlockedMuted ? 'var(--accent-orange)20' : 'transparent',
-              border: `1px solid ${showBlockedMuted ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
-              color: showBlockedMuted ? 'var(--accent-orange)' : 'var(--text-dim)',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: '0.7rem',
-            }}
-          >
-            {showBlockedMuted ? '▼ HIDE' : '▶ SHOW'}
-          </button>
-        </div>
-
-        {showBlockedMuted && (
-          <div>
-            {/* Blocked Users */}
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>⊘</span> BLOCKED ({blockedUsers.length})
-              </div>
-              {blockedUsers.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
-                  No blocked users. Blocked users cannot send you contact requests, invite you to groups, or have their messages shown to you.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {blockedUsers.map(u => (
-                    <div key={u.id} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 12px',
-                      background: 'var(--accent-orange)10',
-                      border: '1px solid var(--accent-orange)30',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="var(--accent-orange)" size={28} />
-                        <div>
-                          <div style={{ color: 'var(--text-primary)', fontSize: '0.8rem' }}>{u.displayName}</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleUnblock(u.blockedUserId, u.displayName)}
-                        style={{
-                          padding: isMobile ? '8px 12px' : '6px 10px',
-                          minHeight: isMobile ? '40px' : 'auto',
-                          background: 'var(--accent-green)20',
-                          border: '1px solid var(--accent-green)',
-                          color: 'var(--accent-green)',
-                          cursor: 'pointer',
-                          fontFamily: 'monospace',
-                          fontSize: '0.65rem',
-                        }}
-                      >UNBLOCK</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Muted Users */}
-            <div>
-              <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>🔇</span> MUTED ({mutedUsers.length})
-              </div>
-              {mutedUsers.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
-                  No muted users. Muted users can still interact with you, but their messages will be hidden from view.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {mutedUsers.map(u => (
-                    <div key={u.id} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 12px',
-                      background: 'var(--bg-elevated)',
-                      border: '1px solid var(--border-subtle)',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <Avatar letter={u.avatar || u.displayName?.[0] || '?'} color="var(--text-dim)" size={28} />
-                        <div>
-                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{u.displayName}</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleUnmute(u.mutedUserId, u.displayName)}
-                        style={{
-                          padding: isMobile ? '8px 12px' : '6px 10px',
-                          minHeight: isMobile ? '40px' : 'auto',
-                          background: 'var(--accent-green)20',
-                          border: '1px solid var(--accent-green)',
-                          color: 'var(--accent-green)',
-                          cursor: 'pointer',
-                          fontFamily: 'monospace',
-                          fontSize: '0.65rem',
-                        }}
-                      >UNMUTE</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Admin Panel */}
       {user?.isAdmin && (
-        <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-hover), var(--bg-surface))', border: '2px solid var(--accent-amber)40' }}>
-          <GlowText color="var(--accent-amber)" size={isMobile ? '1rem' : '0.9rem'}>ADMIN PANEL</GlowText>
-
-          <div style={{ marginTop: '16px' }}>
+        <CollapsibleSection title="⚙️ ADMIN PANEL" isOpen={openSection === 'admin'} onToggle={() => toggleSection('admin')} isMobile={isMobile} accentColor="var(--accent-amber)" titleColor="var(--accent-amber)">
+          <div style={{ marginTop: '8px' }}>
             <button
               onClick={() => setShowHandleRequests(!showHandleRequests)}
               style={{
@@ -14061,26 +14111,26 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           {showHandleRequests && <HandleRequestsList fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />}
 
           {/* User Management Panel */}
-          <UserManagementPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <UserManagementPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'users'} onToggle={() => toggleAdminSection('users')} />
 
           {/* Admin Reports Dashboard */}
-          <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <AdminReportsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'reports'} onToggle={() => toggleAdminSection('reports')} />
 
           {/* Activity Log Panel */}
-          <ActivityLogPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <ActivityLogPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'activity'} onToggle={() => toggleAdminSection('activity')} />
 
           {/* Crawl Bar Admin Panel */}
-          <CrawlBarAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <CrawlBarAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'crawl'} onToggle={() => toggleAdminSection('crawl')} />
 
           {/* Alerts Admin Panel */}
-          <AlertsAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <AlertsAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'alerts'} onToggle={() => toggleAdminSection('alerts')} />
 
           {/* Alert Subscriptions Panel */}
-          <AlertSubscriptionsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} />
+          <AlertSubscriptionsPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'subscriptions'} onToggle={() => toggleAdminSection('subscriptions')} />
 
           {/* Federation Admin Panel */}
-          <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} />
-        </div>
+          <FederationAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} refreshTrigger={federationRequestsRefresh} isOpen={openAdminSection === 'federation'} onToggle={() => toggleAdminSection('federation')} />
+        </CollapsibleSection>
       )}
 
       {/* My Reports Section */}
@@ -14112,16 +14162,26 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       </div>
 
       {/* Account Management (v1.18.0) */}
-      <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-orange)40' }}>
-        <div
-          onClick={() => setShowAccountManagement(!showAccountManagement)}
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-        >
-          <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem' }}>ACCOUNT MANAGEMENT</div>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{showAccountManagement ? '▼' : '▶'}</span>
+      <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-orange)40' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', fontWeight: 500 }}>ACCOUNT MANAGEMENT</div>
+          <button
+            onClick={() => toggleSection('account')}
+            style={{
+              padding: isMobile ? '8px 12px' : '6px 10px',
+              background: openSection === 'account' ? 'var(--accent-orange)20' : 'transparent',
+              border: `1px solid ${openSection === 'account' ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+              color: openSection === 'account' ? 'var(--accent-orange)' : 'var(--text-dim)',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '0.7rem',
+            }}
+          >
+            {openSection === 'account' ? '▼ HIDE' : '▶ SHOW'}
+          </button>
         </div>
 
-        {showAccountManagement && (
+        {openSection === 'account' && (
           <div style={{ marginTop: '16px' }}>
             {/* Data Export */}
             <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
@@ -15362,7 +15422,7 @@ function MainApp({ shareDropletId }) {
                   cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', textTransform: 'uppercase',
                   position: 'relative',
                 }}>
-                  {view === 'profile' ? '⚙' : view.slice(0, 10)}
+                  {view.slice(0, 10)}
                   {badgeCount > 0 && (
                     <span style={{
                       position: 'absolute',
