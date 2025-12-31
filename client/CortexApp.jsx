@@ -1030,7 +1030,8 @@ const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [],
       );
       const userId = user?.id || '';
       const displayName = user?.displayName || user?.display_name || handle;
-      return `<span class="mention-link" data-handle="${handle}" data-user-id="${userId}" style="color: var(--accent-teal); cursor: pointer;" title="${displayName}">@${handle}</span>`;
+      // Show display name but keep handle in tooltip and data attribute
+      return `<span class="mention-link" data-handle="${handle}" data-user-id="${userId}" style="color: var(--accent-teal); cursor: pointer;" title="@${handle}">@${displayName}</span>`;
     });
   };
 
