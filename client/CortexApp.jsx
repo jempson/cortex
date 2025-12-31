@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.20.0';
+const VERSION = '1.20.1';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -16478,8 +16478,8 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
   if (needsPassphrase && autoUnlockFailed) {
     return (
       <PassphraseUnlockModal
-        onUnlock={async (passphrase) => {
-          const result = await unlockE2EE(passphrase);
+        onUnlock={async (passphrase, rememberDuration) => {
+          const result = await unlockE2EE(passphrase, rememberDuration);
           // After successful unlock, clear the mismatch state
           setPasswordMismatch(false);
           return result;
