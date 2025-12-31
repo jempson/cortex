@@ -1,11 +1,13 @@
 /**
- * E2EE Context and Hooks (v1.19.0)
+ * E2EE Context and Hooks (v1.20.1)
  *
  * Manages end-to-end encryption state and operations.
  * Integrates with AuthContext to provide E2EE after login.
  *
  * Password-based E2EE: Encryption key derived from login password.
- * Session caching: Private key cached in sessionStorage for page refreshes.
+ * Session caching: Private key cached with configurable TTL.
+ *   - 'session': sessionStorage (cleared when browser closes)
+ *   - 'days7'/'days30': localStorage with expiry (persists across restarts)
  */
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -13,9 +15,24 @@ import * as crypto from './crypto.js';
 
 // ============ Constants ============
 const WAVE_KEY_CACHE_MAX = 100;  // Max cached wave keys
+
+// Session storage keys (cleared when browser closes)
 const SESSION_KEY_STORAGE = 'cortex_e2ee_session_key';
 const SESSION_DATA_STORAGE = 'cortex_e2ee_session_data';
 const SESSION_PUBLIC_KEY = 'cortex_e2ee_public_key';
+
+// Persistent storage keys (localStorage with TTL)
+const PERSISTENT_KEY_STORAGE = 'cortex_e2ee_persistent_key';
+const PERSISTENT_DATA_STORAGE = 'cortex_e2ee_persistent_data';
+const PERSISTENT_PUBLIC_KEY = 'cortex_e2ee_persistent_public';
+const PERSISTENT_EXPIRY = 'cortex_e2ee_persistent_expiry';
+
+// Remember duration options (in milliseconds)
+export const REMEMBER_DURATIONS = {
+  session: 0,  // Use sessionStorage (current behavior)
+  days7: 7 * 24 * 60 * 60 * 1000,   // 7 days
+  days30: 30 * 24 * 60 * 60 * 1000, // 30 days
+};
 
 // ============ Context ============
 const E2EEContext = createContext(null);
@@ -45,25 +62,74 @@ export function E2EEProvider({ children, token, API_URL }) {
   const sessionRestoreAttempted = useRef(false);
 
   // ============ Session Cache Helpers ============
-  const saveToSessionCache = useCallback(async (privKey, pubKeyBase64) => {
+  const saveToSessionCache = useCallback(async (privKey, pubKeyBase64, duration = 'session') => {
     try {
       // Generate a session key and encrypt the private key
       const { key: sessionKey, keyBase64 } = await crypto.generateSessionKey();
       const jwkString = await crypto.exportPrivateKeyForSession(privKey);
       const encryptedData = await crypto.encryptForSession(jwkString, sessionKey);
 
-      // Store in sessionStorage
-      sessionStorage.setItem(SESSION_KEY_STORAGE, keyBase64);
-      sessionStorage.setItem(SESSION_DATA_STORAGE, encryptedData);
-      sessionStorage.setItem(SESSION_PUBLIC_KEY, pubKeyBase64);
-      console.log('E2EE: Saved to session cache');
+      const durationMs = REMEMBER_DURATIONS[duration] || 0;
+
+      if (durationMs > 0) {
+        // Use localStorage with expiry for persistent storage
+        const expiryTime = Date.now() + durationMs;
+        localStorage.setItem(PERSISTENT_KEY_STORAGE, keyBase64);
+        localStorage.setItem(PERSISTENT_DATA_STORAGE, encryptedData);
+        localStorage.setItem(PERSISTENT_PUBLIC_KEY, pubKeyBase64);
+        localStorage.setItem(PERSISTENT_EXPIRY, expiryTime.toString());
+        // Clear sessionStorage to avoid confusion
+        sessionStorage.removeItem(SESSION_KEY_STORAGE);
+        sessionStorage.removeItem(SESSION_DATA_STORAGE);
+        sessionStorage.removeItem(SESSION_PUBLIC_KEY);
+        console.log(`E2EE: Saved to persistent cache (expires in ${duration})`);
+      } else {
+        // Use sessionStorage (clears when browser closes)
+        sessionStorage.setItem(SESSION_KEY_STORAGE, keyBase64);
+        sessionStorage.setItem(SESSION_DATA_STORAGE, encryptedData);
+        sessionStorage.setItem(SESSION_PUBLIC_KEY, pubKeyBase64);
+        // Clear localStorage to avoid confusion
+        localStorage.removeItem(PERSISTENT_KEY_STORAGE);
+        localStorage.removeItem(PERSISTENT_DATA_STORAGE);
+        localStorage.removeItem(PERSISTENT_PUBLIC_KEY);
+        localStorage.removeItem(PERSISTENT_EXPIRY);
+        console.log('E2EE: Saved to session cache');
+      }
     } catch (err) {
-      console.error('E2EE: Failed to save to session cache:', err);
+      console.error('E2EE: Failed to save to cache:', err);
     }
   }, []);
 
   const restoreFromSessionCache = useCallback(async () => {
     try {
+      // First, try localStorage (persistent cache with TTL)
+      const persistentKeyBase64 = localStorage.getItem(PERSISTENT_KEY_STORAGE);
+      const persistentData = localStorage.getItem(PERSISTENT_DATA_STORAGE);
+      const persistentPubKey = localStorage.getItem(PERSISTENT_PUBLIC_KEY);
+      const persistentExpiry = localStorage.getItem(PERSISTENT_EXPIRY);
+
+      if (persistentKeyBase64 && persistentData && persistentPubKey && persistentExpiry) {
+        const expiryTime = parseInt(persistentExpiry, 10);
+        if (Date.now() < expiryTime) {
+          // Not expired - restore from localStorage
+          const sessionKey = await crypto.importSessionKey(persistentKeyBase64);
+          const jwkString = await crypto.decryptFromSession(persistentData, sessionKey);
+          const privKey = await crypto.importPrivateKeyFromSession(jwkString);
+          const pubKey = await crypto.importPublicKey(persistentPubKey);
+
+          console.log('E2EE: Restored from persistent cache');
+          return { privateKey: privKey, publicKey: pubKey, publicKeyBase64: persistentPubKey };
+        } else {
+          // Expired - clear persistent cache
+          console.log('E2EE: Persistent cache expired, clearing');
+          localStorage.removeItem(PERSISTENT_KEY_STORAGE);
+          localStorage.removeItem(PERSISTENT_DATA_STORAGE);
+          localStorage.removeItem(PERSISTENT_PUBLIC_KEY);
+          localStorage.removeItem(PERSISTENT_EXPIRY);
+        }
+      }
+
+      // Fall back to sessionStorage
       const sessionKeyBase64 = sessionStorage.getItem(SESSION_KEY_STORAGE);
       const encryptedData = sessionStorage.getItem(SESSION_DATA_STORAGE);
       const pubKeyBase64 = sessionStorage.getItem(SESSION_PUBLIC_KEY);
@@ -81,16 +147,22 @@ export function E2EEProvider({ children, token, API_URL }) {
       console.log('E2EE: Restored from session cache');
       return { privateKey: privKey, publicKey: pubKey, publicKeyBase64: pubKeyBase64 };
     } catch (err) {
-      console.error('E2EE: Failed to restore from session cache:', err);
+      console.error('E2EE: Failed to restore from cache:', err);
       clearSessionCache();
       return null;
     }
   }, []);
 
   const clearSessionCache = useCallback(() => {
+    // Clear sessionStorage
     sessionStorage.removeItem(SESSION_KEY_STORAGE);
     sessionStorage.removeItem(SESSION_DATA_STORAGE);
     sessionStorage.removeItem(SESSION_PUBLIC_KEY);
+    // Clear localStorage (persistent cache)
+    localStorage.removeItem(PERSISTENT_KEY_STORAGE);
+    localStorage.removeItem(PERSISTENT_DATA_STORAGE);
+    localStorage.removeItem(PERSISTENT_PUBLIC_KEY);
+    localStorage.removeItem(PERSISTENT_EXPIRY);
   }, []);
 
   // Fetch helper
@@ -150,7 +222,7 @@ export function E2EEProvider({ children, token, API_URL }) {
   }, [token, fetchAPI, restoreFromSessionCache]);
 
   // ============ E2EE Setup ============
-  const setupE2EE = useCallback(async (passphrase, createRecoveryKey = true) => {
+  const setupE2EE = useCallback(async (passphrase, createRecoveryKey = true, rememberDuration = 'session') => {
     if (!token) throw new Error('Not authenticated');
 
     try {
@@ -199,8 +271,8 @@ export function E2EEProvider({ children, token, API_URL }) {
       setNeedsPassphrase(false);
       setE2eeStatus({ enabled: true });
 
-      // Save to session cache for page refreshes
-      await saveToSessionCache(keyPair.privateKey, pubKeyBase64);
+      // Save to cache with specified duration
+      await saveToSessionCache(keyPair.privateKey, pubKeyBase64, rememberDuration);
 
       return { success: true, recoveryKey };
     } catch (err) {
@@ -210,7 +282,7 @@ export function E2EEProvider({ children, token, API_URL }) {
   }, [token, fetchAPI, saveToSessionCache]);
 
   // ============ Unlock with Passphrase ============
-  const unlockE2EE = useCallback(async (passphrase) => {
+  const unlockE2EE = useCallback(async (passphrase, rememberDuration = 'session') => {
     if (!token) throw new Error('Not authenticated');
 
     setIsUnlocking(true);
@@ -237,8 +309,8 @@ export function E2EEProvider({ children, token, API_URL }) {
       setNeedsPassphrase(false);
       setIsUnlocking(false);
 
-      // Save to session cache for page refreshes
-      await saveToSessionCache(privKey, pubKeyBase64);
+      // Save to cache with specified duration
+      await saveToSessionCache(privKey, pubKeyBase64, rememberDuration);
 
       return { success: true };
     } catch (err) {
