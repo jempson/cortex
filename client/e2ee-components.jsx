@@ -16,6 +16,7 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
   const [recoveryKey, setRecoveryKey] = useState(null);
   const [copied, setCopied] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [rememberDuration, setRememberDuration] = useState('days7');  // Default to 7 days for new users
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -34,7 +35,7 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
 
       // Setup E2EE and get recovery key
       try {
-        const result = await onSetup(passphrase, true);  // true = create recovery key
+        const result = await onSetup(passphrase, true, rememberDuration);  // true = create recovery key
         if (result.recoveryKey) {
           setRecoveryKey(result.recoveryKey);
           setStep(2);
@@ -154,6 +155,42 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
             </div>
 
             <form onSubmit={handleSubmit}>
+              {/* Remember duration selector */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ color: 'var(--text-secondary)', fontSize: '12px', display: 'block', marginBottom: '8px' }}>
+                  Remember passphrase:
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {[
+                    { value: 'session', label: 'This session only' },
+                    { value: 'days7', label: 'For 7 days' },
+                    { value: 'days30', label: 'For 30 days' }
+                  ].map(option => (
+                    <label
+                      key={option.value}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        cursor: 'pointer',
+                        color: rememberDuration === option.value ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        fontSize: '13px'
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="setupRememberDuration"
+                        value={option.value}
+                        checked={rememberDuration === option.value}
+                        onChange={(e) => setRememberDuration(e.target.value)}
+                        style={{ width: '16px', height: '16px', accentColor: 'var(--accent-green)' }}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
               {error && (
                 <p style={{ color: 'var(--accent-orange)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>
               )}
@@ -234,13 +271,14 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
   const [showRecovery, setShowRecovery] = useState(recoveryOnly);
   const [recoveryKey, setRecoveryKey] = useState('');
   const [error, setError] = useState(propError);
+  const [rememberDuration, setRememberDuration] = useState('session');
 
   const handleUnlock = async (e) => {
     e.preventDefault();
     setError(null);
 
     try {
-      await onUnlock(passphrase);
+      await onUnlock(passphrase, rememberDuration);
     } catch (err) {
       setError(err.message || 'Incorrect passphrase');
     }
@@ -362,6 +400,42 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
                 autoFocus
                 required
               />
+
+              {/* Remember duration selector */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ color: 'var(--text-secondary)', fontSize: '12px', display: 'block', marginBottom: '8px' }}>
+                  Remember passphrase:
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {[
+                    { value: 'session', label: 'This session only' },
+                    { value: 'days7', label: 'For 7 days' },
+                    { value: 'days30', label: 'For 30 days' }
+                  ].map(option => (
+                    <label
+                      key={option.value}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        cursor: 'pointer',
+                        color: rememberDuration === option.value ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        fontSize: '13px'
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="rememberDuration"
+                        value={option.value}
+                        checked={rememberDuration === option.value}
+                        onChange={(e) => setRememberDuration(e.target.value)}
+                        style={{ width: '16px', height: '16px', accentColor: 'var(--accent-green)' }}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
 
               {(error || propError) && (
                 <p style={{ color: 'var(--accent-orange)', fontSize: '12px', marginBottom: '8px' }}>
