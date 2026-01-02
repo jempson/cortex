@@ -6738,15 +6738,16 @@ app.get('/api/crawl/all', authenticateToken, crawlLimiter, async (req, res) => {
   // Fetch active alerts for this user (synchronous, no API call)
   try {
     const alerts = db.getActiveAlerts(userId);
+    // getActiveAlerts already returns camelCase properties
     result.alerts.data = alerts.map(a => ({
       id: a.id,
       title: a.title,
       content: a.content,
       priority: a.priority,
       category: a.category,
-      startTime: a.start_time,
-      endTime: a.end_time,
-      originNode: a.origin_node
+      startTime: a.startTime,
+      endTime: a.endTime,
+      originNode: a.originNode
     }));
   } catch (err) {
     console.error('Crawl alerts error:', err.message);
