@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.20.1';
+const VERSION = '1.20.2';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -10787,15 +10787,21 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
     setFormPriority(alert.priority);
     setFormCategory(alert.category);
     setFormScope(alert.scope);
-    // Safely parse dates - handle both ISO strings and datetime-local format
+    // Safely parse dates - convert to local datetime format for datetime-local input
     const parseToLocalDatetime = (dateStr) => {
       if (!dateStr) return '';
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return '';
-      return d.toISOString().slice(0, 16);
+      // Use local time methods, not toISOString() which returns UTC
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
     };
-    setFormStartTime(parseToLocalDatetime(alert.start_time));
-    setFormEndTime(parseToLocalDatetime(alert.end_time));
+    setFormStartTime(parseToLocalDatetime(alert.startTime));
+    setFormEndTime(parseToLocalDatetime(alert.endTime));
     setShowCreateModal(true);
   };
 
@@ -10857,8 +10863,8 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
 
   const getAlertStatus = (alert) => {
     const now = new Date();
-    const start = new Date(alert.start_time);
-    const end = new Date(alert.end_time);
+    const start = new Date(alert.startTime);
+    const end = new Date(alert.endTime);
     if (now < start) return { label: 'SCHEDULED', color: 'var(--accent-purple)' };
     if (now > end) return { label: 'EXPIRED', color: 'var(--text-muted)' };
     return { label: 'ACTIVE', color: 'var(--accent-green)' };
