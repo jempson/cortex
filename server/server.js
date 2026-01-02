@@ -10018,7 +10018,13 @@ app.put('/api/groups/:id/members/:userId', authenticateToken, (req, res) => {
 // ============ Wave Routes (renamed from Thread) ============
 app.get('/api/waves', authenticateToken, (req, res) => {
   const includeArchived = req.query.archived === 'true';
-  res.json(db.getWavesForUser(req.user.userId, includeArchived));
+  const waves = db.getWavesForUser(req.user.userId, includeArchived);
+  // Log unread counts for debugging
+  const wavesWithUnread = waves.filter(w => w.unread_count > 0);
+  if (wavesWithUnread.length > 0) {
+    console.log(`📬 GET /api/waves - Waves with unread for user ${req.user.userId}:`, wavesWithUnread.map(w => `"${w.title}": ${w.unread_count}`).join(', '));
+  }
+  res.json(waves);
 });
 
 app.get('/api/waves/:id', authenticateToken, (req, res) => {
@@ -11365,6 +11371,10 @@ app.post('/api/droplets/:id/read', authenticateToken, (req, res) => {
 
   console.log(`📖 Marking droplet ${dropletId} as read for user ${userId}`);
 
+  // Get the droplet first to find the waveId
+  const droplet = db.getDroplet ? db.getDroplet(dropletId) : db.getMessage?.(dropletId);
+  const waveId = droplet?.wave_id || droplet?.waveId;
+
   if (!db.markMessageAsRead(dropletId, userId)) {
     console.log(`❌ Failed to mark droplet ${dropletId} as read`);
     return res.status(404).json({ error: 'Droplet not found' });
@@ -11377,6 +11387,9 @@ app.post('/api/droplets/:id/read', authenticateToken, (req, res) => {
     // Broadcast notification count update to user
     broadcast({ type: 'unread_count_update', userId });
   }
+
+  // Broadcast droplet read event so all clients (including this user) can update wave list
+  broadcast({ type: 'droplet_read', dropletId, waveId, userId });
 
   console.log(`✅ Droplet ${dropletId} marked as read`);
   res.json({ success: true });
@@ -11596,6 +11609,10 @@ app.post('/api/messages/:id/read', authenticateToken, deprecatedEndpoint, (req, 
 
   console.log(`📖 Marking message ${messageId} as read for user ${userId}`);
 
+  // Get the message first to find the waveId
+  const message = db.getDroplet ? db.getDroplet(messageId) : db.getMessage?.(messageId);
+  const waveId = message?.wave_id || message?.waveId;
+
   if (!db.markMessageAsRead(messageId, userId)) {
     console.log(`❌ Failed to mark message ${messageId} as read`);
     return res.status(404).json({ error: 'Message not found' });
@@ -11607,6 +11624,9 @@ app.post('/api/messages/:id/read', authenticateToken, deprecatedEndpoint, (req, 
     console.log(`🔔 Marked ${notificationsMarked} notification(s) as read for message ${messageId}`);
     broadcast({ type: 'unread_count_update', userId });
   }
+
+  // Broadcast message read event so all clients can update wave list
+  broadcast({ type: 'message_read', messageId, waveId, userId });
 
   console.log(`✅ Message ${messageId} marked as read`);
   res.json({ success: true });
