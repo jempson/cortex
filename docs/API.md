@@ -30,7 +30,7 @@ The Farhold API is a RESTful API that powers the Farhold federated communication
    - [Groups/Crews](#groups-endpoints)
    - [Waves](#waves-endpoints)
    - [Messages](#messages-endpoints)
-   - [Droplets/Pings](#droplets-endpoints)
+   - [Pings](#pings-endpoints)
    - [Search](#search-endpoint)
    - [GIFs](#gifs-endpoints)
    - [Uploads](#uploads-endpoints)
@@ -86,7 +86,7 @@ curl http://localhost:3001/api/waves \
 
 ## Rate Limiting
 
-Cortex implements rate limiting to prevent abuse. Rate limits are enforced per IP address and tracked in-memory.
+Farhold implements rate limiting to prevent abuse. Rate limits are enforced per IP address and tracked in-memory.
 
 ### Global Rate Limits
 
@@ -395,7 +395,7 @@ Download all personal data as JSON (GDPR data export).
     "createdAt": "2025-01-01T00:00:00.000Z"
   },
   "contacts": [...],
-  "droplets": [...],
+  "pings": [...],
   "waveParticipation": [...],
   "groupMemberships": [...],
   "sessions": [...],
@@ -448,7 +448,7 @@ Permanently delete account (GDPR right to erasure).
 
 **Deletion Behavior:**
 - Sessions: All revoked
-- Droplets: Author set to "[Deleted User]" (content preserved)
+- Pings: Author set to "[Deleted User]" (content preserved)
 - Waves created: Transferred to other participant, or deleted if sole participant
 - Groups created: Transferred to next admin/member, or deleted if sole member
 - Contacts, requests, blocks, mutes: Deleted
@@ -1604,23 +1604,23 @@ Delete a wave and all its messages.
 
 ### Messages Endpoints
 
-> **⚠️ DEPRECATED (v1.10.0):** These endpoints are deprecated. Use the `/api/droplets/*` endpoints instead.
+> **⚠️ DEPRECATED (v1.10.0):** These endpoints are deprecated. Use the `/api/pings/*` endpoints instead.
 >
 > **Response Headers:**
 > - `X-Deprecated: true`
-> - `X-Deprecated-Message: This endpoint is deprecated. Use /api/droplets/* instead.`
+> - `X-Deprecated-Message: This endpoint is deprecated. Use /api/pings/* instead.`
 > - `Sunset: Sat, 01 Mar 2026 00:00:00 GMT`
 >
 > **Migration Guide:**
-> - `POST /api/messages` → `POST /api/waves/:id/droplets`
-> - `PUT /api/messages/:id` → `PUT /api/droplets/:id`
-> - `DELETE /api/messages/:id` → `DELETE /api/droplets/:id`
-> - `POST /api/messages/:id/react` → `POST /api/droplets/:id/react`
-> - `POST /api/messages/:id/read` → `POST /api/droplets/:id/read`
+> - `POST /api/messages` → `POST /api/waves/:id/pings`
+> - `PUT /api/messages/:id` → `PUT /api/pings/:id`
+> - `DELETE /api/messages/:id` → `DELETE /api/pings/:id`
+> - `POST /api/messages/:id/react` → `POST /api/pings/:id/react`
+> - `POST /api/messages/:id/read` → `POST /api/pings/:id/read`
 
 #### POST /api/messages
 
-> ⚠️ **DEPRECATED** - Use `POST /api/waves/:id/droplets` instead.
+> ⚠️ **DEPRECATED** - Use `POST /api/waves/:id/pings` instead.
 
 Create a new message in a wave.
 
@@ -1676,7 +1676,7 @@ Create a new message in a wave.
 
 #### PUT /api/messages/:id
 
-> ⚠️ **DEPRECATED** - Use `PUT /api/droplets/:id` instead.
+> ⚠️ **DEPRECATED** - Use `PUT /api/pings/:id` instead.
 
 Edit an existing message.
 
@@ -1721,7 +1721,7 @@ Edit an existing message.
 
 #### DELETE /api/messages/:id
 
-> ⚠️ **DEPRECATED** - Use `DELETE /api/droplets/:id` instead.
+> ⚠️ **DEPRECATED** - Use `DELETE /api/pings/:id` instead.
 
 Delete a message.
 
@@ -1748,7 +1748,7 @@ Delete a message.
 
 #### POST /api/messages/:id/react
 
-> ⚠️ **DEPRECATED** - Use `POST /api/droplets/:id/react` instead.
+> ⚠️ **DEPRECATED** - Use `POST /api/pings/:id/react` instead.
 
 Add or remove a reaction (emoji) to a message.
 
@@ -1793,7 +1793,7 @@ Add or remove a reaction (emoji) to a message.
 
 #### POST /api/messages/:id/read
 
-> ⚠️ **DEPRECATED** - Use `POST /api/droplets/:id/read` instead.
+> ⚠️ **DEPRECATED** - Use `POST /api/pings/:id/read` instead.
 
 Mark a specific message as read.
 
@@ -1814,26 +1814,26 @@ Mark a specific message as read.
 
 ---
 
-### Droplets Endpoints
+### Pings Endpoints
 
-Droplets are the new name for messages (v1.10.0+). All `/api/droplets` endpoints are aliases for `/api/messages` endpoints with enhanced functionality.
+Pings are the new name for messages (v2.0.0, formerly "droplets" in v1.10.0). All `/api/pings` endpoints are aliases for `/api/messages` endpoints with enhanced functionality.
 
-#### GET /api/waves/:id/droplets
+#### GET /api/waves/:id/pings
 
-Get droplets for a wave (alias for `/api/waves/:id/messages`).
+Get pings for a wave (alias for `/api/waves/:id/messages`).
 
 **Authentication:** Required
 
 **Query Parameters:**
 
-- `limit` (integer): Number of droplets to return (default: 50, max: 100)
-- `before` (string): Droplet ID to load droplets before (pagination)
+- `limit` (integer): Number of pings to return (default: 50, max: 100)
+- `before` (string): Ping ID to load pings before (pagination)
 
 **Response (200 OK):**
 
 ```json
 {
-  "droplets": [...],
+  "pings": [...],
   "hasMore": true,
   "total": 42
 }
@@ -1841,9 +1841,9 @@ Get droplets for a wave (alias for `/api/waves/:id/messages`).
 
 ---
 
-#### POST /api/waves/:id/droplets
+#### POST /api/waves/:id/pings
 
-Create a new droplet in a wave (alias for `/api/messages`).
+Create a new ping in a wave (alias for `/api/messages`).
 
 **Authentication:** Required
 
@@ -1851,7 +1851,7 @@ Create a new droplet in a wave (alias for `/api/messages`).
 
 ```json
 {
-  "content": "This is my droplet with <strong>rich content</strong>",
+  "content": "This is my ping with <strong>rich content</strong>",
   "parent_id": null
 }
 ```
@@ -1860,33 +1860,33 @@ Create a new droplet in a wave (alias for `/api/messages`).
 
 ```json
 {
-  "id": "drop-880e8400-e29b-41d4-a716-446655440005",
+  "id": "ping-880e8400-e29b-41d4-a716-446655440005",
   "waveId": "wave-550e8400-e29b-41d4-a716-446655440000",
   "authorId": "user-550e8400-e29b-41d4-a716-446655440000",
   "sender_name": "Malcolm Reynolds",
-  "content": "This is my droplet",
+  "content": "This is my ping",
   "parent_id": null,
   "created_at": "2025-12-09T12:05:00.000Z"
 }
 ```
 
-**WebSocket Event:** `new_droplet` (and `new_message` for backward compatibility)
+**WebSocket Event:** `new_ping` (and `new_message` for backward compatibility)
 
 ---
 
-#### PUT /api/droplets/:id
+#### PUT /api/pings/:id
 
-Edit an existing droplet.
+Edit an existing ping.
 
 **Authentication:** Required
 
-**Authorization:** Must be droplet author
+**Authorization:** Must be ping author
 
 **Request Body:**
 
 ```json
 {
-  "content": "Updated droplet content"
+  "content": "Updated ping content"
 }
 ```
 
@@ -1894,24 +1894,24 @@ Edit an existing droplet.
 
 ```json
 {
-  "id": "drop-880e8400-e29b-41d4-a716-446655440005",
-  "content": "Updated droplet content",
+  "id": "ping-880e8400-e29b-41d4-a716-446655440005",
+  "content": "Updated ping content",
   "edited_at": "2025-12-09T12:10:00.000Z",
   "version": 2
 }
 ```
 
-**WebSocket Event:** `droplet_edited` (and `message_edited` for backward compatibility)
+**WebSocket Event:** `ping_edited` (and `message_edited` for backward compatibility)
 
 ---
 
-#### DELETE /api/droplets/:id
+#### DELETE /api/pings/:id
 
-Delete a droplet.
+Delete a ping.
 
 **Authentication:** Required
 
-**Authorization:** Must be droplet author
+**Authorization:** Must be ping author
 
 **Response (200 OK):**
 
@@ -1921,13 +1921,13 @@ Delete a droplet.
 }
 ```
 
-**WebSocket Event:** `droplet_deleted` (and `message_deleted` for backward compatibility)
+**WebSocket Event:** `ping_deleted` (and `message_deleted` for backward compatibility)
 
 ---
 
-#### POST /api/droplets/:id/read
+#### POST /api/pings/:id/read
 
-Mark a specific droplet as read.
+Mark a specific ping as read.
 
 **Authentication:** Required
 
@@ -1941,9 +1941,9 @@ Mark a specific droplet as read.
 
 ---
 
-#### POST /api/droplets/:id/react
+#### POST /api/pings/:id/react
 
-Add or remove a reaction (emoji) to a droplet.
+Add or remove a reaction (emoji) to a ping.
 
 **Authentication:** Required
 
@@ -1959,7 +1959,7 @@ Add or remove a reaction (emoji) to a droplet.
 
 ```json
 {
-  "id": "drop-880e8400-e29b-41d4-a716-446655440005",
+  "id": "ping-880e8400-e29b-41d4-a716-446655440005",
   "reactions": [
     {
       "emoji": "👍",
@@ -1971,9 +1971,9 @@ Add or remove a reaction (emoji) to a droplet.
 
 ---
 
-#### POST /api/droplets/:id/ripple
+#### POST /api/pings/:id/burst
 
-Spin off a droplet and its replies into a new wave.
+Spin off a ping and its replies into a new wave.
 
 **Authentication:** Required
 
@@ -1998,7 +1998,7 @@ Spin off a droplet and its replies into a new wave.
     "id": "wave-770e8400-e29b-41d4-a716-446655440002",
     "title": "New Discussion",
     "privacy": "private",
-    "rootDropletId": "drop-880e8400-e29b-41d4-a716-446655440005",
+    "rootPingId": "ping-880e8400-e29b-41d4-a716-446655440005",
     "brokenOutFrom": "wave-550e8400-e29b-41d4-a716-446655440000",
     "createdAt": "2025-12-09T12:00:00.000Z"
   },
@@ -2008,22 +2008,22 @@ Spin off a droplet and its replies into a new wave.
 
 **WebSocket Events:**
 
-- `droplet_rippled` - Sent to original wave participants
+- `ping_burst` - Sent to original wave participants
 - `wave_created` - Sent to new wave participants
 
 **Notes:**
 
-- Creates a new wave with the droplet as the root
-- Original droplet displays as a "Rippled to wave..." link card
+- Creates a new wave with the ping as the root
+- Original ping displays as a "Burst to wave..." link card
 - Participants default to original wave participants
 - Inherits privacy level from original wave
-- Nested ripples build a `breakout_chain` for lineage tracking
+- Nested bursts build a `breakout_chain` for lineage tracking
 
 **Errors:**
 
 - `400`: Missing title or invalid participants
 - `403`: User doesn't have access to original wave
-- `404`: Droplet not found
+- `404`: Ping not found
 
 ---
 
@@ -2720,7 +2720,7 @@ Check server health status.
 
 ## WebSocket API
 
-Cortex uses WebSockets for real-time bidirectional communication.
+Farhold uses WebSockets for real-time bidirectional communication.
 
 **WebSocket URL:** `ws://localhost:3001` (development)
 
@@ -2804,19 +2804,19 @@ Notify other wave participants that user is typing:
 
 ### Server-Broadcast Events
 
-#### new_droplet (v1.10.0+)
+#### new_ping (v2.0.0+)
 
-New droplet created in a wave. Legacy `new_message` event also broadcast for backward compatibility.
+New ping created in a wave. Legacy `new_message` event also broadcast for backward compatibility.
 
 ```json
 {
-  "type": "new_droplet",
+  "type": "new_ping",
   "data": {
-    "id": "drop-880e8400-e29b-41d4-a716-446655440005",
+    "id": "ping-880e8400-e29b-41d4-a716-446655440005",
     "waveId": "wave-550e8400-e29b-41d4-a716-446655440000",
     "authorId": "user-550e8400-e29b-41d4-a716-446655440000",
     "sender_name": "Malcolm Reynolds",
-    "content": "This is a new droplet",
+    "content": "This is a new ping",
     "created_at": "2025-12-09T12:05:00.000Z"
   }
 }
@@ -2824,16 +2824,16 @@ New droplet created in a wave. Legacy `new_message` event also broadcast for bac
 
 ---
 
-#### droplet_edited (v1.10.0+)
+#### ping_edited (v2.0.0+)
 
-Droplet was edited. Legacy `message_edited` event also broadcast for backward compatibility.
+Ping was edited. Legacy `message_edited` event also broadcast for backward compatibility.
 
 ```json
 {
-  "type": "droplet_edited",
+  "type": "ping_edited",
   "data": {
-    "id": "drop-880e8400-e29b-41d4-a716-446655440005",
-    "content": "Updated droplet content",
+    "id": "ping-880e8400-e29b-41d4-a716-446655440005",
+    "content": "Updated ping content",
     "edited_at": "2025-12-09T12:10:00.000Z"
   }
 }
@@ -2841,28 +2841,28 @@ Droplet was edited. Legacy `message_edited` event also broadcast for backward co
 
 ---
 
-#### droplet_deleted (v1.10.0+)
+#### ping_deleted (v2.0.0+)
 
-Droplet was deleted. Legacy `message_deleted` event also broadcast for backward compatibility.
+Ping was deleted. Legacy `message_deleted` event also broadcast for backward compatibility.
 
 ```json
 {
-  "type": "droplet_deleted",
-  "dropletId": "drop-880e8400-e29b-41d4-a716-446655440005",
+  "type": "ping_deleted",
+  "pingId": "ping-880e8400-e29b-41d4-a716-446655440005",
   "waveId": "wave-550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
 ---
 
-#### droplet_rippled (v1.10.0+)
+#### ping_burst (v2.0.0+)
 
-Droplet was rippled to create a new wave.
+Ping was burst to create a new wave.
 
 ```json
 {
-  "type": "droplet_rippled",
-  "dropletId": "drop-880e8400-e29b-41d4-a716-446655440005",
+  "type": "ping_burst",
+  "pingId": "ping-880e8400-e29b-41d4-a716-446655440005",
   "newWaveId": "wave-770e8400-e29b-41d4-a716-446655440002",
   "newWaveTitle": "New Discussion",
   "waveId": "wave-550e8400-e29b-41d4-a716-446655440000"
@@ -3168,7 +3168,7 @@ WebSocket connections are rate-limited per IP:
 | `GIPHY_API_KEY` | `null` | GIPHY API key for GIF search |
 | `VAPID_PUBLIC_KEY` | `null` | VAPID public key for push notifications |
 | `VAPID_PRIVATE_KEY` | `null` | VAPID private key for push notifications |
-| `VAPID_EMAIL` | `mailto:admin@cortex.local` | VAPID contact email |
+| `VAPID_EMAIL` | `mailto:admin@farhold.local` | VAPID contact email |
 | `RATE_LIMIT_LOGIN_MAX` | `30` | Login requests per 15 minutes |
 | `RATE_LIMIT_REGISTER_MAX` | `15` | Registration requests per hour |
 | `RATE_LIMIT_API_MAX` | `300` | API requests per minute |
@@ -3196,7 +3196,7 @@ WebSocket connections are rate-limited per IP:
 
 **SQLite (optional):**
 
-- `data/cortex.db` - Single database file
+- `data/farhold.db` - Single database file
 - Schema: `schema.sql` (14+ tables with indexes)
 - Migration: `node migrate-json-to-sqlite.js`
 
@@ -3235,7 +3235,7 @@ Get this server's federation identity (public key). No authentication required.
 
 ```json
 {
-  "nodeName": "cortex.example.com",
+  "nodeName": "farhold.example.com",
   "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN...",
   "createdAt": "2025-12-12T10:00:00.000Z"
 }
@@ -3260,7 +3260,7 @@ Receive signed messages from other servers. This is the main entry point for fed
 ```json
 {
   "id": "msg-uuid-12345",
-  "type": "wave_invite | new_droplet | droplet_edited | droplet_deleted | user_profile | ping",
+  "type": "wave_invite | new_ping | ping_edited | ping_deleted | user_profile | heartbeat",
   "payload": { ... }
 }
 ```
@@ -3270,11 +3270,11 @@ Receive signed messages from other servers. This is the main entry point for fed
 | Type | Description | Payload |
 |------|-------------|---------|
 | `wave_invite` | Invite local user to federated wave | `{ wave, participants, invitedUserHandle }` |
-| `new_droplet` | New droplet in federated wave | `{ droplet, originWaveId, author }` |
-| `droplet_edited` | Droplet edited | `{ dropletId, originWaveId, content, editedAt, version }` |
-| `droplet_deleted` | Droplet deleted | `{ dropletId, originWaveId }` |
+| `new_ping` | New ping in federated wave | `{ ping, originWaveId, author }` |
+| `ping_edited` | Ping edited | `{ pingId, originWaveId, content, editedAt, version }` |
+| `ping_deleted` | Ping deleted | `{ pingId, originWaveId }` |
 | `user_profile` | User profile update | `{ user }` |
-| `ping` | Connectivity test | `{}` |
+| `heartbeat` | Connectivity test | `{}` |
 
 **Response (200 OK):**
 
@@ -3379,7 +3379,7 @@ Get federation status and configuration.
 {
   "enabled": true,
   "configured": true,
-  "nodeName": "cortex.example.com",
+  "nodeName": "farhold.example.com",
   "nodeCount": 2,
   "activeNodes": 1,
   "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN..."
@@ -3400,7 +3400,7 @@ Generate server identity (RSA keypair). Only callable if no identity exists.
 {
   "success": true,
   "identity": {
-    "nodeName": "cortex.example.com",
+    "nodeName": "farhold.example.com",
     "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN...",
     "createdAt": "2025-12-12T10:00:00.000Z"
   }
@@ -3422,8 +3422,8 @@ List all federation nodes.
   "nodes": [
     {
       "id": "node-uuid",
-      "nodeName": "other-cortex.example.com",
-      "baseUrl": "https://other-cortex.example.com",
+      "nodeName": "other-farhold.example.com",
+      "baseUrl": "https://other-farhold.example.com",
       "publicKey": "-----BEGIN PUBLIC KEY-----\n...",
       "status": "active",
       "lastContactAt": "2025-12-12T10:30:00.000Z",
@@ -3455,8 +3455,8 @@ Add a new federation node.
 
 ```json
 {
-  "nodeName": "other-cortex.example.com",
-  "baseUrl": "https://other-cortex.example.com"
+  "nodeName": "other-farhold.example.com",
+  "baseUrl": "https://other-farhold.example.com"
 }
 ```
 
@@ -3467,8 +3467,8 @@ Add a new federation node.
   "success": true,
   "node": {
     "id": "node-uuid",
-    "nodeName": "other-cortex.example.com",
-    "baseUrl": "https://other-cortex.example.com",
+    "nodeName": "other-farhold.example.com",
+    "baseUrl": "https://other-farhold.example.com",
     "status": "pending",
     "createdAt": "2025-12-12T10:00:00.000Z"
   }
@@ -3506,7 +3506,7 @@ Initiate handshake with a federation node to exchange public keys.
   "success": true,
   "node": {
     "id": "node-uuid",
-    "nodeName": "other-cortex.example.com",
+    "nodeName": "other-farhold.example.com",
     "status": "active",
     "publicKey": "-----BEGIN PUBLIC KEY-----\n..."
   }
@@ -3564,7 +3564,7 @@ curl -X POST https://other-server.com/api/federation/inbox \
 | `server_identity` | Server's RSA keypair (singleton) |
 | `federation_nodes` | Trusted federation partners |
 | `remote_users` | Cached profiles from other servers |
-| `remote_droplets` | Cached droplets from federated waves |
+| `remote_pings` | Cached pings from federated waves |
 | `wave_federation` | Wave-to-node relationships |
 | `federation_queue` | Outbound message queue with retries |
 | `federation_inbox_log` | Inbound message deduplication |
@@ -3911,4 +3911,4 @@ For more information, see:
 
 - [Project README](../README.md)
 - [CLAUDE.md](../CLAUDE.md) - Development guide for AI assistants
-- [GitHub Repository](https://github.com/jempson/cortex)
+- [GitHub Repository](https://github.com/jempson/farhold)

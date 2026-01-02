@@ -31,7 +31,8 @@ const __dirname = path.dirname(__filename);
 
 // Configuration
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const DB_PATH = path.join(DATA_DIR, 'farhold.db');
+const SOURCE_DB_PATH = path.join(DATA_DIR, 'cortex.db');
+const TARGET_DB_PATH = path.join(DATA_DIR, 'farhold.db');
 const BACKUP_DIR = path.join(DATA_DIR, 'backup-v2.0');
 
 // Parse command line arguments
@@ -141,15 +142,55 @@ async function main() {
     log('DRY RUN MODE - No changes will be made', 'yellow');
   }
 
-  // Check if database exists
-  if (!fs.existsSync(DB_PATH)) {
-    log(`Database not found at ${DB_PATH}`, 'red');
-    log('Nothing to migrate. Run the server first to create a database.', 'yellow');
-    process.exit(1);
+  // Check if farhold.db already exists and is migrated
+  if (fs.existsSync(TARGET_DB_PATH)) {
+    const existingDb = new Database(TARGET_DB_PATH);
+    const tables = existingDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r => r.name);
+    existingDb.close();
+
+    if (tables.includes('pings') && !tables.includes('droplets')) {
+      log('Database already migrated to Farhold v2.0.0!', 'green');
+      process.exit(0);
+    }
+
+    if (tables.includes('droplets')) {
+      log(`Found existing ${TARGET_DB_PATH} with old schema - will migrate in place`, 'yellow');
+    } else if (tables.length === 0 || !tables.includes('users')) {
+      log(`Found empty or invalid ${TARGET_DB_PATH} - removing and copying from source`, 'yellow');
+      if (!DRY_RUN) {
+        fs.unlinkSync(TARGET_DB_PATH);
+        // Also remove WAL and SHM files if they exist
+        if (fs.existsSync(TARGET_DB_PATH + '-wal')) fs.unlinkSync(TARGET_DB_PATH + '-wal');
+        if (fs.existsSync(TARGET_DB_PATH + '-shm')) fs.unlinkSync(TARGET_DB_PATH + '-shm');
+      }
+    }
   }
 
-  // Check if already migrated
-  const db = new Database(DB_PATH);
+  // Check if source database exists
+  if (!fs.existsSync(TARGET_DB_PATH)) {
+    if (!fs.existsSync(SOURCE_DB_PATH)) {
+      log(`Source database not found at ${SOURCE_DB_PATH}`, 'red');
+      log('Nothing to migrate.', 'yellow');
+      process.exit(1);
+    }
+
+    // Copy source to target
+    log(`Copying ${SOURCE_DB_PATH} to ${TARGET_DB_PATH}...`, 'blue');
+    if (!DRY_RUN) {
+      fs.copyFileSync(SOURCE_DB_PATH, TARGET_DB_PATH);
+      // Also copy WAL and SHM files if they exist (for complete state)
+      if (fs.existsSync(SOURCE_DB_PATH + '-wal')) {
+        fs.copyFileSync(SOURCE_DB_PATH + '-wal', TARGET_DB_PATH + '-wal');
+      }
+      if (fs.existsSync(SOURCE_DB_PATH + '-shm')) {
+        fs.copyFileSync(SOURCE_DB_PATH + '-shm', TARGET_DB_PATH + '-shm');
+      }
+    }
+    log('Database copied successfully', 'green');
+  }
+
+  // Open the target database for migration
+  const db = new Database(TARGET_DB_PATH);
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r => r.name);
 
   if (tables.includes('pings') && !tables.includes('droplets')) {
