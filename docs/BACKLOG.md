@@ -16,17 +16,17 @@ Cortex was created as an homage to *Firefly* and *Serenity*, inspired by the Cor
 
 The app name "Cortex" should change to something more obscure that represents the "entry point into the Cortex" - the Cortex being the entire network of federated nodes in the 'Verse.
 
-**Domain Candidates (Possibly Available):**
-- **farhold.com** - "Hold in the far reaches" - short, evocative
-- gorramit.com - Classic Firefly expletive
-- portintheblack.com - "Your port in the black"
-- browncoatport.com - Firefly rebel reference
+**Chosen Name: Farhold**
+- Domain: **farhold.com** (confirmed available, along with .net, .org, .io)
+- Meaning: "Your hold in the far reaches of the 'Verse"
+- Short, memorable, evokes frontier/Rim worlds aesthetic
+- Works as both a noun ("the Farhold") and a place ("welcome to Farhold")
 
 ### Terminology Changes
 
 | Current | New | Context |
 |---------|-----|---------|
-| Cortex | **[New Name]** | App name (entry point to the Cortex) |
+| Cortex | **Farhold** | App name (entry point to the Cortex) |
 | Droplet | **Ping** | Individual message |
 | Ripple | **Burst** | Break out thread to new conversation |
 | Group | **Crew** | User groups |
