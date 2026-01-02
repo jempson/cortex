@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.20.2';
+const VERSION = '1.20.3';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -218,6 +218,16 @@ const stopFaviconFlash = () => {
 };
 
 // ============ STORAGE ============
+// Browser session timeout (24 hours for non-PWA browser sessions)
+const BROWSER_SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// Check if running as installed PWA (standalone mode)
+const isPWA = () => {
+  return window.matchMedia('(display-mode: standalone)').matches ||
+         window.navigator.standalone === true || // iOS Safari
+         document.referrer.includes('android-app://'); // Android TWA
+};
+
 const storage = {
   getToken: () => localStorage.getItem('cortex_token'),
   setToken: (token) => localStorage.setItem('cortex_token', token),
@@ -235,6 +245,24 @@ const storage = {
   setPushEnabled: (enabled) => localStorage.setItem('cortex_push_enabled', enabled ? 'true' : 'false'),
   getTheme: () => localStorage.getItem('cortex_theme'),
   setTheme: (theme) => localStorage.setItem('cortex_theme', theme),
+  // Session start time tracking for browser session timeout
+  getSessionStart: () => {
+    const start = localStorage.getItem('cortex_session_start');
+    return start ? parseInt(start, 10) : null;
+  },
+  setSessionStart: () => localStorage.setItem('cortex_session_start', Date.now().toString()),
+  removeSessionStart: () => localStorage.removeItem('cortex_session_start'),
+  // Check if browser session has expired (24 hours for non-PWA)
+  isSessionExpired: () => {
+    // PWA sessions don't expire based on time (they use device session)
+    if (isPWA()) return false;
+
+    const sessionStart = storage.getSessionStart();
+    if (!sessionStart) return false; // No session start = legacy session, let it continue
+
+    const elapsed = Date.now() - sessionStart;
+    return elapsed > BROWSER_SESSION_TIMEOUT_MS;
+  },
 };
 
 // ============ PUSH NOTIFICATION HELPERS ============
@@ -7055,7 +7083,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       // Reload wave to update unread status
       await loadWave(true);
       // Also refresh wave list to update unread counts
-      onWaveUpdate?.();
+      console.log('📋 Calling onWaveUpdate to refresh wave list...', { onWaveUpdate: typeof onWaveUpdate });
+      if (onWaveUpdate) {
+        onWaveUpdate();
+      } else {
+        console.warn('⚠️ onWaveUpdate is not defined!');
+      }
       // Clear flag after scroll restoration has time to complete
       setTimeout(() => {
         userActionInProgressRef.current = false;
@@ -8755,6 +8788,17 @@ const FocusView = ({
     }
   };
 
+  // Mark droplet as read when clicked
+  const handleMessageClick = async (messageId) => {
+    try {
+      await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
+      // Refresh to update UI
+      await fetchFreshData();
+    } catch (err) {
+      console.error('Failed to mark droplet as read:', err);
+    }
+  };
+
   const handleDeleteMessage = async (message) => {
     if (!confirm('Delete this droplet?')) return;
     try {
@@ -9048,7 +9092,7 @@ const FocusView = ({
             onToggleCollapse={toggleThreadCollapse}
             isMobile={isMobile}
             onReact={handleReaction}
-            onMessageClick={() => {}}
+            onMessageClick={handleMessageClick}
             participants={participants}
             contacts={contacts}
             onShowProfile={onShowProfile}
@@ -14939,8 +14983,15 @@ function MainApp({ shareDropletId }) {
   const showToastMsg = useCallback((message, type) => setToast({ message, type }), []);
 
   const loadWaves = useCallback(async () => {
+    console.log('🔄 loadWaves called, fetching waves...');
     try {
       const data = await fetchAPI(`/waves?archived=${showArchived}`);
+      console.log('🔄 loadWaves received', data.length, 'waves');
+      // Log unread counts for debugging
+      const wavesWithUnread = data.filter(w => w.unread_count > 0);
+      if (wavesWithUnread.length > 0) {
+        console.log('🔄 Waves with unread:', wavesWithUnread.map(w => `"${w.title}": ${w.unread_count}`).join(', '));
+      }
       setWaves(data);
       setApiConnected(true);
     } catch (err) {
@@ -14950,6 +15001,13 @@ function MainApp({ shareDropletId }) {
   }, [fetchAPI, showArchived]);
 
   const handleWSMessage = useCallback((data) => {
+    // Handle droplet read events - refresh wave list to update unread counts
+    if (data.type === 'droplet_read' || data.type === 'message_read') {
+      console.log(`📖 Droplet marked as read, refreshing wave list...`);
+      loadWaves();
+      return;
+    }
+
     // Handle both legacy (new_message) and new (new_droplet) event names
     if (data.type === 'new_message' || data.type === 'new_droplet' || data.type === 'message_edited' || data.type === 'droplet_edited' || data.type === 'message_deleted' || data.type === 'droplet_deleted' || data.type === 'wave_created' || data.type === 'wave_updated' || data.type === 'message_reaction' || data.type === 'droplet_reaction' || data.type === 'wave_invite_received' || data.type === 'wave_broadcast_received') {
       loadWaves();
@@ -15121,13 +15179,15 @@ function MainApp({ shareDropletId }) {
         setWaveNotifications(result.countsByWave || {});
       }).catch(e => console.error('Failed to update wave notifications:', e));
     } else if (data.type === 'unread_count_update') {
-      // Notification count changed - refresh wave notification badges
+      // Notification count changed - refresh wave notification badges and wave list
       console.log('🔔 Notification count updated');
       setNotificationRefreshTrigger(prev => prev + 1);
       // Reload wave notifications for updated badges
       fetchAPI('/notifications/by-wave').then(result => {
         setWaveNotifications(result.countsByWave || {});
       }).catch(e => console.error('Failed to update wave notifications:', e));
+      // Also refresh wave list to update unread counts
+      loadWaves();
     } else if (data.type === 'federation_request_received') {
       // New federation request received (admin only)
       console.log('📨 Federation request received:', data.request?.fromNodeName);
@@ -16105,6 +16165,15 @@ function AuthProvider({ children }) {
   const pendingPasswordRef = useRef(null);
 
   useEffect(() => {
+    // Check for browser session timeout (24 hours for non-PWA browser tabs)
+    if (token && storage.isSessionExpired()) {
+      console.log('⏰ Browser session expired (24 hour limit for non-PWA). Logging out...');
+      storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
+      setToken(null); setUser(null);
+      setLoading(false);
+      return;
+    }
+
     if (token) {
       fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.ok ? res.json() : Promise.reject())
@@ -16112,11 +16181,27 @@ function AuthProvider({ children }) {
           setUser(userData);
           storage.setUser(userData); // Save to localStorage
         })
-        .catch(() => { storage.removeToken(); storage.removeUser(); setToken(null); setUser(null); })
+        .catch(() => { storage.removeToken(); storage.removeUser(); storage.removeSessionStart(); setToken(null); setUser(null); })
         .finally(() => setLoading(false));
     } else {
       setLoading(false);
     }
+  }, [token]);
+
+  // Periodic session expiry check (every 5 minutes) for long-running tabs
+  useEffect(() => {
+    if (!token) return;
+
+    const checkExpiry = () => {
+      if (storage.isSessionExpired()) {
+        console.log('⏰ Browser session expired during use. Logging out...');
+        storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
+        setToken(null); setUser(null);
+      }
+    };
+
+    const interval = setInterval(checkExpiry, 5 * 60 * 1000); // Check every 5 minutes
+    return () => clearInterval(interval);
   }, [token]);
 
   // Get pending password for E2EE unlock (one-time read, clears after access)
@@ -16146,6 +16231,7 @@ function AuthProvider({ children }) {
     // Store password for E2EE unlock
     pendingPasswordRef.current = password;
     storage.setToken(data.token); storage.setUser(data.user);
+    storage.setSessionStart(); // Start browser session timer
     setToken(data.token); setUser(data.user);
     return { success: true };
   };
@@ -16158,6 +16244,7 @@ function AuthProvider({ children }) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'MFA verification failed');
     storage.setToken(data.token); storage.setUser(data.user);
+    storage.setSessionStart(); // Start browser session timer
     setToken(data.token); setUser(data.user);
     return { success: true };
   };
@@ -16172,6 +16259,7 @@ function AuthProvider({ children }) {
     // Store password for E2EE setup
     pendingPasswordRef.current = password;
     storage.setToken(data.token); storage.setUser(data.user);
+    storage.setSessionStart(); // Start browser session timer
     setToken(data.token); setUser(data.user);
   };
 
@@ -16189,7 +16277,7 @@ function AuthProvider({ children }) {
     }
     // Clear password and local storage
     pendingPasswordRef.current = null;
-    storage.removeToken(); storage.removeUser();
+    storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
     setToken(null); setUser(null);
   };
 
