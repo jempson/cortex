@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.20.1';
+const VERSION = '1.20.2';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -10794,8 +10794,8 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       if (isNaN(d.getTime())) return '';
       return d.toISOString().slice(0, 16);
     };
-    setFormStartTime(parseToLocalDatetime(alert.start_time));
-    setFormEndTime(parseToLocalDatetime(alert.end_time));
+    setFormStartTime(parseToLocalDatetime(alert.startTime));
+    setFormEndTime(parseToLocalDatetime(alert.endTime));
     setShowCreateModal(true);
   };
 
@@ -10857,8 +10857,8 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
 
   const getAlertStatus = (alert) => {
     const now = new Date();
-    const start = new Date(alert.start_time);
-    const end = new Date(alert.end_time);
+    const start = new Date(alert.startTime);
+    const end = new Date(alert.endTime);
     if (now < start) return { label: 'SCHEDULED', color: 'var(--accent-purple)' };
     if (now > end) return { label: 'EXPIRED', color: 'var(--text-muted)' };
     return { label: 'ACTIVE', color: 'var(--accent-green)' };
