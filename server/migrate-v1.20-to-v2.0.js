@@ -235,7 +235,7 @@ async function main() {
       fs.mkdirSync(BACKUP_DIR, { recursive: true });
     }
     const backupPath = path.join(BACKUP_DIR, `cortex-v1.20-${Date.now()}.db`);
-    fs.copyFileSync(DB_PATH, backupPath);
+    fs.copyFileSync(TARGET_DB_PATH, backupPath);
     log(`Backup created: ${backupPath}`, 'green');
   } else {
     log('Would create backup at: ' + path.join(BACKUP_DIR, 'cortex-v1.20-*.db'), 'yellow');
