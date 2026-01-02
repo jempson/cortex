@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.19.4
+// Farhold Service Worker v2.0.0
 // Includes: Push notifications, offline caching
-// v1.19.4: Improve E2EE unlock modal text
-const CACHE_NAME = 'cortex-v1.19.4';
+// v2.0.0: Farhold nomenclature overhaul (formerly Cortex)
+const CACHE_NAME = 'farhold-v2.0.0';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,7 @@ const STATIC_ASSETS = [
 
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.19.4...');
+  console.log('[SW] Installing service worker v2.0.0...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');
@@ -44,7 +44,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => name.startsWith('cortex-') && name !== CACHE_NAME)
+          .filter((name) => (name.startsWith('farhold-') || name.startsWith('cortex-')) && name !== CACHE_NAME)
           .map((name) => {
             console.log('[SW] Deleting old cache:', name);
             return caches.delete(name);

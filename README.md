@@ -1,6 +1,17 @@
-# CORTEX - Secure Wave Communications
+# FARHOLD - Secure Wave Communications
 
-**Version 1.19.4** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 2.0.0** | A privacy-first, federated communication platform inspired by Google Wave.
+
+> *"Can't stop the signal."* — Farhold (formerly Farhold)
+
+## Terminology
+
+| Term | Description |
+|------|-------------|
+| **Wave** | A conversation container |
+| **Ping** | An individual message (formerly "ping") |
+| **Burst** | Breaking a thread into a new wave (formerly "ripple") |
+| **Crew** | A user group (formerly "group") |
 
 ## Quick Start
 
@@ -36,14 +47,14 @@ Demo accounts (password: `demo123`):
 ## Features
 
 ### Core Features
-- **Waves** - Conversation containers where droplets create discussions
-- **Droplets** - Threaded messages with Focus View and Ripple capabilities
+- **Waves** - Conversation containers where pings create discussions
+- **Pings** - Threaded messages with Focus View and Burst capabilities
 - **Real-Time** - WebSocket-powered instant messaging
-- **Groups & Contacts** - Organize connections with request/invitation workflows
-- **Search** - Full-text search across all droplets (SQLite FTS)
+- **Crews & Contacts** - Organize connections with request/invitation workflows
+- **Search** - Full-text search across all pings (SQLite FTS)
 - **PWA** - Installable app with offline support and push notifications
 - **E2EE** - End-to-end encryption for private conversations (v1.19.0)
-- **Federation** - Connect multiple Cortex servers to share waves (v1.13.0)
+- **Federation** - Connect multiple Farhold servers to share waves (v1.13.0)
 - **Crawl Bar** - Live scrolling ticker with stocks, weather, and news (v1.15.0)
 
 ### End-to-End Encryption (v1.19.0)
@@ -56,7 +67,7 @@ Demo accounts (password: `demo123`):
 - **Web Crypto API** - Native browser cryptography, no external libraries
 
 ### Federation (v1.13.0)
-- **Server-to-Server** - Multiple Cortex instances can exchange droplets
+- **Server-to-Server** - Multiple Farhold instances can exchange pings
 - **Federated Users** - Add `@user@other-server.com` as wave participants
 - **HTTP Signatures** - RSA-SHA256 signed requests for server authentication
 - **Trust Model** - Manual allowlist of trusted federation partners
@@ -73,9 +84,9 @@ Demo accounts (password: `demo123`):
 - **Admin Config** - Set stock symbols, default location, refresh intervals
 - **IP Geolocation** - Automatic location detection with user override
 
-### Droplets Architecture (v1.10.0)
-- **Focus View** - View any droplet with replies as its own wave-like context
-- **Ripple** - Spin off deep threads into new waves while maintaining links
+### Pings Architecture (v2.0.0, formerly "Pings" v1.10.0)
+- **Focus View** - View any ping with replies as its own wave-like context
+- **Burst** - Spin off deep threads into new waves while maintaining links
 - **Threading Depth Limit** - 3-level inline limit, unlimited in Focus View
 - **Breadcrumb Navigation** - Navigate focus stack with clickable path
 
@@ -117,7 +128,7 @@ cortex/
 │   ├── .env                   # Environment config
 │   └── data/                  # Data storage
 ├── client/
-│   ├── CortexApp.jsx          # Main React app
+│   ├── FarholdApp.jsx          # Main React app
 │   ├── public/
 │   │   ├── sw.js              # Service worker
 │   │   └── manifest.json      # PWA manifest
@@ -189,16 +200,16 @@ RATE_LIMIT_CRAWL_MAX=60                  # Per minute (default)
 | POST | `/api/auth/login` | Login (returns JWT) |
 | GET | `/api/auth/me` | Current user info |
 
-### Waves & Droplets
+### Waves & Pings
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/waves` | List waves |
 | POST | `/api/waves` | Create wave |
-| GET | `/api/waves/:id` | Get wave with droplets |
-| POST | `/api/waves/:id/droplets` | Send droplet |
-| PUT | `/api/droplets/:id` | Edit droplet |
-| DELETE | `/api/droplets/:id` | Delete droplet |
-| POST | `/api/droplets/:id/ripple` | Ripple to new wave |
+| GET | `/api/waves/:id` | Get wave with pings |
+| POST | `/api/waves/:id/pings` | Send ping |
+| PUT | `/api/pings/:id` | Edit ping |
+| DELETE | `/api/pings/:id` | Delete ping |
+| POST | `/api/pings/:id/ripple` | Ripple to new wave |
 
 ### Contacts & Groups
 | Method | Endpoint | Description |
@@ -269,7 +280,7 @@ Restart your server. You should see this in the logs:
 
 ## Enabling Federation
 
-Federation allows multiple Cortex servers to exchange waves and droplets. Users can participate in waves hosted on other servers.
+Federation allows multiple Farhold servers to exchange waves and pings. Users can participate in waves hosted on other servers.
 
 ### Step 1: Enable Federation
 
@@ -297,7 +308,7 @@ Restart your server. You should see:
 
 ### Step 4: Add Trusted Nodes
 
-To connect with another Cortex server:
+To connect with another Farhold server:
 
 1. In the Federation panel, click **"Add Node"**
 2. Enter the other server's:
@@ -336,7 +347,7 @@ Email service is required for password recovery and email-based MFA. Without it,
 
 ### Supported Providers
 
-Cortex supports three email providers:
+Farhold supports three email providers:
 - **SMTP** - Any standard SMTP server (Gmail, Outlook, custom)
 - **SendGrid** - SendGrid API
 - **Mailgun** - Mailgun API
@@ -400,7 +411,7 @@ If email is not configured, you'll see:
 
 ## Multi-Factor Authentication (MFA)
 
-Cortex supports two MFA methods:
+Farhold supports two MFA methods:
 - **TOTP** - Time-based codes from authenticator apps (Google Authenticator, Authy, etc.)
 - **Email** - 6-digit codes sent to user's email address
 
@@ -554,7 +565,7 @@ Add to your `server/.env`:
 GNEWS_API_KEY=your-gnews-api-key
 ```
 
-**Tip:** Configure both NewsAPI and GNews - Cortex will use NewsAPI first and fall back to GNews if it fails.
+**Tip:** Configure both NewsAPI and GNews - Farhold will use NewsAPI first and fall back to GNews if it fails.
 
 ### Step 5: Restart Server
 
@@ -589,7 +600,7 @@ Users can customize their crawl bar experience in **Profile Settings** → **Cra
 
 ### Location Detection
 
-Cortex automatically detects user location using IP geolocation (ip-api.com):
+Farhold automatically detects user location using IP geolocation (ip-api.com):
 
 1. **User Override** - If user sets a location in preferences, that's used
 2. **IP Geolocation** - Falls back to detecting location from IP address
@@ -729,7 +740,7 @@ pm2 startup
 pm2 save
 ```
 
-This ensures Cortex automatically restarts after server reboots.
+This ensures Farhold automatically restarts after server reboots.
 
 #### Serving the Client
 
@@ -817,7 +828,7 @@ server {
 ### v1.19.0 (December 2025)
 - **End-to-End Encryption**: Zero-knowledge encryption for all waves
   - ECDH P-384 keypairs for each user, protected by passphrase
-  - AES-256-GCM encryption for droplet content with unique nonces
+  - AES-256-GCM encryption for ping content with unique nonces
   - Per-wave symmetric keys distributed via ECDH key exchange
   - Key rotation when participants are removed from waves
   - Optional recovery passphrase for key backup
@@ -835,7 +846,7 @@ server {
 - **GDPR Compliance**: User data export and account deletion
   - Download all personal data as JSON
   - Permanently delete account with password confirmation
-  - Droplets preserved as "[Deleted User]", waves transferred
+  - Pings preserved as "[Deleted User]", waves transferred
 - **Security Hardening**:
   - HSTS headers enabled (1-year max-age)
   - Optional HTTPS enforcement (`ENFORCE_HTTPS=true`)
@@ -849,11 +860,11 @@ server {
 - **v1.17.4**: PWA app badge, tab title unread count, favicon flashing
 - **v1.17.3**: Collapsible sections, password confirmation, wave rename fix
 - **v1.17.2**: @ mention autocomplete, styled mentions, alert expiration fix
-- **v1.17.1**: Compact droplet display, inline action buttons, reduced nesting
-- **v1.17.0**: Share public droplets with Open Graph meta tags
+- **v1.17.1**: Compact ping display, inline action buttons, reduced nesting
+- **v1.17.0**: Share public pings with Open Graph meta tags
 
 ### v1.16.0 (December 2025)
-- **Alert Droplets**: Admin-created system alerts in crawl bar
+- **Alert Pings**: Admin-created system alerts in crawl bar
   - Priority levels: Critical, Warning, Info
   - Scheduled start/end times
   - Per-user dismissal tracking
@@ -894,7 +905,7 @@ server {
   - HTTP Signature authentication (RSA-SHA256) between servers
   - Federated user resolution (`@user@server.com` format)
   - Wave invitations propagate to remote servers
-  - Droplets sync in real-time across federated nodes
+  - Pings sync in real-time across federated nodes
   - Message queue with exponential backoff retries
 - **Admin Federation Panel**: Manage server identity and trusted nodes
   - Generate/view server RSA keypair
@@ -905,7 +916,7 @@ server {
   - `server_identity` - Server's RSA keypair
   - `federation_nodes` - Trusted server allowlist
   - `remote_users` - Cached profiles from other servers
-  - `remote_droplets` - Cached droplets from federated waves
+  - `remote_pings` - Cached pings from federated waves
   - `wave_federation` - Wave-to-node relationships
   - `federation_queue` - Outbound message queue
   - `federation_inbox_log` - Inbound message deduplication
@@ -933,7 +944,7 @@ server {
   - Real-time WebSocket updates
 - **Enhanced Wave List Badges**: Color-coded notification indicators
   - Amber (@) for direct mentions
-  - Green (↩) for replies to your droplets
+  - Green (↩) for replies to your pings
   - Purple (◈) for ripple activity
   - Orange for general wave activity
 - **Notification Preferences**: Per-type control in Profile Settings
@@ -942,20 +953,20 @@ server {
 - **API Deprecation**: Legacy `/api/messages/*` endpoints now return deprecation headers
   - Migration guide in docs/API.md
   - Sunset date: March 1, 2026
-- **Component Cleanup**: Internal terminology alignment (ThreadedMessage → Droplet)
-- **Auto-Focus Preference**: Optional auto-enter Focus View on droplet click
+- **Component Cleanup**: Internal terminology alignment (ThreadedMessage → Ping)
+- **Auto-Focus Preference**: Optional auto-enter Focus View on ping click
 - **Bug Fixes**:
-  - Notification badges now clear when droplets are read
+  - Notification badges now clear when pings are read
   - Push notification re-enable after disabling
 
 ### v1.10.0 (December 2025)
-- **Droplets Architecture**: Messages renamed to Droplets throughout
-- **Focus View**: View any droplet with replies as its own wave-like context
-  - Desktop: "⤢ FOCUS" button on droplets with children
-  - Mobile: Tap droplet content, swipe right to go back
+- **Pings Architecture**: Messages renamed to Pings throughout
+- **Focus View**: View any ping with replies as its own wave-like context
+  - Desktop: "⤢ FOCUS" button on pings with children
+  - Mobile: Tap ping content, swipe right to go back
   - Breadcrumb navigation with clickable path items
-- **Ripple System**: Spin off droplet threads into new waves
-  - "◈ RIPPLE" button creates new wave from droplet tree
+- **Ripple System**: Spin off ping threads into new waves
+  - "◈ RIPPLE" button creates new wave from ping tree
   - Link card shows "Rippled to wave..." in original
   - Nested ripple tracking for lineage
 - **Threading Depth Limit**: 3-level inline limit in WaveView

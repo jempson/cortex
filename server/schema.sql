@@ -1,5 +1,10 @@
--- Cortex SQLite Database Schema
--- Version 1.20.0
+-- Farhold SQLite Database Schema
+-- Version 2.0.0
+--
+-- Terminology:
+--   pings (formerly droplets) - individual messages
+--   crews (formerly groups) - user groups
+--   burst (formerly ripple) - break-out threads
 
 -- ============ Users ============
 CREATE TABLE IF NOT EXISTS users (
@@ -46,14 +51,14 @@ CREATE TABLE IF NOT EXISTS waves (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     privacy TEXT NOT NULL DEFAULT 'private',
-    group_id TEXT REFERENCES groups(id) ON DELETE SET NULL,
+    crew_id TEXT REFERENCES crews(id) ON DELETE SET NULL,
     created_by TEXT NOT NULL REFERENCES users(id),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    -- Break-out tracking fields
-    root_droplet_id TEXT REFERENCES droplets(id) ON DELETE SET NULL,
+    -- Burst (break-out) tracking fields
+    root_ping_id TEXT REFERENCES pings(id) ON DELETE SET NULL,
     broken_out_from TEXT REFERENCES waves(id) ON DELETE SET NULL,
-    -- JSON array storing the lineage: [{"wave_id":"...", "droplet_id":"...", "title":"..."}]
+    -- JSON array storing the lineage: [{"wave_id":"...", "ping_id":"...", "title":"..."}]
     breakout_chain TEXT,
     -- Federation fields (v1.13.0)
     federation_state TEXT DEFAULT 'local',  -- local, origin, participant
@@ -73,11 +78,11 @@ CREATE TABLE IF NOT EXISTS wave_participants (
     PRIMARY KEY (wave_id, user_id)
 );
 
--- ============ Droplets (formerly Messages) ============
-CREATE TABLE IF NOT EXISTS droplets (
+-- ============ Pings (formerly Droplets/Messages) ============
+CREATE TABLE IF NOT EXISTS pings (
     id TEXT PRIMARY KEY,
     wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
-    parent_id TEXT REFERENCES droplets(id) ON DELETE SET NULL,
+    parent_id TEXT REFERENCES pings(id) ON DELETE SET NULL,
     author_id TEXT NOT NULL REFERENCES users(id),
     content TEXT NOT NULL,
     privacy TEXT DEFAULT 'private',
@@ -88,7 +93,7 @@ CREATE TABLE IF NOT EXISTS droplets (
     deleted_at TEXT,
     -- Reactions stored as JSON: {"emoji": ["userId1", "userId2"]}
     reactions TEXT DEFAULT '{}',
-    -- Break-out tracking fields
+    -- Burst (break-out) tracking fields
     broken_out_to TEXT REFERENCES waves(id) ON DELETE SET NULL,
     original_wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL,
     -- E2EE fields (v1.19.0)
@@ -97,25 +102,25 @@ CREATE TABLE IF NOT EXISTS droplets (
     key_version INTEGER DEFAULT 1          -- Wave key version used for encryption
 );
 
--- Droplet read tracking (many-to-many)
-CREATE TABLE IF NOT EXISTS droplet_read_by (
-    droplet_id TEXT NOT NULL REFERENCES droplets(id) ON DELETE CASCADE,
+-- Ping read tracking (many-to-many)
+CREATE TABLE IF NOT EXISTS ping_read_by (
+    ping_id TEXT NOT NULL REFERENCES pings(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     read_at TEXT NOT NULL,
-    PRIMARY KEY (droplet_id, user_id)
+    PRIMARY KEY (ping_id, user_id)
 );
 
--- Droplet edit history
-CREATE TABLE IF NOT EXISTS droplet_history (
+-- Ping edit history
+CREATE TABLE IF NOT EXISTS ping_history (
     id TEXT PRIMARY KEY,
-    droplet_id TEXT NOT NULL REFERENCES droplets(id) ON DELETE CASCADE,
+    ping_id TEXT NOT NULL REFERENCES pings(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     version INTEGER NOT NULL,
     edited_at TEXT NOT NULL
 );
 
--- ============ Groups ============
-CREATE TABLE IF NOT EXISTS groups (
+-- ============ Crews (formerly Groups) ============
+CREATE TABLE IF NOT EXISTS crews (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
@@ -123,13 +128,13 @@ CREATE TABLE IF NOT EXISTS groups (
     created_at TEXT NOT NULL
 );
 
--- Group members
-CREATE TABLE IF NOT EXISTS group_members (
-    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+-- Crew members (formerly group_members)
+CREATE TABLE IF NOT EXISTS crew_members (
+    crew_id TEXT NOT NULL REFERENCES crews(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role TEXT NOT NULL DEFAULT 'member',
     joined_at TEXT NOT NULL,
-    PRIMARY KEY (group_id, user_id)
+    PRIMARY KEY (crew_id, user_id)
 );
 
 -- ============ Requests & Invitations ============
@@ -158,10 +163,10 @@ CREATE TABLE IF NOT EXISTS contact_requests (
     responded_at TEXT
 );
 
--- Group invitations
-CREATE TABLE IF NOT EXISTS group_invitations (
+-- Crew invitations (formerly group_invitations)
+CREATE TABLE IF NOT EXISTS crew_invitations (
     id TEXT PRIMARY KEY,
-    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    crew_id TEXT NOT NULL REFERENCES crews(id) ON DELETE CASCADE,
     invited_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     invited_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     message TEXT,
@@ -389,9 +394,9 @@ CREATE INDEX IF NOT EXISTS idx_contacts_contact ON contacts(contact_id);
 -- Wave lookups
 CREATE INDEX IF NOT EXISTS idx_waves_created_by ON waves(created_by);
 CREATE INDEX IF NOT EXISTS idx_waves_privacy ON waves(privacy);
-CREATE INDEX IF NOT EXISTS idx_waves_group ON waves(group_id);
+CREATE INDEX IF NOT EXISTS idx_waves_crew ON waves(crew_id);
 CREATE INDEX IF NOT EXISTS idx_waves_updated ON waves(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_waves_root_droplet ON waves(root_droplet_id);
+CREATE INDEX IF NOT EXISTS idx_waves_root_ping ON waves(root_ping_id);
 CREATE INDEX IF NOT EXISTS idx_waves_broken_out_from ON waves(broken_out_from);
 
 -- Wave participant lookups
@@ -399,28 +404,28 @@ CREATE INDEX IF NOT EXISTS idx_wave_participants_user ON wave_participants(user_
 CREATE INDEX IF NOT EXISTS idx_wave_participants_wave ON wave_participants(wave_id);
 CREATE INDEX IF NOT EXISTS idx_wave_participants_archived ON wave_participants(user_id, archived);
 
--- Droplet lookups
-CREATE INDEX IF NOT EXISTS idx_droplets_wave ON droplets(wave_id);
-CREATE INDEX IF NOT EXISTS idx_droplets_author ON droplets(author_id);
-CREATE INDEX IF NOT EXISTS idx_droplets_parent ON droplets(parent_id);
-CREATE INDEX IF NOT EXISTS idx_droplets_created ON droplets(wave_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_droplets_deleted ON droplets(deleted);
-CREATE INDEX IF NOT EXISTS idx_droplets_broken_out ON droplets(broken_out_to);
-CREATE INDEX IF NOT EXISTS idx_droplets_original_wave ON droplets(original_wave_id);
+-- Ping lookups (formerly droplet lookups)
+CREATE INDEX IF NOT EXISTS idx_pings_wave ON pings(wave_id);
+CREATE INDEX IF NOT EXISTS idx_pings_author ON pings(author_id);
+CREATE INDEX IF NOT EXISTS idx_pings_parent ON pings(parent_id);
+CREATE INDEX IF NOT EXISTS idx_pings_created ON pings(wave_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_pings_deleted ON pings(deleted);
+CREATE INDEX IF NOT EXISTS idx_pings_broken_out ON pings(broken_out_to);
+CREATE INDEX IF NOT EXISTS idx_pings_original_wave ON pings(original_wave_id);
 
--- Droplet read tracking
-CREATE INDEX IF NOT EXISTS idx_droplet_read_user ON droplet_read_by(user_id);
-CREATE INDEX IF NOT EXISTS idx_droplet_read_droplet ON droplet_read_by(droplet_id);
+-- Ping read tracking (formerly droplet read tracking)
+CREATE INDEX IF NOT EXISTS idx_ping_read_user ON ping_read_by(user_id);
+CREATE INDEX IF NOT EXISTS idx_ping_read_ping ON ping_read_by(ping_id);
 
--- Droplet history
-CREATE INDEX IF NOT EXISTS idx_droplet_history_droplet ON droplet_history(droplet_id);
+-- Ping history (formerly droplet history)
+CREATE INDEX IF NOT EXISTS idx_ping_history_ping ON ping_history(ping_id);
 
--- Group lookups
-CREATE INDEX IF NOT EXISTS idx_groups_created_by ON groups(created_by);
+-- Crew lookups (formerly group lookups)
+CREATE INDEX IF NOT EXISTS idx_crews_created_by ON crews(created_by);
 
--- Group member lookups
-CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
-CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id);
+-- Crew member lookups (formerly group member lookups)
+CREATE INDEX IF NOT EXISTS idx_crew_members_user ON crew_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_crew_members_crew ON crew_members(crew_id);
 
 -- Handle request lookups
 CREATE INDEX IF NOT EXISTS idx_handle_requests_user ON handle_requests(user_id);
@@ -431,11 +436,11 @@ CREATE INDEX IF NOT EXISTS idx_contact_requests_from ON contact_requests(from_us
 CREATE INDEX IF NOT EXISTS idx_contact_requests_to ON contact_requests(to_user_id);
 CREATE INDEX IF NOT EXISTS idx_contact_requests_status ON contact_requests(status);
 
--- Group invitation lookups
-CREATE INDEX IF NOT EXISTS idx_group_invitations_group ON group_invitations(group_id);
-CREATE INDEX IF NOT EXISTS idx_group_invitations_inviter ON group_invitations(invited_by);
-CREATE INDEX IF NOT EXISTS idx_group_invitations_invitee ON group_invitations(invited_user_id);
-CREATE INDEX IF NOT EXISTS idx_group_invitations_status ON group_invitations(status);
+-- Crew invitation lookups (formerly group invitation lookups)
+CREATE INDEX IF NOT EXISTS idx_crew_invitations_crew ON crew_invitations(crew_id);
+CREATE INDEX IF NOT EXISTS idx_crew_invitations_inviter ON crew_invitations(invited_by);
+CREATE INDEX IF NOT EXISTS idx_crew_invitations_invitee ON crew_invitations(invited_user_id);
+CREATE INDEX IF NOT EXISTS idx_crew_invitations_status ON crew_invitations(status);
 
 -- Moderation lookups
 CREATE INDEX IF NOT EXISTS idx_blocks_user ON blocks(user_id);
@@ -464,9 +469,9 @@ CREATE INDEX IF NOT EXISTS idx_moderation_log_created ON moderation_log(created_
 CREATE TABLE IF NOT EXISTS notifications (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,  -- direct_mention, reply, wave_activity, ripple, system
+    type TEXT NOT NULL,  -- direct_mention, reply, wave_activity, burst, system
     wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL,
-    droplet_id TEXT REFERENCES droplets(id) ON DELETE SET NULL,
+    ping_id TEXT REFERENCES pings(id) ON DELETE SET NULL,
     actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
     body TEXT,
@@ -476,7 +481,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     push_sent INTEGER DEFAULT 0,
     created_at TEXT NOT NULL,
     read_at TEXT,
-    group_key TEXT  -- For collapsing similar notifications
+    crew_key TEXT  -- For collapsing similar notifications
 );
 
 -- Notification preferences per wave
@@ -513,8 +518,8 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, re
 CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_wave ON notifications(wave_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_droplet ON notifications(droplet_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_group_key ON notifications(group_key);
+CREATE INDEX IF NOT EXISTS idx_notifications_ping ON notifications(ping_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_crew_key ON notifications(crew_key);
 
 -- Wave notification settings lookups
 CREATE INDEX IF NOT EXISTS idx_wave_notification_settings_user ON wave_notification_settings(user_id);
@@ -585,8 +590,8 @@ CREATE TABLE IF NOT EXISTS wave_federation (
     PRIMARY KEY (wave_id, node_name)
 );
 
--- Cached droplets from federated servers
-CREATE TABLE IF NOT EXISTS remote_droplets (
+-- Cached pings from federated servers (formerly remote_droplets)
+CREATE TABLE IF NOT EXISTS remote_pings (
     id TEXT PRIMARY KEY,
     wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
     origin_wave_id TEXT NOT NULL,
@@ -635,9 +640,9 @@ CREATE INDEX IF NOT EXISTS idx_remote_users_node ON remote_users(node_name);
 CREATE INDEX IF NOT EXISTS idx_remote_users_handle ON remote_users(node_name, handle);
 CREATE INDEX IF NOT EXISTS idx_wave_federation_wave ON wave_federation(wave_id);
 CREATE INDEX IF NOT EXISTS idx_wave_federation_node ON wave_federation(node_name);
-CREATE INDEX IF NOT EXISTS idx_remote_droplets_wave ON remote_droplets(wave_id);
-CREATE INDEX IF NOT EXISTS idx_remote_droplets_origin ON remote_droplets(origin_node, origin_wave_id);
-CREATE INDEX IF NOT EXISTS idx_remote_droplets_author ON remote_droplets(author_node, author_id);
+CREATE INDEX IF NOT EXISTS idx_remote_pings_wave ON remote_pings(wave_id);
+CREATE INDEX IF NOT EXISTS idx_remote_pings_origin ON remote_pings(origin_node, origin_wave_id);
+CREATE INDEX IF NOT EXISTS idx_remote_pings_author ON remote_pings(author_node, author_id);
 CREATE INDEX IF NOT EXISTS idx_federation_queue_status ON federation_queue(status, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_federation_queue_node ON federation_queue(target_node);
 CREATE INDEX IF NOT EXISTS idx_federation_inbox_source ON federation_inbox_log(source_node);
@@ -742,29 +747,29 @@ CREATE INDEX IF NOT EXISTS idx_alert_dismissals_user ON alert_dismissals(user_id
 
 -- ============ Full-Text Search ============
 
--- FTS5 virtual table for droplet content search
-CREATE VIRTUAL TABLE IF NOT EXISTS droplets_fts USING fts5(
+-- FTS5 virtual table for ping content search (formerly droplets_fts)
+CREATE VIRTUAL TABLE IF NOT EXISTS pings_fts USING fts5(
     id UNINDEXED,
     content,
-    content='droplets',
+    content='pings',
     content_rowid='rowid'
 );
 
--- Triggers to keep FTS table in sync with droplets table
+-- Triggers to keep FTS table in sync with pings table
 -- Note: These triggers use external content table, so we need to handle inserts/updates/deletes
 
 -- After INSERT trigger
-CREATE TRIGGER IF NOT EXISTS droplets_fts_insert AFTER INSERT ON droplets BEGIN
-    INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+CREATE TRIGGER IF NOT EXISTS pings_fts_insert AFTER INSERT ON pings BEGIN
+    INSERT INTO pings_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
 END;
 
 -- After DELETE trigger
-CREATE TRIGGER IF NOT EXISTS droplets_fts_delete AFTER DELETE ON droplets BEGIN
-    INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+CREATE TRIGGER IF NOT EXISTS pings_fts_delete AFTER DELETE ON pings BEGIN
+    INSERT INTO pings_fts(pings_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
 END;
 
 -- After UPDATE trigger
-CREATE TRIGGER IF NOT EXISTS droplets_fts_update AFTER UPDATE ON droplets BEGIN
-    INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
-    INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+CREATE TRIGGER IF NOT EXISTS pings_fts_update AFTER UPDATE ON pings BEGIN
+    INSERT INTO pings_fts(pings_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+    INSERT INTO pings_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
 END;

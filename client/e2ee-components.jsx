@@ -253,7 +253,7 @@ export function E2EESetupModal({ onSetup, onSkip, isLoading }) {
                 opacity: acknowledged ? 1 : 0.5
               }}
             >
-              Continue to Cortex
+              Continue to Farhold
             </button>
           </>
         )}
@@ -372,7 +372,7 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
               <>
                 <div style={{ backgroundColor: 'var(--overlay-amber)', padding: '12px', borderRadius: '4px', marginBottom: '16px', border: '1px solid var(--accent-amber)' }}>
                   <p style={{ color: 'var(--accent-amber)', fontSize: '12px', margin: 0 }}>
-                    <strong>System Update:</strong> Cortex now uses your login password for encryption.
+                    <strong>System Update:</strong> Farhold now uses your login password for encryption.
                     Since you set up E2EE before this change, please enter your <strong>original encryption passphrase</strong> to unlock.
                   </p>
                 </div>

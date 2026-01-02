@@ -1,7 +1,7 @@
 {
-  "name": "cortex-server",
-  "version": "1.20.3",
-  "description": "Cortex - Privacy-First Federated Communication Platform",
+  "name": "farhold-server",
+  "version": "2.0.0",
+  "description": "Farhold - Privacy-First Federated Communication Platform (formerly Cortex)",
   "type": "module",
   "scripts": {
     "start": "node server.js",

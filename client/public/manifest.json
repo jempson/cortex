@@ -1,6 +1,6 @@
 {
-  "name": "Cortex - Secure Wave Communications",
-  "short_name": "Cortex",
+  "name": "Farhold - Secure Wave Communications",
+  "short_name": "Farhold",
   "description": "Privacy-first federated communication platform inspired by Google Wave",
   "start_url": "/",
   "display": "standalone",
