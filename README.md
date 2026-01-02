@@ -2,14 +2,14 @@
 
 **Version 2.0.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
-> *"Can't stop the signal."* — Farhold (formerly Farhold)
+> *"Can't stop the signal."* — Farhold (formerly Cortex)
 
 ## Terminology
 
 | Term | Description |
 |------|-------------|
 | **Wave** | A conversation container |
-| **Ping** | An individual message (formerly "ping") |
+| **Ping** | An individual message (formerly "droplet") |
 | **Burst** | Breaking a thread into a new wave (formerly "ripple") |
 | **Crew** | A user group (formerly "group") |
 
@@ -84,7 +84,7 @@ Demo accounts (password: `demo123`):
 - **Admin Config** - Set stock symbols, default location, refresh intervals
 - **IP Geolocation** - Automatic location detection with user override
 
-### Pings Architecture (v2.0.0, formerly "Pings" v1.10.0)
+### Pings Architecture (v2.0.0, formerly "Droplets" v1.10.0)
 - **Focus View** - View any ping with replies as its own wave-like context
 - **Burst** - Spin off deep threads into new waves while maintaining links
 - **Threading Depth Limit** - 3-level inline limit, unlimited in Focus View
@@ -120,7 +120,7 @@ Demo accounts (password: `demo123`):
 ## Project Structure
 
 ```
-cortex/
+farhold/
 ├── server/
 │   ├── server.js              # Express + WebSocket server
 │   ├── database-sqlite.js     # SQLite database (optional)
@@ -128,7 +128,7 @@ cortex/
 │   ├── .env                   # Environment config
 │   └── data/                  # Data storage
 ├── client/
-│   ├── FarholdApp.jsx          # Main React app
+│   ├── FarholdApp.jsx         # Main React app
 │   ├── public/
 │   │   ├── sw.js              # Service worker
 │   │   └── manifest.json      # PWA manifest
@@ -160,7 +160,7 @@ VAPID_EMAIL=mailto:admin@example.com
 
 # Federation (optional) - see "Enabling Federation" below
 FEDERATION_ENABLED=false           # Enable server-to-server federation
-FEDERATION_NODE_NAME=cortex.example.com  # Your server's federation name
+FEDERATION_NODE_NAME=farhold.example.com  # Your server's federation name
 
 # Email Service (optional) - see "Enabling Email Service" below
 EMAIL_PROVIDER=smtp                # smtp, sendgrid, or mailgun
@@ -209,7 +209,7 @@ RATE_LIMIT_CRAWL_MAX=60                  # Per minute (default)
 | POST | `/api/waves/:id/pings` | Send ping |
 | PUT | `/api/pings/:id` | Edit ping |
 | DELETE | `/api/pings/:id` | Delete ping |
-| POST | `/api/pings/:id/ripple` | Ripple to new wave |
+| POST | `/api/pings/:id/burst` | Burst to new wave |
 
 ### Contacts & Groups
 | Method | Endpoint | Description |
@@ -288,14 +288,14 @@ Add to your `server/.env` file:
 
 ```bash
 FEDERATION_ENABLED=true
-FEDERATION_NODE_NAME=cortex.example.com  # Your server's public hostname
+FEDERATION_NODE_NAME=farhold.example.com  # Your server's public hostname
 ```
 
 ### Step 2: Restart Server
 
 Restart your server. You should see:
 ```
-🌐 Federation enabled as: cortex.example.com
+🌐 Federation enabled as: farhold.example.com
 📤 Federation queue processor started (30s interval)
 ```
 
@@ -312,8 +312,8 @@ To connect with another Farhold server:
 
 1. In the Federation panel, click **"Add Node"**
 2. Enter the other server's:
-   - **Node Name**: e.g., `other-cortex.example.com`
-   - **Base URL**: e.g., `https://other-cortex.example.com`
+   - **Node Name**: e.g., `other-farhold.example.com`
+   - **Base URL**: e.g., `https://other-farhold.example.com`
 3. Click **"Initiate Handshake"** to exchange public keys
 4. The other server's admin must also add your server
 
@@ -665,10 +665,10 @@ npm install -g pm2
 cd server
 
 # Start with PM2
-pm2 start server.js --name cortex
+pm2 start server.js --name farhold
 
 # Or with environment variables
-pm2 start server.js --name cortex --env production
+pm2 start server.js --name farhold --env production
 ```
 
 #### PM2 Ecosystem File (Recommended)
@@ -678,7 +678,7 @@ Create `ecosystem.config.js` in the project root:
 ```javascript
 module.exports = {
   apps: [{
-    name: 'cortex',
+    name: 'farhold',
     script: './server/server.js',
     instances: 1,              // Use 1 for WebSocket compatibility
     exec_mode: 'fork',         // Fork mode required for WebSocket
@@ -696,8 +696,8 @@ module.exports = {
     restart_delay: 1000,
     // Logging
     log_date_format: 'YYYY-MM-DD HH:mm:ss',
-    error_file: './logs/cortex-error.log',
-    out_file: './logs/cortex-out.log',
+    error_file: './logs/farhold-error.log',
+    out_file: './logs/farhold-out.log',
     merge_logs: true,
     // Watch (optional, for development)
     watch: false,
@@ -720,12 +720,12 @@ pm2 start ecosystem.config.js --env production
 
 ```bash
 pm2 list                    # List all processes
-pm2 logs cortex             # View logs (real-time)
-pm2 logs cortex --lines 100 # View last 100 lines
+pm2 logs farhold             # View logs (real-time)
+pm2 logs farhold --lines 100 # View last 100 lines
 pm2 monit                   # Terminal-based monitoring
-pm2 restart cortex          # Restart the server
-pm2 stop cortex             # Stop the server
-pm2 delete cortex           # Remove from PM2
+pm2 restart farhold          # Restart the server
+pm2 stop farhold             # Stop the server
+pm2 delete farhold           # Remove from PM2
 pm2 save                    # Save process list for startup
 pm2 startup                 # Generate startup script
 ```
@@ -753,7 +753,7 @@ npm run build
 
 Then either:
 1. **Nginx**: Serve `client/dist/` directly (recommended)
-2. **PM2 + serve**: `pm2 serve client/dist 3000 --name cortex-client --spa`
+2. **PM2 + serve**: `pm2 serve client/dist 3000 --name farhold-client --spa`
 
 ---
 
@@ -762,7 +762,7 @@ Then either:
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name cortex.example.com;
+    server_name farhold.example.com;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -939,13 +939,13 @@ server {
 
 ### v1.11.0 (December 2025)
 - **Notification System**: Comprehensive in-app notifications
-  - Notifications for @mentions, replies, wave activity, and ripples
+  - Notifications for @mentions, replies, wave activity, and bursts
   - Smart routing: notifications suppressed when viewing source wave
   - Real-time WebSocket updates
 - **Enhanced Wave List Badges**: Color-coded notification indicators
   - Amber (@) for direct mentions
   - Green (↩) for replies to your pings
-  - Purple (◈) for ripple activity
+  - Purple (◈) for burst activity
   - Orange for general wave activity
 - **Notification Preferences**: Per-type control in Profile Settings
   - Configure: always, app closed only, or never
@@ -965,14 +965,14 @@ server {
   - Desktop: "⤢ FOCUS" button on pings with children
   - Mobile: Tap ping content, swipe right to go back
   - Breadcrumb navigation with clickable path items
-- **Ripple System**: Spin off ping threads into new waves
-  - "◈ RIPPLE" button creates new wave from ping tree
-  - Link card shows "Rippled to wave..." in original
-  - Nested ripple tracking for lineage
+- **Burst System**: Spin off ping threads into new waves
+  - "◈ BURST" button creates new wave from ping tree
+  - Link card shows "Burst to wave..." in original
+  - Nested burst tracking for lineage
 - **Threading Depth Limit**: 3-level inline limit in WaveView
   - "FOCUS TO REPLY" button at depth limit
   - Focus View allows unlimited depth
-- **Database Schema**: New fields for ripple tracking
+- **Database Schema**: New fields for burst tracking
 - **Backward Compatibility**: Legacy `/messages` endpoints still work
 
 ### v1.9.0 (December 2025)
@@ -981,7 +981,7 @@ server {
 - **Report System**: Users can report content, admin dashboard for moderation
 - **Moderation Actions**: Warning system, audit log, content removal
 - **API Documentation**: Comprehensive docs/API.md with 70+ endpoints
-- Mobile header shows CORTEX logo with status indicators
+- Mobile header shows FARHOLD logo with status indicators
 
 ### v1.8.1 (December 2025)
 - Fixed video embeds (YouTube, Spotify, Vimeo)

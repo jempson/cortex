@@ -63,8 +63,8 @@ Format: `vMAJOR.MINOR.PATCH`
 
 Before committing:
 1. Rebuild client: `cd client && npm run build`
-2. Restart server: `pm2 restart cortex-api`
-3. Verify server starts without errors: `pm2 logs cortex-api --lines 20`
+2. Restart server: `pm2 restart farhold-api`
+3. Verify server starts without errors: `pm2 logs farhold-api --lines 20`
 4. Test affected functionality manually
 
 ### Documentation Requirements
@@ -145,9 +145,9 @@ npm run build            # Production build
 
 ### PM2 (Production)
 ```bash
-pm2 start server.js --name cortex-api --cwd /path/to/server
-pm2 restart cortex-api
-pm2 logs cortex-api --lines 50
+pm2 start server.js --name farhold-api --cwd /path/to/server
+pm2 restart farhold-api
+pm2 logs farhold-api --lines 50
 ```
 
 ---
@@ -160,7 +160,7 @@ Single-file Express server organized in sections (marked with `// ============`)
 - Configuration & environment variables
 - Security middleware (rate limiting, sanitization, helmet)
 - Database class (SQLite wrapper)
-- API routes by feature (auth, users, waves, droplets, etc.)
+- API routes by feature (auth, users, waves, pings, etc.)
 - WebSocket server for real-time events
 
 ### Client (`client/FarholdApp.jsx`)
@@ -176,7 +176,7 @@ Single-file React application:
 SQLite database with tables for:
 - users, user_sessions, user_encryption_keys
 - waves, wave_participants, wave_encryption_keys
-- droplets, droplet_read_by
+- pings, ping_read_by
 - groups, group_members, contacts
 - And more (see schema.sql)
 
@@ -184,7 +184,7 @@ SQLite database with tables for:
 
 - **Users**: UUID-based, with handles, profiles, E2EE keypairs
 - **Waves**: Conversation threads with privacy levels and participants
-- **Droplets**: Messages within waves, threaded with parent/child
+- **Pings**: Messages within waves, threaded with parent/child
 - **Groups**: User collections for group waves
 
 ### Role-Based Access Control (v1.20.0)
