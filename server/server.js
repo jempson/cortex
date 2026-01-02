@@ -983,7 +983,7 @@ async function fetchNewsFromRSS() {
     try {
       const response = await fetch(feedUrl, {
         signal: AbortSignal.timeout(5000),
-        headers: { 'User-Agent': 'Cortex/1.15.0' },
+        headers: { 'User-Agent': 'Farhold/2.0.0' },
       });
 
       if (!response.ok) continue;
@@ -1380,7 +1380,7 @@ class Database {
 
     // Demo waves with different privacy levels
     this.waves.waves = [
-      { id: 'wave-1', title: 'Welcome to Cortex', privacy: 'public', createdBy: 'user-mal', createdAt: now, updatedAt: now },
+      { id: 'wave-1', title: 'Welcome to Farhold', privacy: 'public', createdBy: 'user-mal', createdAt: now, updatedAt: now },
       { id: 'wave-2', title: 'Private Chat Test', privacy: 'private', createdBy: 'user-mal', createdAt: now, updatedAt: now },
       { id: 'wave-3', title: 'Crew Discussion', privacy: 'group', groupId: 'group-crew', createdBy: 'user-mal', createdAt: now, updatedAt: now },
       { id: 'wave-4', title: 'Zoe Private Wave', privacy: 'private', createdBy: 'user-zoe', createdAt: now, updatedAt: now },
@@ -1399,7 +1399,7 @@ class Database {
     ];
 
     this.droplets.droplets = [
-      { id: 'droplet-1', waveId: 'wave-1', parentId: null, authorId: 'user-mal', content: 'Welcome to Cortex! This is a public wave visible to everyone.', privacy: 'public', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
+      { id: 'droplet-1', waveId: 'wave-1', parentId: null, authorId: 'user-mal', content: 'Welcome to Farhold! This is a public wave visible to everyone.', privacy: 'public', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
       { id: 'droplet-2', waveId: 'wave-2', parentId: null, authorId: 'user-mal', content: 'This is a private wave for testing.', privacy: 'private', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
       { id: 'droplet-3', waveId: 'wave-3', parentId: null, authorId: 'user-mal', content: 'This is a group wave for the crew.', privacy: 'group', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
       { id: 'droplet-4', waveId: 'wave-4', parentId: null, authorId: 'user-zoe', content: 'Zoe\'s private wave.', privacy: 'private', version: 1, createdAt: now, editedAt: null, readBy: ['user-zoe'] },
@@ -4520,7 +4520,7 @@ app.post('/api/auth/mfa/totp/setup', authenticateToken, async (req, res) => {
     db.storePendingTotpSecret(req.user.userId, secret);
 
     // Generate otpauth URI for authenticator apps
-    const appName = 'Cortex';
+    const appName = 'Farhold';
     const otpauthUrl = authenticator.keyuri(user.handle, appName, secret);
 
     // Generate QR code as data URL
@@ -5811,7 +5811,7 @@ app.post('/api/push/test', authenticateToken, async (req, res) => {
   }
 
   const payload = JSON.stringify({
-    title: 'Cortex Test',
+    title: 'Farhold Test',
     body: 'Push notifications are working!',
     tag: 'test',
     url: '/'
@@ -7302,11 +7302,11 @@ app.get('/share/:dropletId', async (req, res) => {
     .replace(/<[^>]*>/g, '')
     .substring(0, 200);
 
-  const title = wave?.title || 'Cortex';
+  const title = wave?.title || 'Farhold';
   const authorName = author?.displayName || author?.display_name || 'Someone';
   const description = isPublic && plainContent
     ? `${authorName}: "${plainContent}${plainContent.length >= 200 ? '...' : ''}"`
-    : 'Join Cortex to view this droplet';
+    : 'Join Farhold to view this ping';
 
   // Server base URL for absolute paths
   const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
@@ -7320,19 +7320,19 @@ app.get('/share/:dropletId', async (req, res) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)} - Cortex</title>
+  <title>${escapeHtml(title)} - Farhold</title>
 
   <!-- Open Graph -->
   <meta property="og:type" content="article">
-  <meta property="og:title" content="${escapeHtml(title)} - Cortex">
+  <meta property="og:title" content="${escapeHtml(title)} - Farhold">
   <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:url" content="${shareUrl}">
   <meta property="og:image" content="${logoUrl}">
-  <meta property="og:site_name" content="Cortex">
+  <meta property="og:site_name" content="Farhold">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="${escapeHtml(title)} - Cortex">
+  <meta name="twitter:title" content="${escapeHtml(title)} - Farhold">
   <meta name="twitter:description" content="${escapeHtml(description)}">
   <meta name="twitter:image" content="${logoUrl}">
 
@@ -7362,7 +7362,7 @@ app.get('/share/:dropletId', async (req, res) => {
 </head>
 <body>
   <div class="container">
-    <p>Redirecting to Cortex...</p>
+    <p>Redirecting to Farhold...</p>
     <p><a href="/?share=${dropletId}">Click here if not redirected</a></p>
   </div>
 </body>
@@ -8642,7 +8642,7 @@ app.post('/api/admin/federation/nodes/:id/handshake', authenticateToken, async (
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
-        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+        'User-Agent': `Farhold/${ourIdentity.nodeName}`
       }
     });
     clearTimeout(timeout);
@@ -8744,7 +8744,7 @@ app.post('/api/admin/federation/request', authenticateToken, async (req, res) =>
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
-        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+        'User-Agent': `Farhold/${ourIdentity.nodeName}`
       }
     });
     clearTimeout(timeout);
@@ -9032,7 +9032,7 @@ app.post('/api/admin/federation/requests/:id/accept', authenticateToken, async (
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
-        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+        'User-Agent': `Farhold/${ourIdentity.nodeName}`
       }
     });
     clearTimeout(timeout);
@@ -11736,7 +11736,7 @@ app.post('/api/server/federation-request', publicFederationRequestLimiter, async
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
-        'User-Agent': `Cortex/${ourIdentity.nodeName}`
+        'User-Agent': `Farhold/${ourIdentity.nodeName}`
       }
     });
     clearTimeout(timeout);
@@ -11750,7 +11750,7 @@ app.post('/api/server/federation-request', publicFederationRequestLimiter, async
 
     const remoteIdentity = await response.json();
     if (!remoteIdentity.nodeName || !remoteIdentity.publicKey) {
-      return res.status(400).json({ error: 'Invalid response from remote server - is it a Cortex server?' });
+      return res.status(400).json({ error: 'Invalid response from remote server - is it a Farhold server?' });
     }
 
     // Check if already federated
@@ -11788,6 +11788,33 @@ app.post('/api/server/federation-request', publicFederationRequestLimiter, async
     res.status(400).json({ error: 'Could not connect to the specified server', details: error.message });
   }
 });
+
+// ============ Farhold v2.0.0 API Aliases ============
+// These aliases allow clients to use the new Farhold terminology while maintaining backward compatibility
+
+// /api/pings/* -> /api/droplets/* (pings = new name for droplets)
+app.use('/api/pings', (req, res, next) => {
+  req.url = req.originalUrl.replace('/api/pings', '/api/droplets');
+  next('route');
+});
+app.all('/api/pings', (req, res, next) => { req.url = '/api/droplets'; next('route'); });
+app.all('/api/pings/:id', (req, res, next) => { req.url = `/api/droplets/${req.params.id}`; next('route'); });
+app.all('/api/pings/:id/react', (req, res, next) => { req.url = `/api/droplets/${req.params.id}/react`; next('route'); });
+app.all('/api/pings/:id/read', (req, res, next) => { req.url = `/api/droplets/${req.params.id}/read`; next('route'); });
+app.all('/api/pings/:id/burst', (req, res, next) => { req.url = `/api/droplets/${req.params.id}/ripple`; next('route'); }); // burst = new name for ripple
+app.all('/api/pings/:id/ripple', (req, res, next) => { req.url = `/api/droplets/${req.params.id}/ripple`; next('route'); });
+
+// /api/crews/* -> /api/groups/* (crews = new name for groups)
+app.all('/api/crews', (req, res, next) => { req.url = '/api/groups'; next('route'); });
+app.all('/api/crews/invitations', (req, res, next) => { req.url = '/api/groups/invitations'; next('route'); });
+app.all('/api/crews/invitations/:id', (req, res, next) => { req.url = `/api/groups/invitations/${req.params.id}`; next('route'); });
+app.all('/api/crews/invitations/:id/accept', (req, res, next) => { req.url = `/api/groups/invitations/${req.params.id}/accept`; next('route'); });
+app.all('/api/crews/invitations/:id/decline', (req, res, next) => { req.url = `/api/groups/invitations/${req.params.id}/decline`; next('route'); });
+app.all('/api/crews/:id', (req, res, next) => { req.url = `/api/groups/${req.params.id}`; next('route'); });
+app.all('/api/crews/:id/invite', (req, res, next) => { req.url = `/api/groups/${req.params.id}/invite`; next('route'); });
+app.all('/api/crews/:id/invitations/sent', (req, res, next) => { req.url = `/api/groups/${req.params.id}/invitations/sent`; next('route'); });
+app.all('/api/crews/:id/members', (req, res, next) => { req.url = `/api/groups/${req.params.id}/members`; next('route'); });
+app.all('/api/crews/:id/members/:userId', (req, res, next) => { req.url = `/api/groups/${req.params.id}/members/${req.params.userId}`; next('route'); });
 
 // ============ WebSocket Setup ============
 const server = createServer(app);
@@ -12262,12 +12289,32 @@ function createRippleNotifications(originalWave, newWave, rippledDroplet, actor)
   return notificationsToSend.length;
 }
 
+// Farhold v2.0.0 event name mappings (old -> new)
+const EVENT_ALIASES = {
+  'new_droplet': 'new_ping',
+  'droplet_edited': 'ping_edited',
+  'droplet_deleted': 'ping_deleted',
+  'droplet_read': 'ping_read',
+  'droplet_rippled': 'ping_burst',
+  'group_invitation_received': 'crew_invitation_received',
+  'group_invitation_accepted': 'crew_invitation_accepted',
+  'group_invitation_declined': 'crew_invitation_declined',
+  'group_invitation_cancelled': 'crew_invitation_cancelled'
+};
+
 // Broadcast to specific users by their IDs
+// Automatically sends both old and new event names for backward compatibility
 function broadcast(message, userIds = []) {
   for (const userId of userIds) {
     if (clients.has(userId)) {
       for (const ws of clients.get(userId)) {
-        if (ws.readyState === 1) ws.send(JSON.stringify(message));
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(message));
+          // Also send with new event name if applicable
+          if (message.type && EVENT_ALIASES[message.type]) {
+            ws.send(JSON.stringify({ ...message, type: EVENT_ALIASES[message.type] }));
+          }
+        }
       }
     }
   }
@@ -12308,7 +12355,13 @@ function broadcastToWave(waveId, message, excludeWs = null) {
       for (const ws of clients.get(userId)) {
         // Skip the excluded WebSocket connection (e.g., the sender)
         if (excludeWs && ws === excludeWs) continue;
-        if (ws.readyState === 1) ws.send(JSON.stringify(message));
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(message));
+          // Also send with new event name if applicable
+          if (message.type && EVENT_ALIASES[message.type]) {
+            ws.send(JSON.stringify({ ...message, type: EVENT_ALIASES[message.type] }));
+          }
+        }
       }
     }
   }
@@ -12387,12 +12440,12 @@ const demoEnabled = process.env.SEED_DEMO_DATA === 'true';
 server.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
-║   ██████╗ ██████╗ ██████╗ ████████╗███████╗██╗  ██╗        ║
-║  ██╔════╝██╔═══██╗██╔══██╗╚══██╔══╝██╔════╝╚██╗██╔╝        ║
-║  ██║     ██║   ██║██████╔╝   ██║   █████╗   ╚███╔╝         ║
-║  ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗         ║
-║  ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗        ║
-║   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝        ║
+║  ███████╗ █████╗ ██████╗ ██╗  ██╗ ██████╗ ██╗     ██████╗  ║
+║  ██╔════╝██╔══██╗██╔══██╗██║  ██║██╔═══██╗██║     ██╔══██╗ ║
+║  █████╗  ███████║██████╔╝███████║██║   ██║██║     ██║  ██║ ║
+║  ██╔══╝  ██╔══██║██╔══██╗██╔══██║██║   ██║██║     ██║  ██║ ║
+║  ██║     ██║  ██║██║  ██║██║  ██║╚██████╔╝███████╗██████╔╝ ║
+║  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═════╝  ║
 ║  SECURE COMMUNICATIONS SYSTEM v${VERSION.padEnd(24)}║
 ╠════════════════════════════════════════════════════════════╣
 ║  🔒 Security: Rate limiting, XSS protection, Helmet        ║

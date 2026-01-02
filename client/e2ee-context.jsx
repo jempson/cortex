@@ -17,15 +17,15 @@ import * as crypto from './crypto.js';
 const WAVE_KEY_CACHE_MAX = 100;  // Max cached wave keys
 
 // Session storage keys (cleared when browser closes)
-const SESSION_KEY_STORAGE = 'cortex_e2ee_session_key';
-const SESSION_DATA_STORAGE = 'cortex_e2ee_session_data';
-const SESSION_PUBLIC_KEY = 'cortex_e2ee_public_key';
+const SESSION_KEY_STORAGE = 'farhold_e2ee_session_key';
+const SESSION_DATA_STORAGE = 'farhold_e2ee_session_data';
+const SESSION_PUBLIC_KEY = 'farhold_e2ee_public_key';
 
 // Persistent storage keys (localStorage with TTL)
-const PERSISTENT_KEY_STORAGE = 'cortex_e2ee_persistent_key';
-const PERSISTENT_DATA_STORAGE = 'cortex_e2ee_persistent_data';
-const PERSISTENT_PUBLIC_KEY = 'cortex_e2ee_persistent_public';
-const PERSISTENT_EXPIRY = 'cortex_e2ee_persistent_expiry';
+const PERSISTENT_KEY_STORAGE = 'farhold_e2ee_persistent_key';
+const PERSISTENT_DATA_STORAGE = 'farhold_e2ee_persistent_data';
+const PERSISTENT_PUBLIC_KEY = 'farhold_e2ee_persistent_public';
+const PERSISTENT_EXPIRY = 'farhold_e2ee_persistent_expiry';
 
 // Remember duration options (in milliseconds)
 export const REMEMBER_DURATIONS = {

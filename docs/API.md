@@ -1,10 +1,17 @@
-# Cortex REST API Documentation
+# Farhold REST API Documentation
 
-Version: 1.15.0
+Version: 2.0.0
 
 ## Overview
 
-The Cortex API is a RESTful API that powers the Cortex federated communication platform. All endpoints return JSON responses and require `Content-Type: application/json` headers for requests with body content.
+The Farhold API is a RESTful API that powers the Farhold federated communication platform (formerly Cortex). All endpoints return JSON responses and require `Content-Type: application/json` headers for requests with body content.
+
+### Terminology (v2.0.0)
+- **Ping** = message (formerly "droplet")
+- **Burst** = break-out thread (formerly "ripple")
+- **Crew** = user group (formerly "group")
+
+> **Note:** The API maintains backward compatibility with the old endpoint names (`/api/droplets/*`, `/api/groups/*`) while also supporting new names (`/api/pings/*`, `/api/crews/*`).
 
 **Base URL:** `http://localhost:3001` (development)
 
@@ -20,10 +27,10 @@ The Cortex API is a RESTful API that powers the Cortex federated communication p
    - [Users](#users-endpoints)
    - [Profile](#profile-endpoints)
    - [Contacts](#contacts-endpoints)
-   - [Groups](#groups-endpoints)
+   - [Groups/Crews](#groups-endpoints)
    - [Waves](#waves-endpoints)
    - [Messages](#messages-endpoints)
-   - [Droplets](#droplets-endpoints)
+   - [Droplets/Pings](#droplets-endpoints)
    - [Search](#search-endpoint)
    - [GIFs](#gifs-endpoints)
    - [Uploads](#uploads-endpoints)
@@ -40,7 +47,7 @@ The Cortex API is a RESTful API that powers the Cortex federated communication p
 
 ## Authentication
 
-Cortex uses **JWT (JSON Web Tokens)** for authentication. After successful login or registration, you'll receive a token that must be included in subsequent requests.
+Farhold uses **JWT (JSON Web Tokens)** for authentication. After successful login or registration, you'll receive a token that must be included in subsequent requests.
 
 ### Token Format
 
