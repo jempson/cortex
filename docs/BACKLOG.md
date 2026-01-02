@@ -149,6 +149,108 @@ ALTER TABLE group_invitations RENAME TO crew_invitations;
 
 ---
 
+## Privacy Hardening: Metadata Protection
+
+**Priority:** High
+
+### Background
+
+E2EE protects message content, but metadata can reveal just as much. If someone gains database access, they shouldn't be able to "connect the dots" - who talks to whom, when, or how often. Our privacy claims must match our actual security posture.
+
+### Current State (Honest Assessment)
+
+| Data Point | Current State | Risk Level |
+|------------|---------------|------------|
+| Email addresses | Stored plaintext | **High** - Identifies real users |
+| User → Wave relationships | Visible in DB | **High** - Shows who talks to whom |
+| Contact lists | Stored per-user | **High** - Social graph exposed |
+| Timestamps | All activity timestamped | **Medium** - Activity patterns |
+| Session data | IP, device info stored | **Medium** - Identity correlation |
+| Push subscriptions | Tied to user IDs | **Medium** - Device correlation |
+| Avatars | Stored with user ID | **Low** - Potential recognition |
+
+**What's protected:** Message content (E2EE)
+**What's exposed:** Everything else
+
+### Proposed Improvements
+
+**Phase 1: Data Minimization**
+- Remove email requirement (invite-code registration option)
+- Hash emails if kept (for password reset only)
+- Reduce session data retention
+- No IP logging (or hash + auto-expire)
+- Shorter timestamp precision (day vs millisecond)
+
+**Phase 2: Encrypted Metadata**
+- Encrypt contact lists (only user can decrypt their own)
+- Encrypt wave participation lists
+- Server knows wave exists, but not who's in it
+- Encrypted push subscription mapping
+
+**Phase 3: Social Graph Protection**
+- Wave IDs are random, not sequential
+- No global user directory (must know handle to find)
+- Rate-limited handle lookups
+- Encrypted crew membership lists
+
+**Phase 4: Plausible Deniability**
+- Hidden waves (don't appear in lists)
+- Decoy traffic for federation
+- Can't prove user is in a wave without their key
+
+### Technical Approaches
+
+**Option A: Client-Side Encryption of Metadata**
+- Contact lists encrypted with user's E2EE key
+- Wave participant lists encrypted with wave key
+- Server stores blobs, can't read contents
+- Pro: True zero-knowledge
+- Con: Complex key management, search limitations
+
+**Option B: Hashed/Pseudonymous References**
+- User IDs replaced with per-wave pseudonyms
+- Same user has different ID in each wave
+- Server can't correlate across waves
+- Pro: Simpler than full encryption
+- Con: Patterns might still leak
+
+**Option C: Hybrid Approach**
+- Encrypt high-value metadata (contacts, wave membership)
+- Hash medium-value data (emails, IPs)
+- Minimize or delete low-value data
+- Pro: Balanced complexity vs protection
+- Con: Partial protection
+
+### Privacy Claims We Could Make (After Implementation)
+
+**Before (Now):**
+> "Your messages are end-to-end encrypted"
+
+**After (Goal):**
+> "Even we can't see who you talk to, when, or how often. Your social graph is yours alone."
+
+### Questions to Resolve
+
+1. Do we require email at all? Invite codes + handle could be enough
+2. How do we handle password reset without email?
+3. Can we do encrypted search (for finding old messages)?
+4. Federation complicates this - how do we protect metadata across ports?
+5. What's the right balance between usability and privacy?
+
+### Success Criteria
+
+- [ ] Database breach reveals no plaintext emails
+- [ ] Cannot determine who is in which wave from DB alone
+- [ ] Cannot reconstruct social graph from DB
+- [ ] Cannot correlate activity patterns to users
+- [ ] Privacy policy accurately reflects actual protections
+
+---
+
+*"The black keeps secrets. So do we."*
+
+---
+
 ## Holiday Theme System
 
 **Priority:** Low - Enhancement / Nice-to-have
