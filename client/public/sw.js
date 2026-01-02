@@ -147,7 +147,7 @@ self.addEventListener('push', (event) => {
     data = event.data.json();
   } catch (e) {
     data = {
-      title: 'Cortex',
+      title: 'Farhold',
       body: event.data.text()
     };
   }
@@ -155,8 +155,8 @@ self.addEventListener('push', (event) => {
   // Use unique tag per message to prevent notification replacement
   // Fall back to timestamp if no messageId provided
   const uniqueTag = data.messageId
-    ? `cortex-msg-${data.messageId}`
-    : `cortex-${Date.now()}`;
+    ? `farhold-msg-${data.messageId}`
+    : `farhold-${Date.now()}`;
 
   const options = {
     body: data.body || 'New message received',
@@ -190,7 +190,7 @@ self.addEventListener('push', (event) => {
 
         // Only show notification if app is not visible (backgrounded or closed)
         if (!hasVisibleClient) {
-          return self.registration.showNotification(data.title || 'Cortex', options);
+          return self.registration.showNotification(data.title || 'Farhold', options);
         }
         // If app is visible, WebSocket message will show the message directly
         return Promise.resolve();
@@ -208,7 +208,7 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Try to focus an existing Cortex window
+      // Try to focus an existing Farhold window
       for (const client of clientList) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
           // Navigate to the specific wave if provided

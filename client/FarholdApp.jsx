@@ -3211,7 +3211,7 @@ const LoginScreen = ({ onAbout }) => {
         border: '2px solid var(--accent-amber)40',
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>CORTEX</GlowText>
+          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>FARHOLD</GlowText>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '8px' }}>SECURE COMMUNICATIONS</div>
         </div>
 
@@ -3569,7 +3569,7 @@ const ResetPasswordPage = ({ onBack }) => {
         border: '2px solid var(--accent-amber)40',
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>CORTEX</GlowText>
+          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>FARHOLD</GlowText>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '8px' }}>PASSWORD RESET</div>
         </div>
 
@@ -15585,7 +15585,7 @@ function MainApp({ shareDropletId }) {
         {/* Logo and Status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-            <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
+            <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>FARHOLD</GlowText>
             <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v{VERSION}</span>
           </div>
           {/* Status indicators */}
@@ -15966,7 +15966,7 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
               fontSize: '1rem',
             }}
           >
-            LOGIN TO CORTEX
+            LOGIN TO FARHOLD
           </button>
         </div>
       </div>
