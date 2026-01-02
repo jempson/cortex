@@ -1,5 +1,5 @@
 /**
- * E2EE Context and Hooks (v1.20.1)
+ * E2EE Context and Hooks (v1.20.2)
  *
  * Manages end-to-end encryption state and operations.
  * Integrates with AuthContext to provide E2EE after login.

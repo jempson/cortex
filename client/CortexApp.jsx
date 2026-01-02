@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.20.1';
+const VERSION = '1.20.2';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -4486,10 +4486,12 @@ const AlertDetailModal = ({ alert, onClose, onDismiss, isMobile }) => {
   const cfg = priorityConfig[alert.priority] || priorityConfig.info;
   const categoryLabel = categoryLabels[alert.category] || alert.category;
 
-  // Format dates
+  // Format dates - ensure we parse as UTC
   const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
-    const d = new Date(dateStr);
+    // Append Z if not present (SQLite may strip it)
+    const utcStr = dateStr.endsWith('Z') ? dateStr : dateStr + 'Z';
+    const d = new Date(utcStr);
     return d.toLocaleString();
   };
 
@@ -10787,15 +10789,23 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
     setFormPriority(alert.priority);
     setFormCategory(alert.category);
     setFormScope(alert.scope);
-    // Safely parse dates - handle both ISO strings and datetime-local format
+    // Safely parse dates - convert to local datetime format for datetime-local input
     const parseToLocalDatetime = (dateStr) => {
       if (!dateStr) return '';
-      const d = new Date(dateStr);
+      // Ensure we parse as UTC - append Z if not present (SQLite may strip it)
+      const utcStr = dateStr.endsWith('Z') ? dateStr : dateStr + 'Z';
+      const d = new Date(utcStr);
       if (isNaN(d.getTime())) return '';
-      return d.toISOString().slice(0, 16);
+      // Use local time methods to convert UTC to user's local timezone
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
     };
-    setFormStartTime(parseToLocalDatetime(alert.start_time));
-    setFormEndTime(parseToLocalDatetime(alert.end_time));
+    setFormStartTime(parseToLocalDatetime(alert.startTime));
+    setFormEndTime(parseToLocalDatetime(alert.endTime));
     setShowCreateModal(true);
   };
 
@@ -10857,8 +10867,11 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
 
   const getAlertStatus = (alert) => {
     const now = new Date();
-    const start = new Date(alert.start_time);
-    const end = new Date(alert.end_time);
+    // Ensure we parse as UTC - append Z if not present (SQLite may strip it)
+    const startStr = alert.startTime?.endsWith('Z') ? alert.startTime : alert.startTime + 'Z';
+    const endStr = alert.endTime?.endsWith('Z') ? alert.endTime : alert.endTime + 'Z';
+    const start = new Date(startStr);
+    const end = new Date(endStr);
     if (now < start) return { label: 'SCHEDULED', color: 'var(--accent-purple)' };
     if (now > end) return { label: 'EXPIRED', color: 'var(--text-muted)' };
     return { label: 'ACTIVE', color: 'var(--accent-green)' };
