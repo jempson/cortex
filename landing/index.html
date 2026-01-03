@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Farhold - Secure Wave Communications</title>
+  <meta name="description" content="Privacy-first, federated communication platform. End-to-end encrypted messaging for those who value their freedom.">
+  <meta name="theme-color" content="#0ead69">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Farhold - Secure Wave Communications">
+  <meta property="og:description" content="Privacy-first, federated communication platform. End-to-end encrypted messaging.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://farhold.com">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' stroke='%230ead69' stroke-width='4' fill='none'/><circle cx='50' cy='50' r='25' stroke='%23ffd23f' stroke-width='3' fill='none'/><circle cx='50' cy='50' r='10' fill='%230ead69'/></svg>">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-base: #050805;
+      --bg-elevated: #0a120a;
+      --bg-surface: #0f1a0f;
+      --text-primary: #e8f5e8;
+      --text-secondary: #a8c5a8;
+      --text-dim: #6b8a6b;
+      --accent-green: #0ead69;
+      --accent-amber: #ffd23f;
+      --accent-teal: #14b8a6;
+      --border-primary: #1a3a1a;
+      --glow-green: rgba(14, 173, 105, 0.3);
+      --glow-amber: rgba(255, 210, 63, 0.3);
+    }
+
+    body {
+      font-family: 'Courier New', Monaco, monospace;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* Scanline effect */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.1) 0px,
+        rgba(0, 0, 0, 0.1) 1px,
+        transparent 1px,
+        transparent 2px
+      );
+      z-index: 1000;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    header {
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border-primary);
+    }
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+    }
+
+    .logo-text {
+      font-size: 1.5rem;
+      font-weight: bold;
+      letter-spacing: 2px;
+      text-shadow: 0 0 10px var(--glow-green);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s, text-shadow 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--accent-green);
+      text-shadow: 0 0 8px var(--glow-green);
+    }
+
+    /* Hero */
+    .hero {
+      padding: 80px 0;
+      text-align: center;
+      border-bottom: 1px solid var(--border-primary);
+    }
+
+    .hero h1 {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      text-shadow: 0 0 20px var(--glow-green);
+      letter-spacing: 4px;
+    }
+
+    .hero .tagline {
+      font-size: 1.25rem;
+      color: var(--accent-amber);
+      margin-bottom: 24px;
+      font-style: italic;
+    }
+
+    .hero .subtitle {
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto 40px;
+    }
+
+    .cta-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      font-family: inherit;
+      font-size: 1rem;
+      text-decoration: none;
+      border: 1px solid;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--accent-green);
+      border-color: var(--accent-green);
+      color: var(--bg-base);
+    }
+
+    .btn-primary:hover {
+      background: transparent;
+      color: var(--accent-green);
+      box-shadow: 0 0 20px var(--glow-green);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border-color: var(--text-dim);
+      color: var(--text-secondary);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent-amber);
+      color: var(--accent-amber);
+      box-shadow: 0 0 15px var(--glow-amber);
+    }
+
+    /* Features */
+    .features {
+      padding: 80px 0;
+      border-bottom: 1px solid var(--border-primary);
+    }
+
+    .features h2 {
+      text-align: center;
+      font-size: 2rem;
+      margin-bottom: 48px;
+      color: var(--accent-amber);
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 32px;
+    }
+
+    .feature-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-primary);
+      padding: 24px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .feature-card:hover {
+      border-color: var(--accent-green);
+      box-shadow: 0 0 20px var(--glow-green);
+    }
+
+    .feature-icon {
+      font-size: 2rem;
+      margin-bottom: 16px;
+    }
+
+    .feature-card h3 {
+      color: var(--accent-green);
+      margin-bottom: 12px;
+      font-size: 1.1rem;
+    }
+
+    .feature-card p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    /* Terminology */
+    .terminology {
+      padding: 80px 0;
+      border-bottom: 1px solid var(--border-primary);
+    }
+
+    .terminology h2 {
+      text-align: center;
+      font-size: 2rem;
+      margin-bottom: 16px;
+      color: var(--accent-amber);
+    }
+
+    .terminology .intro {
+      text-align: center;
+      color: var(--text-secondary);
+      margin-bottom: 40px;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .term-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .term-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-primary);
+      padding: 20px;
+      text-align: center;
+    }
+
+    .term-name {
+      font-size: 1.3rem;
+      color: var(--accent-green);
+      margin-bottom: 8px;
+    }
+
+    .term-desc {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    /* Privacy */
+    .privacy {
+      padding: 80px 0;
+      text-align: center;
+      border-bottom: 1px solid var(--border-primary);
+    }
+
+    .privacy h2 {
+      font-size: 2rem;
+      margin-bottom: 24px;
+      color: var(--accent-amber);
+    }
+
+    .privacy p {
+      color: var(--text-secondary);
+      max-width: 700px;
+      margin: 0 auto 16px;
+    }
+
+    .privacy-features {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+      margin-top: 32px;
+    }
+
+    .privacy-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent-teal);
+      font-size: 0.95rem;
+    }
+
+    /* Footer */
+    footer {
+      padding: 40px 0;
+      text-align: center;
+    }
+
+    .footer-quote {
+      font-style: italic;
+      color: var(--accent-amber);
+      margin-bottom: 24px;
+      font-size: 1.1rem;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .footer-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover {
+      color: var(--accent-green);
+    }
+
+    .copyright {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .hero h1 {
+        font-size: 2rem;
+      }
+
+      .hero .tagline {
+        font-size: 1rem;
+      }
+
+      .features h2,
+      .terminology h2,
+      .privacy h2 {
+        font-size: 1.5rem;
+      }
+
+      .nav-links {
+        gap: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container header-content">
+      <a href="/" class="logo">
+        <svg class="logo-icon" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="40" stroke="#0ead69" stroke-width="4" fill="none"/>
+          <circle cx="50" cy="50" r="25" stroke="#ffd23f" stroke-width="3" fill="none"/>
+          <circle cx="50" cy="50" r="10" fill="#0ead69"/>
+        </svg>
+        <span class="logo-text">FARHOLD</span>
+      </a>
+      <nav class="nav-links">
+        <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://app.farhold.com" target="_blank" rel="noopener">Launch App</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <h1>FARHOLD</h1>
+        <p class="tagline">"Can't stop the signal."</p>
+        <p class="subtitle">
+          A privacy-first, federated communication platform. End-to-end encrypted messaging
+          for those who value their freedom in the digital frontier.
+        </p>
+        <div class="cta-buttons">
+          <a href="https://app.farhold.com" class="btn btn-primary" target="_blank" rel="noopener">
+            Launch App
+          </a>
+          <a href="https://github.com/jempson/cortex" class="btn btn-secondary" target="_blank" rel="noopener">
+            View Source
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="container">
+        <h2>// FEATURES</h2>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon">🔐</div>
+            <h3>End-to-End Encryption</h3>
+            <p>Zero-knowledge encryption using ECDH P-384 and AES-256-GCM. Your messages are yours alone.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🌐</div>
+            <h3>Federation</h3>
+            <p>Connect multiple Farhold servers across the 'verse. Your crew, your rules, your network.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">💬</div>
+            <h3>Threaded Waves</h3>
+            <p>Conversations that flow naturally. Focus on any thread, burst discussions into new waves.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📱</div>
+            <h3>Progressive Web App</h3>
+            <p>Install on any device. Works offline. Push notifications when you're away from the bridge.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">👥</div>
+            <h3>Crews & Contacts</h3>
+            <p>Organize your people. Invite-only crews with role-based access control.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🎨</div>
+            <h3>Customizable</h3>
+            <p>Multiple themes, font sizes, and preferences. Make it yours.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="terminology">
+      <div class="container">
+        <h2>// TERMINOLOGY</h2>
+        <p class="intro">Farhold uses terminology inspired by the frontier spirit.</p>
+        <div class="term-grid">
+          <div class="term-card">
+            <div class="term-name">Wave</div>
+            <div class="term-desc">A conversation thread</div>
+          </div>
+          <div class="term-card">
+            <div class="term-name">Ping</div>
+            <div class="term-desc">An individual message</div>
+          </div>
+          <div class="term-card">
+            <div class="term-name">Burst</div>
+            <div class="term-desc">Break out to a new wave</div>
+          </div>
+          <div class="term-card">
+            <div class="term-name">Crew</div>
+            <div class="term-desc">A group of users</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="privacy">
+      <div class="container">
+        <h2>// PRIVACY FIRST</h2>
+        <p>
+          Farhold was built with privacy as its foundation, not an afterthought.
+          We believe communication should be free from surveillance.
+        </p>
+        <p>
+          End-to-end encryption means even the server operator cannot read your messages.
+          Your keys, your data, your freedom.
+        </p>
+        <div class="privacy-features">
+          <div class="privacy-badge">
+            <span>✓</span> Zero-Knowledge Server
+          </div>
+          <div class="privacy-badge">
+            <span>✓</span> No Tracking
+          </div>
+          <div class="privacy-badge">
+            <span>✓</span> Self-Hostable
+          </div>
+          <div class="privacy-badge">
+            <span>✓</span> Open Source
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p class="footer-quote">"Privacy isn't a feature, it's a foundation."</p>
+      <div class="footer-links">
+        <a href="https://app.farhold.com" target="_blank" rel="noopener">Launch App</a>
+        <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/jempson/cortex/blob/master/README.md" target="_blank" rel="noopener">Documentation</a>
+        <a href="https://github.com/jempson/cortex/releases" target="_blank" rel="noopener">Releases</a>
+      </div>
+      <p class="copyright">
+        Farhold v2.0.0 · Open Source · MIT License
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
