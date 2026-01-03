@@ -15508,6 +15508,7 @@ function MainApp({ shareDropletId }) {
   };
 
   const navItems = ['waves', 'groups', 'contacts', 'profile'];
+  const navLabels = { waves: 'WAVES', groups: 'CREWS', contacts: 'CONTACTS', profile: 'PROFILE' };
 
   const scanLinesEnabled = user?.preferences?.scanLines !== false; // Default to true
 
@@ -15620,7 +15621,7 @@ function MainApp({ shareDropletId }) {
                   cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', textTransform: 'uppercase',
                   position: 'relative',
                 }}>
-                  {view.slice(0, 10)}
+                  {navLabels[view] || view}
                   {badgeCount > 0 && (
                     <span style={{
                       position: 'absolute',
@@ -15800,7 +15801,7 @@ function MainApp({ shareDropletId }) {
             <span><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> LIVE</span>
           </div>
-          <div style={{ color: 'var(--text-muted)' }}>WAVES: {waves.length} • GROUPS: {groups.length} • CONTACTS: {contacts.length}</div>
+          <div style={{ color: 'var(--text-muted)' }}>WAVES: {waves.length} • CREWS: {groups.length} • CONTACTS: {contacts.length}</div>
         </footer>
       )}
 
