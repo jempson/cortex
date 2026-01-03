@@ -1,7 +1,7 @@
-# Cortex - Outstanding Features & Future Roadmap
+# Farhold - Outstanding Features & Future Roadmap
 
-**Last Updated:** December 23, 2025
-**Current Version:** v1.18.0
+**Last Updated:** January 3, 2026
+**Current Version:** v2.0.0
 
 This document tracks planned but not-yet-implemented features for future releases.
 
@@ -36,9 +36,9 @@ The following features have been implemented and are no longer outstanding:
 | Report System | v1.9.0 | Content moderation with admin dashboard |
 | API Documentation | v1.9.0 | Comprehensive docs/API.md with 70+ endpoints |
 | Moderation Actions | v1.9.0 | Warning system, audit log |
-| Droplets Architecture | v1.10.0 | Messages → Droplets terminology rename |
-| Focus View | v1.10.0 | View any droplet as its own wave-like context |
-| Ripple System | v1.10.0 | Spin off threads into new waves |
+| Pings Architecture | v1.10.0 | Messages → Pings terminology rename |
+| Focus View | v1.10.0 | View any ping as its own wave-like context |
+| Burst System | v1.10.0 | Spin off threads into new waves |
 | Threading Depth Limit | v1.10.0 | 3-level inline limit, unlimited in Focus View |
 | Notification System | v1.11.0 | In-app notifications with smart routing |
 | Wave List Badges | v1.11.0 | Color-coded notification indicators |
@@ -61,24 +61,24 @@ The following features have been implemented and are no longer outstanding:
 | **MFA Login Flow** | v1.14.0 | Challenge-response during login |
 | **Activity Log** | v1.14.0 | Security and content event tracking with admin UI |
 | **Encryption at Rest** | v1.14.0 | SQLCipher database encryption support |
-| **Alert Droplets** | v1.15.0 | Scheduled alerts with start/end times |
+| **Alert Pings** | v1.15.0 | Scheduled alerts with start/end times |
 | **Web Crawl Feature** | v1.15.0 | Public info endpoint for web crawlers |
 | **Alert Banner** | v1.16.0 | Alert display in wave UI |
-| **Droplet Sharing** | v1.17.0 | Share public droplets via Web Share API |
+| **Ping Sharing** | v1.17.0 | Share public pings via Web Share API |
 | **Social Previews** | v1.17.0 | Open Graph and Twitter Card meta tags |
-| **Public Droplet View** | v1.17.0 | Unauthenticated viewing of shared droplets |
+| **Public Ping View** | v1.17.0 | Unauthenticated viewing of shared pings |
 | **Compact UI** | v1.17.1 | Cleaner message layout, inline actions |
 | **Reduced Nesting** | v1.17.1 | Better deep thread readability |
 | **@ Mention Autocomplete** | v1.17.2 | Type @ to mention users with dropdown picker |
 | **Styled Mentions** | v1.17.2 | Teal colored, clickable to open profile |
 | **Alert Time Fix** | v1.17.2 | Proper timezone handling for alert expiration |
-| **Deleted Droplet Fix** | v1.17.2 | Fully deleted threads now disappear |
+| **Deleted Ping Fix** | v1.17.2 | Fully deleted threads now disappear |
 | **Collapsible Sections** | v1.17.3 | Profile Settings and Admin Panel sections collapse |
 | **Password Confirmation** | v1.17.3 | Password change requires current + matching confirmation |
 | **Lazy Loading Admin** | v1.17.3 | Admin panels load data only when expanded |
 | **Wave Rename Fix** | v1.17.3 | Wave title changes now persist in SQLite mode |
 | **PWA App Badge** | v1.17.4 | Unread count on installed app icon (Windows, macOS, iOS) |
-| **Tab Title Unread** | v1.17.4 | Document title shows unread count: "(3) Cortex" |
+| **Tab Title Unread** | v1.17.4 | Document title shows unread count: "(3) Farhold" |
 | **Favicon Flashing** | v1.17.4 | Favicon flashes with notification dot when tab inactive |
 | **Activity Log Filter Fix** | v1.17.5 | Filter dropdown now properly fetches filtered results |
 | **Server Version Fix** | v1.17.6 | Health/info endpoints now use VERSION constant from package.json |
@@ -90,6 +90,8 @@ The following features have been implemented and are no longer outstanding:
 | **HSTS Headers** | v1.18.0 | HTTP Strict Transport Security with 1-year max-age |
 | **HTTPS Enforcement** | v1.18.0 | Optional redirect HTTP to HTTPS in production |
 | **Restrictive CORS** | v1.18.0 | Strict CORS by default, requires ALLOWED_ORIGINS in production |
+| **Farhold Rebrand** | v2.0.0 | Complete nomenclature overhaul: Cortex→Farhold, Droplet→Ping, Ripple→Burst, Group→Crew |
+| **API Aliases** | v2.0.0 | /api/pings/* and /api/crews/* endpoints with backward compatibility |
 
 ---
 
@@ -107,7 +109,7 @@ No features currently in active development.
 Export entire waves for archival or sharing.
 
 **Requirements:**
-- Export wave with all droplets
+- Export wave with all pings
 - Include attachments/media
 - Formatted HTML or PDF output
 - Preserve threading structure

@@ -1,16 +1,16 @@
-# Cortex Feature Backlog
+# Farhold Feature Backlog
 
 Future feature ideas and enhancements for consideration.
 
 ---
 
-## App Rename & Space-Based Nomenclature Overhaul
+## ✅ App Rename & Space-Based Nomenclature Overhaul (COMPLETED in v2.0.0)
 
-**Priority:** High
+**Status:** Implemented in v2.0.0 (January 2026)
 
 ### Background
 
-Cortex was created as an homage to *Firefly* and *Serenity*, inspired by the Cortex - the 'Verse's interconnected network of databanks and communication systems. The current terminology uses water-based metaphors (Waves, Droplets, Ripple), but a space/Firefly-themed nomenclature would better honor the source material and create a more cohesive identity.
+Farhold was created as an homage to *Firefly* and *Serenity*, inspired by the Cortex - the 'Verse's interconnected network of databanks and communication systems. The original terminology used water-based metaphors (Waves, Droplets, Ripple), but the v2.0.0 nomenclature overhaul brought space/Firefly-themed naming to better honor the source material and create a more cohesive identity.
 
 ### App Rename
 
@@ -108,22 +108,22 @@ The app name "Cortex" should change to something more obscure that represents th
 
 ### Implementation Scope
 
-**Phase 1: App Rename & Domain**
-- Acquire new domain
-- Update branding, logos, PWA manifest
-- Redirect old domain (if applicable)
+**Phase 1: App Rename & Domain** ✅
+- ~~Acquire new domain~~
+- ~~Update branding, logos, PWA manifest~~
+- ~~Redirect old domain (if applicable)~~
 
-**Phase 2: Core Renames**
-- Ping (messages), Burst (breakout), Crew (groups)
-- Database migrations with backward compatibility
-- API endpoint aliases during transition
+**Phase 2: Core Renames** ✅
+- ~~Ping (messages), Burst (breakout), Crew (groups)~~
+- ~~Database migrations with backward compatibility~~
+- ~~API endpoint aliases during transition~~
 
-**Phase 3: UI Text Overhaul**
-- All user-facing strings updated
-- Easter egg messages throughout
-- Loading/error/empty state personality
+**Phase 3: UI Text Overhaul** ✅
+- ~~All user-facing strings updated~~
+- Easter egg messages throughout (future enhancement)
+- Loading/error/empty state personality (future enhancement)
 
-**Phase 4: Federation Theming**
+**Phase 4: Federation Theming** (Future)
 - Federation UI terminology
 - Admin panel updates
 - Documentation refresh
@@ -310,7 +310,7 @@ crawlBar.addEventListener('mouseleave', () => {
 Add a calendaring system that automatically applies special visual themes and effects during holidays, creating a festive atmosphere for users.
 
 ### Motivation
-Holidays are times when users naturally want to celebrate and share with their communities. Having the interface reflect these moments creates delight and strengthens the sense of community within Cortex.
+Holidays are times when users naturally want to celebrate and share with their communities. Having the interface reflect these moments creates delight and strengthens the sense of community within Farhold.
 
 ### Proposed Features
 
@@ -357,3 +357,17 @@ Holidays are times when users naturally want to celebrate and share with their c
 ---
 
 *"Even in the black, we find reasons to celebrate."*
+
+---
+
+## Completed Features Archive
+
+Features from the backlog that have been implemented.
+
+### v2.0.0 - Farhold Nomenclature Overhaul (January 2026)
+- App renamed from Cortex to Farhold
+- Droplet → Ping (individual messages)
+- Ripple → Burst (break out threads)
+- Group → Crew (user groups)
+- API endpoint aliases: /api/pings/*, /api/crews/*
+- Full backward compatibility maintained
