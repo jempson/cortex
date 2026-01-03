@@ -1,8 +1,13 @@
 /**
- * Cortex SQLite Database Module
+ * Farhold SQLite Database Module
  *
  * This module provides the Database class that uses SQLite for persistence.
  * It's a drop-in replacement for the JSON file-based database.
+ *
+ * Terminology (v2.0.0):
+ *   pings (formerly droplets) - individual messages
+ *   crews (formerly groups) - user groups
+ *   burst (formerly ripple) - break-out threads
  */
 
 import Database from 'better-sqlite3';
@@ -79,7 +84,7 @@ function detectAndEmbedMedia(content) {
 
 // Configuration
 const DATA_DIR = path.join(__dirname, 'data');
-const DB_PATH = path.join(DATA_DIR, 'cortex.db');
+const DB_PATH = path.join(DATA_DIR, 'farhold.db');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
 /**
@@ -152,36 +157,45 @@ export class DatabaseSQLite {
   }
 
   applySchemaUpdates() {
-    // Check if we need to migrate messages to droplets (v1.10.0)
-    const messagesExists = this.db.prepare(`
-      SELECT name FROM sqlite_master WHERE type='table' AND name='messages'
+    // v2.0.0 (Farhold) - First check if database is already on v2.0.0 schema
+    // If pings table exists, we're on v2.0.0 and should skip all legacy migrations
+    const pingsExistsEarly = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='pings'
     `).get();
-    const dropletsExists = this.db.prepare(`
-      SELECT name FROM sqlite_master WHERE type='table' AND name='droplets'
-    `).get();
+    const isV2Schema = !!pingsExistsEarly;
 
-    if (messagesExists && !dropletsExists) {
+    // Check if we need to migrate messages to droplets (v1.10.0)
+    // Skip this if already on v2.0.0 schema
+    if (!isV2Schema) {
+      const messagesExists = this.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name='messages'
+      `).get();
+      const dropletsExists = this.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name='droplets'
+      `).get();
+
+      if (messagesExists && !dropletsExists) {
       console.log('📝 Migrating messages table to droplets (v1.10.0)...');
 
       // Rename messages table to droplets
       this.db.exec('ALTER TABLE messages RENAME TO droplets');
 
-      // Rename message_read_by to droplet_read_by
+      // Rename message_read_by to ping_read_by
       const readByExists = this.db.prepare(`
         SELECT name FROM sqlite_master WHERE type='table' AND name='message_read_by'
       `).get();
       if (readByExists) {
-        this.db.exec('ALTER TABLE message_read_by RENAME TO droplet_read_by');
-        this.db.exec('ALTER TABLE droplet_read_by RENAME COLUMN message_id TO droplet_id');
+        this.db.exec('ALTER TABLE message_read_by RENAME TO ping_read_by');
+        this.db.exec('ALTER TABLE ping_read_by RENAME COLUMN message_id TO droplet_id');
       }
 
-      // Rename message_history to droplet_history
+      // Rename message_history to ping_history
       const historyExists = this.db.prepare(`
         SELECT name FROM sqlite_master WHERE type='table' AND name='message_history'
       `).get();
       if (historyExists) {
-        this.db.exec('ALTER TABLE message_history RENAME TO droplet_history');
-        this.db.exec('ALTER TABLE droplet_history RENAME COLUMN message_id TO droplet_id');
+        this.db.exec('ALTER TABLE message_history RENAME TO ping_history');
+        this.db.exec('ALTER TABLE ping_history RENAME COLUMN message_id TO droplet_id');
       }
 
       // Drop old FTS table and triggers
@@ -190,26 +204,26 @@ export class DatabaseSQLite {
       this.db.exec('DROP TRIGGER IF EXISTS messages_fts_update');
       this.db.exec('DROP TABLE IF EXISTS messages_fts');
 
-      // Create new droplets_fts table
+      // Create new pings_fts table
       this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS droplets_fts USING fts5(
+        CREATE VIRTUAL TABLE IF NOT EXISTS pings_fts USING fts5(
           id UNINDEXED,
           content,
           content='droplets',
           content_rowid='rowid'
         );
 
-        CREATE TRIGGER IF NOT EXISTS droplets_fts_insert AFTER INSERT ON droplets BEGIN
-          INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+        CREATE TRIGGER IF NOT EXISTS pings_fts_insert AFTER INSERT ON droplets BEGIN
+          INSERT INTO pings_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
         END;
 
-        CREATE TRIGGER IF NOT EXISTS droplets_fts_delete AFTER DELETE ON droplets BEGIN
-          INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+        CREATE TRIGGER IF NOT EXISTS pings_fts_delete AFTER DELETE ON droplets BEGIN
+          INSERT INTO pings_fts(pings_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
         END;
 
-        CREATE TRIGGER IF NOT EXISTS droplets_fts_update AFTER UPDATE ON droplets BEGIN
-          INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
-          INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+        CREATE TRIGGER IF NOT EXISTS pings_fts_update AFTER UPDATE ON droplets BEGIN
+          INSERT INTO pings_fts(pings_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+          INSERT INTO pings_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
         END;
       `);
 
@@ -218,55 +232,58 @@ export class DatabaseSQLite {
       if (dropletCount > 0) {
         console.log(`📚 Indexing ${dropletCount} existing droplets...`);
         this.db.exec(`
-          INSERT INTO droplets_fts(rowid, id, content)
+          INSERT INTO pings_fts(rowid, id, content)
           SELECT rowid, id, content FROM droplets;
         `);
       }
 
       console.log('✅ Migration to droplets complete');
-    }
+      }
+    } // end if (!isV2Schema) for messages→droplets migration
 
     // Check if FTS table exists (for fresh installs or post-migration)
+    // Use correct table name based on schema version
+    const tableName = isV2Schema ? 'pings' : 'droplets';
     const ftsExists = this.db.prepare(`
-      SELECT name FROM sqlite_master WHERE type='table' AND name='droplets_fts'
+      SELECT name FROM sqlite_master WHERE type='table' AND name='pings_fts'
     `).get();
 
     if (!ftsExists) {
       console.log('📝 Creating FTS5 search index...');
 
-      // Create FTS5 virtual table
+      // Create FTS5 virtual table (uses correct table name for schema version)
       this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS droplets_fts USING fts5(
+        CREATE VIRTUAL TABLE IF NOT EXISTS pings_fts USING fts5(
           id UNINDEXED,
           content,
-          content='droplets',
+          content='${tableName}',
           content_rowid='rowid'
         );
       `);
 
-      // Create triggers to keep FTS in sync
+      // Create triggers to keep FTS in sync (use correct table name)
       this.db.exec(`
-        CREATE TRIGGER IF NOT EXISTS droplets_fts_insert AFTER INSERT ON droplets BEGIN
-          INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+        CREATE TRIGGER IF NOT EXISTS pings_fts_insert AFTER INSERT ON ${tableName} BEGIN
+          INSERT INTO pings_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
         END;
 
-        CREATE TRIGGER IF NOT EXISTS droplets_fts_delete AFTER DELETE ON droplets BEGIN
-          INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+        CREATE TRIGGER IF NOT EXISTS pings_fts_delete AFTER DELETE ON ${tableName} BEGIN
+          INSERT INTO pings_fts(pings_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
         END;
 
-        CREATE TRIGGER IF NOT EXISTS droplets_fts_update AFTER UPDATE ON droplets BEGIN
-          INSERT INTO droplets_fts(droplets_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
-          INSERT INTO droplets_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
+        CREATE TRIGGER IF NOT EXISTS pings_fts_update AFTER UPDATE ON ${tableName} BEGIN
+          INSERT INTO pings_fts(pings_fts, rowid, id, content) VALUES ('delete', OLD.rowid, OLD.id, OLD.content);
+          INSERT INTO pings_fts(rowid, id, content) VALUES (NEW.rowid, NEW.id, NEW.content);
         END;
       `);
 
       // Populate FTS with existing droplets
-      const dropletCount = this.db.prepare('SELECT COUNT(*) as count FROM droplets').get().count;
+      const dropletCount = this.db.prepare('SELECT COUNT(*) as count FROM pings').get().count;
       if (dropletCount > 0) {
         console.log(`📚 Indexing ${dropletCount} existing droplets...`);
         this.db.exec(`
-          INSERT INTO droplets_fts(rowid, id, content)
-          SELECT rowid, id, content FROM droplets;
+          INSERT INTO pings_fts(rowid, id, content)
+          SELECT rowid, id, content FROM pings;
         `);
       }
 
@@ -350,32 +367,37 @@ export class DatabaseSQLite {
       console.log('✅ Moderation log table created');
     }
 
-    // Check if breakout columns exist on droplets table (v1.10.0 Phase 5)
-    const dropletColumns = this.db.prepare(`PRAGMA table_info(droplets)`).all();
-    const hasBrokenOutTo = dropletColumns.some(c => c.name === 'broken_out_to');
+    // Check if breakout columns exist on pings table (v1.10.0 Phase 5)
+    // Use correct table name based on schema version
+    const pingColumns = this.db.prepare(`PRAGMA table_info(${tableName})`).all();
+    const hasBrokenOutTo = pingColumns.some(c => c.name === 'broken_out_to');
 
     if (!hasBrokenOutTo) {
-      console.log('📝 Adding breakout columns to droplets table (v1.10.0)...');
+      console.log(`📝 Adding breakout columns to ${tableName} table (v1.10.0)...`);
       this.db.exec(`
-        ALTER TABLE droplets ADD COLUMN broken_out_to TEXT REFERENCES waves(id) ON DELETE SET NULL;
-        ALTER TABLE droplets ADD COLUMN original_wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL;
-        CREATE INDEX IF NOT EXISTS idx_droplets_broken_out ON droplets(broken_out_to);
-        CREATE INDEX IF NOT EXISTS idx_droplets_original_wave ON droplets(original_wave_id);
+        ALTER TABLE ${tableName} ADD COLUMN broken_out_to TEXT REFERENCES waves(id) ON DELETE SET NULL;
+        ALTER TABLE ${tableName} ADD COLUMN original_wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_pings_broken_out ON ${tableName}(broken_out_to);
+        CREATE INDEX IF NOT EXISTS idx_pings_original_wave ON ${tableName}(original_wave_id);
       `);
-      console.log('✅ Breakout columns added to droplets');
+      console.log(`✅ Breakout columns added to ${tableName}`);
     }
 
     // Check if breakout columns exist on waves table (v1.10.0 Phase 5)
+    // Check for both old name (root_droplet_id) and new name (root_ping_id) for v2.0.0 compatibility
     const waveColumns = this.db.prepare(`PRAGMA table_info(waves)`).all();
-    const hasRootDroplet = waveColumns.some(c => c.name === 'root_droplet_id');
+    const hasRootDroplet = waveColumns.some(c => c.name === 'root_droplet_id' || c.name === 'root_ping_id');
 
     if (!hasRootDroplet) {
-      console.log('📝 Adding breakout columns to waves table (v1.10.0)...');
+      // Use v2.0.0 column names if on v2 schema, otherwise use v1.x names
+      const rootColName = isV2Schema ? 'root_ping_id' : 'root_droplet_id';
+      const idxName = isV2Schema ? 'idx_waves_root_ping' : 'idx_waves_root_droplet';
+      console.log(`📝 Adding breakout columns to waves table (v1.10.0)...`);
       this.db.exec(`
-        ALTER TABLE waves ADD COLUMN root_droplet_id TEXT REFERENCES droplets(id) ON DELETE SET NULL;
+        ALTER TABLE waves ADD COLUMN ${rootColName} TEXT REFERENCES ${tableName}(id) ON DELETE SET NULL;
         ALTER TABLE waves ADD COLUMN broken_out_from TEXT REFERENCES waves(id) ON DELETE SET NULL;
         ALTER TABLE waves ADD COLUMN breakout_chain TEXT;
-        CREATE INDEX IF NOT EXISTS idx_waves_root_droplet ON waves(root_droplet_id);
+        CREATE INDEX IF NOT EXISTS ${idxName} ON waves(${rootColName});
         CREATE INDEX IF NOT EXISTS idx_waves_broken_out_from ON waves(broken_out_from);
       `);
       console.log('✅ Breakout columns added to waves');
@@ -388,13 +410,14 @@ export class DatabaseSQLite {
 
     if (!notificationsExists) {
       console.log('📝 Creating notifications tables (v1.11.0)...');
+      // Use v2.0.0 column name (ping_id) for new installs
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS notifications (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           type TEXT NOT NULL,
           wave_id TEXT REFERENCES waves(id) ON DELETE SET NULL,
-          droplet_id TEXT REFERENCES droplets(id) ON DELETE SET NULL,
+          ping_id TEXT REFERENCES ${tableName}(id) ON DELETE SET NULL,
           actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
           title TEXT NOT NULL,
           body TEXT,
@@ -411,7 +434,7 @@ export class DatabaseSQLite {
         CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
         CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_notifications_wave ON notifications(wave_id);
-        CREATE INDEX IF NOT EXISTS idx_notifications_droplet ON notifications(droplet_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_ping ON notifications(ping_id);
         CREATE INDEX IF NOT EXISTS idx_notifications_group_key ON notifications(group_key);
 
         CREATE TABLE IF NOT EXISTS wave_notification_settings (
@@ -568,7 +591,7 @@ export class DatabaseSQLite {
         );
 
         -- Cached droplets from federated servers
-        CREATE TABLE IF NOT EXISTS remote_droplets (
+        CREATE TABLE IF NOT EXISTS remote_pings (
             id TEXT PRIMARY KEY,
             wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
             origin_wave_id TEXT NOT NULL,
@@ -619,9 +642,9 @@ export class DatabaseSQLite {
         CREATE INDEX IF NOT EXISTS idx_remote_users_handle ON remote_users(node_name, handle);
         CREATE INDEX IF NOT EXISTS idx_wave_federation_wave ON wave_federation(wave_id);
         CREATE INDEX IF NOT EXISTS idx_wave_federation_node ON wave_federation(node_name);
-        CREATE INDEX IF NOT EXISTS idx_remote_droplets_wave ON remote_droplets(wave_id);
-        CREATE INDEX IF NOT EXISTS idx_remote_droplets_origin ON remote_droplets(origin_node, origin_wave_id);
-        CREATE INDEX IF NOT EXISTS idx_remote_droplets_author ON remote_droplets(author_node, author_id);
+        CREATE INDEX IF NOT EXISTS idx_remote_pings_wave ON remote_pings(wave_id);
+        CREATE INDEX IF NOT EXISTS idx_remote_pings_origin ON remote_pings(origin_node, origin_wave_id);
+        CREATE INDEX IF NOT EXISTS idx_remote_pings_author ON remote_pings(author_node, author_id);
         CREATE INDEX IF NOT EXISTS idx_federation_queue_status ON federation_queue(status, next_retry_at);
         CREATE INDEX IF NOT EXISTS idx_federation_queue_node ON federation_queue(target_node);
         CREATE INDEX IF NOT EXISTS idx_federation_inbox_source ON federation_inbox_log(source_node);
@@ -1017,29 +1040,30 @@ export class DatabaseSQLite {
       console.log('✅ Waves encrypted column added');
     }
 
-    // Add E2EE columns to droplets table if they don't exist (v1.19.0)
-    const dropletColumnsE2EE = this.db.prepare(`PRAGMA table_info(droplets)`).all();
-    const hasDropletEncrypted = dropletColumnsE2EE.some(c => c.name === 'encrypted');
+    // Add E2EE columns to pings table if they don't exist (v1.19.0)
+    // Use correct table name based on schema version (tableName is pings or droplets)
+    const pingColumnsE2EE = this.db.prepare(`PRAGMA table_info(${tableName})`).all();
+    const hasPingEncrypted = pingColumnsE2EE.some(c => c.name === 'encrypted');
 
-    if (!hasDropletEncrypted) {
-      console.log('📝 Adding E2EE columns to droplets table (v1.19.0)...');
+    if (!hasPingEncrypted) {
+      console.log(`📝 Adding E2EE columns to ${tableName} table (v1.19.0)...`);
       this.db.exec(`
-        ALTER TABLE droplets ADD COLUMN encrypted INTEGER DEFAULT 0;
-        ALTER TABLE droplets ADD COLUMN nonce TEXT;
+        ALTER TABLE ${tableName} ADD COLUMN encrypted INTEGER DEFAULT 0;
+        ALTER TABLE ${tableName} ADD COLUMN nonce TEXT;
       `);
-      console.log('✅ Droplets E2EE columns added');
+      console.log(`✅ ${tableName} E2EE columns added`);
     }
 
-    // Add key_version column to droplets table if it doesn't exist (v1.19.0)
+    // Add key_version column to pings table if it doesn't exist (v1.19.0)
     // Re-fetch column info in case previous migration just ran
-    const dropletColumnsForKeyVersion = this.db.prepare(`PRAGMA table_info(droplets)`).all();
-    const hasKeyVersion = dropletColumnsForKeyVersion.some(c => c.name === 'key_version');
+    const pingColumnsForKeyVersion = this.db.prepare(`PRAGMA table_info(${tableName})`).all();
+    const hasKeyVersion = pingColumnsForKeyVersion.some(c => c.name === 'key_version');
     if (!hasKeyVersion) {
-      console.log('📝 Adding key_version column to droplets table (v1.19.0)...');
+      console.log(`📝 Adding key_version column to ${tableName} table (v1.19.0)...`);
       this.db.exec(`
-        ALTER TABLE droplets ADD COLUMN key_version INTEGER DEFAULT 1;
+        ALTER TABLE ${tableName} ADD COLUMN key_version INTEGER DEFAULT 1;
       `);
-      console.log('✅ Droplets key_version column added');
+      console.log(`✅ ${tableName} key_version column added`);
     }
 
     // Add role column to users table if it doesn't exist (v1.20.0)
@@ -1056,6 +1080,38 @@ export class DatabaseSQLite {
         UPDATE users SET role = CASE WHEN is_admin = 1 THEN 'admin' ELSE 'user' END
       `).run().changes;
       console.log(`✅ Role column added, migrated ${migratedCount} users`);
+    }
+
+    // v2.0.0 (Farhold) - Check if migration from droplets to pings is needed
+    const dropletsExistsV2 = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='droplets'
+    `).get();
+    const pingsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='pings'
+    `).get();
+
+    if (dropletsExistsV2 && !pingsExists) {
+      console.log('');
+      console.log('⚠️  Database migration required for Farhold v2.0.0');
+      console.log('   Run: node migrate-v1.20-to-v2.0.js');
+      console.log('');
+      throw new Error('Database migration required. Run: node migrate-v1.20-to-v2.0.js');
+    }
+
+    // v2.0.0 - Check if groups → crews migration is needed
+    const groupsExistsV2 = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='groups'
+    `).get();
+    const crewsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='crews'
+    `).get();
+
+    if (groupsExistsV2 && !crewsExists) {
+      console.log('');
+      console.log('⚠️  Database migration required for Farhold v2.0.0');
+      console.log('   Run: node migrate-v1.20-to-v2.0.js');
+      console.log('');
+      throw new Error('Database migration required. Run: node migrate-v1.20-to-v2.0.js');
     }
   }
 
@@ -1108,14 +1164,14 @@ export class DatabaseSQLite {
       insertUser.run(u.id, u.handle, u.email, passwordHash, u.displayName, u.avatar, u.isAdmin ? 1 : 0, now, now);
     }
 
-    // Create demo group
+    // Create demo crew
     this.db.prepare(`
-      INSERT INTO groups (id, name, description, created_by, created_at)
-      VALUES ('group-crew', 'Serenity Crew', 'The crew of Serenity', 'user-mal', ?)
+      INSERT INTO crews (id, name, description, created_by, created_at)
+      VALUES ('crew-serenity', 'Serenity Crew', 'The crew of Serenity', 'user-mal', ?)
     `).run(now);
 
     const insertMember = this.db.prepare(`
-      INSERT INTO group_members (group_id, user_id, role, joined_at) VALUES ('group-crew', ?, ?, ?)
+      INSERT INTO crew_members (crew_id, user_id, role, joined_at) VALUES ('crew-serenity', ?, ?, ?)
     `);
     for (const u of demoUsers) {
       insertMember.run(u.id, u.id === 'user-mal' ? 'admin' : 'member', now);
@@ -1131,7 +1187,7 @@ export class DatabaseSQLite {
     ];
 
     const insertWave = this.db.prepare(`
-      INSERT INTO waves (id, title, privacy, group_id, created_by, created_at, updated_at)
+      INSERT INTO waves (id, title, privacy, crew_id, created_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     for (const w of waves) {
@@ -1159,25 +1215,25 @@ export class DatabaseSQLite {
     }
 
     // Demo droplets
-    const droplets = [
-      { id: 'droplet-1', waveId: 'wave-1', authorId: 'user-mal', content: 'Welcome to Cortex! This is a public wave visible to everyone.', privacy: 'public' },
-      { id: 'droplet-2', waveId: 'wave-2', authorId: 'user-mal', content: 'This is a private wave for testing.', privacy: 'private' },
-      { id: 'droplet-3', waveId: 'wave-3', authorId: 'user-mal', content: 'This is a group wave for the crew.', privacy: 'group' },
-      { id: 'droplet-4', waveId: 'wave-4', authorId: 'user-zoe', content: "Zoe's private wave.", privacy: 'private' },
-      { id: 'droplet-5', waveId: 'wave-5', authorId: 'user-wash', content: "Wash's public wave.", privacy: 'public' },
+    const pings = [
+      { id: 'ping-1', waveId: 'wave-1', authorId: 'user-mal', content: 'Welcome to Farhold! This is a public wave visible to everyone.', privacy: 'public' },
+      { id: 'ping-2', waveId: 'wave-2', authorId: 'user-mal', content: 'This is a private wave for testing.', privacy: 'private' },
+      { id: 'ping-3', waveId: 'wave-3', authorId: 'user-mal', content: 'This is a crew wave for the Serenity crew.', privacy: 'crew' },
+      { id: 'ping-4', waveId: 'wave-4', authorId: 'user-zoe', content: "Zoe's private wave.", privacy: 'private' },
+      { id: 'ping-5', waveId: 'wave-5', authorId: 'user-wash', content: "Wash's public wave.", privacy: 'public' },
     ];
 
-    const insertDroplet = this.db.prepare(`
-      INSERT INTO droplets (id, wave_id, author_id, content, privacy, version, created_at, reactions)
+    const insertPing = this.db.prepare(`
+      INSERT INTO pings (id, wave_id, author_id, content, privacy, version, created_at, reactions)
       VALUES (?, ?, ?, ?, ?, 1, ?, '{}')
     `);
     const insertReadBy = this.db.prepare(`
-      INSERT INTO droplet_read_by (droplet_id, user_id, read_at) VALUES (?, ?, ?)
+      INSERT INTO ping_read_by (ping_id, user_id, read_at) VALUES (?, ?, ?)
     `);
 
-    for (const d of droplets) {
-      insertDroplet.run(d.id, d.waveId, d.authorId, d.content, d.privacy, now);
-      insertReadBy.run(d.id, d.authorId, now);
+    for (const p of pings) {
+      insertPing.run(p.id, p.waveId, p.authorId, p.content, p.privacy, now);
+      insertReadBy.run(p.id, p.authorId, now);
     }
 
     console.log('✅ Demo data seeded (password: Demo123!)');
@@ -2399,9 +2455,9 @@ export class DatabaseSQLite {
   getGroupsForUser(userId) {
     const rows = this.db.prepare(`
       SELECT g.*, gm.role,
-        (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count
-      FROM groups g
-      JOIN group_members gm ON g.id = gm.group_id
+        (SELECT COUNT(*) FROM crew_members WHERE crew_id = g.id) as member_count
+      FROM crews g
+      JOIN crew_members gm ON g.id = gm.crew_id
       WHERE gm.user_id = ?
     `).all(userId);
 
@@ -2417,7 +2473,7 @@ export class DatabaseSQLite {
   }
 
   getGroup(groupId) {
-    const row = this.db.prepare('SELECT * FROM groups WHERE id = ?').get(groupId);
+    const row = this.db.prepare('SELECT * FROM crews WHERE id = ?').get(groupId);
     if (!row) return null;
     return {
       id: row.id,
@@ -2431,9 +2487,9 @@ export class DatabaseSQLite {
   getGroupMembers(groupId) {
     const rows = this.db.prepare(`
       SELECT u.id, u.handle, u.display_name, u.avatar, u.status, gm.role, gm.joined_at
-      FROM group_members gm
+      FROM crew_members gm
       JOIN users u ON gm.user_id = u.id
-      WHERE gm.group_id = ?
+      WHERE gm.crew_id = ?
     `).all(groupId);
 
     return rows.map(r => ({
@@ -2448,12 +2504,12 @@ export class DatabaseSQLite {
   }
 
   isGroupMember(groupId, userId) {
-    const row = this.db.prepare('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?').get(groupId, userId);
+    const row = this.db.prepare('SELECT 1 FROM crew_members WHERE crew_id = ? AND user_id = ?').get(groupId, userId);
     return !!row;
   }
 
   isGroupAdmin(groupId, userId) {
-    const row = this.db.prepare("SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ? AND role = 'admin'").get(groupId, userId);
+    const row = this.db.prepare("SELECT 1 FROM crew_members WHERE crew_id = ? AND user_id = ? AND role = 'admin'").get(groupId, userId);
     return !!row;
   }
 
@@ -2467,10 +2523,10 @@ export class DatabaseSQLite {
       createdAt: now,
     };
 
-    this.db.prepare('INSERT INTO groups (id, name, description, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run(group.id, group.name, group.description, group.createdBy, group.createdAt);
+    this.db.prepare('INSERT INTO crews (id, name, description, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run(group.id, group.name, group.description, group.createdBy, group.createdAt);
 
     // Add creator as admin
-    this.db.prepare("INSERT INTO group_members (group_id, user_id, role, joined_at) VALUES (?, ?, 'admin', ?)").run(group.id, data.createdBy, now);
+    this.db.prepare("INSERT INTO crew_members (crew_id, user_id, role, joined_at) VALUES (?, ?, 'admin', ?)").run(group.id, data.createdBy, now);
 
     return group;
   }
@@ -2482,20 +2538,20 @@ export class DatabaseSQLite {
     const name = data.name ? data.name.slice(0, 100) : group.name;
     const description = data.description !== undefined ? data.description.slice(0, 500) : group.description;
 
-    this.db.prepare('UPDATE groups SET name = ?, description = ? WHERE id = ?').run(name, description, groupId);
+    this.db.prepare('UPDATE crews SET name = ?, description = ? WHERE id = ?').run(name, description, groupId);
 
     return this.getGroup(groupId);
   }
 
   deleteGroup(groupId) {
-    const result = this.db.prepare('DELETE FROM groups WHERE id = ?').run(groupId);
+    const result = this.db.prepare('DELETE FROM crews WHERE id = ?').run(groupId);
     return result.changes > 0;
   }
 
   addGroupMember(groupId, userId, role = 'member') {
     if (this.isGroupMember(groupId, userId)) return false;
     try {
-      this.db.prepare('INSERT INTO group_members (group_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)').run(groupId, userId, role, new Date().toISOString());
+      this.db.prepare('INSERT INTO crew_members (crew_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)').run(groupId, userId, role, new Date().toISOString());
       return true;
     } catch {
       return false;
@@ -2503,14 +2559,14 @@ export class DatabaseSQLite {
   }
 
   removeGroupMember(groupId, userId) {
-    const result = this.db.prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?').run(groupId, userId);
+    const result = this.db.prepare('DELETE FROM crew_members WHERE crew_id = ? AND user_id = ?').run(groupId, userId);
     if (result.changes === 0) return false;
 
     // Remove from group wave participants
     this.db.prepare(`
       DELETE FROM wave_participants
       WHERE user_id = ? AND wave_id IN (
-        SELECT id FROM waves WHERE privacy = 'group' AND group_id = ?
+        SELECT id FROM waves WHERE privacy = 'crew' AND crew_id = ?
       )
     `).run(userId, groupId);
 
@@ -2518,7 +2574,7 @@ export class DatabaseSQLite {
   }
 
   updateGroupMemberRole(groupId, userId, role) {
-    const result = this.db.prepare('UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?').run(role, groupId, userId);
+    const result = this.db.prepare('UPDATE crew_members SET role = ? WHERE crew_id = ? AND user_id = ?').run(role, groupId, userId);
     return result.changes > 0;
   }
 
@@ -2537,7 +2593,7 @@ export class DatabaseSQLite {
 
     // Check for existing pending invitation
     const existing = this.db.prepare(`
-      SELECT 1 FROM group_invitations WHERE group_id = ? AND invited_user_id = ? AND status = 'pending'
+      SELECT 1 FROM crew_invitations WHERE crew_id = ? AND invited_user_id = ? AND status = 'pending'
     `).get(groupId, invitedUserId);
     if (existing) return { error: 'Invitation already pending for this user' };
 
@@ -2552,7 +2608,7 @@ export class DatabaseSQLite {
     };
 
     this.db.prepare(`
-      INSERT INTO group_invitations (id, group_id, invited_by, invited_user_id, message, status, created_at)
+      INSERT INTO crew_invitations (id, crew_id, invited_by, invited_user_id, message, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(invitation.id, invitation.group_id, invitation.invited_by, invitation.invited_user_id, invitation.message, invitation.status, invitation.created_at);
 
@@ -2569,8 +2625,8 @@ export class DatabaseSQLite {
       SELECT gi.*,
         g.id as g_id, g.name as g_name, g.description as g_desc,
         u.id as u_id, u.handle as u_handle, u.display_name as u_display_name, u.avatar as u_avatar
-      FROM group_invitations gi
-      JOIN groups g ON gi.group_id = g.id
+      FROM crew_invitations gi
+      JOIN crews g ON gi.crew_id = g.id
       JOIN users u ON gi.invited_by = u.id
       WHERE gi.invited_user_id = ? AND gi.status = 'pending'
     `).all(userId);
@@ -2592,9 +2648,9 @@ export class DatabaseSQLite {
   getGroupInvitationsSent(groupId, userId) {
     const rows = this.db.prepare(`
       SELECT gi.*, u.id as u_id, u.handle as u_handle, u.display_name as u_display_name, u.avatar as u_avatar
-      FROM group_invitations gi
+      FROM crew_invitations gi
       JOIN users u ON gi.invited_user_id = u.id
-      WHERE gi.group_id = ? AND gi.invited_by = ? AND gi.status = 'pending'
+      WHERE gi.crew_id = ? AND gi.invited_by = ? AND gi.status = 'pending'
     `).all(groupId, userId);
 
     return rows.map(r => ({
@@ -2610,7 +2666,7 @@ export class DatabaseSQLite {
   }
 
   getGroupInvitation(invitationId) {
-    return this.db.prepare('SELECT * FROM group_invitations WHERE id = ?').get(invitationId);
+    return this.db.prepare('SELECT * FROM crew_invitations WHERE id = ?').get(invitationId);
   }
 
   acceptGroupInvitation(invitationId, userId) {
@@ -2620,12 +2676,12 @@ export class DatabaseSQLite {
     if (invitation.status !== 'pending') return { error: 'Invitation already processed' };
 
     if (this.isGroupMember(invitation.group_id, userId)) {
-      this.db.prepare('UPDATE group_invitations SET status = ?, responded_at = ? WHERE id = ?').run('accepted', new Date().toISOString(), invitationId);
+      this.db.prepare('UPDATE crew_invitations SET status = ?, responded_at = ? WHERE id = ?').run('accepted', new Date().toISOString(), invitationId);
       return { error: 'Already a group member' };
     }
 
     const now = new Date().toISOString();
-    this.db.prepare('UPDATE group_invitations SET status = ?, responded_at = ? WHERE id = ?').run('accepted', now, invitationId);
+    this.db.prepare('UPDATE crew_invitations SET status = ?, responded_at = ? WHERE id = ?').run('accepted', now, invitationId);
     this.addGroupMember(invitation.group_id, userId, 'member');
 
     const group = this.getGroup(invitation.group_id);
@@ -2639,7 +2695,7 @@ export class DatabaseSQLite {
     if (invitation.status !== 'pending') return { error: 'Invitation already processed' };
 
     const now = new Date().toISOString();
-    this.db.prepare('UPDATE group_invitations SET status = ?, responded_at = ? WHERE id = ?').run('declined', now, invitationId);
+    this.db.prepare('UPDATE crew_invitations SET status = ?, responded_at = ? WHERE id = ?').run('declined', now, invitationId);
 
     return { success: true, invitation: { ...invitation, status: 'declined', responded_at: now } };
   }
@@ -2650,7 +2706,7 @@ export class DatabaseSQLite {
     if (invitation.invited_by !== userId) return { error: 'Not authorized' };
     if (invitation.status !== 'pending') return { error: 'Invitation already processed' };
 
-    this.db.prepare('DELETE FROM group_invitations WHERE id = ?').run(invitationId);
+    this.db.prepare('DELETE FROM crew_invitations WHERE id = ?').run(invitationId);
     return { success: true };
   }
 
@@ -2884,7 +2940,7 @@ export class DatabaseSQLite {
 
     if (r.type === 'droplet' || r.type === 'message') {
       // Support both 'droplet' (new) and 'message' (legacy) report types
-      const droplet = this.db.prepare('SELECT * FROM droplets WHERE id = ?').get(r.target_id);
+      const droplet = this.db.prepare('SELECT * FROM pings WHERE id = ?').get(r.target_id);
       if (droplet) {
         const author = this.findUserById(droplet.author_id);
         const wave = this.getWave(droplet.wave_id);
@@ -3034,8 +3090,8 @@ export class DatabaseSQLite {
 
   // === Wave Methods ===
   getWavesForUser(userId, showArchived = false) {
-    // Get user's group IDs
-    const userGroupIds = this.db.prepare('SELECT group_id FROM group_members WHERE user_id = ?').all(userId).map(r => r.group_id);
+    // Get user's crew IDs
+    const userCrewIds = this.db.prepare('SELECT crew_id FROM crew_members WHERE user_id = ?').all(userId).map(r => r.crew_id);
 
     // Get blocked/muted user IDs for unread count calculation
     const blockedIds = this.db.prepare('SELECT blocked_user_id FROM blocks WHERE user_id = ?').all(userId).map(r => r.blocked_user_id);
@@ -3046,12 +3102,12 @@ export class DatabaseSQLite {
     let sql = `
       SELECT w.*, wp.archived, wp.last_read,
         u.display_name as creator_name, u.avatar as creator_avatar, u.handle as creator_handle,
-        g.name as group_name,
-        (SELECT COUNT(*) FROM droplets WHERE wave_id = w.id) as droplet_count
+        cr.name as crew_name,
+        (SELECT COUNT(*) FROM pings WHERE wave_id = w.id) as ping_count
       FROM waves w
       LEFT JOIN wave_participants wp ON w.id = wp.wave_id AND wp.user_id = ?
       LEFT JOIN users u ON w.created_by = u.id
-      LEFT JOIN groups g ON w.group_id = g.id
+      LEFT JOIN crews cr ON w.crew_id = cr.id
       WHERE (
         w.privacy = 'public'
         OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
@@ -3059,11 +3115,11 @@ export class DatabaseSQLite {
         OR (w.privacy = 'cross-server' AND wp.user_id IS NOT NULL)
         OR (w.privacy = 'crossServer' AND w.federation_state = 'participant')
         OR (w.privacy = 'cross-server' AND w.federation_state = 'participant')
-        OR (w.privacy = 'group' AND w.group_id IN (${userGroupIds.map(() => '?').join(',') || 'NULL'}))
+        OR (w.privacy = 'crew' AND w.crew_id IN (${userCrewIds.map(() => '?').join(',') || 'NULL'}))
       )
     `;
 
-    const params = [userId, ...userGroupIds];
+    const params = [userId, ...userCrewIds];
 
     // When showArchived=true, return ONLY archived waves
     // When showArchived=false, return ONLY non-archived waves
@@ -3084,26 +3140,26 @@ export class DatabaseSQLite {
       // Calculate unread count
       // Note: NOT IN (NULL) returns NULL in SQL, not TRUE, so we must use proper conditionals
       const blockedClause = blockedIds.length > 0
-        ? `AND d.author_id NOT IN (${blockedIds.map(() => '?').join(',')})`
+        ? `AND p.author_id NOT IN (${blockedIds.map(() => '?').join(',')})`
         : '';
       const mutedClause = mutedIds.length > 0
-        ? `AND d.author_id NOT IN (${mutedIds.map(() => '?').join(',')})`
+        ? `AND p.author_id NOT IN (${mutedIds.map(() => '?').join(',')})`
         : '';
       const unreadCount = this.db.prepare(`
-        SELECT COUNT(*) as count FROM droplets d
-        WHERE d.wave_id = ?
-          AND d.deleted = 0
-          AND d.author_id != ?
+        SELECT COUNT(*) as count FROM pings p
+        WHERE p.wave_id = ?
+          AND p.deleted = 0
+          AND p.author_id != ?
           ${blockedClause}
           ${mutedClause}
-          AND NOT EXISTS (SELECT 1 FROM droplet_read_by drb WHERE drb.droplet_id = d.id AND drb.user_id = ?)
+          AND NOT EXISTS (SELECT 1 FROM ping_read_by prb WHERE prb.ping_id = p.id AND prb.user_id = ?)
       `).get(r.id, userId, ...blockedIds, ...mutedIds, userId).count;
 
       return {
         id: r.id,
         title: r.title,
         privacy: r.privacy,
-        groupId: r.group_id,
+        crewId: r.crew_id,
         createdBy: r.created_by,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
@@ -3111,11 +3167,11 @@ export class DatabaseSQLite {
         creator_avatar: r.creator_avatar || '?',
         creator_handle: r.creator_handle || 'unknown',
         participants,
-        droplet_count: r.droplet_count,
+        ping_count: r.ping_count,
         unread_count: unreadCount,
         is_participant: r.archived !== null,
         is_archived: r.archived === 1,
-        group_name: r.group_name,
+        crew_name: r.crew_name,
         federationState: r.federation_state || 'local',
         originNode: r.origin_node || null,
         originWaveId: r.origin_wave_id || null,
@@ -3130,12 +3186,12 @@ export class DatabaseSQLite {
       id: row.id,
       title: row.title,
       privacy: row.privacy,
-      groupId: row.group_id,
+      crewId: row.crew_id,
       createdBy: row.created_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-      // Breakout fields
-      rootDropletId: row.root_droplet_id,
+      // Burst (breakout) fields
+      rootPingId: row.root_ping_id,
       brokenOutFrom: row.broken_out_from,
       breakoutChain: row.breakout_chain ? JSON.parse(row.breakout_chain) : null,
       // Federation fields
@@ -3216,7 +3272,7 @@ export class DatabaseSQLite {
       encrypted: data.encrypted || false,
     };
 
-    this.db.prepare('INSERT INTO waves (id, title, privacy, group_id, created_by, created_at, updated_at, encrypted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(wave.id, wave.title, wave.privacy, wave.groupId, wave.createdBy, wave.createdAt, wave.updatedAt, wave.encrypted ? 1 : 0);
+    this.db.prepare('INSERT INTO waves (id, title, privacy, crew_id, created_by, created_at, updated_at, encrypted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(wave.id, wave.title, wave.privacy, wave.groupId, wave.createdBy, wave.createdAt, wave.updatedAt, wave.encrypted ? 1 : 0);
 
     // Add creator as participant
     this.db.prepare('INSERT INTO wave_participants (wave_id, user_id, joined_at, archived) VALUES (?, ?, ?, 0)').run(wave.id, data.createdBy, now);
@@ -3238,7 +3294,7 @@ export class DatabaseSQLite {
     if (!wave) return null;
 
     const now = new Date().toISOString();
-    this.db.prepare('UPDATE waves SET privacy = ?, group_id = ?, updated_at = ? WHERE id = ?').run(privacy, privacy === 'group' ? groupId : null, now, waveId);
+    this.db.prepare('UPDATE waves SET privacy = ?, crew_id = ?, updated_at = ? WHERE id = ?').run(privacy, privacy === 'group' ? groupId : null, now, waveId);
 
     return this.getWave(waveId);
   }
@@ -3311,7 +3367,7 @@ export class DatabaseSQLite {
     // Get the original droplet
     const droplet = this.db.prepare(`
       SELECT d.*, w.title as wave_title, w.id as wave_id
-      FROM droplets d
+      FROM pings d
       JOIN waves w ON d.wave_id = w.id
       WHERE d.id = ?
     `).get(dropletId);
@@ -3330,7 +3386,7 @@ export class DatabaseSQLite {
 
     // Get all child droplets recursively
     const getAllChildren = (parentId) => {
-      const children = this.db.prepare('SELECT id FROM droplets WHERE parent_id = ?').all(parentId);
+      const children = this.db.prepare('SELECT id FROM pings WHERE parent_id = ?').all(parentId);
       let allIds = children.map(c => c.id);
       for (const child of children) {
         allIds = allIds.concat(getAllChildren(child.id));
@@ -3353,7 +3409,7 @@ export class DatabaseSQLite {
     // Add the current wave to the chain
     breakoutChain.push({
       wave_id: originalWaveId,
-      droplet_id: dropletId,
+      ping_id: dropletId,
       title: originalWave.title
     });
 
@@ -3361,7 +3417,7 @@ export class DatabaseSQLite {
     const newWaveId = `wave-${uuidv4()}`;
 
     this.db.prepare(`
-      INSERT INTO waves (id, title, privacy, group_id, created_by, created_at, updated_at, root_droplet_id, broken_out_from, breakout_chain)
+      INSERT INTO waves (id, title, privacy, crew_id, created_by, created_at, updated_at, root_ping_id, broken_out_from, breakout_chain)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       newWaveId,
@@ -3387,7 +3443,7 @@ export class DatabaseSQLite {
     // The root droplet becomes the root of the new wave (parent_id stays null or its existing value)
     for (const id of allDropletIds) {
       this.db.prepare(`
-        UPDATE droplets SET wave_id = ?, original_wave_id = ? WHERE id = ?
+        UPDATE pings SET wave_id = ?, original_wave_id = ? WHERE id = ?
       `).run(newWaveId, originalWaveId, id);
     }
 
@@ -3418,11 +3474,11 @@ export class DatabaseSQLite {
     // Let's undo the move and do it correctly:
     // Restore original wave_id for all droplets
     for (const id of allDropletIds) {
-      this.db.prepare('UPDATE droplets SET wave_id = ?, original_wave_id = NULL WHERE id = ?').run(originalWaveId, id);
+      this.db.prepare('UPDATE pings SET wave_id = ?, original_wave_id = NULL WHERE id = ?').run(originalWaveId, id);
     }
 
     // Set broken_out_to on the root droplet only
-    this.db.prepare('UPDATE droplets SET broken_out_to = ? WHERE id = ?').run(newWaveId, dropletId);
+    this.db.prepare('UPDATE pings SET broken_out_to = ? WHERE id = ?').run(newWaveId, dropletId);
 
     // The new wave references the droplet via root_droplet_id
     // When fetching droplets for the new wave, we'll check if it's a breakout wave
@@ -3447,7 +3503,7 @@ export class DatabaseSQLite {
   // Get droplets for a rippled wave (includes root droplet from original wave)
   getDropletsForBreakoutWave(waveId, userId = null) {
     const wave = this.getWave(waveId);
-    if (!wave || !wave.rootDropletId) {
+    if (!wave || !wave.rootPingId) {
       return this.getDropletsForWave(waveId, userId);
     }
 
@@ -3464,7 +3520,7 @@ export class DatabaseSQLite {
       const droplet = this.db.prepare(`
         SELECT d.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle,
                bow.title as broken_out_to_title
-        FROM droplets d
+        FROM pings d
         JOIN users u ON d.author_id = u.id
         LEFT JOIN waves bow ON d.broken_out_to = bow.id
         WHERE d.id = ?
@@ -3480,7 +3536,7 @@ export class DatabaseSQLite {
       results.push(droplet);
 
       // Get children
-      const children = this.db.prepare('SELECT id FROM droplets WHERE parent_id = ?').all(parentId);
+      const children = this.db.prepare('SELECT id FROM pings WHERE parent_id = ?').all(parentId);
       for (const child of children) {
         getAllDescendants(child.id, results);
       }
@@ -3488,12 +3544,12 @@ export class DatabaseSQLite {
       return results;
     };
 
-    const rows = getAllDescendants(wave.rootDropletId);
+    const rows = getAllDescendants(wave.rootPingId);
 
     return rows.map(d => {
-      const hasRead = userId ? !!this.db.prepare('SELECT 1 FROM droplet_read_by WHERE droplet_id = ? AND user_id = ?').get(d.id, userId) : false;
+      const hasRead = userId ? !!this.db.prepare('SELECT 1 FROM ping_read_by WHERE ping_id = ? AND user_id = ?').get(d.id, userId) : false;
       const isUnread = d.deleted ? false : (userId ? !hasRead && d.author_id !== userId : false);
-      const readBy = this.db.prepare('SELECT user_id FROM droplet_read_by WHERE droplet_id = ?').all(d.id).map(r => r.user_id);
+      const readBy = this.db.prepare('SELECT user_id FROM ping_read_by WHERE ping_id = ?').all(d.id).map(r => r.user_id);
 
       return {
         id: d.id,
@@ -3539,7 +3595,7 @@ export class DatabaseSQLite {
     let sql = `
       SELECT d.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle,
              bow.title as broken_out_to_title
-      FROM droplets d
+      FROM pings d
       JOIN users u ON d.author_id = u.id
       LEFT JOIN waves bow ON d.broken_out_to = bow.id
       WHERE d.wave_id = ?
@@ -3560,12 +3616,12 @@ export class DatabaseSQLite {
     const rows = this.db.prepare(sql).all(...params);
 
     const localDroplets = rows.map(d => {
-      // Check if user has read this droplet
-      const hasRead = userId ? !!this.db.prepare('SELECT 1 FROM droplet_read_by WHERE droplet_id = ? AND user_id = ?').get(d.id, userId) : false;
+      // Check if user has read this ping
+      const hasRead = userId ? !!this.db.prepare('SELECT 1 FROM ping_read_by WHERE ping_id = ? AND user_id = ?').get(d.id, userId) : false;
       const isUnread = d.deleted ? false : (userId ? !hasRead && d.author_id !== userId : false);
 
       // Get read by users
-      const readBy = this.db.prepare('SELECT user_id FROM droplet_read_by WHERE droplet_id = ?').all(d.id).map(r => r.user_id);
+      const readBy = this.db.prepare('SELECT user_id FROM ping_read_by WHERE ping_id = ?').all(d.id).map(r => r.user_id);
 
       return {
         id: d.id,
@@ -3678,13 +3734,13 @@ export class DatabaseSQLite {
       keyVersion: data.keyVersion || null,
     };
 
-    // Check if parent is a remote droplet (exists in remote_droplets but not in droplets)
+    // Check if parent is a remote droplet (exists in remote_pings but not in droplets)
     // If so, we need to temporarily disable FK checks since remote droplets aren't in the droplets table
     let isRemoteParent = false;
     if (droplet.parentId) {
-      const localParent = this.db.prepare('SELECT id FROM droplets WHERE id = ?').get(droplet.parentId);
+      const localParent = this.db.prepare('SELECT id FROM pings WHERE id = ?').get(droplet.parentId);
       if (!localParent) {
-        const remoteParent = this.db.prepare('SELECT id FROM remote_droplets WHERE id = ?').get(droplet.parentId);
+        const remoteParent = this.db.prepare('SELECT id FROM remote_pings WHERE id = ?').get(droplet.parentId);
         isRemoteParent = !!remoteParent;
       }
     }
@@ -3694,7 +3750,7 @@ export class DatabaseSQLite {
       this.db.exec('PRAGMA foreign_keys = OFF');
       try {
         this.db.prepare(`
-          INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version)
+          INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
         `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion);
       } finally {
@@ -3702,13 +3758,13 @@ export class DatabaseSQLite {
       }
     } else {
       this.db.prepare(`
-        INSERT INTO droplets (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version)
+        INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
       `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion);
     }
 
-    // Author has read their own droplet
-    this.db.prepare('INSERT INTO droplet_read_by (droplet_id, user_id, read_at) VALUES (?, ?, ?)').run(droplet.id, data.authorId, now);
+    // Author has read their own ping
+    this.db.prepare('INSERT INTO ping_read_by (ping_id, user_id, read_at) VALUES (?, ?, ?)').run(droplet.id, data.authorId, now);
 
     // Update wave timestamp
     this.updateWaveTimestamp(data.waveId);
@@ -3736,7 +3792,7 @@ export class DatabaseSQLite {
   getDroplet(dropletId) {
     const d = this.db.prepare(`
       SELECT d.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle
-      FROM droplets d
+      FROM pings d
       JOIN users u ON d.author_id = u.id
       WHERE d.id = ?
     `).get(dropletId);
@@ -3779,12 +3835,12 @@ export class DatabaseSQLite {
   }
 
   updateDroplet(dropletId, content) {
-    const droplet = this.db.prepare('SELECT * FROM droplets WHERE id = ?').get(dropletId);
+    const droplet = this.db.prepare('SELECT * FROM pings WHERE id = ?').get(dropletId);
     if (!droplet || droplet.deleted) return null;
 
     // Save history
     this.db.prepare(`
-      INSERT INTO droplet_history (id, droplet_id, content, version, edited_at)
+      INSERT INTO ping_history (id, ping_id, content, version, edited_at)
       VALUES (?, ?, ?, ?, ?)
     `).run(`hist-${uuidv4()}`, dropletId, droplet.content, droplet.version, new Date().toISOString());
 
@@ -3794,12 +3850,12 @@ export class DatabaseSQLite {
 
     // Update droplet
     const now = new Date().toISOString();
-    this.db.prepare('UPDATE droplets SET content = ?, version = ?, edited_at = ? WHERE id = ?').run(processedContent, droplet.version + 1, now, dropletId);
+    this.db.prepare('UPDATE pings SET content = ?, version = ?, edited_at = ? WHERE id = ?').run(processedContent, droplet.version + 1, now, dropletId);
 
     // Return updated droplet
     const updated = this.db.prepare(`
       SELECT d.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle
-      FROM droplets d
+      FROM pings d
       JOIN users u ON d.author_id = u.id
       WHERE d.id = ?
     `).get(dropletId);
@@ -3832,7 +3888,7 @@ export class DatabaseSQLite {
   }
 
   deleteDroplet(dropletId, userId) {
-    const droplet = this.db.prepare('SELECT * FROM droplets WHERE id = ?').get(dropletId);
+    const droplet = this.db.prepare('SELECT * FROM pings WHERE id = ?').get(dropletId);
     if (!droplet) return { success: false, error: 'Droplet not found' };
     if (droplet.deleted) return { success: false, error: 'Droplet already deleted' };
     if (droplet.author_id !== userId) return { success: false, error: 'Only droplet author can delete' };
@@ -3841,15 +3897,15 @@ export class DatabaseSQLite {
 
     // Soft delete
     this.db.prepare(`
-      UPDATE droplets SET content = '[Droplet deleted]', deleted = 1, deleted_at = ?, reactions = '{}'
+      UPDATE pings SET content = '[Droplet deleted]', deleted = 1, deleted_at = ?, reactions = '{}'
       WHERE id = ?
     `).run(now, dropletId);
 
     // Clear read status
-    this.db.prepare('DELETE FROM droplet_read_by WHERE droplet_id = ?').run(dropletId);
+    this.db.prepare('DELETE FROM ping_read_by WHERE ping_id = ?').run(dropletId);
 
     // Clear history
-    this.db.prepare('DELETE FROM droplet_history WHERE droplet_id = ?').run(dropletId);
+    this.db.prepare('DELETE FROM ping_history WHERE ping_id = ?').run(dropletId);
 
     return { success: true, dropletId, waveId: droplet.wave_id, deleted: true };
   }
@@ -3860,7 +3916,7 @@ export class DatabaseSQLite {
   }
 
   toggleDropletReaction(dropletId, userId, emoji) {
-    const droplet = this.db.prepare('SELECT * FROM droplets WHERE id = ?').get(dropletId);
+    const droplet = this.db.prepare('SELECT * FROM pings WHERE id = ?').get(dropletId);
     if (!droplet) return { success: false, error: 'Droplet not found' };
     if (droplet.deleted) return { success: false, error: 'Cannot react to deleted droplet' };
 
@@ -3875,7 +3931,7 @@ export class DatabaseSQLite {
       reactions[emoji].push(userId);
     }
 
-    this.db.prepare('UPDATE droplets SET reactions = ? WHERE id = ?').run(JSON.stringify(reactions), dropletId);
+    this.db.prepare('UPDATE pings SET reactions = ? WHERE id = ?').run(JSON.stringify(reactions), dropletId);
 
     return { success: true, dropletId, reactions, waveId: droplet.wave_id };
   }
@@ -3886,12 +3942,12 @@ export class DatabaseSQLite {
   }
 
   markDropletAsRead(dropletId, userId) {
-    const droplet = this.db.prepare('SELECT * FROM droplets WHERE id = ?').get(dropletId);
+    const droplet = this.db.prepare('SELECT * FROM pings WHERE id = ?').get(dropletId);
     if (!droplet) return false;
     if (droplet.deleted) return true;
 
     try {
-      this.db.prepare('INSERT INTO droplet_read_by (droplet_id, user_id, read_at) VALUES (?, ?, ?)').run(dropletId, userId, new Date().toISOString());
+      this.db.prepare('INSERT INTO ping_read_by (ping_id, user_id, read_at) VALUES (?, ?, ?)').run(dropletId, userId, new Date().toISOString());
       return true;
     } catch {
       // Already read
@@ -3926,7 +3982,7 @@ export class DatabaseSQLite {
       SELECT
         d.id,
         d.content,
-        snippet(droplets_fts, 1, '<mark>', '</mark>', '...', 64) as snippet,
+        snippet(pings_fts, 1, '<mark>', '</mark>', '...', 64) as snippet,
         d.wave_id,
         d.author_id,
         d.created_at,
@@ -3934,12 +3990,12 @@ export class DatabaseSQLite {
         w.title as wave_name,
         u.display_name as author_name,
         u.handle as author_handle,
-        bm25(droplets_fts) as rank
-      FROM droplets_fts
-      JOIN droplets d ON droplets_fts.id = d.id
+        bm25(pings_fts) as rank
+      FROM pings_fts
+      JOIN pings d ON pings_fts.id = d.id
       JOIN waves w ON d.wave_id = w.id
       JOIN users u ON d.author_id = u.id
-      WHERE droplets_fts MATCH ? AND d.deleted = 0
+      WHERE pings_fts MATCH ? AND d.deleted = 0
     `;
     const params = [ftsQuery];
 
@@ -3999,7 +4055,7 @@ export class DatabaseSQLite {
     let sql = `
       SELECT d.id, d.content, d.wave_id, d.author_id, d.created_at, d.parent_id,
         w.title as wave_name, u.display_name as author_name, u.handle as author_handle
-      FROM droplets d
+      FROM pings d
       JOIN waves w ON d.wave_id = w.id
       JOIN users u ON d.author_id = u.id
       WHERE d.content LIKE ? AND d.deleted = 0
@@ -4108,7 +4164,7 @@ export class DatabaseSQLite {
     const now = new Date().toISOString();
 
     this.db.prepare(`
-      INSERT INTO notifications (id, user_id, type, wave_id, droplet_id, actor_id, title, body, preview, read, dismissed, push_sent, created_at, group_key)
+      INSERT INTO notifications (id, user_id, type, wave_id, ping_id, actor_id, title, body, preview, read, dismissed, push_sent, created_at, group_key)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
     `).run(id, userId, type, waveId || null, dropletId || null, actorId || null, title, body || null, preview || null, now, groupKey || null);
 
@@ -4163,7 +4219,7 @@ export class DatabaseSQLite {
       userId: r.user_id,
       type: r.type,
       waveId: r.wave_id,
-      dropletId: r.droplet_id,
+      dropletId: r.ping_id,
       actorId: r.actor_id,
       title: r.title,
       body: r.body,
@@ -4237,12 +4293,12 @@ export class DatabaseSQLite {
     return result.changes > 0;
   }
 
-  // Mark all notifications for a specific droplet as read for a user
+  // Mark all notifications for a specific ping as read for a user
   markNotificationsReadByDroplet(dropletId, userId) {
     const now = new Date().toISOString();
     const result = this.db.prepare(`
       UPDATE notifications SET read = 1, read_at = ?
-      WHERE droplet_id = ? AND user_id = ? AND read = 0
+      WHERE ping_id = ? AND user_id = ? AND read = 0
     `).run(now, dropletId, userId);
     return result.changes;
   }
@@ -4759,7 +4815,7 @@ export class DatabaseSQLite {
   // ============ Federation - Remote Droplets Methods ============
 
   getRemoteDroplet(id) {
-    const row = this.db.prepare('SELECT * FROM remote_droplets WHERE id = ?').get(id);
+    const row = this.db.prepare('SELECT * FROM remote_pings WHERE id = ?').get(id);
     if (!row) return null;
     return {
       id: row.id,
@@ -4783,7 +4839,7 @@ export class DatabaseSQLite {
   getRemoteDropletsForWave(waveId) {
     const rows = this.db.prepare(`
       SELECT rd.*, ru.display_name as author_display_name, ru.avatar as author_avatar, ru.avatar_url as author_avatar_url
-      FROM remote_droplets rd
+      FROM remote_pings rd
       LEFT JOIN remote_users ru ON rd.author_id = ru.id
       WHERE rd.wave_id = ? AND rd.deleted = 0
       ORDER BY rd.created_at ASC
@@ -4815,7 +4871,7 @@ export class DatabaseSQLite {
     const now = new Date().toISOString();
 
     this.db.prepare(`
-      INSERT INTO remote_droplets (id, wave_id, origin_wave_id, origin_node, author_id, author_node, parent_id, content, created_at, edited_at, reactions, cached_at, updated_at)
+      INSERT INTO remote_pings (id, wave_id, origin_wave_id, origin_node, author_id, author_node, parent_id, content, created_at, edited_at, reactions, cached_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (id) DO UPDATE SET
         content = excluded.content,
@@ -4830,7 +4886,7 @@ export class DatabaseSQLite {
   markRemoteDropletDeleted(id) {
     const now = new Date().toISOString();
     const result = this.db.prepare(`
-      UPDATE remote_droplets SET deleted = 1, updated_at = ? WHERE id = ?
+      UPDATE remote_pings SET deleted = 1, updated_at = ? WHERE id = ?
     `).run(now, id);
     return result.changes > 0;
   }
@@ -5489,7 +5545,7 @@ export class DatabaseSQLite {
       `).all(userId),
       droplets: this.db.prepare(`
         SELECT d.*, w.title as wave_name
-        FROM droplets d
+        FROM pings d
         LEFT JOIN waves w ON d.wave_id = w.id
         WHERE d.author_id = ?
         ORDER BY d.created_at DESC
@@ -5503,8 +5559,8 @@ export class DatabaseSQLite {
       `).all(userId),
       groupMemberships: this.db.prepare(`
         SELECT g.id, g.name, g.description, gm.role, gm.joined_at
-        FROM group_members gm
-        JOIN groups g ON gm.group_id = g.id
+        FROM crew_members gm
+        JOIN crews g ON gm.crew_id = g.id
         WHERE gm.user_id = ?
       `).all(userId),
       sentContactRequests: this.db.prepare(`
@@ -5681,7 +5737,7 @@ export class DatabaseSQLite {
 
         if (!otherParticipant) {
           // Delete wave and all its droplets (sole participant)
-          this.db.prepare('DELETE FROM droplets WHERE wave_id = ?').run(wave.id);
+          this.db.prepare('DELETE FROM pings WHERE wave_id = ?').run(wave.id);
           this.db.prepare('DELETE FROM wave_participants WHERE wave_id = ?').run(wave.id);
           this.db.prepare('DELETE FROM waves WHERE id = ?').run(wave.id);
         } else {
@@ -5694,50 +5750,50 @@ export class DatabaseSQLite {
       this.db.prepare('DELETE FROM wave_participants WHERE user_id = ?').run(userId);
 
       // 9. Orphan droplets (transfer to deleted user, keep content)
-      this.db.prepare('UPDATE droplets SET author_id = ? WHERE author_id = ?').run(deletedUserId, userId);
+      this.db.prepare('UPDATE pings SET author_id = ? WHERE author_id = ?').run(deletedUserId, userId);
 
       // 10. Handle groups - delete empty ones, orphan others
       const groupsCreated = this.db.prepare(`
-        SELECT g.id FROM groups g WHERE g.created_by = ?
+        SELECT g.id FROM crews g WHERE g.created_by = ?
       `).all(userId);
 
       for (const group of groupsCreated) {
         const memberCount = this.db.prepare(`
-          SELECT COUNT(*) as count FROM group_members WHERE group_id = ?
+          SELECT COUNT(*) as count FROM crew_members WHERE crew_id = ?
         `).get(group.id)?.count || 0;
 
         if (memberCount <= 1) {
           // Delete group (sole member)
-          this.db.prepare('DELETE FROM group_members WHERE group_id = ?').run(group.id);
-          this.db.prepare('DELETE FROM group_invitations WHERE group_id = ?').run(group.id);
-          this.db.prepare('DELETE FROM groups WHERE id = ?').run(group.id);
+          this.db.prepare('DELETE FROM crew_members WHERE crew_id = ?').run(group.id);
+          this.db.prepare('DELETE FROM crew_invitations WHERE crew_id = ?').run(group.id);
+          this.db.prepare('DELETE FROM crews WHERE id = ?').run(group.id);
         } else {
           // Transfer to next admin or first member
           const nextAdmin = this.db.prepare(`
-            SELECT user_id FROM group_members
-            WHERE group_id = ? AND user_id != ? AND role = 'admin'
+            SELECT user_id FROM crew_members
+            WHERE crew_id = ? AND user_id != ? AND role = 'admin'
             LIMIT 1
           `).get(group.id, userId);
 
           const newOwner = nextAdmin?.user_id || this.db.prepare(`
-            SELECT user_id FROM group_members
-            WHERE group_id = ? AND user_id != ?
+            SELECT user_id FROM crew_members
+            WHERE crew_id = ? AND user_id != ?
             LIMIT 1
           `).get(group.id, userId)?.user_id;
 
           if (newOwner) {
-            this.db.prepare('UPDATE groups SET created_by = ? WHERE id = ?').run(newOwner, group.id);
+            this.db.prepare('UPDATE crews SET created_by = ? WHERE id = ?').run(newOwner, group.id);
             // Make sure new owner is admin
             this.db.prepare(`
-              UPDATE group_members SET role = 'admin'
-              WHERE group_id = ? AND user_id = ?
+              UPDATE crew_members SET role = 'admin'
+              WHERE crew_id = ? AND user_id = ?
             `).run(group.id, newOwner);
           }
         }
       }
 
       // 11. Remove user from group members
-      this.db.prepare('DELETE FROM group_members WHERE user_id = ?').run(userId);
+      this.db.prepare('DELETE FROM crew_members WHERE user_id = ?').run(userId);
 
       // 12. Delete contacts
       this.db.prepare('DELETE FROM contacts WHERE user_id = ? OR contact_id = ?').run(userId, userId);
@@ -5746,7 +5802,7 @@ export class DatabaseSQLite {
       this.db.prepare('DELETE FROM contact_requests WHERE from_user_id = ? OR to_user_id = ?').run(userId, userId);
 
       // 14. Delete group invitations
-      this.db.prepare('DELETE FROM group_invitations WHERE invited_by = ? OR invited_user_id = ?').run(userId, userId);
+      this.db.prepare('DELETE FROM crew_invitations WHERE invited_by = ? OR invited_user_id = ?').run(userId, userId);
 
       // 15. Delete blocks and mutes
       this.db.prepare('DELETE FROM blocks WHERE user_id = ? OR blocked_user_id = ?').run(userId, userId);
@@ -6091,7 +6147,7 @@ export class DatabaseSQLite {
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN encrypted = 1 THEN 1 ELSE 0 END) as encrypted_count
-      FROM droplets WHERE wave_id = ?
+      FROM pings WHERE wave_id = ?
     `).get(waveId);
 
     return {
@@ -6128,7 +6184,7 @@ export class DatabaseSQLite {
   getUnencryptedDroplets(waveId, limit = 50) {
     return this.db.prepare(`
       SELECT id, content, author_id, created_at
-      FROM droplets
+      FROM pings
       WHERE wave_id = ? AND encrypted = 0
       ORDER BY created_at ASC
       LIMIT ?
@@ -6143,7 +6199,7 @@ export class DatabaseSQLite {
   // Update a droplet with encrypted content
   encryptDropletContent(dropletId, encryptedContent, nonce, keyVersion) {
     this.db.prepare(`
-      UPDATE droplets
+      UPDATE pings
       SET content = ?, nonce = ?, key_version = ?, encrypted = 1
       WHERE id = ?
     `).run(encryptedContent, nonce, keyVersion, dropletId);

@@ -1,5 +1,5 @@
 /**
- * Cortex E2EE Crypto Module (v1.19.0)
+ * Farhold E2EE Crypto Module (v2.0.0)
  *
  * End-to-end encryption using Web Crypto API.
  *
@@ -7,7 +7,7 @@
  * - User Passphrase → PBKDF2 → Passphrase-Derived Key (PDK)
  * - PDK wraps User Private Key (ECDH P-384)
  * - User keypair encrypts Wave Keys (AES-256-GCM)
- * - Wave Keys encrypt Droplet content
+ * - Wave Keys encrypt Ping content
  */
 
 // Constants

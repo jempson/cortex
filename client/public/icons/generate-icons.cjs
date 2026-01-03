@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * PWA Icon Generator for Cortex
+ * PWA Icon Generator for Farhold
  *
  * Run this script to generate all required PWA icons:
  *   node generate-icons.js

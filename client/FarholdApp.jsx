@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '1.20.3';
+const VERSION = '2.0.0';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -59,7 +59,7 @@ const useAuth = () => useContext(AuthContext);
 // ============ PRIVACY LEVELS ============
 const PRIVACY_LEVELS = {
   private: { name: 'Private', color: 'var(--accent-orange)', bgColor: 'var(--overlay-orange)', icon: '◉', desc: 'Only invited participants' },
-  group: { name: 'Group', color: 'var(--accent-amber)', bgColor: 'var(--overlay-amber)', icon: '◈', desc: 'All group members' },
+  group: { name: 'Crew', color: 'var(--accent-amber)', bgColor: 'var(--overlay-amber)', icon: '◈', desc: 'All crew members' },
   crossServer: { name: 'Cross-Server', color: 'var(--accent-teal)', bgColor: 'var(--overlay-teal)', icon: '◇', desc: 'Federated servers' },
   public: { name: 'Public', color: 'var(--accent-green)', bgColor: 'var(--overlay-green)', icon: '○', desc: 'Visible to everyone' },
 };
@@ -135,7 +135,7 @@ const updateAppBadge = (count) => {
 };
 
 // Tab notification state
-let originalTitle = 'Cortex';
+let originalTitle = 'Farhold';
 let originalFaviconHref = '/icons/favicon-32x32.png';
 let notificationFaviconDataUrl = null;
 let faviconFlashInterval = null;
@@ -229,29 +229,29 @@ const isPWA = () => {
 };
 
 const storage = {
-  getToken: () => localStorage.getItem('cortex_token'),
-  setToken: (token) => localStorage.setItem('cortex_token', token),
-  removeToken: () => localStorage.removeItem('cortex_token'),
-  getUser: () => { try { return JSON.parse(localStorage.getItem('cortex_user')); } catch { return null; } },
+  getToken: () => localStorage.getItem('farhold_token'),
+  setToken: (token) => localStorage.setItem('farhold_token', token),
+  removeToken: () => localStorage.removeItem('farhold_token'),
+  getUser: () => { try { return JSON.parse(localStorage.getItem('farhold_user')); } catch { return null; } },
   setUser: (user) => {
-    localStorage.setItem('cortex_user', JSON.stringify(user));
+    localStorage.setItem('farhold_user', JSON.stringify(user));
     // Also store theme separately for fast access on page load
     if (user?.preferences?.theme) {
-      localStorage.setItem('cortex_theme', user.preferences.theme);
+      localStorage.setItem('farhold_theme', user.preferences.theme);
     }
   },
-  removeUser: () => { localStorage.removeItem('cortex_user'); localStorage.removeItem('cortex_theme'); },
-  getPushEnabled: () => localStorage.getItem('cortex_push_enabled') !== 'false', // Default true
-  setPushEnabled: (enabled) => localStorage.setItem('cortex_push_enabled', enabled ? 'true' : 'false'),
-  getTheme: () => localStorage.getItem('cortex_theme'),
-  setTheme: (theme) => localStorage.setItem('cortex_theme', theme),
+  removeUser: () => { localStorage.removeItem('farhold_user'); localStorage.removeItem('farhold_theme'); },
+  getPushEnabled: () => localStorage.getItem('farhold_push_enabled') !== 'false', // Default true
+  setPushEnabled: (enabled) => localStorage.setItem('farhold_push_enabled', enabled ? 'true' : 'false'),
+  getTheme: () => localStorage.getItem('farhold_theme'),
+  setTheme: (theme) => localStorage.setItem('farhold_theme', theme),
   // Session start time tracking for browser session timeout
   getSessionStart: () => {
-    const start = localStorage.getItem('cortex_session_start');
+    const start = localStorage.getItem('farhold_session_start');
     return start ? parseInt(start, 10) : null;
   },
-  setSessionStart: () => localStorage.setItem('cortex_session_start', Date.now().toString()),
-  removeSessionStart: () => localStorage.removeItem('cortex_session_start'),
+  setSessionStart: () => localStorage.setItem('farhold_session_start', Date.now().toString()),
+  removeSessionStart: () => localStorage.removeItem('farhold_session_start'),
   // Check if browser session has expired (24 hours for non-PWA)
   isSessionExpired: () => {
     // PWA sessions don't expire based on time (they use device session)
@@ -319,7 +319,7 @@ async function subscribeToPush(token) {
     console.log('[Push] Existing subscription:', subscription ? 'yes' : 'no');
 
     // Check if VAPID key has changed - if so, unsubscribe old and create new
-    const storedVapidKey = localStorage.getItem('cortex_vapid_key');
+    const storedVapidKey = localStorage.getItem('farhold_vapid_key');
     if (subscription && storedVapidKey && storedVapidKey !== publicKey) {
       console.log('[Push] VAPID key changed, unsubscribing old subscription...');
       try {
@@ -387,7 +387,7 @@ async function subscribeToPush(token) {
     }
 
     // Store VAPID key to detect future changes
-    localStorage.setItem('cortex_vapid_key', publicKey);
+    localStorage.setItem('farhold_vapid_key', publicKey);
     console.log('[Push] Push subscription registered with server');
     return { success: true };
   } catch (error) {
@@ -419,7 +419,7 @@ async function unsubscribeFromPush(token) {
       });
 
       // Clear stored VAPID key
-      localStorage.removeItem('cortex_vapid_key');
+      localStorage.removeItem('farhold_vapid_key');
       console.log('[Push] Push subscription removed');
     }
     return true;
@@ -1440,7 +1440,7 @@ const InstallPrompt = ({ isMobile }) => {
     }
 
     // Check if dismissed recently (within 7 days)
-    const dismissedAt = localStorage.getItem('cortex_install_dismissed');
+    const dismissedAt = localStorage.getItem('farhold_install_dismissed');
     if (dismissedAt) {
       const daysSinceDismissed = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24);
       if (daysSinceDismissed < 7) {
@@ -1454,8 +1454,8 @@ const InstallPrompt = ({ isMobile }) => {
       setDeferredPrompt(e);
 
       // Show prompt after second visit or 30 seconds
-      const visitCount = parseInt(localStorage.getItem('cortex_visits') || '0') + 1;
-      localStorage.setItem('cortex_visits', visitCount.toString());
+      const visitCount = parseInt(localStorage.getItem('farhold_visits') || '0') + 1;
+      localStorage.setItem('farhold_visits', visitCount.toString());
 
       if (visitCount >= 2) {
         setShowPrompt(true);
@@ -1498,7 +1498,7 @@ const InstallPrompt = ({ isMobile }) => {
 
   const handleDismiss = () => {
     setShowPrompt(false);
-    localStorage.setItem('cortex_install_dismissed', Date.now().toString());
+    localStorage.setItem('farhold_install_dismissed', Date.now().toString());
   };
 
   if (isInstalled || !showPrompt || !deferredPrompt) return null;
@@ -1524,7 +1524,7 @@ const InstallPrompt = ({ isMobile }) => {
         marginBottom: '12px'
       }}>
         <div style={{ color: 'var(--accent-green)', fontWeight: 'bold', fontSize: '1rem', fontFamily: 'monospace' }}>
-          Install Cortex
+          Install Farhold
         </div>
         <button
           onClick={handleDismiss}
@@ -1549,7 +1549,7 @@ const InstallPrompt = ({ isMobile }) => {
         lineHeight: 1.4,
         fontFamily: 'monospace'
       }}>
-        Install Cortex on your device for quick access and offline support.
+        Install Farhold on your device for quick access and offline support.
       </p>
 
       <div style={{ display: 'flex', gap: '8px' }}>
@@ -1632,7 +1632,7 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
   const items = [
     { id: 'waves', icon: '◈', label: 'Waves', badge: unreadCount },
     { id: 'contacts', icon: '●', label: 'Contacts', badge: pendingContacts },
-    { id: 'groups', icon: '◆', label: 'Groups', badge: pendingGroups },
+    { id: 'groups', icon: '◆', label: 'Crews', badge: pendingGroups },
     { id: 'profile', icon: '⚙', label: 'Profile' },
   ];
 
@@ -2452,7 +2452,7 @@ const NOTIFICATION_TYPES = {
   direct_mention: { icon: '@', color: 'var(--accent-amber)', label: 'Mentioned you' },
   reply: { icon: '↩', color: 'var(--accent-teal)', label: 'Replied to you' },
   wave_activity: { icon: '◎', color: 'var(--accent-green)', label: 'Wave activity' },
-  ripple: { icon: '◈', color: 'var(--accent-purple)', label: 'Rippled' },
+  ripple: { icon: '◈', color: 'var(--accent-purple)', label: 'Burst' },
   system: { icon: '⚡', color: 'var(--accent-orange)', label: 'System' },
 };
 
@@ -2976,10 +2976,10 @@ const AboutServerPage = ({ onBack }) => {
             marginBottom: '8px',
           }}>
             {info.federationEnabled && <span style={{ marginRight: '10px' }}>◇</span>}
-            {info.name || 'Cortex Server'}
+            {info.name || 'Farhold Server'}
           </div>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>
-            Cortex v{info.version}
+            Farhold v{info.version}
             {info.federationEnabled && (
               <span style={{
                 marginLeft: '12px',
@@ -3059,7 +3059,7 @@ const AboutServerPage = ({ onBack }) => {
           fontSize: '0.75rem',
           borderTop: '1px solid var(--border-subtle)',
         }}>
-          Powered by <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-teal)' }}>Cortex</a>
+          Powered by <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-teal)' }}>Farhold</a>
         </div>
       </div>
     </div>
@@ -3211,7 +3211,7 @@ const LoginScreen = ({ onAbout }) => {
         border: '2px solid var(--accent-amber)40',
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>CORTEX</GlowText>
+          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>FARHOLD</GlowText>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '8px' }}>SECURE COMMUNICATIONS</div>
         </div>
 
@@ -3569,7 +3569,7 @@ const ResetPasswordPage = ({ onBack }) => {
         border: '2px solid var(--accent-amber)40',
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>CORTEX</GlowText>
+          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>FARHOLD</GlowText>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '8px' }}>PASSWORD RESET</div>
         </div>
 
@@ -3642,11 +3642,11 @@ const ResetPasswordPage = ({ onBack }) => {
 };
 
 // ============ WAVE LIST (Mobile Responsive) ============
-// Badge colors by notification type (priority order: mention > reply > ripple > activity)
+// Badge colors by notification type (priority order: mention > reply > burst > activity)
 const NOTIFICATION_BADGE_COLORS = {
   direct_mention: { bg: 'var(--accent-amber)', shadow: 'var(--glow-amber)', icon: '@' },  // Amber - someone mentioned you
-  reply: { bg: 'var(--accent-green)', shadow: 'var(--glow-green)', icon: '↩' },           // Green - reply to your droplet
-  ripple: { bg: 'var(--accent-purple)', shadow: 'var(--glow-purple)', icon: '◈' },          // Purple - ripple activity
+  reply: { bg: 'var(--accent-green)', shadow: 'var(--glow-green)', icon: '↩' },           // Green - reply to your ping
+  ripple: { bg: 'var(--accent-purple)', shadow: 'var(--glow-purple)', icon: '◈' },          // Purple - burst activity
   wave_activity: { bg: 'var(--accent-orange)', shadow: 'var(--glow-orange)', icon: null },  // Orange - general activity
 };
 
@@ -3933,6 +3933,13 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                   color: 'var(--accent-purple)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>⤴</button>
               )}
+              {/* Burst (create new wave from this ping) */}
+              {onRipple && (
+                <button onClick={() => onRipple(message)} title="Burst to new wave" style={{
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
+                }}>◈</button>
+              )}
               {/* Edit */}
               {canDelete && !isEditing && (
                 <button onClick={() => onEdit(message)} title="Edit" style={{
@@ -4031,7 +4038,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 fontSize: isMobile ? '0.95rem' : '0.85rem',
                 resize: 'vertical',
               }}
-              placeholder="Edit your droplet..."
+              placeholder="Edit your ping..."
               autoFocus
             />
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
@@ -4067,7 +4074,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               fontStyle: 'italic',
             }}
           >
-            [Droplet deleted]
+            [Ping deleted]
           </div>
         ) : (
           <div
@@ -4610,7 +4617,7 @@ const AlertDetailModal = ({ alert, onClose, onDismiss, isMobile }) => {
 
 // ============ REPORT MODAL ============
 const REPORT_REASONS = [
-  { value: 'spam', label: 'Spam', desc: 'Unwanted promotional content or repetitive droplets' },
+  { value: 'spam', label: 'Spam', desc: 'Unwanted promotional content or repetitive pings' },
   { value: 'harassment', label: 'Harassment', desc: 'Bullying, threats, or targeted abuse' },
   { value: 'inappropriate', label: 'Inappropriate Content', desc: 'Offensive, explicit, or harmful content' },
   { value: 'other', label: 'Other', desc: 'Other violation of community guidelines' },
@@ -4645,7 +4652,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
     }
     setSubmitting(true);
     try {
-      const result = await fetchAPI(`/droplets/${droplet.id}/ripple`, {
+      const result = await fetchAPI(`/pings/${droplet.id}/burst`, {
         method: 'POST',
         body: { title: title.trim(), participants: selectedParticipants }
       });
@@ -4655,7 +4662,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
         onSuccess(result.newWave);
       }
     } catch (err) {
-      showToast(err.message || 'Failed to ripple droplet', 'error');
+      showToast(err.message || 'Failed to burst ping', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -4685,7 +4692,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
         border: '2px solid var(--accent-teal)80', padding: isMobile ? '20px' : '24px',
       }} onClick={(e) => e.stopPropagation()}>
         <div style={{ marginBottom: '20px' }}>
-          <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>◈ Ripple to New Wave</GlowText>
+          <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>◈ Burst to New Wave</GlowText>
         </div>
 
         {/* Preview of what's being rippled */}
@@ -4710,7 +4717,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
             "{contentPreview}{contentPreview.length >= 100 ? '...' : ''}"
           </div>
           <div style={{ fontSize: isMobile ? '0.75rem' : '0.7rem', color: 'var(--accent-teal)' }}>
-            1 droplet + {childCount} {childCount === 1 ? 'reply' : 'replies'} will be moved
+            1 ping + {childCount} {childCount === 1 ? 'reply' : 'replies'} will be moved
           </div>
         </div>
 
@@ -4773,7 +4780,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
                 />
                 <Avatar letter={p.avatar || '?'} color="var(--accent-teal)" size={24} imageUrl={p.avatarUrl} />
                 <span style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
-                  {p.display_name || p.displayName}
+                  {p.display_name || p.displayName || p.name}
                 </span>
               </label>
             ))}
@@ -4861,7 +4868,7 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile, unreadCount = 
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
         }}>
-          Rippled to wave...
+          Burst to wave...
         </span>
         {unreadCount > 0 && (
           <span style={{
@@ -4924,7 +4931,7 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
         body: JSON.stringify({ type, targetId, reason, details: details.trim() }),
       });
       if (res.ok) {
-        showToast('Report submitted successfully. Thank you for helping keep Cortex safe.', 'success');
+        showToast('Report submitted successfully. Thank you for helping keep Farhold safe.', 'success');
         onClose();
       } else {
         const data = await res.json();
@@ -4939,7 +4946,7 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
 
   if (!isOpen) return null;
 
-  const typeLabels = { message: 'Droplet', droplet: 'Droplet', wave: 'Wave', user: 'User' };
+  const typeLabels = { message: 'Ping', droplet: 'Ping', wave: 'Wave', user: 'User' };
 
   return (
     <div style={{
@@ -5574,9 +5581,9 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
 
         {privacy === 'group' && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT GROUP</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT CREW</div>
             {groups.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>No groups available</div>
+              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>No crews available</div>
             ) : groups.map(g => (
               <button key={g.id} onClick={() => setSelectedGroup(g.id)} style={{
                 width: '100%', padding: '10px', marginBottom: '4px', textAlign: 'left',
@@ -5880,7 +5887,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="Search droplets..."
+            placeholder="Search pings..."
             style={{
               flex: 1,
               padding: isMobile ? '14px' : '12px',
@@ -5956,7 +5963,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
 
         {hasSearched && results.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '40px 20px' }}>
-            No droplets found matching "{searchQuery}"
+            No pings found matching "{searchQuery}"
           </div>
         )}
       </div>
@@ -5976,7 +5983,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [collapsed, setCollapsed] = useState(() => {
     // Load collapsed state from localStorage per wave
     try {
-      const saved = localStorage.getItem(`cortex_collapsed_${wave.id}`);
+      const saved = localStorage.getItem(`farhold_collapsed_${wave.id}`);
       return saved ? JSON.parse(saved) : {};
     } catch (e) {
       return {};
@@ -6136,7 +6143,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       const next = { ...prev, [messageId]: !prev[messageId] };
       // Persist to localStorage
       try {
-        localStorage.setItem(`cortex_collapsed_${wave.id}`, JSON.stringify(next));
+        localStorage.setItem(`farhold_collapsed_${wave.id}`, JSON.stringify(next));
       } catch (e) {
         console.error('Failed to save collapse state:', e);
       }
@@ -6158,7 +6165,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     countThreads(waveData?.messages || []);
     setCollapsed(newCollapsed);
     try {
-      localStorage.setItem(`cortex_collapsed_${wave.id}`, JSON.stringify(newCollapsed));
+      localStorage.setItem(`farhold_collapsed_${wave.id}`, JSON.stringify(newCollapsed));
     } catch (e) {
       console.error('Failed to save collapse state:', e);
     }
@@ -6168,7 +6175,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const expandAllThreads = () => {
     setCollapsed({});
     try {
-      localStorage.setItem(`cortex_collapsed_${wave.id}`, JSON.stringify({}));
+      localStorage.setItem(`farhold_collapsed_${wave.id}`, JSON.stringify({}));
     } catch (e) {
       console.error('Failed to save collapse state:', e);
     }
@@ -6178,8 +6185,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Share droplet to external platforms
   const handleShareDroplet = async (droplet) => {
     const shareUrl = `${window.location.origin}/share/${droplet.id}`;
-    const shareTitle = wave?.title || waveData?.title || 'Cortex';
-    const shareText = `Check out this conversation on Cortex`;
+    const shareTitle = wave?.title || waveData?.title || 'Farhold';
+    const shareText = `Check out this conversation on Farhold`;
 
     // Try native Web Share API first (mobile-friendly)
     if (navigator.share) {
@@ -6647,7 +6654,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }
 
       if (totalEncrypted > 0) {
-        showToast(`Encrypted ${totalEncrypted} droplets`, 'success');
+        showToast(`Encrypted ${totalEncrypted} pings`, 'success');
       }
 
       // Refresh wave data to show encrypted content
@@ -6655,7 +6662,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       await loadEncryptionStatus();
     } catch (err) {
       console.error('Failed to encrypt batch:', err);
-      showToast(err.message || 'Failed to encrypt droplets', 'error');
+      showToast(err.message || 'Failed to encrypt pings', 'error');
     } finally {
       setIsEncryptingBatch(false);
     }
@@ -6736,7 +6743,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         setHasMoreMessages(false);
       }
     } catch (err) {
-      showToast('Failed to load older droplets', 'error');
+      showToast('Failed to load older pings', 'error');
     }
     setLoadingMore(false);
   };
@@ -6751,7 +6758,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
     // Starting playback - load all messages first if there are more
     if (hasMoreMessages) {
-      showToast('Loading all droplets for playback...', 'info');
+      showToast('Loading all pings for playback...', 'info');
       try {
         // Keep loading until we have all messages
         let allMessages = [...(waveData?.all_messages || [])];
@@ -6805,9 +6812,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           all_messages: allMessages,
         }));
         setHasMoreMessages(false);
-        showToast(`Loaded ${allMessages.length} droplets`, 'success');
+        showToast(`Loaded ${allMessages.length} pings`, 'success');
       } catch (err) {
-        showToast('Failed to load all droplets for playback', 'error');
+        showToast('Failed to load all pings for playback', 'error');
         return;
       }
     }
@@ -6852,13 +6859,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         }
       }
 
-      await fetchAPI('/droplets', {
+      await fetchAPI('/pings', {
         method: 'POST',
         body: messageBody,
       });
       setNewMessage('');
       setReplyingTo(null);
-      showToast('Droplet sent', 'success');
+      showToast('Ping sent', 'success');
       await loadWave(true);
 
       // Only scroll to bottom if posting a root message (not a reply)
@@ -6877,7 +6884,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         }, 150);
       }
     } catch (err) {
-      showToast('Failed to send droplet', 'error');
+      showToast('Failed to send ping', 'error');
       scrollPositionToRestore.current = null; // Clear on error
       userActionInProgressRef.current = false;
     }
@@ -6976,7 +6983,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   const handleSaveEdit = async (messageId) => {
     if (!editContent.trim()) {
-      showToast('Droplet cannot be empty', 'error');
+      showToast('Ping cannot be empty', 'error');
       return;
     }
 
@@ -6987,11 +6994,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
 
     try {
-      await fetchAPI(`/droplets/${messageId}`, {
+      await fetchAPI(`/pings/${messageId}`, {
         method: 'PUT',
         body: { content: editContent },
       });
-      showToast('Droplet updated', 'success');
+      showToast('Ping updated', 'success');
       setEditingMessageId(null);
       setEditContent('');
       await loadWave(true);
@@ -7000,7 +7007,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         userActionInProgressRef.current = false;
       }, 150);
     } catch (err) {
-      showToast(err.message || 'Failed to update droplet', 'error');
+      showToast(err.message || 'Failed to update ping', 'error');
       scrollPositionToRestore.current = null;
       userActionInProgressRef.current = false;
     }
@@ -7019,7 +7026,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
 
     try {
-      await fetchAPI(`/droplets/${messageId}/react`, {
+      await fetchAPI(`/pings/${messageId}/react`, {
         method: 'POST',
         body: { emoji },
       });
@@ -7056,15 +7063,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
 
     try {
-      await fetchAPI(`/droplets/${messageToDelete.id}`, { method: 'DELETE' });
-      showToast('Droplet deleted', 'success');
+      await fetchAPI(`/pings/${messageToDelete.id}`, { method: 'DELETE' });
+      showToast('Ping deleted', 'success');
       await loadWave(true);
       // Clear flag after scroll restoration has time to complete
       setTimeout(() => {
         userActionInProgressRef.current = false;
       }, 150);
     } catch (err) {
-      showToast(err.message || 'Failed to delete droplet', 'error');
+      showToast(err.message || 'Failed to delete ping', 'error');
       scrollPositionToRestore.current = null;
       userActionInProgressRef.current = false;
     }
@@ -7079,7 +7086,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
     try {
       console.log(`📖 Marking droplet ${messageId} as read...`);
-      await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
+      await fetchAPI(`/pings/${messageId}/read`, { method: 'POST' });
       // Reload wave to update unread status
       await loadWave(true);
       // Also refresh wave list to update unread counts
@@ -7095,7 +7102,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }, 150);
     } catch (err) {
       console.error(`❌ Failed to mark droplet ${messageId} as read:`, err);
-      showToast('Failed to mark droplet as read', 'error');
+      showToast('Failed to mark ping as read', 'error');
       scrollPositionToRestore.current = null;
       userActionInProgressRef.current = false;
     }
@@ -7143,7 +7150,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             {waveData.group_name && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({waveData.group_name})</span>}
           </div>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-            {participants.length} participants • {total} droplets
+            {participants.length} participants • {total} pings
           </div>
         </div>
         <PrivacyBadge level={wave.privacy} compact={isMobile} />
@@ -7250,12 +7257,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                   const unreadDroplets = allDroplets
                     .filter(m => m.is_unread && m.author_id !== currentUser.id);
                   if (unreadDroplets.length === 0) return;
-                  await Promise.all(unreadDroplets.map(m => fetchAPI(`/droplets/${m.id}/read`, { method: 'POST' })));
+                  await Promise.all(unreadDroplets.map(m => fetchAPI(`/pings/${m.id}/read`, { method: 'POST' })));
                   await loadWave(true);
                   onWaveUpdate?.();
-                  showToast(`Marked ${unreadDroplets.length} droplet${unreadDroplets.length !== 1 ? 's' : ''} as read`, 'success');
+                  showToast(`Marked ${unreadDroplets.length} ping${unreadDroplets.length !== 1 ? 's' : ''} as read`, 'success');
                 } catch (err) {
-                  showToast('Failed to mark droplets as read', 'error');
+                  showToast('Failed to mark pings as read', 'error');
                 }
               }}
               style={{
@@ -7600,7 +7607,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 fontSize: isMobile ? '0.85rem' : '0.75rem',
               }}
             >
-              {loadingMore ? 'Loading...' : `↑ Load older droplets (${(waveData.total_messages || 0) - allDroplets.length} more)`}
+              {loadingMore ? 'Loading...' : `↑ Load older pings (${(waveData.total_messages || 0) - allDroplets.length} more)`}
             </button>
           </div>
         )}
@@ -7784,7 +7791,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 }
               }
             }}
-            placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a droplet... (Shift+Enter for new line, @ to mention)'}
+            placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}... (Shift+Enter for new line)` : 'Type a ping... (Shift+Enter for new line, @ to mention)'}
             rows={1}
             style={{
               width: '100%',
@@ -8352,7 +8359,7 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
     setProcessing(prev => ({ ...prev, [invitationId]: 'accept' }));
     try {
       await fetchAPI(`/groups/invitations/${invitationId}/accept`, { method: 'POST' });
-      showToast('You joined the group!', 'success');
+      showToast('You joined the crew!', 'success');
       onInvitationsChange();
       onGroupsChange();
     } catch (err) {
@@ -8365,7 +8372,7 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
     setProcessing(prev => ({ ...prev, [invitationId]: 'decline' }));
     try {
       await fetchAPI(`/groups/invitations/${invitationId}/decline`, { method: 'POST' });
-      showToast('Group invitation declined', 'info');
+      showToast('Crew invitation declined', 'info');
       onInvitationsChange();
     } catch (err) {
       showToast(err.message || 'Failed to decline invitation', 'error');
@@ -8396,7 +8403,7 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ color: 'var(--accent-amber)', fontSize: '0.95rem', marginBottom: '4px' }}>
-                {invitation.group?.name || 'Unknown Group'}
+                {invitation.group?.name || 'Unknown Crew'}
               </div>
               <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>
                 Invited by {invitation.invited_by_user?.displayName || 'Someone'}
@@ -8755,13 +8762,13 @@ const FocusView = ({
 
     try {
       const parentId = replyingTo?.id || focusedDroplet?.id;
-      await fetchAPI('/droplets', {
+      await fetchAPI('/pings', {
         method: 'POST',
         body: { wave_id: wave.id, parent_id: parentId, content: newMessage }
       });
       setNewMessage('');
       setReplyingTo(null);
-      showToast('Droplet sent', 'success');
+      showToast('Ping sent', 'success');
       // Immediately refresh to show the new droplet
       fetchFreshData();
     } catch (err) {
@@ -8773,7 +8780,7 @@ const FocusView = ({
     // Save scroll position before updating
     const scrollTop = messagesRef.current?.scrollTop;
     try {
-      await fetchAPI(`/droplets/${messageId}/react`, {
+      await fetchAPI(`/pings/${messageId}/react`, {
         method: 'POST',
         body: { emoji }
       });
@@ -8791,7 +8798,7 @@ const FocusView = ({
   // Mark droplet as read when clicked
   const handleMessageClick = async (messageId) => {
     try {
-      await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
+      await fetchAPI(`/pings/${messageId}/read`, { method: 'POST' });
       // Refresh to update UI
       await fetchFreshData();
     } catch (err) {
@@ -8800,10 +8807,10 @@ const FocusView = ({
   };
 
   const handleDeleteMessage = async (message) => {
-    if (!confirm('Delete this droplet?')) return;
+    if (!confirm('Delete this ping?')) return;
     try {
-      await fetchAPI(`/droplets/${message.id}`, { method: 'DELETE' });
-      showToast('Droplet deleted', 'success');
+      await fetchAPI(`/pings/${message.id}`, { method: 'DELETE' });
+      showToast('Ping deleted', 'success');
     } catch (err) {
       showToast(err.message || 'Failed to delete', 'error');
     }
@@ -8816,13 +8823,13 @@ const FocusView = ({
 
   const handleSaveEdit = async (messageId) => {
     try {
-      await fetchAPI(`/droplets/${messageId}`, {
+      await fetchAPI(`/pings/${messageId}`, {
         method: 'PUT',
         body: { content: editContent }
       });
       setEditingMessageId(null);
       setEditContent('');
-      showToast('Droplet updated', 'success');
+      showToast('Ping updated', 'success');
     } catch (err) {
       showToast(err.message || 'Failed to update', 'error');
     }
@@ -8840,8 +8847,8 @@ const FocusView = ({
   // Share droplet to external platforms
   const handleShareDroplet = async (droplet) => {
     const shareUrl = `${window.location.origin}/share/${droplet.id}`;
-    const shareTitle = wave?.title || wave?.name || 'Cortex';
-    const shareText = `Check out this conversation on Cortex`;
+    const shareTitle = wave?.title || wave?.name || 'Farhold';
+    const shareText = `Check out this conversation on Farhold`;
 
     // Try native Web Share API first
     if (navigator.share) {
@@ -8890,7 +8897,7 @@ const FocusView = ({
       if (index < focusStack.length - 1) {
         // Previous items are clickable
         items.push({
-          label: truncatedContent || 'Droplet',
+          label: truncatedContent || 'Ping',
           onClick: () => {
             // Pop stack back to this level
             for (let i = focusStack.length - 1; i > index; i--) {
@@ -8900,7 +8907,7 @@ const FocusView = ({
         });
       } else {
         // Current item is not clickable
-        items.push({ label: truncatedContent || 'Droplet', current: true });
+        items.push({ label: truncatedContent || 'Ping', current: true });
       }
     });
 
@@ -8925,7 +8932,7 @@ const FocusView = ({
   if (!focusedDroplet) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
-        No droplet focused
+        No ping focused
       </div>
     );
   }
@@ -9183,7 +9190,7 @@ const FocusView = ({
                   handleSend();
                 }
               }}
-              placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}...` : 'Type a droplet... (Shift+Enter for new line)'}
+              placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}...` : 'Type a ping... (Shift+Enter for new line)'}
               style={{
                 width: '100%',
                 minHeight: isMobile ? '50px' : '40px',
@@ -9489,7 +9496,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
     if (selectedGroup) {
       fetchAPI(`/groups/${selectedGroup}`)
         .then(setGroupDetails)
-        .catch(() => showToast('Failed to load group', 'error'));
+        .catch(() => showToast('Failed to load crew', 'error'));
     }
   }, [selectedGroup, fetchAPI, showToast]);
 
@@ -9509,26 +9516,26 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
     if (!newGroupName.trim()) return;
     try {
       await fetchAPI('/groups', { method: 'POST', body: { name: newGroupName, description: newGroupDesc } });
-      showToast('Group created', 'success');
+      showToast('Crew created', 'success');
       setNewGroupName('');
       setNewGroupDesc('');
       setShowNewGroup(false);
       onGroupsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to create group', 'error');
+      showToast(err.message || 'Failed to create crew', 'error');
     }
   };
 
   const handleDeleteGroup = async () => {
-    if (!confirm('Delete this group?')) return;
+    if (!confirm('Delete this crew?')) return;
     try {
       await fetchAPI(`/groups/${selectedGroup}`, { method: 'DELETE' });
-      showToast('Group deleted', 'success');
+      showToast('Crew deleted', 'success');
       setSelectedGroup(null);
       setGroupDetails(null);
       onGroupsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to delete group', 'error');
+      showToast(err.message || 'Failed to delete crew', 'error');
     }
   };
 
@@ -9552,15 +9559,15 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
   };
 
   const handleLeaveGroup = async () => {
-    if (!confirm('Leave this group?')) return;
+    if (!confirm('Leave this crew?')) return;
     try {
       await fetchAPI(`/groups/${selectedGroup}/members/${groupDetails.currentUserId}`, { method: 'DELETE' });
-      showToast('Left group', 'success');
+      showToast('Left crew', 'success');
       setSelectedGroup(null);
       setGroupDetails(null);
       onGroupsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to leave group', 'error');
+      showToast(err.message || 'Failed to leave crew', 'error');
     }
   };
 
@@ -9602,7 +9609,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
           <button onClick={() => setShowNewGroup(true)} style={{
             width: '100%', padding: '10px', background: 'var(--accent-amber)15', border: '1px solid var(--accent-amber)50',
             color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace',
-          }}>+ NEW GROUP</button>
+          }}>+ NEW CREW</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: groupInvitations?.length > 0 ? '12px' : '0' }}>
           {/* Group Invitations */}
@@ -9615,7 +9622,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
             isMobile={isMobile}
           />
           {groups.length === 0 && (!groupInvitations || groupInvitations.length === 0) ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>No groups yet</div>
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>No crews yet</div>
           ) : groups.map(g => (
             <div key={g.id} onClick={() => setSelectedGroup(g.id)} style={{ padding: '14px 16px', cursor: 'pointer',
               background: selectedGroup === g.id ? 'var(--accent-amber)10' : 'transparent',
@@ -9629,13 +9636,13 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
         </div>
       </div>
 
-      {/* Group details */}
+      {/* Crew details */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!selectedGroup ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--border-primary)' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '3rem', marginBottom: '16px' }}>◈</div>
-              <div>Select a group or create a new one</div>
+              <div>Select a crew or create a new one</div>
             </div>
           </div>
         ) : !groupDetails ? (
@@ -9664,12 +9671,12 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
                   <button onClick={handleLeaveGroup} style={{
                     padding: '6px 12px', background: 'var(--accent-amber)15', border: '1px solid var(--accent-amber)50',
                     color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
-                  }}>LEAVE GROUP</button>
+                  }}>LEAVE CREW</button>
                   {groupDetails.isAdmin && (
                     <button onClick={handleDeleteGroup} style={{
                       padding: '6px 12px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)',
                       color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
-                    }}>DELETE GROUP</button>
+                    }}>DELETE CREW</button>
                   )}
                 </div>
               </div>
@@ -9756,13 +9763,13 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
             border: '2px solid var(--accent-amber)40', padding: '24px',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <GlowText color="var(--accent-amber)" size="1.1rem">Create Group</GlowText>
+              <GlowText color="var(--accent-amber)" size="1.1rem">Create Crew</GlowText>
               <button onClick={() => setShowNewGroup(false)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}>✕</button>
             </div>
             <div style={{ marginBottom: '16px' }}>
               <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>NAME</div>
               <input type="text" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)}
-                placeholder="Group name..."
+                placeholder="Crew name..."
                 style={{
                   width: '100%', padding: '10px', boxSizing: 'border-box',
                   background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
@@ -9771,7 +9778,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
             <div style={{ marginBottom: '20px' }}>
               <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>DESCRIPTION (optional)</div>
               <textarea value={newGroupDesc} onChange={(e) => setNewGroupDesc(e.target.value)}
-                placeholder="What's this group for?"
+                placeholder="What's this crew for?"
                 style={{
                   width: '100%', padding: '10px', boxSizing: 'border-box', height: '80px', resize: 'none',
                   background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
@@ -10194,9 +10201,9 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
     admin_disable_mfa: { label: 'Admin MFA Disabled', color: 'var(--accent-purple)' },
     create_wave: { label: 'Wave Created', color: 'var(--accent-teal)' },
     delete_wave: { label: 'Wave Deleted', color: 'var(--accent-orange)' },
-    create_droplet: { label: 'Droplet Created', color: 'var(--text-secondary)' },
-    edit_droplet: { label: 'Droplet Edited', color: 'var(--text-secondary)' },
-    delete_droplet: { label: 'Droplet Deleted', color: 'var(--accent-orange)' },
+    create_droplet: { label: 'Ping Created', color: 'var(--text-secondary)' },
+    edit_droplet: { label: 'Ping Edited', color: 'var(--text-secondary)' },
+    delete_droplet: { label: 'Ping Deleted', color: 'var(--accent-orange)' },
   };
 
   const loadActivities = useCallback(async (newOffset = 0) => {
@@ -11911,7 +11918,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={nodeName}
                 onChange={(e) => setNodeName(e.target.value)}
-                placeholder="cortex.example.com"
+                placeholder="farhold.example.com"
                 style={{
                   flex: 1,
                   minWidth: '200px',
@@ -11965,7 +11972,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={requestUrl}
                 onChange={(e) => setRequestUrl(e.target.value)}
-                placeholder="Server URL (e.g., https://other-cortex.com)"
+                placeholder="Server URL (e.g., https://other-farhold.com)"
                 style={{
                   width: '100%',
                   padding: isMobile ? '12px' : '10px',
@@ -12012,7 +12019,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
               {requestLoading ? 'SENDING...' : 'REQUEST FEDERATION'}
             </button>
             <div style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-              Send a federation request to another Cortex server. They will need to accept your request.
+              Send a federation request to another Farhold server. They will need to accept your request.
             </div>
           </div>
         </div>
@@ -12148,7 +12155,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={newNodeName}
                 onChange={(e) => setNewNodeName(e.target.value)}
-                placeholder="Node name (e.g., other-cortex.com)"
+                placeholder="Node name (e.g., other-farhold.com)"
                 style={{
                   width: '100%',
                   padding: isMobile ? '12px' : '10px',
@@ -12164,7 +12171,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={newNodeUrl}
                 onChange={(e) => setNewNodeUrl(e.target.value)}
-                placeholder="Base URL (e.g., https://other-cortex.com)"
+                placeholder="Base URL (e.g., https://other-farhold.com)"
                 style={{
                   width: '100%',
                   padding: isMobile ? '12px' : '10px',
@@ -12863,7 +12870,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
     try {
       const response = await fetch(`${window.API_URL || ''}/api/account/export`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('cortex_token')}`
+          'Authorization': `Bearer ${localStorage.getItem('farhold_token')}`
         }
       });
 
@@ -12874,7 +12881,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
       // Get the filename from Content-Disposition header or use default
       const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `cortex-data-export-${user?.handle || 'user'}-${new Date().toISOString().split('T')[0]}.json`;
+      let filename = `farhold-data-export-${user?.handle || 'user'}-${new Date().toISOString().split('T')[0]}.json`;
       if (contentDisposition) {
         const match = contentDisposition.match(/filename="(.+)"/);
         if (match) filename = match[1];
@@ -12987,7 +12994,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       const response = await fetch(`${API_URL}/profile/avatar`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('cortex_token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('farhold_token')}`,
         },
         body: formData,
       });
@@ -13737,7 +13744,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
             </div>
             {blockedUsers.length === 0 ? (
               <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
-                No blocked users. Blocked users cannot send you contact requests, invite you to groups, or have their messages shown to you.
+                No blocked users. Blocked users cannot send you contact requests, invite you to crews, or have their messages shown to you.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -13892,7 +13899,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>AUTO-FOCUS DROPLETS</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>AUTO-FOCUS PINGS</label>
           <button
             onClick={() => handleUpdatePreferences({ autoFocusDroplets: !(user?.preferences?.autoFocusDroplets === true) })}
             style={{
@@ -13909,7 +13916,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
             {(user?.preferences?.autoFocusDroplets === true) ? '⤢ ENABLED' : '⤢ DISABLED'}
           </button>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
-            Automatically enter Focus View when clicking droplets with replies
+            Automatically enter Focus View when clicking pings with replies
           </div>
         </div>
 
@@ -14138,9 +14145,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                 {/* Notification Type Preferences */}
                 {[
                   { key: 'directMentions', label: '@MENTIONS', icon: '@', desc: 'When someone @mentions you' },
-                  { key: 'replies', label: 'REPLIES', icon: '↩', desc: 'When someone replies to your droplet' },
-                  { key: 'waveActivity', label: 'WAVE ACTIVITY', icon: '◎', desc: 'New droplets in your waves' },
-                  { key: 'rippleEvents', label: 'RIPPLE EVENTS', icon: '◈', desc: 'When droplets are rippled to new waves' },
+                  { key: 'replies', label: 'REPLIES', icon: '↩', desc: 'When someone replies to your ping' },
+                  { key: 'waveActivity', label: 'WAVE ACTIVITY', icon: '◎', desc: 'New pings in your waves' },
+                  { key: 'rippleEvents', label: 'BURST EVENTS', icon: '◈', desc: 'When pings are burst to new waves' },
                 ].map(({ key, label, icon, desc }) => (
                   <div key={key} style={{ marginBottom: '16px' }}>
                     <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
@@ -14364,7 +14371,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                 📦 Export Your Data
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
-                Download a copy of all your personal data including profile, droplets, contacts, and settings.
+                Download a copy of all your personal data including profile, pings, contacts, and settings.
               </div>
               <button
                 onClick={handleExportData}
@@ -14390,7 +14397,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
                 Permanently delete your account and all associated data. This action cannot be undone.
-                Your droplets will remain visible as "[Deleted User]" for context in conversations.
+                Your pings will remain visible as "[Deleted User]" for context in conversations.
               </div>
 
               {!showDeleteConfirm ? (
@@ -14563,9 +14570,9 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups, federationE
 
         {privacy === 'group' && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT GROUP</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT CREW</div>
             {groups.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>No groups. Create one first.</div>
+              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>No crews. Create one first.</div>
             ) : groups.map(g => (
               <button key={g.id} onClick={() => setSelectedGroup(g.id)} style={{
                 width: '100%', padding: '10px', marginBottom: '4px', textAlign: 'left',
@@ -14650,7 +14657,7 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups, federationE
               </div>
             )}
             <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
-              Format: @handle@server.com (user on another Cortex server)
+              Format: @handle@server.com (user on another Farhold server)
             </div>
           </div>
         )}
@@ -14752,7 +14759,7 @@ const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMo
           <span style={{ fontSize: '1.2rem' }}>◇</span> FEDERATE WAVE
         </h3>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px' }}>
-          Invite users from other Cortex servers to join "{wave.title || wave.name}".
+          Invite users from other Farhold servers to join "{wave.title || wave.name}".
         </p>
 
         <div style={{ marginBottom: '16px' }}>
@@ -14803,7 +14810,7 @@ const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMo
             </div>
           )}
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>
-            Format: @handle@server.com (user on another Cortex server)
+            Format: @handle@server.com (user on another Farhold server)
           </div>
         </div>
 
@@ -14970,12 +14977,12 @@ function MainApp({ shareDropletId }) {
           } else if (data.error) {
             setToast({ message: data.error, type: 'error' });
           } else {
-            setToast({ message: 'Could not load shared droplet', type: 'error' });
+            setToast({ message: 'Could not load shared ping', type: 'error' });
           }
         })
         .catch((err) => {
           console.error('[Share] Error:', err);
-          setToast({ message: 'Could not find shared droplet', type: 'error' });
+          setToast({ message: 'Could not find shared ping', type: 'error' });
         });
     }
   }, [shareDropletId, user]);
@@ -15035,7 +15042,7 @@ function MainApp({ shareDropletId }) {
         if ((isViewingDifferentWave || isBackgrounded) && !isOwnMessage) {
           if ('Notification' in window && Notification.permission === 'granted') {
             const waveName = waves.find(w => w.id === eventWaveId)?.name || 'Unknown Wave';
-            const notification = new Notification(`New droplet in ${waveName}`, {
+            const notification = new Notification(`New ping in ${waveName}`, {
               body: `${senderName}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
               icon: '/favicon.ico',
               tag: eventWaveId, // Group notifications by wave
@@ -15155,18 +15162,18 @@ function MainApp({ shareDropletId }) {
       // Request to us was cancelled
       setContactRequests(prev => prev.filter(r => r.id !== data.requestId));
     } else if (data.type === 'group_invitation_received') {
-      // Someone invited us to a group
+      // Someone invited us to a crew
       setGroupInvitations(prev => [data.invitation, ...prev]);
-      const groupName = data.invitation.group?.name || 'a group';
+      const crewName = data.invitation.group?.name || 'a crew';
       const inviterName = data.invitation.invited_by_user?.displayName || 'Someone';
-      showToastMsg(`${inviterName} invited you to join ${groupName}`, 'info');
+      showToastMsg(`${inviterName} invited you to join ${crewName}`, 'info');
     } else if (data.type === 'group_invitation_accepted') {
-      // Our invitation was accepted - reload groups since someone joined
-      showToastMsg('Your group invitation was accepted!', 'success');
+      // Our invitation was accepted - reload crews since someone joined
+      showToastMsg('Your crew invitation was accepted!', 'success');
       fetchAPI('/groups').then(setGroups).catch(console.error);
     } else if (data.type === 'group_invitation_declined') {
       // Our invitation was declined
-      showToastMsg('Your group invitation was declined', 'info');
+      showToastMsg('Your crew invitation was declined', 'info');
     } else if (data.type === 'group_invitation_cancelled') {
       // Invitation to us was cancelled
       setGroupInvitations(prev => prev.filter(i => i.id !== data.invitationId));
@@ -15371,7 +15378,7 @@ function MainApp({ shareDropletId }) {
         if (dropletId) {
           // Mark the droplet as read since user is navigating to it
           try {
-            await fetchAPI(`/droplets/${dropletId}/read`, { method: 'POST' });
+            await fetchAPI(`/pings/${dropletId}/read`, { method: 'POST' });
             // Refresh wave list to update unread counts
             loadWaves();
           } catch (e) {
@@ -15501,6 +15508,7 @@ function MainApp({ shareDropletId }) {
   };
 
   const navItems = ['waves', 'groups', 'contacts', 'profile'];
+  const navLabels = { waves: 'WAVES', groups: 'CREWS', contacts: 'CONTACTS', profile: 'PROFILE' };
 
   const scanLinesEnabled = user?.preferences?.scanLines !== false; // Default to true
 
@@ -15585,7 +15593,7 @@ function MainApp({ shareDropletId }) {
         {/* Logo and Status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-            <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
+            <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>FARHOLD</GlowText>
             <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v{VERSION}</span>
           </div>
           {/* Status indicators */}
@@ -15613,7 +15621,7 @@ function MainApp({ shareDropletId }) {
                   cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', textTransform: 'uppercase',
                   position: 'relative',
                 }}>
-                  {view.slice(0, 10)}
+                  {navLabels[view] || view}
                   {badgeCount > 0 && (
                     <span style={{
                       position: 'absolute',
@@ -15793,7 +15801,7 @@ function MainApp({ shareDropletId }) {
             <span><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> LIVE</span>
           </div>
-          <div style={{ color: 'var(--text-muted)' }}>WAVES: {waves.length} • GROUPS: {groups.length} • CONTACTS: {contacts.length}</div>
+          <div style={{ color: 'var(--text-muted)' }}>WAVES: {waves.length} • CREWS: {groups.length} • CONTACTS: {contacts.length}</div>
         </footer>
       )}
 
@@ -15966,7 +15974,7 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
               fontSize: '1rem',
             }}
           >
-            LOGIN TO CORTEX
+            LOGIN TO FARHOLD
           </button>
         </div>
       </div>
@@ -16036,7 +16044,7 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
           gap: '6px',
         }}>
           <span>○</span>
-          <span>{data.wave?.title || 'Cortex Wave'}</span>
+          <span>{data.wave?.title || 'Farhold Wave'}</span>
         </div>
 
         {/* Author and content */}
@@ -16118,7 +16126,7 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
           paddingTop: '20px',
         }}>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
-            Join the conversation on Cortex
+            Join the conversation on Farhold
           </p>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button
@@ -16297,7 +16305,7 @@ function AuthProvider({ children }) {
 }
 
 // ============ APP ============
-export default function CortexApp() {
+export default function FarholdApp() {
   return (
     <AuthProvider>
       <E2EEWrapper />
@@ -16365,7 +16373,7 @@ function AppContent() {
 
   // Version check - clear stale data on major version upgrade
   useEffect(() => {
-    const storedVersion = localStorage.getItem('cortex_app_version');
+    const storedVersion = localStorage.getItem('farhold_app_version');
     const currentMajor = VERSION.split('.')[0];
     const storedMajor = storedVersion?.split('.')[0];
 
@@ -16381,7 +16389,7 @@ function AppContent() {
       });
 
       // Update stored version
-      localStorage.setItem('cortex_app_version', VERSION);
+      localStorage.setItem('farhold_app_version', VERSION);
 
       // Force reload to get fresh assets
       window.location.reload();
@@ -16389,7 +16397,7 @@ function AppContent() {
     }
 
     // Store current version
-    localStorage.setItem('cortex_app_version', VERSION);
+    localStorage.setItem('farhold_app_version', VERSION);
   }, []);
 
   // Capture share parameter on mount - check both URL formats:

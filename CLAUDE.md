@@ -1,10 +1,19 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with the Cortex codebase.
+This file provides guidance to Claude Code when working with the Farhold codebase.
 
 ## Project Overview
 
-Cortex is a privacy-first federated communication platform inspired by Google Wave with a Firefly aesthetic. It uses a client-server architecture with real-time WebSocket communication and end-to-end encryption.
+Farhold (formerly Cortex) is a privacy-first federated communication platform inspired by Google Wave with a Firefly aesthetic. It uses a client-server architecture with real-time WebSocket communication and end-to-end encryption.
+
+### Terminology (v2.0.0)
+
+| Term | Description | Old Name |
+|------|-------------|----------|
+| **Wave** | Conversation container | (unchanged) |
+| **Ping** | Individual message | Droplet |
+| **Burst** | Break-out thread to new wave | Ripple |
+| **Crew** | User group | Group |
 
 **Tech Stack:**
 - **Server:** Node.js + Express + WebSocket (ws)
@@ -47,15 +56,15 @@ Format: `vMAJOR.MINOR.PATCH`
 | **Patch** (v1.19.5) | Bug fixes, small improvements | Fix unread count bug |
 
 - Update version in `server/package.json` and `client/package.json`
-- Update `VERSION` constant in `client/CortexApp.jsx`
+- Update `VERSION` constant in `client/FarholdApp.jsx`
 - Apply version at start of feature work, not at the end
 
 ### Testing Requirements
 
 Before committing:
 1. Rebuild client: `cd client && npm run build`
-2. Restart server: `pm2 restart cortex-api`
-3. Verify server starts without errors: `pm2 logs cortex-api --lines 20`
+2. Restart server: `pm2 restart farhold-api`
+3. Verify server starts without errors: `pm2 logs farhold-api --lines 20`
 4. Test affected functionality manually
 
 ### Documentation Requirements
@@ -70,7 +79,7 @@ Before committing:
 After merge to master:
 1. Create git tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
 2. Create GitHub release with detailed notes
-3. Post release notice to Cortex Updates wave with:
+3. Post release notice to Farhold Updates wave with:
    - Summary of changes
    - Upgrade instructions
    - Link to CHANGELOG.md
@@ -79,7 +88,7 @@ After merge to master:
 
 ## Security Guidelines
 
-**Cortex is a privacy-first platform. Code with a hacker's mindset.**
+**Farhold is a privacy-first platform. Code with a hacker's mindset.**
 
 ### Security Principles
 
@@ -136,9 +145,9 @@ npm run build            # Production build
 
 ### PM2 (Production)
 ```bash
-pm2 start server.js --name cortex-api --cwd /path/to/server
-pm2 restart cortex-api
-pm2 logs cortex-api --lines 50
+pm2 start server.js --name farhold-api --cwd /path/to/server
+pm2 restart farhold-api
+pm2 logs farhold-api --lines 50
 ```
 
 ---
@@ -151,10 +160,10 @@ Single-file Express server organized in sections (marked with `// ============`)
 - Configuration & environment variables
 - Security middleware (rate limiting, sanitization, helmet)
 - Database class (SQLite wrapper)
-- API routes by feature (auth, users, waves, droplets, etc.)
+- API routes by feature (auth, users, waves, pings, etc.)
 - WebSocket server for real-time events
 
-### Client (`client/CortexApp.jsx`)
+### Client (`client/FarholdApp.jsx`)
 
 Single-file React application:
 - Context providers (Auth, E2EE)
@@ -167,7 +176,7 @@ Single-file React application:
 SQLite database with tables for:
 - users, user_sessions, user_encryption_keys
 - waves, wave_participants, wave_encryption_keys
-- droplets, droplet_read_by
+- pings, ping_read_by
 - groups, group_members, contacts
 - And more (see schema.sql)
 
@@ -175,7 +184,7 @@ SQLite database with tables for:
 
 - **Users**: UUID-based, with handles, profiles, E2EE keypairs
 - **Waves**: Conversation threads with privacy levels and participants
-- **Droplets**: Messages within waves, threaded with parent/child
+- **Pings**: Messages within waves, threaded with parent/child
 - **Groups**: User collections for group waves
 
 ### Role-Based Access Control (v1.20.0)
@@ -198,7 +207,7 @@ if (!hasRole(user, ROLES.ADMIN)) { ... }  // Boolean check
 
 **Client-side usage**:
 ```javascript
-// Role access helper (CortexApp.jsx)
+// Role access helper (FarholdApp.jsx)
 if (canAccess(user, 'moderator')) { ... }  // Show admin panel
 if (canAccess(user, 'admin')) { ... }      // Show system config
 ```

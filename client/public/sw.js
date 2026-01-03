@@ -1,7 +1,7 @@
-// Cortex Service Worker v1.19.4
+// Farhold Service Worker v2.0.0
 // Includes: Push notifications, offline caching
-// v1.19.4: Improve E2EE unlock modal text
-const CACHE_NAME = 'cortex-v1.19.4';
+// v2.0.0: Farhold nomenclature overhaul (formerly Cortex)
+const CACHE_NAME = 'farhold-v2.0.0';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,7 @@ const STATIC_ASSETS = [
 
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.19.4...');
+  console.log('[SW] Installing service worker v2.0.0...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');
@@ -44,7 +44,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => name.startsWith('cortex-') && name !== CACHE_NAME)
+          .filter((name) => (name.startsWith('farhold-') || name.startsWith('cortex-')) && name !== CACHE_NAME)
           .map((name) => {
             console.log('[SW] Deleting old cache:', name);
             return caches.delete(name);
@@ -147,7 +147,7 @@ self.addEventListener('push', (event) => {
     data = event.data.json();
   } catch (e) {
     data = {
-      title: 'Cortex',
+      title: 'Farhold',
       body: event.data.text()
     };
   }
@@ -155,8 +155,8 @@ self.addEventListener('push', (event) => {
   // Use unique tag per message to prevent notification replacement
   // Fall back to timestamp if no messageId provided
   const uniqueTag = data.messageId
-    ? `cortex-msg-${data.messageId}`
-    : `cortex-${Date.now()}`;
+    ? `farhold-msg-${data.messageId}`
+    : `farhold-${Date.now()}`;
 
   const options = {
     body: data.body || 'New message received',
@@ -190,7 +190,7 @@ self.addEventListener('push', (event) => {
 
         // Only show notification if app is not visible (backgrounded or closed)
         if (!hasVisibleClient) {
-          return self.registration.showNotification(data.title || 'Cortex', options);
+          return self.registration.showNotification(data.title || 'Farhold', options);
         }
         // If app is visible, WebSocket message will show the message directly
         return Promise.resolve();
@@ -208,7 +208,7 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Try to focus an existing Cortex window
+      // Try to focus an existing Farhold window
       for (const client of clientList) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
           // Navigate to the specific wave if provided
