@@ -4717,7 +4717,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
             "{contentPreview}{contentPreview.length >= 100 ? '...' : ''}"
           </div>
           <div style={{ fontSize: isMobile ? '0.75rem' : '0.7rem', color: 'var(--accent-teal)' }}>
-            1 droplet + {childCount} {childCount === 1 ? 'reply' : 'replies'} will be moved
+            1 ping + {childCount} {childCount === 1 ? 'reply' : 'replies'} will be moved
           </div>
         </div>
 
@@ -6654,7 +6654,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }
 
       if (totalEncrypted > 0) {
-        showToast(`Encrypted ${totalEncrypted} droplets`, 'success');
+        showToast(`Encrypted ${totalEncrypted} pings`, 'success');
       }
 
       // Refresh wave data to show encrypted content
@@ -6662,7 +6662,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       await loadEncryptionStatus();
     } catch (err) {
       console.error('Failed to encrypt batch:', err);
-      showToast(err.message || 'Failed to encrypt droplets', 'error');
+      showToast(err.message || 'Failed to encrypt pings', 'error');
     } finally {
       setIsEncryptingBatch(false);
     }
@@ -6812,9 +6812,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           all_messages: allMessages,
         }));
         setHasMoreMessages(false);
-        showToast(`Loaded ${allMessages.length} droplets`, 'success');
+        showToast(`Loaded ${allMessages.length} pings`, 'success');
       } catch (err) {
-        showToast('Failed to load all droplets for playback', 'error');
+        showToast('Failed to load all pings for playback', 'error');
         return;
       }
     }
@@ -7150,7 +7150,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             {waveData.group_name && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({waveData.group_name})</span>}
           </div>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-            {participants.length} participants • {total} droplets
+            {participants.length} participants • {total} pings
           </div>
         </div>
         <PrivacyBadge level={wave.privacy} compact={isMobile} />
@@ -7607,7 +7607,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 fontSize: isMobile ? '0.85rem' : '0.75rem',
               }}
             >
-              {loadingMore ? 'Loading...' : `↑ Load older droplets (${(waveData.total_messages || 0) - allDroplets.length} more)`}
+              {loadingMore ? 'Loading...' : `↑ Load older pings (${(waveData.total_messages || 0) - allDroplets.length} more)`}
             </button>
           </div>
         )}
@@ -8897,7 +8897,7 @@ const FocusView = ({
       if (index < focusStack.length - 1) {
         // Previous items are clickable
         items.push({
-          label: truncatedContent || 'Droplet',
+          label: truncatedContent || 'Ping',
           onClick: () => {
             // Pop stack back to this level
             for (let i = focusStack.length - 1; i > index; i--) {
@@ -8907,7 +8907,7 @@ const FocusView = ({
         });
       } else {
         // Current item is not clickable
-        items.push({ label: truncatedContent || 'Droplet', current: true });
+        items.push({ label: truncatedContent || 'Ping', current: true });
       }
     });
 
@@ -8932,7 +8932,7 @@ const FocusView = ({
   if (!focusedDroplet) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
-        No droplet focused
+        No ping focused
       </div>
     );
   }
@@ -11918,7 +11918,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={nodeName}
                 onChange={(e) => setNodeName(e.target.value)}
-                placeholder="cortex.example.com"
+                placeholder="farhold.example.com"
                 style={{
                   flex: 1,
                   minWidth: '200px',
@@ -11972,7 +11972,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={requestUrl}
                 onChange={(e) => setRequestUrl(e.target.value)}
-                placeholder="Server URL (e.g., https://other-cortex.com)"
+                placeholder="Server URL (e.g., https://other-farhold.com)"
                 style={{
                   width: '100%',
                   padding: isMobile ? '12px' : '10px',
@@ -12155,7 +12155,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={newNodeName}
                 onChange={(e) => setNewNodeName(e.target.value)}
-                placeholder="Node name (e.g., other-cortex.com)"
+                placeholder="Node name (e.g., other-farhold.com)"
                 style={{
                   width: '100%',
                   padding: isMobile ? '12px' : '10px',
@@ -12171,7 +12171,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={newNodeUrl}
                 onChange={(e) => setNewNodeUrl(e.target.value)}
-                placeholder="Base URL (e.g., https://other-cortex.com)"
+                placeholder="Base URL (e.g., https://other-farhold.com)"
                 style={{
                   width: '100%',
                   padding: isMobile ? '12px' : '10px',
@@ -12881,7 +12881,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
       // Get the filename from Content-Disposition header or use default
       const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `cortex-data-export-${user?.handle || 'user'}-${new Date().toISOString().split('T')[0]}.json`;
+      let filename = `farhold-data-export-${user?.handle || 'user'}-${new Date().toISOString().split('T')[0]}.json`;
       if (contentDisposition) {
         const match = contentDisposition.match(/filename="(.+)"/);
         if (match) filename = match[1];
@@ -13899,7 +13899,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>AUTO-FOCUS DROPLETS</label>
+          <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>AUTO-FOCUS PINGS</label>
           <button
             onClick={() => handleUpdatePreferences({ autoFocusDroplets: !(user?.preferences?.autoFocusDroplets === true) })}
             style={{
@@ -13916,7 +13916,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
             {(user?.preferences?.autoFocusDroplets === true) ? '⤢ ENABLED' : '⤢ DISABLED'}
           </button>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
-            Automatically enter Focus View when clicking droplets with replies
+            Automatically enter Focus View when clicking pings with replies
           </div>
         </div>
 
@@ -14371,7 +14371,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                 📦 Export Your Data
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
-                Download a copy of all your personal data including profile, droplets, contacts, and settings.
+                Download a copy of all your personal data including profile, pings, contacts, and settings.
               </div>
               <button
                 onClick={handleExportData}
@@ -14397,7 +14397,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
                 Permanently delete your account and all associated data. This action cannot be undone.
-                Your droplets will remain visible as "[Deleted User]" for context in conversations.
+                Your pings will remain visible as "[Deleted User]" for context in conversations.
               </div>
 
               {!showDeleteConfirm ? (
@@ -15042,7 +15042,7 @@ function MainApp({ shareDropletId }) {
         if ((isViewingDifferentWave || isBackgrounded) && !isOwnMessage) {
           if ('Notification' in window && Notification.permission === 'granted') {
             const waveName = waves.find(w => w.id === eventWaveId)?.name || 'Unknown Wave';
-            const notification = new Notification(`New droplet in ${waveName}`, {
+            const notification = new Notification(`New ping in ${waveName}`, {
               body: `${senderName}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
               icon: '/favicon.ico',
               tag: eventWaveId, // Group notifications by wave
