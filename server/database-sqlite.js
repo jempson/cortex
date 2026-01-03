@@ -3503,7 +3503,7 @@ export class DatabaseSQLite {
   // Get droplets for a rippled wave (includes root droplet from original wave)
   getDropletsForBreakoutWave(waveId, userId = null) {
     const wave = this.getWave(waveId);
-    if (!wave || !wave.rootDropletId) {
+    if (!wave || !wave.rootPingId) {
       return this.getDropletsForWave(waveId, userId);
     }
 
@@ -3544,7 +3544,7 @@ export class DatabaseSQLite {
       return results;
     };
 
-    const rows = getAllDescendants(wave.rootDropletId);
+    const rows = getAllDescendants(wave.rootPingId);
 
     return rows.map(d => {
       const hasRead = userId ? !!this.db.prepare('SELECT 1 FROM ping_read_by WHERE ping_id = ? AND user_id = ?').get(d.id, userId) : false;
