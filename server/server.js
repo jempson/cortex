@@ -2688,8 +2688,9 @@ class Database {
         // Public waves - always accessible
         if (w.privacy === 'public') return true;
 
-        // Group waves - MUST be a current group member (participant status alone is not enough)
-        if (w.privacy === 'group' && w.groupId) {
+        // Crew/Group waves - MUST be a current member (participant status alone is not enough)
+        // Support both 'group' (legacy) and 'crew' (v2.0.0) privacy values
+        if ((w.privacy === 'group' || w.privacy === 'crew') && w.groupId) {
           return userGroupIds.includes(w.groupId);
         }
 
@@ -2769,8 +2770,9 @@ class Database {
     // Public waves are accessible to all
     if (wave.privacy === 'public') return true;
 
-    // Group waves - MUST be a current group member (participant status alone is not enough)
-    if (wave.privacy === 'group' && wave.groupId) {
+    // Crew/Group waves - MUST be a current member (participant status alone is not enough)
+    // Support both 'group' (legacy) and 'crew' (v2.0.0) privacy values
+    if ((wave.privacy === 'group' || wave.privacy === 'crew') && wave.groupId) {
       return this.isGroupMember(wave.groupId, userId);
     }
 
