@@ -2452,7 +2452,7 @@ const NOTIFICATION_TYPES = {
   direct_mention: { icon: '@', color: 'var(--accent-amber)', label: 'Mentioned you' },
   reply: { icon: '↩', color: 'var(--accent-teal)', label: 'Replied to you' },
   wave_activity: { icon: '◎', color: 'var(--accent-green)', label: 'Wave activity' },
-  ripple: { icon: '◈', color: 'var(--accent-purple)', label: 'Rippled' },
+  ripple: { icon: '◈', color: 'var(--accent-purple)', label: 'Burst' },
   system: { icon: '⚡', color: 'var(--accent-orange)', label: 'System' },
 };
 
@@ -3642,11 +3642,11 @@ const ResetPasswordPage = ({ onBack }) => {
 };
 
 // ============ WAVE LIST (Mobile Responsive) ============
-// Badge colors by notification type (priority order: mention > reply > ripple > activity)
+// Badge colors by notification type (priority order: mention > reply > burst > activity)
 const NOTIFICATION_BADGE_COLORS = {
   direct_mention: { bg: 'var(--accent-amber)', shadow: 'var(--glow-amber)', icon: '@' },  // Amber - someone mentioned you
-  reply: { bg: 'var(--accent-green)', shadow: 'var(--glow-green)', icon: '↩' },           // Green - reply to your droplet
-  ripple: { bg: 'var(--accent-purple)', shadow: 'var(--glow-purple)', icon: '◈' },          // Purple - ripple activity
+  reply: { bg: 'var(--accent-green)', shadow: 'var(--glow-green)', icon: '↩' },           // Green - reply to your ping
+  ripple: { bg: 'var(--accent-purple)', shadow: 'var(--glow-purple)', icon: '◈' },          // Purple - burst activity
   wave_activity: { bg: 'var(--accent-orange)', shadow: 'var(--glow-orange)', icon: null },  // Orange - general activity
 };
 
@@ -3932,6 +3932,13 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                   padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
                   color: 'var(--accent-purple)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>⤴</button>
+              )}
+              {/* Burst (create new wave from this ping) */}
+              {onRipple && (
+                <button onClick={() => onRipple(message)} title="Burst to new wave" style={{
+                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
+                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
+                }}>◈</button>
               )}
               {/* Edit */}
               {canDelete && !isEditing && (
@@ -4685,7 +4692,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
         border: '2px solid var(--accent-teal)80', padding: isMobile ? '20px' : '24px',
       }} onClick={(e) => e.stopPropagation()}>
         <div style={{ marginBottom: '20px' }}>
-          <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>◈ Ripple to New Wave</GlowText>
+          <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>◈ Burst to New Wave</GlowText>
         </div>
 
         {/* Preview of what's being rippled */}
@@ -4861,7 +4868,7 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile, unreadCount = 
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
         }}>
-          Rippled to wave...
+          Burst to wave...
         </span>
         {unreadCount > 0 && (
           <span style={{
