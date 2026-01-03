@@ -5581,9 +5581,9 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
 
         {privacy === 'group' && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT GROUP</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT CREW</div>
             {groups.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>No groups available</div>
+              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>No crews available</div>
             ) : groups.map(g => (
               <button key={g.id} onClick={() => setSelectedGroup(g.id)} style={{
                 width: '100%', padding: '10px', marginBottom: '4px', textAlign: 'left',
@@ -8403,7 +8403,7 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ color: 'var(--accent-amber)', fontSize: '0.95rem', marginBottom: '4px' }}>
-                {invitation.group?.name || 'Unknown Group'}
+                {invitation.group?.name || 'Unknown Crew'}
               </div>
               <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>
                 Invited by {invitation.invited_by_user?.displayName || 'Someone'}
@@ -9622,7 +9622,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
             isMobile={isMobile}
           />
           {groups.length === 0 && (!groupInvitations || groupInvitations.length === 0) ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>No groups yet</div>
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>No crews yet</div>
           ) : groups.map(g => (
             <div key={g.id} onClick={() => setSelectedGroup(g.id)} style={{ padding: '14px 16px', cursor: 'pointer',
               background: selectedGroup === g.id ? 'var(--accent-amber)10' : 'transparent',
@@ -9636,13 +9636,13 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
         </div>
       </div>
 
-      {/* Group details */}
+      {/* Crew details */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!selectedGroup ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--border-primary)' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '3rem', marginBottom: '16px' }}>◈</div>
-              <div>Select a group or create a new one</div>
+              <div>Select a crew or create a new one</div>
             </div>
           </div>
         ) : !groupDetails ? (
@@ -9671,12 +9671,12 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
                   <button onClick={handleLeaveGroup} style={{
                     padding: '6px 12px', background: 'var(--accent-amber)15', border: '1px solid var(--accent-amber)50',
                     color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
-                  }}>LEAVE GROUP</button>
+                  }}>LEAVE CREW</button>
                   {groupDetails.isAdmin && (
                     <button onClick={handleDeleteGroup} style={{
                       padding: '6px 12px', background: 'var(--accent-orange)20', border: '1px solid var(--accent-orange)',
                       color: 'var(--accent-orange)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
-                    }}>DELETE GROUP</button>
+                    }}>DELETE CREW</button>
                   )}
                 </div>
               </div>
@@ -9763,13 +9763,13 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
             border: '2px solid var(--accent-amber)40', padding: '24px',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <GlowText color="var(--accent-amber)" size="1.1rem">Create Group</GlowText>
+              <GlowText color="var(--accent-amber)" size="1.1rem">Create Crew</GlowText>
               <button onClick={() => setShowNewGroup(false)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}>✕</button>
             </div>
             <div style={{ marginBottom: '16px' }}>
               <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>NAME</div>
               <input type="text" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)}
-                placeholder="Group name..."
+                placeholder="Crew name..."
                 style={{
                   width: '100%', padding: '10px', boxSizing: 'border-box',
                   background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
@@ -9778,7 +9778,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
             <div style={{ marginBottom: '20px' }}>
               <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>DESCRIPTION (optional)</div>
               <textarea value={newGroupDesc} onChange={(e) => setNewGroupDesc(e.target.value)}
-                placeholder="What's this group for?"
+                placeholder="What's this crew for?"
                 style={{
                   width: '100%', padding: '10px', boxSizing: 'border-box', height: '80px', resize: 'none',
                   background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
@@ -13744,7 +13744,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
             </div>
             {blockedUsers.length === 0 ? (
               <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)' }}>
-                No blocked users. Blocked users cannot send you contact requests, invite you to groups, or have their messages shown to you.
+                No blocked users. Blocked users cannot send you contact requests, invite you to crews, or have their messages shown to you.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -14570,9 +14570,9 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups, federationE
 
         {privacy === 'group' && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT GROUP</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SELECT CREW</div>
             {groups.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>No groups. Create one first.</div>
+              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>No crews. Create one first.</div>
             ) : groups.map(g => (
               <button key={g.id} onClick={() => setSelectedGroup(g.id)} style={{
                 width: '100%', padding: '10px', marginBottom: '4px', textAlign: 'left',
@@ -15162,18 +15162,18 @@ function MainApp({ shareDropletId }) {
       // Request to us was cancelled
       setContactRequests(prev => prev.filter(r => r.id !== data.requestId));
     } else if (data.type === 'group_invitation_received') {
-      // Someone invited us to a group
+      // Someone invited us to a crew
       setGroupInvitations(prev => [data.invitation, ...prev]);
-      const groupName = data.invitation.group?.name || 'a group';
+      const crewName = data.invitation.group?.name || 'a crew';
       const inviterName = data.invitation.invited_by_user?.displayName || 'Someone';
-      showToastMsg(`${inviterName} invited you to join ${groupName}`, 'info');
+      showToastMsg(`${inviterName} invited you to join ${crewName}`, 'info');
     } else if (data.type === 'group_invitation_accepted') {
-      // Our invitation was accepted - reload groups since someone joined
-      showToastMsg('Your group invitation was accepted!', 'success');
+      // Our invitation was accepted - reload crews since someone joined
+      showToastMsg('Your crew invitation was accepted!', 'success');
       fetchAPI('/groups').then(setGroups).catch(console.error);
     } else if (data.type === 'group_invitation_declined') {
       // Our invitation was declined
-      showToastMsg('Your group invitation was declined', 'info');
+      showToastMsg('Your crew invitation was declined', 'info');
     } else if (data.type === 'group_invitation_cancelled') {
       // Invitation to us was cancelled
       setGroupInvitations(prev => prev.filter(i => i.id !== data.invitationId));
