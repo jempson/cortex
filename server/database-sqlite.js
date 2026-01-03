@@ -2566,7 +2566,7 @@ export class DatabaseSQLite {
     this.db.prepare(`
       DELETE FROM wave_participants
       WHERE user_id = ? AND wave_id IN (
-        SELECT id FROM waves WHERE privacy = 'crew' AND crew_id = ?
+        SELECT id FROM waves WHERE (privacy = 'crew' OR privacy = 'group') AND crew_id = ?
       )
     `).run(userId, groupId);
 
@@ -3115,7 +3115,7 @@ export class DatabaseSQLite {
         OR (w.privacy = 'cross-server' AND wp.user_id IS NOT NULL)
         OR (w.privacy = 'crossServer' AND w.federation_state = 'participant')
         OR (w.privacy = 'cross-server' AND w.federation_state = 'participant')
-        OR (w.privacy = 'crew' AND w.crew_id IN (${userCrewIds.map(() => '?').join(',') || 'NULL'}))
+        OR ((w.privacy = 'crew' OR w.privacy = 'group') AND w.crew_id IN (${userCrewIds.map(() => '?').join(',') || 'NULL'}))
       )
     `;
 
@@ -3250,7 +3250,8 @@ export class DatabaseSQLite {
       return true;
     }
 
-    if (wave.privacy === 'group' && wave.groupId) {
+    // Support both 'group' (legacy) and 'crew' (v2.0.0) privacy values
+    if ((wave.privacy === 'group' || wave.privacy === 'crew') && wave.groupId) {
       return this.isGroupMember(wave.groupId, userId);
     }
 
