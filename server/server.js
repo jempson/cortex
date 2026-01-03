@@ -10042,7 +10042,7 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
   const isArchived = db.isWaveArchivedForUser(waveId, req.user.userId);
 
   // For breakout waves, use special method that fetches from original wave's droplet tree
-  const allMessages = wave.rootDropletId && db.getDropletsForBreakoutWave
+  const allMessages = (wave.rootPingId || wave.rootDropletId) && db.getDropletsForBreakoutWave
     ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
     : db.getMessagesForWave(wave.id, req.user.userId);
 
@@ -10107,7 +10107,7 @@ app.get('/api/waves/:id/droplets', authenticateToken, (req, res) => {
 
   // Get all droplets for this wave (filtered for blocked/muted)
   // For breakout waves, use special method that fetches from original wave's droplet tree
-  let allDroplets = wave.rootDropletId && db.getDropletsForBreakoutWave
+  let allDroplets = (wave.rootPingId || wave.rootDropletId) && db.getDropletsForBreakoutWave
     ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
     : db.getMessagesForWave(wave.id, req.user.userId);
 
@@ -10130,7 +10130,7 @@ app.get('/api/waves/:id/droplets', authenticateToken, (req, res) => {
   droplets.reverse();
 
   // Get total using same method
-  const totalDroplets = wave.rootDropletId && db.getDropletsForBreakoutWave
+  const totalDroplets = (wave.rootPingId || wave.rootDropletId) && db.getDropletsForBreakoutWave
     ? db.getDropletsForBreakoutWave(wave.id, req.user.userId).length
     : db.getMessagesForWave(wave.id, req.user.userId).length;
 
@@ -10155,7 +10155,7 @@ app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
 
   // Get all messages for this wave (filtered for blocked/muted)
   // For breakout waves, use special method that fetches from original wave's droplet tree
-  let allMessages = wave.rootDropletId && db.getDropletsForBreakoutWave
+  let allMessages = (wave.rootPingId || wave.rootDropletId) && db.getDropletsForBreakoutWave
     ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
     : db.getMessagesForWave(wave.id, req.user.userId);
 
@@ -10178,7 +10178,7 @@ app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
   messages.reverse();
 
   // Get total using same method
-  const totalMessages = wave.rootDropletId && db.getDropletsForBreakoutWave
+  const totalMessages = (wave.rootPingId || wave.rootDropletId) && db.getDropletsForBreakoutWave
     ? db.getDropletsForBreakoutWave(wave.id, req.user.userId).length
     : db.getMessagesForWave(wave.id, req.user.userId).length;
 
@@ -11143,10 +11143,11 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
   const maxLength = req.body.encrypted ? 20000 : 10000;
   if (content.length > maxLength) return res.status(400).json({ error: 'Droplet too long' });
 
-  // For rippled waves, default parent to root droplet if no parent specified
+  // For burst waves, default parent to root ping if no parent specified
   let parentId = req.body.parent_id ? sanitizeInput(req.body.parent_id) : null;
-  if (!parentId && wave.rootDropletId) {
-    parentId = wave.rootDropletId;
+  const rootId = wave.rootPingId || wave.rootDropletId;
+  if (!parentId && rootId) {
+    parentId = rootId;
   }
 
   const droplet = db.createMessage({
@@ -11504,10 +11505,11 @@ app.post('/api/messages', authenticateToken, deprecatedEndpoint, (req, res) => {
 
   if (content.length > 10000) return res.status(400).json({ error: 'Message too long' });
 
-  // For rippled waves, default parent to root droplet if no parent specified
+  // For burst waves, default parent to root ping if no parent specified
   let parentId = req.body.parent_id ? sanitizeInput(req.body.parent_id) : null;
-  if (!parentId && wave.rootDropletId) {
-    parentId = wave.rootDropletId;
+  const rootId = wave.rootPingId || wave.rootDropletId;
+  if (!parentId && rootId) {
+    parentId = rootId;
   }
 
   const message = db.createMessage({
