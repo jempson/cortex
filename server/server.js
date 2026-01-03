@@ -9910,7 +9910,63 @@ app.get('/api/users/resolve/:identifier', authenticateToken, async (req, res) =>
   }
 });
 
+// ============ Crew Routes (v2.0.0 aliases) ============
+// These are the preferred v2.0.0 endpoints (crews = groups)
+// Rewrites /api/crews/* to /api/groups/* and re-invokes routing
+
+app.all('/api/crews', (req, res, next) => {
+  req.url = '/api/groups';
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/crews/invitations', (req, res, next) => {
+  req.url = '/api/groups/invitations';
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/crews/invitations/:id', (req, res, next) => {
+  req.url = `/api/groups/invitations/${req.params.id}`;
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/crews/invitations/:id/accept', (req, res, next) => {
+  req.url = `/api/groups/invitations/${req.params.id}/accept`;
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/crews/invitations/:id/decline', (req, res, next) => {
+  req.url = `/api/groups/invitations/${req.params.id}/decline`;
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/crews/:id', (req, res, next) => {
+  req.url = `/api/groups/${req.params.id}`;
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/crews/:id/members', (req, res, next) => {
+  req.url = `/api/groups/${req.params.id}/members`;
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/crews/:id/members/:userId', (req, res, next) => {
+  req.url = `/api/groups/${req.params.id}/members/${req.params.userId}`;
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/crews/:id/invite', (req, res, next) => {
+  req.url = `/api/groups/${req.params.id}/invite`;
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/crews/:id/invitations/sent', (req, res, next) => {
+  req.url = `/api/groups/${req.params.id}/invitations/sent`;
+  req.app._router.handle(req, res, next);
+});
+
 // ============ Group Routes ============
+// Note: /api/crews/* aliases above rewrite to these routes
+
 app.get('/api/groups', authenticateToken, (req, res) => {
   res.json(db.getGroupsForUser(req.user.userId));
 });
@@ -11118,8 +11174,39 @@ app.post('/api/waves/:id/encrypt-droplets', authenticateToken, (req, res) => {
   }
 });
 
+// ============ Ping Routes (v2.0.0 aliases) ============
+// These are the preferred v2.0.0 endpoints (pings = droplets)
+// Rewrites /api/pings/* to /api/droplets/* and re-invokes routing
+
+app.all('/api/pings', (req, res, next) => {
+  req.url = '/api/droplets';
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/pings/:id', (req, res, next) => {
+  req.url = `/api/droplets/${req.params.id}`;
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/pings/:id/react', (req, res, next) => {
+  req.url = `/api/droplets/${req.params.id}/react`;
+  req.app._router.handle(req, res, next);
+});
+
+app.all('/api/pings/:id/read', (req, res, next) => {
+  req.url = `/api/droplets/${req.params.id}/read`;
+  req.app._router.handle(req, res, next);
+});
+
+// /api/pings/:id/burst -> /api/droplets/:id/ripple
+app.all('/api/pings/:id/burst', (req, res, next) => {
+  req.url = `/api/droplets/${req.params.id}/ripple`;
+  req.app._router.handle(req, res, next);
+});
+
 // ============ Droplet Routes (v1.10.0) ============
 // Note: /api/messages endpoints below are backward-compatible aliases
+// Note: /api/pings/* aliases above rewrite to these routes
 
 // Create droplet
 app.post('/api/droplets', authenticateToken, (req, res) => {
@@ -11485,6 +11572,8 @@ const deprecatedEndpoint = (req, res, next) => {
   console.warn(`⚠️ DEPRECATED: ${req.method} ${req.originalUrl} called by user ${req.user?.userId || 'unknown'}`);
   next();
 };
+
+// ============ Message Routes (deprecated) ============
 
 app.post('/api/messages', authenticateToken, deprecatedEndpoint, (req, res) => {
   const waveId = sanitizeInput(req.body.wave_id || req.body.thread_id);
