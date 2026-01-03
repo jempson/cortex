@@ -4780,7 +4780,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
                 />
                 <Avatar letter={p.avatar || '?'} color="var(--accent-teal)" size={24} imageUrl={p.avatarUrl} />
                 <span style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
-                  {p.display_name || p.displayName}
+                  {p.display_name || p.displayName || p.name}
                 </span>
               </label>
             ))}
