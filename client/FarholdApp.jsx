@@ -9609,7 +9609,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
           <button onClick={() => setShowNewGroup(true)} style={{
             width: '100%', padding: '10px', background: 'var(--accent-amber)15', border: '1px solid var(--accent-amber)50',
             color: 'var(--accent-amber)', cursor: 'pointer', fontFamily: 'monospace',
-          }}>+ NEW GROUP</button>
+          }}>+ NEW CREW</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: groupInvitations?.length > 0 ? '12px' : '0' }}>
           {/* Group Invitations */}
