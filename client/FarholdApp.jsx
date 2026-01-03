@@ -4652,7 +4652,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
     }
     setSubmitting(true);
     try {
-      const result = await fetchAPI(`/droplets/${droplet.id}/ripple`, {
+      const result = await fetchAPI(`/pings/${droplet.id}/burst`, {
         method: 'POST',
         body: { title: title.trim(), participants: selectedParticipants }
       });
@@ -6859,7 +6859,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         }
       }
 
-      await fetchAPI('/droplets', {
+      await fetchAPI('/pings', {
         method: 'POST',
         body: messageBody,
       });
@@ -6994,7 +6994,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
 
     try {
-      await fetchAPI(`/droplets/${messageId}`, {
+      await fetchAPI(`/pings/${messageId}`, {
         method: 'PUT',
         body: { content: editContent },
       });
@@ -7026,7 +7026,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
 
     try {
-      await fetchAPI(`/droplets/${messageId}/react`, {
+      await fetchAPI(`/pings/${messageId}/react`, {
         method: 'POST',
         body: { emoji },
       });
@@ -7063,7 +7063,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
 
     try {
-      await fetchAPI(`/droplets/${messageToDelete.id}`, { method: 'DELETE' });
+      await fetchAPI(`/pings/${messageToDelete.id}`, { method: 'DELETE' });
       showToast('Ping deleted', 'success');
       await loadWave(true);
       // Clear flag after scroll restoration has time to complete
@@ -7086,7 +7086,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
     try {
       console.log(`📖 Marking droplet ${messageId} as read...`);
-      await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
+      await fetchAPI(`/pings/${messageId}/read`, { method: 'POST' });
       // Reload wave to update unread status
       await loadWave(true);
       // Also refresh wave list to update unread counts
@@ -7257,7 +7257,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                   const unreadDroplets = allDroplets
                     .filter(m => m.is_unread && m.author_id !== currentUser.id);
                   if (unreadDroplets.length === 0) return;
-                  await Promise.all(unreadDroplets.map(m => fetchAPI(`/droplets/${m.id}/read`, { method: 'POST' })));
+                  await Promise.all(unreadDroplets.map(m => fetchAPI(`/pings/${m.id}/read`, { method: 'POST' })));
                   await loadWave(true);
                   onWaveUpdate?.();
                   showToast(`Marked ${unreadDroplets.length} ping${unreadDroplets.length !== 1 ? 's' : ''} as read`, 'success');
@@ -8762,7 +8762,7 @@ const FocusView = ({
 
     try {
       const parentId = replyingTo?.id || focusedDroplet?.id;
-      await fetchAPI('/droplets', {
+      await fetchAPI('/pings', {
         method: 'POST',
         body: { wave_id: wave.id, parent_id: parentId, content: newMessage }
       });
@@ -8780,7 +8780,7 @@ const FocusView = ({
     // Save scroll position before updating
     const scrollTop = messagesRef.current?.scrollTop;
     try {
-      await fetchAPI(`/droplets/${messageId}/react`, {
+      await fetchAPI(`/pings/${messageId}/react`, {
         method: 'POST',
         body: { emoji }
       });
@@ -8798,7 +8798,7 @@ const FocusView = ({
   // Mark droplet as read when clicked
   const handleMessageClick = async (messageId) => {
     try {
-      await fetchAPI(`/droplets/${messageId}/read`, { method: 'POST' });
+      await fetchAPI(`/pings/${messageId}/read`, { method: 'POST' });
       // Refresh to update UI
       await fetchFreshData();
     } catch (err) {
@@ -8809,7 +8809,7 @@ const FocusView = ({
   const handleDeleteMessage = async (message) => {
     if (!confirm('Delete this ping?')) return;
     try {
-      await fetchAPI(`/droplets/${message.id}`, { method: 'DELETE' });
+      await fetchAPI(`/pings/${message.id}`, { method: 'DELETE' });
       showToast('Ping deleted', 'success');
     } catch (err) {
       showToast(err.message || 'Failed to delete', 'error');
@@ -8823,7 +8823,7 @@ const FocusView = ({
 
   const handleSaveEdit = async (messageId) => {
     try {
-      await fetchAPI(`/droplets/${messageId}`, {
+      await fetchAPI(`/pings/${messageId}`, {
         method: 'PUT',
         body: { content: editContent }
       });
@@ -15378,7 +15378,7 @@ function MainApp({ shareDropletId }) {
         if (dropletId) {
           // Mark the droplet as read since user is navigating to it
           try {
-            await fetchAPI(`/droplets/${dropletId}/read`, { method: 'POST' });
+            await fetchAPI(`/pings/${dropletId}/read`, { method: 'POST' });
             // Refresh wave list to update unread counts
             loadWaves();
           } catch (e) {
