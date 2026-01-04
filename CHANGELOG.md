@@ -5,6 +5,35 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-01-04
+
+### Added
+
+#### Crawl Bar: Pause & Drag Interaction
+Interactive crawl bar that allows users to pause and manually scroll through content.
+
+**Features:**
+- **Pause on hover/touch**: Animation pauses when user hovers (desktop) or touches (mobile)
+- **Drag to scroll**: Click and drag left/right to manually scroll through content
+  - Drag right → see earlier content (scroll backwards)
+  - Drag left → see later content (scroll forwards)
+  - Seamless wrapping at content boundaries
+- **Auto-resume**: Animation resumes from current position after 3 seconds of no interaction
+- **Visual indicators**:
+  - Amber border glow when paused
+  - Pause icon (⏸) displayed in corner when paused
+  - Drag arrows (◀ ▶) shown while actively dragging
+  - Cursor changes to grab/grabbing during interaction
+
+**Technical:**
+- Uses Web Animations API `currentTime` property for precise position control
+- Pixel-to-time conversion for smooth drag-to-scroll mapping
+- Global mouse event listeners for drag beyond component bounds
+- Touch event support for mobile devices
+- User-select disabled to prevent text selection during drag
+
+---
+
 ## [2.0.2] - 2026-01-03
 
 ### Added
