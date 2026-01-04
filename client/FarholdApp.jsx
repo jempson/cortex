@@ -4,7 +4,7 @@ import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWa
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.0.0';
+const VERSION = '2.0.1';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -1856,7 +1856,8 @@ function useAPI() {
     
     const data = await res.json();
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) logout?.();
+      // Only logout on 401 (authentication failure), not 403 (authorization/access denied)
+      if (res.status === 401) logout?.();
       throw new Error(data.error || `API error: ${res.status}`);
     }
     return data;
@@ -15499,9 +15500,9 @@ function MainApp({ shareDropletId }) {
     const wave = waves.find(w => w.id === result.waveId);
     if (wave) {
       setSelectedWave(wave);
+      setScrollToDropletId(result.id);
       setActiveView('waves');
       setShowSearch(false);
-      // TODO: Scroll to the specific message (would need to pass messageId to WaveView)
     } else {
       showToastMsg('Wave not found or not accessible', 'error');
     }
@@ -15603,6 +15604,36 @@ function MainApp({ shareDropletId }) {
             <span style={{ color: 'var(--text-muted)' }}><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> WS</span>
           </div>
         </div>
+
+        {/* Mobile: Spacer + Notifications + Search */}
+        {isMobile && (
+          <>
+            <div style={{ flex: 1 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <NotificationBell
+                fetchAPI={fetchAPI}
+                onNavigateToWave={handleNavigateToWaveById}
+                isMobile={true}
+                refreshTrigger={notificationRefreshTrigger}
+              />
+              <button
+                onClick={() => setShowSearch(true)}
+                style={{
+                  padding: '6px 10px',
+                  background: 'transparent',
+                  border: '1px solid var(--accent-teal)',
+                  color: 'var(--accent-teal)',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: '0.9rem',
+                }}
+                title="Search messages"
+              >
+                🔍
+              </button>
+            </div>
+          </>
+        )}
 
         {/* Nav Items - grows to fill space - hidden on mobile (using bottom nav instead) */}
         {!isMobile && (
@@ -16184,12 +16215,25 @@ function AuthProvider({ children }) {
 
     if (token) {
       fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(res => res.ok ? res.json() : Promise.reject())
+        .then(res => {
+          if (res.ok) return res.json();
+          // Only clear session on 401 (invalid/expired token), not on other errors
+          if (res.status === 401) {
+            storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
+            setToken(null); setUser(null);
+          }
+          // For other errors (network, 500, etc.), keep existing user data from localStorage
+          return Promise.reject(new Error(`Auth check failed: ${res.status}`));
+        })
         .then(userData => {
           setUser(userData);
           storage.setUser(userData); // Save to localStorage
         })
-        .catch(() => { storage.removeToken(); storage.removeUser(); storage.removeSessionStart(); setToken(null); setUser(null); })
+        .catch(err => {
+          // Network errors - don't clear session, user may still have valid token
+          // They can retry or the periodic check will handle it
+          console.warn('Auth check failed, keeping cached session:', err.message);
+        })
         .finally(() => setLoading(false));
     } else {
       setLoading(false);
