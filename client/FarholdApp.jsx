@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useCallback, useMemo } from 'react';
 import { E2EEProvider, useE2EE } from './e2ee-context.jsx';
 import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWaveBadge, LegacyWaveNotice, PartialEncryptionBanner } from './e2ee-components.jsx';
+import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './messages.js';
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.0.1';
+const VERSION = '2.0.2';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -2646,7 +2647,7 @@ const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, o
             color: 'var(--text-muted)',
             fontSize: '0.85rem',
           }}>
-            No notifications
+            {EMPTY.noNotifications}
           </div>
         ) : (
           notifications.map(n => (
@@ -3685,7 +3686,7 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
     <div style={{ flex: 1, overflowY: 'auto' }}>
       {waves.length === 0 ? (
         <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          {showArchived ? 'No archived waves' : 'No waves yet. Create one!'}
+          {showArchived ? 'No archived waves' : EMPTY.noWavesCreate}
         </div>
       ) : waves.map(wave => {
         const config = PRIVACY_LEVELS[wave.privacy] || PRIVACY_LEVELS.private;
@@ -4293,7 +4294,7 @@ const DeleteConfirmModal = ({ isOpen, onClose, waveTitle, onConfirm, isMobile })
             fontFamily: 'monospace',
             fontSize: isMobile ? '0.9rem' : '0.85rem',
             fontWeight: 600,
-          }}>DELETE WAVE</button>
+          }}>{CONFIRM.delete.toUpperCase()}</button>
         </div>
       </div>
     </div>
@@ -4343,7 +4344,7 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
         border: '1px solid var(--border-subtle)', padding: isMobile ? '20px' : '24px',
       }} onClick={(e) => e.stopPropagation()}>
         {loading ? (
-          <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>Loading...</div>
+          <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>{LOADING.generic}</div>
         ) : profile ? (
           <>
             {/* Header with close button */}
@@ -5437,7 +5438,7 @@ const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
   };
 
   if (loading) {
-    return <div style={{ color: 'var(--text-dim)', padding: '20px', textAlign: 'center' }}>Loading...</div>;
+    return <div style={{ color: 'var(--text-dim)', padding: '20px', textAlign: 'center' }}>{LOADING.generic}</div>;
   }
 
   return (
@@ -5528,7 +5529,7 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
         method: 'PUT',
         body: { title, privacy, groupId: privacy === 'group' ? selectedGroup : null },
       });
-      showToast('Wave updated', 'success');
+      showToast(SUCCESS.waveUpdated, 'success');
       onUpdate();
       onClose();
     } catch (err) {
@@ -6197,7 +6198,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           text: shareText,
           url: shareUrl,
         });
-        showToast('Shared successfully', 'success');
+        showToast(SUCCESS.shared, 'success');
         return;
       } catch (err) {
         // User cancelled or share failed - fall through to clipboard
@@ -6210,7 +6211,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     // Fallback: Copy to clipboard
     try {
       await navigator.clipboard.writeText(shareUrl);
-      showToast('Link copied to clipboard', 'success');
+      showToast(SUCCESS.copied, 'success');
     } catch (err) {
       // Final fallback for older browsers
       const textArea = document.createElement('textarea');
@@ -6221,7 +6222,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      showToast('Link copied to clipboard', 'success');
+      showToast(SUCCESS.copied, 'success');
     }
   };
 
@@ -6866,7 +6867,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       });
       setNewMessage('');
       setReplyingTo(null);
-      showToast('Ping sent', 'success');
+      showToast(SUCCESS.pingSent, 'success');
       await loadWave(true);
 
       // Only scroll to bottom if posting a root message (not a reply)
@@ -6947,7 +6948,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         method: 'POST',
         body: { archived: !waveData?.is_archived },
       });
-      showToast(waveData?.is_archived ? 'Wave restored' : 'Wave archived', 'success');
+      showToast(waveData?.is_archived ? SUCCESS.waveRestored : SUCCESS.waveArchived, 'success');
       onWaveUpdate?.();
       onBack();
     } catch (err) {
@@ -6962,7 +6963,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const confirmDeleteWave = async () => {
     try {
       await fetchAPI(`/waves/${wave.id}`, { method: 'DELETE' });
-      showToast('Wave deleted', 'success');
+      showToast(SUCCESS.waveDeleted, 'success');
       onBack();
       onWaveUpdate?.();
     } catch (err) {
@@ -8085,7 +8086,7 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
     setProcessing(prev => ({ ...prev, [requestId]: 'accept' }));
     try {
       await fetchAPI(`/contacts/requests/${requestId}/accept`, { method: 'POST' });
-      showToast('Contact request accepted!', 'success');
+      showToast(SUCCESS.contactRequestAccepted, 'success');
       onRequestsChange();
       onContactsChange();
     } catch (err) {
@@ -8360,7 +8361,7 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
     setProcessing(prev => ({ ...prev, [invitationId]: 'accept' }));
     try {
       await fetchAPI(`/groups/invitations/${invitationId}/accept`, { method: 'POST' });
-      showToast('You joined the crew!', 'success');
+      showToast(SUCCESS.joined, 'success');
       onInvitationsChange();
       onGroupsChange();
     } catch (err) {
@@ -8769,7 +8770,7 @@ const FocusView = ({
       });
       setNewMessage('');
       setReplyingTo(null);
-      showToast('Ping sent', 'success');
+      showToast(SUCCESS.pingSent, 'success');
       // Immediately refresh to show the new droplet
       fetchFreshData();
     } catch (err) {
@@ -8855,7 +8856,7 @@ const FocusView = ({
     if (navigator.share) {
       try {
         await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
-        showToast('Shared successfully', 'success');
+        showToast(SUCCESS.shared, 'success');
         return;
       } catch (err) {
         if (err.name !== 'AbortError') console.error('Share failed:', err);
@@ -8865,7 +8866,7 @@ const FocusView = ({
     // Fallback: Copy to clipboard
     try {
       await navigator.clipboard.writeText(shareUrl);
-      showToast('Link copied to clipboard', 'success');
+      showToast(SUCCESS.copied, 'success');
     } catch (err) {
       const textArea = document.createElement('textarea');
       textArea.value = shareUrl;
@@ -8875,7 +8876,7 @@ const FocusView = ({
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      showToast('Link copied to clipboard', 'success');
+      showToast(SUCCESS.copied, 'success');
     }
   };
 
@@ -9318,7 +9319,7 @@ const ContactsView = ({
   const handleRemoveContact = async (id) => {
     try {
       await fetchAPI(`/contacts/${id}`, { method: 'DELETE' });
-      showToast('Contact removed', 'success');
+      showToast(SUCCESS.contactRemoved, 'success');
       onContactsChange();
     } catch (err) {
       showToast(err.message || 'Failed to remove contact', 'error');
@@ -9370,7 +9371,7 @@ const ContactsView = ({
               width: '100%', padding: '12px', boxSizing: 'border-box', marginBottom: '16px',
               background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontFamily: 'inherit',
             }} />
-          {searching && <div style={{ color: 'var(--text-muted)' }}>Searching...</div>}
+          {searching && <div style={{ color: 'var(--text-muted)' }}>{LOADING.searching}</div>}
           {!searching && searchQuery.length >= 2 && searchResults.length === 0 && (
             <div style={{ color: 'var(--text-muted)' }}>No users found</div>
           )}
@@ -9411,7 +9412,7 @@ const ContactsView = ({
       {contacts.length === 0 && contactRequests.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
           <div style={{ fontSize: '3rem', marginBottom: '16px' }}>◎</div>
-          <div>No contacts yet</div>
+          <div>{EMPTY.noContacts}</div>
           <div style={{ fontSize: '0.8rem', marginTop: '8px' }}>Use "Find People" to send contact requests</div>
         </div>
       ) : contacts.length > 0 && (
@@ -9517,7 +9518,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
     if (!newGroupName.trim()) return;
     try {
       await fetchAPI('/groups', { method: 'POST', body: { name: newGroupName, description: newGroupDesc } });
-      showToast('Crew created', 'success');
+      showToast(SUCCESS.crewCreated, 'success');
       setNewGroupName('');
       setNewGroupDesc('');
       setShowNewGroup(false);
@@ -9531,7 +9532,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
     if (!confirm('Delete this crew?')) return;
     try {
       await fetchAPI(`/groups/${selectedGroup}`, { method: 'DELETE' });
-      showToast('Crew deleted', 'success');
+      showToast(SUCCESS.crewDeleted, 'success');
       setSelectedGroup(null);
       setGroupDetails(null);
       onGroupsChange();
@@ -9548,7 +9549,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
         body: { userIds: [userId] }
       });
       if (result.invitations?.length > 0) {
-        showToast('Invitation sent', 'success');
+        showToast(SUCCESS.invitationSent, 'success');
       } else if (result.errors?.length > 0) {
         showToast(result.errors[0].error || 'Failed to send invitation', 'error');
       }
@@ -9563,7 +9564,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
     if (!confirm('Leave this crew?')) return;
     try {
       await fetchAPI(`/groups/${selectedGroup}/members/${groupDetails.currentUserId}`, { method: 'DELETE' });
-      showToast('Left crew', 'success');
+      showToast(SUCCESS.left, 'success');
       setSelectedGroup(null);
       setGroupDetails(null);
       onGroupsChange();
@@ -9623,7 +9624,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
             isMobile={isMobile}
           />
           {groups.length === 0 && (!groupInvitations || groupInvitations.length === 0) ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>No crews yet</div>
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>{EMPTY.noCrews}</div>
           ) : groups.map(g => (
             <div key={g.id} onClick={() => setSelectedGroup(g.id)} style={{ padding: '14px 16px', cursor: 'pointer',
               background: selectedGroup === g.id ? 'var(--accent-amber)10' : 'transparent',
@@ -9972,7 +9973,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, 
                 opacity: searching || !searchQuery.trim() ? 0.5 : 1,
               }}
             >
-              {searching ? 'Searching...' : 'SEARCH'}
+              {searching ? LOADING.searching : 'SEARCH'}
             </button>
           </div>
 
@@ -12964,7 +12965,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const handleSaveProfile = async () => {
     try {
       const updated = await fetchAPI('/profile', { method: 'PUT', body: { displayName, email, avatar, bio } });
-      showToast('Profile updated', 'success');
+      showToast(SUCCESS.profileUpdated, 'success');
       onUserUpdate?.(updated);
     } catch (err) {
       showToast(err.message || 'Failed to update profile', 'error');
@@ -13055,7 +13056,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           showToast('Password changed, but encryption update failed. You may need to use your recovery key on next login.', 'error');
         }
       } else {
-        showToast('Password changed', 'success');
+        showToast(SUCCESS.passwordChanged, 'success');
       }
 
       setCurrentPassword('');
@@ -14452,7 +14453,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                         fontWeight: 'bold',
                       }}
                     >
-                      {deleteLoading ? 'DELETING...' : 'CONFIRM DELETE'}
+                      {deleteLoading ? 'DELETING...' : CONFIRM.destructive.toUpperCase()}
                     </button>
                     <button
                       onClick={() => { setShowDeleteConfirm(false); setDeletePassword(''); }}
@@ -14466,7 +14467,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                         fontSize: '0.8rem',
                       }}
                     >
-                      CANCEL
+                      {CONFIRM.cancel.toUpperCase()}
                     </button>
                   </div>
                 </div>
@@ -14885,6 +14886,7 @@ function MainApp({ shareDropletId }) {
   const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0); // Increment to refresh notifications
   const [waveNotifications, setWaveNotifications] = useState({}); // Notification counts/types by wave ID
   const [selectedAlert, setSelectedAlert] = useState(null); // Alert to show in detail modal
+  const [footerTagline, setFooterTagline] = useState(getRandomTagline()); // Rotating Firefly tagline
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -15409,6 +15411,14 @@ function MainApp({ shareDropletId }) {
       .catch(() => setFederationEnabled(false));
   }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications]);
 
+  // Rotate footer tagline every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFooterTagline(getRandomTagline());
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Listen for service worker messages (push notification clicks)
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
@@ -15832,7 +15842,7 @@ function MainApp({ shareDropletId }) {
             <span><span style={{ color: apiConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> API</span>
             <span><span style={{ color: wsConnected ? 'var(--accent-green)' : 'var(--accent-orange)' }}>●</span> LIVE</span>
           </div>
-          <div style={{ color: 'var(--text-muted)' }}>WAVES: {waves.length} • CREWS: {groups.length} • CONTACTS: {contacts.length}</div>
+          <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{footerTagline}</div>
         </footer>
       )}
 
@@ -15981,7 +15991,7 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
   if (loading) {
     return (
       <div style={containerStyle}>
-        <div style={{ color: 'var(--accent-green)' }}>Loading...</div>
+        <div style={{ color: 'var(--accent-green)' }}>{LOADING.generic}</div>
       </div>
     );
   }
