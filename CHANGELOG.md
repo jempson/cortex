@@ -1,9 +1,33 @@
 # Changelog
 
-All notable changes to Cortex will be documented in this file.
+All notable changes to Farhold (formerly Cortex) will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [2.0.1] - 2026-01-03
+
+### Fixed
+
+#### Search Navigation
+- **Search now scrolls to correct ping**: Clicking a search result now navigates to the wave AND scrolls to the specific message with amber highlight animation
+  - Added `setScrollToDropletId(result.id)` to `handleSearchResultClick`
+  - Leverages existing WaveView scroll-to mechanism that was previously unused by search
+
+#### Authentication & Session Handling
+- **Crew waves no longer force logout**: Accessing a crew wave you don't have permission for now shows an error instead of logging you out
+  - Changed `useAPI` hook to only call `logout()` on 401 (authentication failure), not 403 (authorization denied)
+- **PWA sessions persist through network errors**: App no longer clears your session when `/auth/me` fails due to network issues
+  - Only clears session on 401 (invalid/expired token)
+  - Network errors and server errors now preserve cached session data
+  - Prevents frustrating re-login prompts when server is temporarily unreachable
+
+#### Mobile UI
+- **Added search button to mobile header**: Mobile users can now access the search feature
+  - Search 🔍 and notification 🔔 buttons added to right side of mobile header
+  - Previously these were desktop-only
+
+---
 
 ## [1.19.5] - 2025-12-26
 
