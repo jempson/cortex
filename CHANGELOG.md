@@ -10,31 +10,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 #### Firefly Easter Eggs (Phase 1)
-- **Rotating Footer Tagline**: Footer displays Firefly quotes that change every 30 seconds
-  - "Can't stop the signal", "Keep flying", "You can't take the sky from me", etc.
-- **Themed Success Messages**: Key success toasts now use Firefly terminology
-  - "Ping sent" → "Signal's away"
-  - "Wave updated" → "Signal adjusted"
-  - "Link copied" → "Coordinates locked"
-  - "Contact accepted" → "Welcome aboard!"
-  - "Crew created" → "Crew assembled"
-  - "Profile updated" → "Ship's log updated"
-  - And more...
-- **Themed Empty States**: Empty views use atmospheric Firefly phrases
-  - "No notifications" → "Ain't heard a peep"
-  - "No waves yet" → "Cortex is quiet. Start a signal?"
-  - "No contacts" → "No crew yet"
-  - "No crews" → "Flying solo"
-- **Themed Loading States**: Loading spinners show "Spinning up..." and "Scanning the cortex..."
-- **Firefly Confirmation Buttons**: Destructive actions use iconic quotes
-  - Delete Wave → "LET'S BE BAD GUYS"
-  - Confirm Delete Account → "I AIM TO MISBEHAVE"
-  - Cancel → "BELAY THAT"
+Firefly-themed messages woven throughout the UI to reinforce brand identity. The Firefly aesthetic is always on as part of the core Farhold experience.
+
+**Rotating Footer Taglines** (30-second interval)
+- "Can't stop the signal"
+- "Keep flying"
+- "We're still flying, that's something"
+- "You can't take the sky from me"
+- "Find a crew, find a job, keep flying"
+- "Privacy isn't a feature, it's a foundation"
+- "The signal is strong"
+- "Shiny"
+- "I aim to misbehave"
+- "We have done the impossible, and that makes us mighty"
+
+**Success Messages** (toast notifications)
+| Action | Message |
+|--------|---------|
+| Generic success | "Shiny!" |
+| Ping sent | "Signal's away" |
+| Wave created | "New signal on the cortex" |
+| Wave updated | "Signal adjusted" |
+| Wave deleted | "Signal terminated" |
+| Wave archived | "Signal archived" |
+| Wave restored | "Signal restored" |
+| Link copied | "Coordinates locked" |
+| Contact added | "New crew member aboard" |
+| Contact removed | "Crew member departed" |
+| Contact request sent | "Hail sent" |
+| Contact request accepted | "Welcome aboard!" |
+| Joined crew | "You're in the air" |
+| Left crew | "You've jumped ship" |
+| Crew created | "Crew assembled" |
+| Crew deleted | "Crew disbanded" |
+| Invitation sent | "Invitation transmitted" |
+| Profile updated | "Ship's log updated" |
+| Password changed | "New codes set" |
+| Shared | "Signal boosted" |
+
+**Empty State Messages**
+| Context | Message |
+|---------|---------|
+| No waves | "Cortex is quiet" |
+| No waves (with CTA) | "Cortex is quiet. Start a signal?" |
+| No notifications | "Ain't heard a peep" |
+| No pings | "Nothing but black out here" |
+| No search results | "Nothing in the black matches that" |
+| No contacts | "No crew yet" |
+| No crews | "Flying solo" |
+| No GIFs | "No captures found" |
+| No users found | "No souls out here" |
+| No alerts | "All quiet on the cortex" |
+| No sessions | "No active docking bays" |
+
+**Loading State Messages**
+| Context | Message |
+|---------|---------|
+| Generic loading | "Spinning up..." |
+| Searching | "Scanning the cortex..." |
+| Sending | "Transmitting..." |
+| Connecting | "Awaiting docking clearance..." |
+| Encrypting | "Running encryption protocols..." |
+| Uploading | "Uploading cargo..." |
+
+**Confirmation Button Labels**
+| Action | Button Text |
+|--------|-------------|
+| Delete | "Let's be bad guys" |
+| Destructive confirm | "I aim to misbehave" |
+| Cancel | "Belay that" |
+| Leave | "Jump ship" |
+| Confirm | "Do the job" |
+
+**Error Prefix**
+- Non-technical errors prefixed with "Gorram it!"
 
 #### Technical
-- **New `messages.js` Module**: Centralized Firefly-themed messages for maintainability
-  - SUCCESS, ERROR_PREFIX, EMPTY, LOADING, CONFIRM, TAGLINES
-  - `getRandomTagline()` helper function
+- **New `client/messages.js` Module**: Centralized Firefly-themed messages
+  - `SUCCESS` - Success toast message constants
+  - `ERROR_PREFIX` - Error message prefix ("Gorram it!")
+  - `EMPTY` - Empty state message constants
+  - `LOADING` - Loading state message constants
+  - `CONFIRM` - Confirmation button label constants
+  - `TAGLINES` - Footer tagline array
+  - `getRandomTagline()` - Returns random tagline for footer rotation
+  - `formatError(message)` - Wraps message with Firefly error prefix
+
+### Changed
+- Footer now displays rotating taglines instead of static wave/crew/contact counts
+- ~25 UI locations updated to use themed messages from `messages.js`
 
 ---
 
