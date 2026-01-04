@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.0.2';
+const VERSION = '2.0.3';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -2070,11 +2070,15 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false, 
   const [data, setData] = useState({ stocks: { data: [] }, weather: { data: null }, news: { data: [] }, alerts: { data: [] } });
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const scrollRef = useRef(null);
   const animationRef = useRef(null);
   const [contentWidth, setContentWidth] = useState(0);
+  const dragStartRef = useRef({ x: 0, animTime: 0 });
+  const resumeTimeoutRef = useRef(null);
 
   const scrollSpeed = CRAWL_SCROLL_SPEEDS[userPrefs.scrollSpeed || 'normal'];
+  const RESUME_DELAY = 3000; // Resume after 3 seconds of no interaction
 
   // Fetch crawl data without resetting animation (using Web Animations API)
   const loadData = useCallback(async () => {
@@ -2187,6 +2191,128 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false, 
       }
     }
   }, [isPaused]);
+
+  // Clear resume timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (resumeTimeoutRef.current) {
+        clearTimeout(resumeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Schedule resume after delay
+  const scheduleResume = useCallback(() => {
+    if (resumeTimeoutRef.current) {
+      clearTimeout(resumeTimeoutRef.current);
+    }
+    resumeTimeoutRef.current = setTimeout(() => {
+      setIsPaused(false);
+      setIsDragging(false);
+    }, RESUME_DELAY);
+  }, [RESUME_DELAY]);
+
+  // Cancel scheduled resume
+  const cancelResume = useCallback(() => {
+    if (resumeTimeoutRef.current) {
+      clearTimeout(resumeTimeoutRef.current);
+      resumeTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Pause and cancel any pending resume
+  const handleInteractionStart = useCallback(() => {
+    cancelResume();
+    setIsPaused(true);
+  }, [cancelResume]);
+
+  // Schedule resume after interaction ends (if not dragging)
+  const handleInteractionEnd = useCallback(() => {
+    if (!isDragging) {
+      scheduleResume();
+    }
+  }, [isDragging, scheduleResume]);
+
+  // Drag handlers
+  const handleDragStart = useCallback((clientX) => {
+    if (!animationRef.current) return;
+    setIsDragging(true);
+    cancelResume();
+    dragStartRef.current = {
+      x: clientX,
+      animTime: animationRef.current.currentTime || 0,
+    };
+  }, [cancelResume]);
+
+  const handleDragMove = useCallback((clientX) => {
+    if (!isDragging || !animationRef.current || contentWidth === 0) return;
+
+    const deltaX = clientX - dragStartRef.current.x;
+    // Convert pixel movement to animation time
+    // Positive deltaX (drag right) = go backwards in time (see earlier content)
+    // Negative deltaX (drag left) = go forwards in time (see later content)
+    const duration = scrollSpeed * 1000;
+    const timePerPixel = duration / contentWidth;
+    const deltaTime = -deltaX * timePerPixel;
+
+    let newTime = dragStartRef.current.animTime + deltaTime;
+    // Wrap around for seamless looping
+    while (newTime < 0) newTime += duration;
+    while (newTime >= duration) newTime -= duration;
+
+    animationRef.current.currentTime = newTime;
+  }, [isDragging, contentWidth, scrollSpeed]);
+
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+    scheduleResume();
+  }, [scheduleResume]);
+
+  // Mouse event handlers
+  const handleMouseDown = useCallback((e) => {
+    e.preventDefault();
+    handleDragStart(e.clientX);
+  }, [handleDragStart]);
+
+  const handleMouseMove = useCallback((e) => {
+    handleDragMove(e.clientX);
+  }, [handleDragMove]);
+
+  const handleMouseUp = useCallback(() => {
+    if (isDragging) {
+      handleDragEnd();
+    }
+  }, [isDragging, handleDragEnd]);
+
+  // Touch event handlers
+  const handleTouchStart = useCallback((e) => {
+    handleInteractionStart();
+    if (e.touches.length === 1) {
+      handleDragStart(e.touches[0].clientX);
+    }
+  }, [handleInteractionStart, handleDragStart]);
+
+  const handleTouchMove = useCallback((e) => {
+    if (e.touches.length === 1) {
+      handleDragMove(e.touches[0].clientX);
+    }
+  }, [handleDragMove]);
+
+  const handleTouchEnd = useCallback(() => {
+    handleDragEnd();
+  }, [handleDragEnd]);
+
+  // Add/remove global mouse listeners when dragging
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   if (!enabled) {
     return null;
@@ -2367,16 +2493,44 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false, 
         position: 'relative',
         height: isMobile ? '28px' : '32px',
         background: 'var(--bg-surface)',
-        borderBottom: '1px solid var(--border-subtle)',
+        borderBottom: `1px solid ${isPaused ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
         overflow: 'hidden',
         fontFamily: "'Courier New', monospace",
         fontSize: isMobile ? '0.7rem' : '0.75rem',
+        cursor: isDragging ? 'grabbing' : 'grab',
+        userSelect: 'none',
+        transition: 'border-color 0.2s ease',
       }}
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
-      onTouchStart={() => setIsPaused(true)}
-      onTouchEnd={() => setIsPaused(false)}
+      onMouseEnter={handleInteractionStart}
+      onMouseLeave={handleInteractionEnd}
+      onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
+      {/* Pause indicator */}
+      {isPaused && !loading && (
+        <div style={{
+          position: 'absolute',
+          right: '8px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          color: 'var(--accent-amber)',
+          fontSize: '0.65rem',
+          fontWeight: 500,
+          zIndex: 10,
+          background: 'var(--bg-surface)',
+          padding: '2px 6px',
+          borderRadius: '3px',
+          opacity: 0.9,
+        }}>
+          {isDragging ? '◀ ▶' : '⏸'}
+        </div>
+      )}
+
       {/* Animation controlled via Web Animations API for seamless data refresh */}
 
       {loading && items.length === 0 ? (

@@ -251,50 +251,20 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 
 ---
 
-## Crawl Bar: Pause + Drag Interaction
+## ✅ Crawl Bar: Pause + Drag Interaction (COMPLETED in v2.0.3)
 
-**Priority:** Low - Enhancement
+**Status:** Implemented in v2.0.3 (January 2026)
 
 ### Summary
 
 Allow users to pause and drag the crawl bar backwards to see or click on content that just scrolled past.
 
-### Behavior
-
-1. **Pause on hover/touch** - Animation pauses when user hovers (desktop) or touches (mobile)
-2. **Drag to scroll** - User can drag left/right to scroll through content manually
-3. **Resume after timeout** - Animation resumes from current position after 3-5 seconds of no interaction
-
-### Technical Notes
-
-- Track animation position when pausing (Web Animations API `currentTime`)
-- Touch events (`touchstart`, `touchmove`, `touchend`) for mobile
-- Mouse events (`mousedown`, `mousemove`, `mouseup`) for desktop
-- Resume animation from current scroll position, not restart
-- Visual indicator when paused (subtle border glow or pause icon)
-
 ### Implementation
 
-```javascript
-// Pause animation and enable dragging
-crawlBar.addEventListener('mouseenter', () => {
-  animation.pause();
-  currentPosition = animation.currentTime;
-});
-
-// Track drag
-crawlBar.addEventListener('mousedown', startDrag);
-crawlBar.addEventListener('mousemove', onDrag);
-crawlBar.addEventListener('mouseup', endDrag);
-
-// Resume after timeout
-crawlBar.addEventListener('mouseleave', () => {
-  resumeTimeout = setTimeout(() => {
-    animation.currentTime = currentPosition;
-    animation.play();
-  }, 3000);
-});
-```
+- **Pause on hover/touch**: Animation pauses when user hovers (desktop) or touches (mobile)
+- **Drag to scroll**: Click and drag left/right to manually scroll through content
+- **Auto-resume**: Animation resumes from current position after 3 seconds of no interaction
+- **Visual indicators**: Amber border glow, pause icon (⏸), drag arrows (◀ ▶), grab cursor
 
 ---
 
