@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.0.3';
+const VERSION = '2.0.5';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -3245,6 +3245,7 @@ const LoginScreen = ({ onAbout }) => {
   const [mfaLoading, setMfaLoading] = useState(false);
   const [emailCodeSent, setEmailCodeSent] = useState(false);
   const [emailCodeSending, setEmailCodeSending] = useState(false);
+  const [sessionDuration, setSessionDuration] = useState('24h');
   const { isMobile, isTablet, isDesktop } = useWindowSize();
 
   const handleForgotPassword = async (e) => {
@@ -3284,9 +3285,9 @@ const LoginScreen = ({ onAbout }) => {
     setLoading(true);
     try {
       if (isRegistering) {
-        await register(handle, email, password, displayName);
+        await register(handle, email, password, displayName, sessionDuration);
       } else {
-        const result = await login(handle, password);
+        const result = await login(handle, password, sessionDuration);
         if (result?.mfaRequired) {
           setMfaRequired(true);
           setMfaChallenge(result.mfaChallenge);
@@ -3503,6 +3504,18 @@ const LoginScreen = ({ onAbout }) => {
               </div>
             </>
           )}
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>SESSION DURATION</label>
+            <select value={sessionDuration} onChange={(e) => setSessionDuration(e.target.value)} style={inputStyle}>
+              <option value="24h">24 hours (recommended)</option>
+              <option value="7d">7 days</option>
+              <option value="30d">30 days</option>
+            </select>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.65rem', marginTop: '4px' }}>
+              Your session will expire after this duration for security
+            </div>
+          </div>
 
           <div style={{ marginBottom: isRegistering ? '16px' : '24px' }}>
             <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>PASSWORD</label>
@@ -13047,6 +13060,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
   const formatSessionDate = (dateStr) => {
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return 'Invalid Date';
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
@@ -13058,6 +13072,27 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
+  };
+
+  const formatExpirationDate = (dateStr) => {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return 'Unknown';
+    const now = new Date();
+    const diffMs = date - now;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    // Already expired
+    if (diffMs < 0) return 'Expired';
+
+    // Future date - show time remaining
+    if (diffMins < 60) return `in ${diffMins}m`;
+    if (diffHours < 24) return `in ${diffHours}h`;
+    if (diffDays < 7) return `in ${diffDays}d`;
+
+    // Far future - show absolute date
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const parseDeviceInfo = (userAgent) => {
@@ -13906,6 +13941,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                               </div>
                               <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginTop: '2px' }}>
                                 Created {formatSessionDate(session.createdAt)}
+                              </div>
+                              <div style={{ color: 'var(--accent-orange)', fontSize: '0.7rem', marginTop: '2px' }}>
+                                Expires {formatExpirationDate(session.expiresAt)}
                               </div>
                             </div>
                             {!session.isCurrent && (
@@ -16497,10 +16535,10 @@ function AuthProvider({ children }) {
     pendingPasswordRef.current = null;
   };
 
-  const login = async (handle, password) => {
+  const login = async (handle, password, sessionDuration = '24h') => {
     const res = await fetch(`${API_URL}/auth/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ handle, password }),
+      body: JSON.stringify({ handle, password, sessionDuration }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Login failed');
@@ -16531,10 +16569,10 @@ function AuthProvider({ children }) {
     return { success: true };
   };
 
-  const register = async (handle, email, password, displayName) => {
+  const register = async (handle, email, password, displayName, sessionDuration = '24h') => {
     const res = await fetch(`${API_URL}/auth/register`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ handle, email, password, displayName }),
+      body: JSON.stringify({ handle, email, password, displayName, sessionDuration }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
