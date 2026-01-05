@@ -6431,8 +6431,14 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Use useLayoutEffect to restore scroll synchronously before browser paint
   useLayoutEffect(() => {
     if (scrollPositionToRestore.current !== null && messagesRef.current) {
+      // Set flag to suppress scroll handler during restoration
+      userActionInProgressRef.current = true;
       messagesRef.current.scrollTop = scrollPositionToRestore.current;
       scrollPositionToRestore.current = null;
+      // Clear flag after scroll events have settled
+      setTimeout(() => {
+        userActionInProgressRef.current = false;
+      }, 100);
     }
   }, [waveData]);
 
@@ -6545,7 +6551,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     // Check if user has scrolled to bottom
     const handleScroll = () => {
       const container = messagesRef.current;
-      if (!container || hasMarkedAsReadRef.current) return;
+      // Skip if: no container, already marked, or user action in progress (e.g., clicking a ping)
+      if (!container || hasMarkedAsReadRef.current || userActionInProgressRef.current) return;
 
       const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
       if (isAtBottom) {
@@ -8815,6 +8822,7 @@ const FocusView = ({
   contacts = [],
   onWaveUpdate
 }) => {
+  const e2ee = useE2EE();
   const currentFocus = focusStack[focusStack.length - 1];
   const initialDroplet = currentFocus?.droplet;
 
@@ -8848,6 +8856,37 @@ const FocusView = ({
     setLiveDroplet(initialDroplet);
   }, [initialDroplet?.id]);
 
+  // E2EE: Helper to decrypt a single droplet and its children recursively
+  const decryptDropletTree = useCallback(async (node, waveId) => {
+    if (!e2ee.isUnlocked) return node;
+
+    // Decrypt this node if needed
+    let decryptedNode = node;
+    if (node.encrypted && node.nonce) {
+      try {
+        const plaintext = await e2ee.decryptDroplet(
+          node.content,
+          node.nonce,
+          waveId,
+          node.keyVersion
+        );
+        decryptedNode = { ...node, content: plaintext, _decrypted: true };
+      } catch (err) {
+        console.error('Failed to decrypt droplet in focus view:', node.id, err);
+        decryptedNode = { ...node, content: '[Unable to decrypt]', _decryptError: true };
+      }
+    }
+
+    // Decrypt children recursively
+    if (decryptedNode.children && decryptedNode.children.length > 0) {
+      decryptedNode.children = await Promise.all(
+        decryptedNode.children.map(child => decryptDropletTree(child, waveId))
+      );
+    }
+
+    return decryptedNode;
+  }, [e2ee]);
+
   // Function to fetch fresh droplet data
   const fetchFreshData = useCallback(async () => {
     if (!wave?.id || !initialDroplet?.id) return;
@@ -8866,7 +8905,13 @@ const FocusView = ({
           }
           return null;
         };
-        const updated = findDroplet(data.messages, initialDroplet.id);
+        let updated = findDroplet(data.messages, initialDroplet.id);
+
+        // E2EE: Decrypt the focused droplet and its children if wave is encrypted
+        if (updated && data.encrypted && e2ee.isUnlocked) {
+          updated = await decryptDropletTree(updated, wave.id);
+        }
+
         if (updated) {
           setLiveDroplet(updated);
         }
@@ -8874,7 +8919,7 @@ const FocusView = ({
     } catch (err) {
       console.error('Failed to refresh focus view:', err);
     }
-  }, [wave?.id, initialDroplet?.id, fetchAPI]);
+  }, [wave?.id, initialDroplet?.id, fetchAPI, e2ee, decryptDropletTree]);
 
   // Fetch fresh droplet data when reloadTrigger changes
   useEffect(() => {
