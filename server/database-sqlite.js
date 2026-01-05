@@ -3344,7 +3344,29 @@ export class DatabaseSQLite {
 
     if (!participant) return false;
 
-    this.db.prepare('UPDATE wave_participants SET last_read = ? WHERE wave_id = ? AND user_id = ?').run(new Date().toISOString(), waveId, userId);
+    const now = new Date().toISOString();
+
+    // Update last_read timestamp
+    this.db.prepare('UPDATE wave_participants SET last_read = ? WHERE wave_id = ? AND user_id = ?').run(now, waveId, userId);
+
+    // Also mark all unread pings in this wave as read in ping_read_by table
+    // This ensures unread_count calculation (which uses ping_read_by) is accurate
+    const unreadPings = this.db.prepare(`
+      SELECT p.id FROM pings p
+      WHERE p.wave_id = ?
+        AND p.deleted = 0
+        AND p.author_id != ?
+        AND NOT EXISTS (SELECT 1 FROM ping_read_by prb WHERE prb.ping_id = p.id AND prb.user_id = ?)
+    `).all(waveId, userId, userId);
+
+    if (unreadPings.length > 0) {
+      const insertStmt = this.db.prepare('INSERT OR IGNORE INTO ping_read_by (ping_id, user_id, read_at) VALUES (?, ?, ?)');
+      for (const ping of unreadPings) {
+        insertStmt.run(ping.id, userId, now);
+      }
+      console.log(`📖 Marked ${unreadPings.length} pings as read for user ${userId} in wave ${waveId}`);
+    }
+
     return true;
   }
 
