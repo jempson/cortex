@@ -278,7 +278,8 @@ CREATE TABLE IF NOT EXISTS mfa_challenges (
     code_hash TEXT,                      -- For email codes (hashed)
     expires_at TEXT NOT NULL,
     verified_at TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    session_duration TEXT DEFAULT '24h'  -- Session duration for post-MFA token (v2.0.5)
 );
 
 CREATE INDEX IF NOT EXISTS idx_mfa_challenges_user ON mfa_challenges(user_id);

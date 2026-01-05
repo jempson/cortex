@@ -41,7 +41,14 @@ if (!JWT_SECRET_ENV) {
   console.warn('⚠️  WARNING: JWT_SECRET not set, using insecure default for development only');
 }
 const JWT_SECRET = JWT_SECRET_ENV || 'cortex-dev-secret-DO-NOT-USE-IN-PROD';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h'; // Default 24 hours for security
+
+// Valid session duration options (user-selectable at login)
+const SESSION_DURATIONS = {
+  '24h': 24 * 60 * 60 * 1000,      // 24 hours (default)
+  '7d': 7 * 24 * 60 * 60 * 1000,   // 7 days
+  '30d': 30 * 24 * 60 * 60 * 1000  // 30 days
+};
 
 // Session management configuration (v1.18.0)
 const SESSION_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
@@ -317,6 +324,16 @@ function clearFailedAttempts(handle) {
 // Hash token for storage (don't store raw JWTs in database)
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+// Validate and return session duration
+function getSessionDuration(requestedDuration) {
+  // Validate requested duration is in allowed list
+  if (requestedDuration && SESSION_DURATIONS[requestedDuration]) {
+    return requestedDuration;
+  }
+  // Default to 24h if not specified or invalid
+  return '24h';
 }
 
 // Create a session record for a token
@@ -3983,6 +4000,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
     const email = sanitizeInput(req.body.email);
     const password = req.body.password;
     const displayName = sanitizeInput(req.body.displayName);
+    const sessionDuration = getSessionDuration(req.body.sessionDuration);
 
     if (!handle || !email || !password) {
       return res.status(400).json({ error: 'Handle, email and password are required' });
@@ -4013,7 +4031,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
       nodeName: 'Local', status: 'online',
     });
 
-    const token = jwt.sign({ userId: id, handle: user.handle }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const token = jwt.sign({ userId: id, handle: user.handle }, JWT_SECRET, { expiresIn: sessionDuration });
     console.log(`✅ New user registered: ${handle}`);
 
     // Create session for the new user
@@ -4039,6 +4057,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const handle = sanitizeInput(req.body.handle || req.body.username);
     const password = req.body.password;
+    const sessionDuration = getSessionDuration(req.body.sessionDuration);
 
     if (!handle || !password) {
       return res.status(400).json({ error: 'Handle and password are required' });
@@ -4069,9 +4088,9 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     // Check if MFA is enabled
     const hasMfa = db.hasMfaEnabled && db.hasMfaEnabled(user.id);
     if (hasMfa) {
-      // Create MFA challenge (5 minute expiry)
+      // Create MFA challenge (5 minute expiry) and store session duration for post-MFA token
       const mfaMethods = db.getEnabledMfaMethods(user.id);
-      const challenge = db.createMfaChallenge(user.id, 'login', null);
+      const challenge = db.createMfaChallenge(user.id, 'login', null, 5, sessionDuration);
 
       console.log(`🔐 MFA required for user: ${handle}`);
 
@@ -4088,7 +4107,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     // Check if user needs to change password (set by admin reset)
     const requirePasswordChange = db.requiresPasswordChange ? db.requiresPasswordChange(user.id) : false;
 
-    const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: sessionDuration });
     console.log(`✅ User logged in: ${handle}`);
 
     // Create session for the login
@@ -4156,6 +4175,7 @@ app.get('/api/auth/sessions', authenticateToken, (req, res) => {
       ipAddress: session.ipAddress,
       createdAt: session.createdAt,
       lastActive: session.lastActive,
+      expiresAt: session.expiresAt,
       isCurrent: session.tokenHash === currentTokenHash
     }));
 
@@ -4923,9 +4943,10 @@ app.post('/api/auth/mfa/send-email-code', mfaLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Email service is not configured. Contact administrator.' });
     }
 
-    // Update challenge with new code (store hashed)
+    // Update challenge with new code (store hashed) and preserve session duration
     const codeHash = crypto.createHash('sha256').update(code).digest('hex');
-    const newChallenge = db.createMfaChallenge(challenge.userId, 'email', codeHash);
+    const sessionDuration = challenge.sessionDuration || '24h';
+    const newChallenge = db.createMfaChallenge(challenge.userId, 'email', codeHash, 5, sessionDuration);
 
     await emailService.sendMFACode(user.email, code);
 
@@ -5003,11 +5024,12 @@ app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
     // Mark challenge as verified
     db.markMfaChallengeVerified(challengeId);
 
-    // Generate JWT token
+    // Generate JWT token with session duration from challenge
+    const sessionDuration = challenge.sessionDuration || '24h';
     const token = jwt.sign(
       { userId: user.id, handle: user.handle },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      { expiresIn: sessionDuration }
     );
 
     // Create session for the MFA login

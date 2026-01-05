@@ -775,7 +775,8 @@ export class DatabaseSQLite {
           code_hash TEXT,
           expires_at TEXT NOT NULL,
           verified_at TEXT,
-          created_at TEXT NOT NULL
+          created_at TEXT NOT NULL,
+          session_duration TEXT DEFAULT '24h'
         );
         CREATE INDEX IF NOT EXISTS idx_mfa_challenges_user ON mfa_challenges(user_id);
         CREATE INDEX IF NOT EXISTS idx_mfa_challenges_expires ON mfa_challenges(expires_at);
@@ -831,6 +832,18 @@ export class DatabaseSQLite {
         ALTER TABLE users ADD COLUMN require_password_change INTEGER DEFAULT 0;
       `);
       console.log('✅ require_password_change column added');
+    }
+
+    // Check if session_duration column exists on mfa_challenges table (v2.0.5)
+    const mfaChallengeColumnsForSession = this.db.prepare(`PRAGMA table_info(mfa_challenges)`).all();
+    const hasSessionDuration = mfaChallengeColumnsForSession.some(c => c.name === 'session_duration');
+
+    if (!hasSessionDuration) {
+      console.log('📝 Adding session_duration column to mfa_challenges table (v2.0.5)...');
+      this.db.exec(`
+        ALTER TABLE mfa_challenges ADD COLUMN session_duration TEXT DEFAULT '24h';
+      `);
+      console.log('✅ session_duration column added to mfa_challenges');
     }
 
     // Auto-create crawl bar tables if they don't exist (v1.15.0)
@@ -1849,9 +1862,10 @@ export class DatabaseSQLite {
    * @param {string} challengeType - Type of challenge (totp, email, recovery)
    * @param {string} codeHash - Hashed code for email challenges
    * @param {number} expiresInMinutes - Expiry time in minutes
+   * @param {string} sessionDuration - Session duration for post-MFA token (24h, 7d, 30d)
    * @returns {{id: string, expiresAt: string}}
    */
-  createMfaChallenge(userId, challengeType, codeHash = null, expiresInMinutes = 10) {
+  createMfaChallenge(userId, challengeType, codeHash = null, expiresInMinutes = 10, sessionDuration = '24h') {
     const id = uuidv4();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + expiresInMinutes * 60 * 1000).toISOString();
@@ -1860,9 +1874,9 @@ export class DatabaseSQLite {
     this.db.prepare('DELETE FROM mfa_challenges WHERE user_id = ?').run(userId);
 
     this.db.prepare(`
-      INSERT INTO mfa_challenges (id, user_id, challenge_type, code_hash, expires_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, userId, challengeType, codeHash, expiresAt, now.toISOString());
+      INSERT INTO mfa_challenges (id, user_id, challenge_type, code_hash, expires_at, created_at, session_duration)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, challengeType, codeHash, expiresAt, now.toISOString(), sessionDuration);
 
     return { id, expiresAt };
   }
@@ -1897,7 +1911,8 @@ export class DatabaseSQLite {
       challengeType: row.challenge_type,
       codeHash: row.code_hash,
       expiresAt: row.expires_at,
-      createdAt: row.created_at
+      createdAt: row.created_at,
+      sessionDuration: row.session_duration || '24h'
     };
   }
 
