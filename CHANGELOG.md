@@ -5,6 +5,51 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-01-05
+
+### Added
+
+#### Configurable Session Expiration
+Session duration is now configurable at login/registration to balance security and convenience.
+
+**Security Enhancement:**
+- **Default session duration reduced from 7 days to 24 hours** for improved security
+- Sessions now have hard expiration times that cannot be bypassed, even if browser tabs remain open
+- Prevents indefinite session persistence from forgotten open tabs
+
+**User-Selectable Duration:**
+- Users can choose session duration at login/register:
+  - **24 hours** (recommended, default)
+  - **7 days** (convenience)
+  - **30 days** (maximum convenience)
+- Selection preserved through MFA verification flow
+- Session duration selector added to login and registration forms
+
+**Session Management UI:**
+- Active sessions now display expiration countdown ("Expires in 23h")
+- New `formatExpirationDate()` helper formats future dates with time-remaining countdown
+- Sessions show "Expired" if already past expiration time
+
+**Technical Implementation:**
+- Added `SESSION_DURATIONS` constant with allowed durations (24h, 7d, 30d)
+- Added `getSessionDuration()` validation function on server
+- Updated `/api/auth/login` endpoint to accept `sessionDuration` parameter
+- Updated `/api/auth/register` endpoint to accept `sessionDuration` parameter
+- Updated `/api/auth/mfa/verify` endpoint to use stored `sessionDuration` from challenge
+- Fixed `/api/auth/sessions` endpoint to include `expiresAt` field in response
+- Database migration adds `session_duration TEXT DEFAULT '24h'` to `mfa_challenges` table
+- Updated `schema.sql` for fresh installations
+- Existing sessions continue to work until their original expiration
+
+**Files Changed:**
+- `server/server.js` - Session duration validation and endpoint updates
+- `server/database-sqlite.js` - Database migration and `createMfaChallenge()` update
+- `server/schema.sql` - Schema update for new installations
+- `server/.env.example` - Updated JWT_EXPIRES_IN default and documentation
+- `client/FarholdApp.jsx` - Session duration selector UI and auth function updates
+
+---
+
 ## [2.0.3] - 2026-01-04
 
 ### Added
