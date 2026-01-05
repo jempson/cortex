@@ -3972,7 +3972,8 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   // But NOT when viewing from the ripple wave itself (where rippledTo === currentWaveId)
   const isRippled = !!(message.brokenOutTo || message.rippledTo) && (message.brokenOutTo || message.rippledTo) !== currentWaveId;
 
-  const handleMessageClick = () => {
+  const handleMessageClick = (e) => {
+    e.stopPropagation(); // Prevent click from bubbling to parent droplets
     if (isUnread && onMessageClick) {
       onMessageClick(message.id);
     }
@@ -6384,6 +6385,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const messagesRef = useRef(null);
   const textareaRef = useRef(null);
   const hasMarkedAsReadRef = useRef(false);
+  const hasCheckedInitialPositionRef = useRef(false); // Only check scroll position once per wave
   const scrollPositionToRestore = useRef(null);
   const lastTypingSentRef = useRef(null);
   const hasScrolledToUnreadRef = useRef(false);
@@ -6392,6 +6394,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   useEffect(() => {
     loadWave();
     hasMarkedAsReadRef.current = false; // Reset when switching waves
+    hasCheckedInitialPositionRef.current = false; // Reset initial position check for new wave
     hasScrolledToUnreadRef.current = false; // Reset scroll-to-unread for new wave
 
     // Notify server that user is viewing this wave (for notification suppression)
@@ -6468,12 +6471,30 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   // Scroll to specific droplet when navigating from notification
   useEffect(() => {
-    if (!scrollToDropletId || !waveData || loading) return;
+    if (!scrollToDropletId || !waveData || loading) {
+      if (scrollToDropletId) {
+        console.log(`🎯 Scroll to droplet deferred - waveData: ${!!waveData}, loading: ${loading}`);
+      }
+      return;
+    }
 
-    // Wait for render to complete
+    console.log(`🎯 Attempting to scroll to droplet ${scrollToDropletId}`);
+
+    // Check if the droplet exists in our data
+    const dropletInData = waveData.all_messages?.some(m => m.id === scrollToDropletId);
+    if (!dropletInData) {
+      console.log(`⚠️ Target droplet ${scrollToDropletId} not found in wave data (${waveData.all_messages?.length || 0} messages loaded)`);
+    }
+
+    // Wait for render to complete, with multiple retries
+    let retryCount = 0;
+    const maxRetries = 5;
+    const retryDelay = 200;
+
     const scrollToTarget = () => {
       const element = document.querySelector(`[data-message-id="${scrollToDropletId}"]`);
       if (element) {
+        console.log(`✅ Found droplet ${scrollToDropletId} in DOM, scrolling...`);
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         // Brief highlight effect
         element.style.transition = 'background-color 0.3s, outline 0.3s';
@@ -6485,23 +6506,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         }, 1500);
         // Clear the target
         onScrollToDropletComplete?.();
+      } else if (retryCount < maxRetries) {
+        // Droplet not in DOM - might be rendering, retry
+        retryCount++;
+        console.log(`⏳ Droplet ${scrollToDropletId} not in DOM yet, retry ${retryCount}/${maxRetries}...`);
+        setTimeout(scrollToTarget, retryDelay);
       } else {
-        // Droplet not in DOM - might be in "load more" section
-        // Try again after a short delay in case of slow render
-        setTimeout(() => {
-          const retryElement = document.querySelector(`[data-message-id="${scrollToDropletId}"]`);
-          if (retryElement) {
-            retryElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            retryElement.style.transition = 'background-color 0.3s, outline 0.3s';
-            retryElement.style.backgroundColor = 'var(--accent-amber)20';
-            retryElement.style.outline = '2px solid var(--accent-amber)';
-            setTimeout(() => {
-              retryElement.style.backgroundColor = '';
-              retryElement.style.outline = '';
-            }, 1500);
-          }
-          onScrollToDropletComplete?.();
-        }, 300);
+        // Give up after max retries
+        console.log(`❌ Could not find droplet ${scrollToDropletId} in DOM after ${maxRetries} retries`);
+        onScrollToDropletComplete?.();
       }
     };
 
@@ -6543,15 +6556,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     const container = messagesRef.current;
     container.addEventListener('scroll', handleScroll);
 
-    // Also mark as read if already at bottom on load
+    // Also mark as read if already at bottom on load (only check once per wave, not on refreshes)
     const checkInitialPosition = () => {
-      if (hasMarkedAsReadRef.current) return;
+      if (hasMarkedAsReadRef.current || hasCheckedInitialPositionRef.current) return;
+      hasCheckedInitialPositionRef.current = true; // Only check once per wave
       const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
       if (isAtBottom) {
         markAsRead();
       }
     };
-    setTimeout(checkInitialPosition, 500);
+    // Only run initial position check if we haven't already
+    if (!hasCheckedInitialPositionRef.current) {
+      setTimeout(checkInitialPosition, 500);
+    }
 
     return () => container.removeEventListener('scroll', handleScroll);
   }, [waveData, wave.id, fetchAPI, onWaveUpdate]);
@@ -8795,7 +8812,8 @@ const FocusView = ({
   onShowProfile,
   blockedUsers,
   mutedUsers,
-  contacts = []
+  contacts = [],
+  onWaveUpdate
 }) => {
   const currentFocus = focusStack[focusStack.length - 1];
   const initialDroplet = currentFocus?.droplet;
@@ -8957,6 +8975,8 @@ const FocusView = ({
       await fetchAPI(`/pings/${messageId}/read`, { method: 'POST' });
       // Refresh to update UI
       await fetchFreshData();
+      // Also refresh wave list to update unread counts
+      onWaveUpdate?.();
     } catch (err) {
       console.error('Failed to mark droplet as read:', err);
     }
@@ -15912,6 +15932,7 @@ function MainApp({ shareDropletId }) {
                     blockedUsers={blockedUsers}
                     mutedUsers={mutedUsers}
                     contacts={contacts}
+                    onWaveUpdate={loadWaves}
                   />
                 </ErrorBoundary>
               ) : selectedWave ? (

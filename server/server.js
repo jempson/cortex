@@ -11475,11 +11475,11 @@ app.post('/api/droplets/:id/read', authenticateToken, (req, res) => {
   if (notificationsMarked > 0) {
     console.log(`🔔 Marked ${notificationsMarked} notification(s) as read for droplet ${dropletId}`);
     // Broadcast notification count update to user
-    broadcast({ type: 'unread_count_update', userId });
+    broadcast({ type: 'unread_count_update', userId }, [userId]);
   }
 
   // Broadcast droplet read event so all clients (including this user) can update wave list
-  broadcast({ type: 'droplet_read', dropletId, waveId, userId });
+  broadcast({ type: 'droplet_read', dropletId, waveId, userId }, [userId]);
 
   console.log(`✅ Droplet ${dropletId} marked as read`);
   res.json({ success: true });
