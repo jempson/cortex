@@ -7338,6 +7338,39 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
         }}>←</button>
         <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Breadcrumb for burst waves (v2.1.0) */}
+          {waveData.parent_wave && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              marginBottom: '4px',
+              fontSize: '0.7rem',
+              color: 'var(--text-dim)',
+            }}>
+              <button
+                onClick={() => onNavigateToWave({ id: waveData.parent_wave.id, title: waveData.parent_wave.title })}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--accent-teal)',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: '0.7rem',
+                  padding: '0',
+                  textDecoration: 'underline',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  maxWidth: '200px',
+                }}
+                title={`Return to ${waveData.parent_wave.title}`}
+              >
+                {waveData.parent_wave.title}
+              </button>
+              <span style={{ color: 'var(--text-dim)' }}>→</span>
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--text-primary)', fontSize: isMobile ? '0.9rem' : '1.1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{waveData.title}</span>
             {waveData.group_name && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({waveData.group_name})</span>}
