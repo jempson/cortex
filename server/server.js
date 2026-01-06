@@ -10743,6 +10743,18 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
   // Get user's archive status for this wave (uses method that works for both JSON and SQLite)
   const isArchived = db.isWaveArchivedForUser(waveId, req.user.userId);
 
+  // If this is a burst wave, get parent wave info for breadcrumb (v2.1.0)
+  let parentWave = null;
+  if (wave.brokenOutFrom) {
+    const parent = db.getWave(wave.brokenOutFrom);
+    if (parent && db.canAccessWave(parent.id, req.user.userId)) {
+      parentWave = {
+        id: parent.id,
+        title: parent.title,
+      };
+    }
+  }
+
   // For breakout waves, use special method that fetches from original wave's droplet tree
   const allMessages = (wave.rootPingId || wave.rootDropletId) && db.getDropletsForBreakoutWave
     ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
@@ -10780,6 +10792,7 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
     creator_handle: creator?.handle || 'unknown',
     participants,
     is_archived: isArchived,
+    parent_wave: parentWave, // Breadcrumb navigation for burst waves (v2.1.0)
     // New droplet terminology
     droplets: buildDropletTree(limitedDroplets),
     all_droplets: limitedDroplets,
