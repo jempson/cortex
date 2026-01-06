@@ -7736,11 +7736,12 @@ app.post('/api/bot/ping', authenticateBotToken, botLimiter, (req, res) => {
       data: botPingData,
     });
 
-    // Log activity
+    // Log activity (use bot owner's user ID to satisfy FK constraint)
     if (db.logActivity) {
-      db.logActivity(`bot:${req.bot.id}`, 'bot_create_ping', 'ping', ping.id, {
+      db.logActivity(req.bot.owner_user_id, 'bot_create_ping', 'ping', ping.id, {
         ...getRequestMeta(req),
         waveId,
+        botId: req.bot.id,
         botName: req.bot.name,
       });
     }
@@ -7871,10 +7872,11 @@ app.post('/api/webhooks/:botId/:webhookSecret', express.json({ limit: '50kb' }),
 
     // Validate webhook secret
     if (!bot.webhook_secret || bot.webhook_secret !== webhookSecret) {
-      // Log potential security issue
+      // Log potential security issue (use bot owner's user ID to satisfy FK constraint)
       if (db.logActivity) {
-        db.logActivity(`bot:${botId}`, 'webhook_auth_failed', 'bot', botId, {
+        db.logActivity(bot.owner_user_id, 'webhook_auth_failed', 'bot', botId, {
           ...getRequestMeta(req),
+          botId,
           reason: 'Invalid webhook secret',
         });
       }
@@ -7929,11 +7931,12 @@ app.post('/api/webhooks/:botId/:webhookSecret', express.json({ limit: '50kb' }),
     broadcastToWave(waveId, { type: 'new_droplet', data: botPingData });
     broadcastToWave(waveId, { type: 'new_message', data: botPingData });
 
-    // Log activity
+    // Log activity (use bot owner's user ID to satisfy FK constraint)
     if (db.logActivity) {
-      db.logActivity(`bot:${botId}`, 'webhook_ping', 'ping', ping.id, {
+      db.logActivity(bot.owner_user_id, 'webhook_ping', 'ping', ping.id, {
         ...getRequestMeta(req),
         waveId,
+        botId: bot.id,
         botName: bot.name,
       });
     }
