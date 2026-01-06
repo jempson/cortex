@@ -13539,9 +13539,37 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
                     alignItems: 'center',
                   }}
                 >
-                  <div>
-                    <div style={{ color: 'var(--text-primary)', fontSize: '0.8rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: 'var(--text-primary)', fontSize: '0.8rem', marginBottom: '4px' }}>
                       {perm.wave_title || 'Unknown Wave'}
+                    </div>
+                    <div style={{
+                      color: 'var(--text-dim)',
+                      fontSize: '0.65rem',
+                      fontFamily: 'monospace',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      marginBottom: '4px'
+                    }}>
+                      <span>ID: {perm.wave_id}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(perm.wave_id);
+                          showToast('Wave ID copied!', 'success');
+                        }}
+                        style={{
+                          padding: '2px 4px',
+                          background: 'var(--accent-teal)20',
+                          border: '1px solid var(--accent-teal)',
+                          color: 'var(--accent-teal)',
+                          cursor: 'pointer',
+                          fontSize: '0.6rem',
+                        }}
+                      >
+                        📋
+                      </button>
                     </div>
                     <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem' }}>
                       {perm.can_post ? '✓ Post' : '✗ Post'} • {perm.can_read ? '✓ Read' : '✗ Read'}
