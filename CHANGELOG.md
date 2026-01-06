@@ -5,6 +5,118 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-01-06
+
+### Added
+
+#### Breadcrumb Navigation for Burst Waves
+One-level breadcrumb navigation that shows the parent wave when viewing a burst wave, making it easy to navigate back to context.
+
+**Features:**
+- **Clickable Parent Link**: Parent wave title displayed as clickable link above current wave title
+- **One-Level Back**: Shows immediate parent only (burst of burst shows nearest parent, not full chain)
+- **Access Controlled**: Breadcrumb only appears if user has permission to view parent wave
+- **Visual Design**: Teal accent color with arrow (→) separator matching Farhold aesthetic
+- **Smart Display**: Long titles truncated with ellipsis (max 200px), tooltip shows full title on hover
+- **Responsive**: Works on mobile and desktop layouts
+
+**User Experience:**
+```
+[← Back] [Parent Wave Title →]
+         Current Burst Wave Title
+         2 participants • 5 pings
+```
+
+**Technical Implementation:**
+- **Server Enhancement** (`server/server.js`):
+  - GET `/api/waves/:id` endpoint now includes `parent_wave` field for burst waves
+  - Returns `{ id, title }` of parent wave if `wave.brokenOutFrom` exists
+  - Access control enforced - only returns parent info if user can access it
+  - Added lines 10746-10756, 10795
+
+- **Client Component** (`client/FarholdApp.jsx`):
+  - Breadcrumb UI added to WaveView header component
+  - Positioned above wave title with smaller, muted styling
+  - Uses existing `onNavigateToWave` callback for navigation
+  - Conditional rendering based on `waveData.parent_wave` presence
+  - Added lines 7341-7373
+
+**How It Works:**
+1. When loading a wave, server checks if `brokenOutFrom` exists
+2. If yes, fetches parent wave and verifies user access
+3. Returns parent wave ID and title in API response
+4. Client displays breadcrumb link above wave title
+5. Click navigates to parent using standard wave navigation
+
+**Files Modified:**
+- `server/server.js` - Enhanced `/api/waves/:id` endpoint with parent wave lookup
+- `client/FarholdApp.jsx` - Added breadcrumb UI component to WaveView header
+
+**Migration:**
+- No database changes required (uses existing `broken_out_from` column)
+- Backward compatible with all existing waves
+- Zero downtime deployment
+
+#### Production Bot Configuration
+Added production bot integration settings to `.env.example` for automated release announcements from development to production environments.
+
+**Environment Variables Added:**
+```bash
+# Production Bot Integration (v2.1.0)
+FARHOLD_PROD_URL=https://app.farhold.com
+FARHOLD_PROD_BOT_KEY=fh_bot_your-key-here
+FARHOLD_PROD_UPDATES_WAVE_ID=your-wave-id-here
+```
+
+**Use Case:**
+Enables development environments to post automated release announcements to production Farhold servers using bot API keys.
+
+**Files Modified:**
+- `server/.env.example` - Added production bot configuration section
+
+### Technical Details
+
+**API Response Enhancement:**
+```javascript
+// GET /api/waves/:id response now includes:
+{
+  ...wave,
+  parent_wave: {
+    id: "wave-abc123",
+    title: "Original Wave Title"
+  } // null if not a burst wave or user can't access parent
+}
+```
+
+**Breadcrumb Component Styling:**
+- Font size: 0.7rem (smaller than wave title)
+- Color: `var(--text-dim)` for text, `var(--accent-teal)` for link
+- Max width: 200px with ellipsis overflow
+- Gap: 6px between elements
+- Margin bottom: 4px from wave title
+
+**Performance:**
+- Single additional DB query per wave view (only if burst wave)
+- Query uses existing index on `waves.id`
+- Access control check uses existing `canAccessWave()` method
+- Minimal impact on page load time
+
+### Benefits
+
+**User Experience:**
+- Easier navigation between related waves
+- Clear visual hierarchy of burst wave relationships
+- One-click return to context without browser back button
+- Better understanding of wave conversation flow
+
+**Technical:**
+- Backward compatible with existing waves
+- No database migrations required
+- Uses existing wave relationship data
+- Clean separation of concerns (server/client)
+
+---
+
 ## [2.1.0] - 2026-01-06
 
 ### Added
