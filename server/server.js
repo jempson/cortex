@@ -7699,11 +7699,12 @@ app.post('/api/bot/ping', authenticateBotToken, botLimiter, (req, res) => {
       return res.status(400).json({ error: 'Encrypted pings require nonce and keyVersion' });
     }
 
-    // Create ping with bot as author
+    // Create ping with bot's owner as author (to satisfy FK constraint)
+    // We'll identify it as a bot ping via the broadcast metadata
     const ping = db.createMessage({
       waveId,
       parentId: req.body.parentId ? sanitizeInput(req.body.parentId) : null,
-      authorId: `bot:${req.bot.id}`, // Special bot author format
+      authorId: req.bot.owner_user_id, // Use bot owner to satisfy FK constraint
       content,
       privacy: wave.privacy,
       encrypted: !!req.body.encrypted,
@@ -7900,11 +7901,11 @@ app.post('/api/webhooks/:botId/:webhookSecret', express.json({ limit: '50kb' }),
     // Sanitize content (webhooks cannot send encrypted content)
     const sanitizedContent = sanitizeMessage(content);
 
-    // Create ping
+    // Create ping with bot's owner as author (to satisfy FK constraint)
     const ping = db.createMessage({
       waveId,
       parentId: parentId ? sanitizeInput(parentId) : null,
-      authorId: `bot:${botId}`,
+      authorId: bot.owner_user_id, // Use bot owner to satisfy FK constraint
       content: sanitizedContent,
       privacy: wave.privacy,
       encrypted: false,
