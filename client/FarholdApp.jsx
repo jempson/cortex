@@ -13076,8 +13076,19 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
 
       {/* Create Bot Modal */}
       {showCreateModal && (
-        <Modal title="Create Bot" onClose={() => setShowCreateModal(false)} isMobile={isMobile}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
+        }} onClick={() => setShowCreateModal(false)}>
+          <div style={{
+            width: '100%', maxWidth: '500px',
+            background: 'linear-gradient(135deg, var(--bg-base), var(--bg-surface))',
+            border: '2px solid var(--accent-teal)80', padding: isMobile ? '20px' : '24px',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: '20px' }}>
+              <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>Create Bot</GlowText>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
               <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '6px' }}>
                 BOT NAME *
@@ -13166,22 +13177,30 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
                 CREATE BOT
               </button>
             </div>
+            </div>
           </div>
-        </Modal>
+        </div>
       )}
 
       {/* API Key Display Modal */}
       {showApiKeyModal && newApiKey && (
-        <Modal
-          title="⚠️ Save Your API Key"
-          onClose={() => {
-            setShowApiKeyModal(false);
-            setNewApiKey(null);
-            setNewWebhookSecret(null);
-          }}
-          isMobile={isMobile}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
+        }} onClick={() => {
+          setShowApiKeyModal(false);
+          setNewApiKey(null);
+          setNewWebhookSecret(null);
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '550px',
+            background: 'linear-gradient(135deg, var(--bg-base), var(--bg-surface))',
+            border: '2px solid var(--accent-orange)80', padding: isMobile ? '20px' : '24px',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: '20px' }}>
+              <GlowText color="var(--accent-orange)" size={isMobile ? '1rem' : '1.1rem'}>⚠️ Save Your API Key</GlowText>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', fontWeight: 500 }}>
               This API key will only be shown once. Save it securely!
             </div>
@@ -13286,8 +13305,9 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
             >
               I'VE SAVED IT
             </button>
+            </div>
           </div>
-        </Modal>
+        </div>
       )}
 
       {/* Bot Details Modal */}
@@ -13384,8 +13404,20 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
   };
 
   return (
-    <Modal title={`Bot: ${bot.name}`} onClose={onClose} isMobile={isMobile} wide>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px',
+    }} onClick={onClose}>
+      <div style={{
+        width: '100%', maxWidth: '700px',
+        background: 'linear-gradient(135deg, var(--bg-base), var(--bg-surface))',
+        border: '2px solid var(--accent-purple)80', padding: isMobile ? '20px' : '24px',
+        maxHeight: '90vh', overflowY: 'auto',
+      }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ marginBottom: '20px' }}>
+          <GlowText color="var(--accent-purple)" size={isMobile ? '1rem' : '1.1rem'}>{`Bot: ${bot.name}`}</GlowText>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {/* Bot Info */}
         <div>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
@@ -13548,15 +13580,22 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
 
       {/* Add Permission Modal */}
       {showAddPermissionModal && (
-        <Modal
-          title="Grant Wave Access"
-          onClose={() => {
-            setShowAddPermissionModal(false);
-            setSelectedWaveId('');
-          }}
-          isMobile={isMobile}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 101, padding: '20px',
+        }} onClick={() => {
+          setShowAddPermissionModal(false);
+          setSelectedWaveId('');
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '450px',
+            background: 'linear-gradient(135deg, var(--bg-base), var(--bg-surface))',
+            border: '2px solid var(--accent-green)80', padding: isMobile ? '20px' : '24px',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: '20px' }}>
+              <GlowText color="var(--accent-green)" size={isMobile ? '1rem' : '1.1rem'}>Grant Wave Access</GlowText>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
               <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '6px' }}>
                 SELECT WAVE
@@ -13612,10 +13651,12 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
                 GRANT ACCESS
               </button>
             </div>
+            </div>
           </div>
-        </Modal>
+        </div>
       )}
-    </Modal>
+      </div>
+    </div>
   );
 };
 
