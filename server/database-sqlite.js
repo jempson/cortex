@@ -3633,10 +3633,13 @@ export class DatabaseSQLite {
     // Get root droplet and all its descendants
     const getAllDescendants = (parentId, results = []) => {
       const droplet = this.db.prepare(`
-        SELECT d.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle,
+        SELECT d.*,
+               u.display_name as user_display_name, u.avatar as user_avatar, u.avatar_url as user_avatar_url, u.handle as user_handle,
+               b.name as bot_name, b.id as bot_id,
                bow.title as broken_out_to_title
         FROM pings d
         JOIN users u ON d.author_id = u.id
+        LEFT JOIN bots b ON d.bot_id = b.id
         LEFT JOIN waves bow ON d.broken_out_to = bow.id
         WHERE d.id = ?
       `).get(parentId);
@@ -3646,6 +3649,21 @@ export class DatabaseSQLite {
       // Skip blocked/muted users
       if (blockedIds.includes(droplet.author_id) || mutedIds.includes(droplet.author_id)) {
         return results;
+      }
+
+      // Transform bot pings to use bot info
+      if (droplet.bot_id) {
+        droplet.sender_name = `[Bot] ${droplet.bot_name}`;
+        droplet.sender_avatar = '🤖';
+        droplet.sender_avatar_url = null;
+        droplet.sender_handle = droplet.bot_name.toLowerCase().replace(/\s+/g, '-');
+        droplet.isBot = true;
+        droplet.botId = droplet.bot_id;
+      } else {
+        droplet.sender_name = droplet.user_display_name;
+        droplet.sender_avatar = droplet.user_avatar;
+        droplet.sender_avatar_url = droplet.user_avatar_url;
+        droplet.sender_handle = droplet.user_handle;
       }
 
       results.push(droplet);
@@ -3693,6 +3711,8 @@ export class DatabaseSQLite {
         is_unread: isUnread,
         brokenOutTo: d.broken_out_to,
         brokenOutToTitle: d.broken_out_to_title,
+        isBot: d.isBot || false,
+        botId: d.botId || undefined,
       };
     });
   }
@@ -3708,10 +3728,13 @@ export class DatabaseSQLite {
     }
 
     let sql = `
-      SELECT d.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle,
+      SELECT d.*,
+             u.display_name as user_display_name, u.avatar as user_avatar, u.avatar_url as user_avatar_url, u.handle as user_handle,
+             b.name as bot_name, b.id as bot_id,
              bow.title as broken_out_to_title
       FROM pings d
       JOIN users u ON d.author_id = u.id
+      LEFT JOIN bots b ON d.bot_id = b.id
       LEFT JOIN waves bow ON d.broken_out_to = bow.id
       WHERE d.wave_id = ?
     `;
@@ -3738,6 +3761,13 @@ export class DatabaseSQLite {
       // Get read by users
       const readBy = this.db.prepare('SELECT user_id FROM ping_read_by WHERE ping_id = ?').all(d.id).map(r => r.user_id);
 
+      // Use bot information if this is a bot ping
+      const isBot = !!d.bot_id;
+      const senderName = isBot ? `[Bot] ${d.bot_name}` : d.user_display_name;
+      const senderAvatar = isBot ? '🤖' : d.user_avatar;
+      const senderAvatarUrl = isBot ? null : d.user_avatar_url;
+      const senderHandle = isBot ? d.bot_name.toLowerCase().replace(/\s+/g, '-') : d.user_handle;
+
       return {
         id: d.id,
         waveId: d.wave_id,
@@ -3752,10 +3782,10 @@ export class DatabaseSQLite {
         deletedAt: d.deleted_at,
         reactions: d.reactions ? JSON.parse(d.reactions) : {},
         readBy,
-        sender_name: d.sender_name,
-        sender_avatar: d.sender_avatar,
-        sender_avatar_url: d.sender_avatar_url,
-        sender_handle: d.sender_handle,
+        sender_name: senderName,
+        sender_avatar: senderAvatar,
+        sender_avatar_url: senderAvatarUrl,
+        sender_handle: senderHandle,
         author_id: d.author_id,
         parent_id: d.parent_id,
         wave_id: d.wave_id,
@@ -3769,6 +3799,8 @@ export class DatabaseSQLite {
         encrypted: d.encrypted === 1,
         nonce: d.nonce,
         keyVersion: d.key_version,
+        isBot: isBot,
+        botId: d.bot_id || undefined,
       };
     });
 
