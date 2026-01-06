@@ -74,6 +74,60 @@ Enables development environments to post automated release announcements to prod
 **Files Modified:**
 - `server/.env.example` - Added production bot configuration section
 
+### Fixed
+
+#### Burst Waves from Crew Waves Not Appearing in Wave List
+Fixed critical bug where burst waves created from crew/group waves weren't visible in the wave list for participants who weren't crew members.
+
+**Problem:**
+When a ping was burst out of a crew wave:
+1. The new burst wave inherited `privacy='crew'` from the parent wave
+2. The new burst wave inherited `crew_id` from the parent wave
+3. Participants were added to `wave_participants` table
+4. **But**: The wave list query only checks crew membership for crew waves, not `wave_participants`
+5. **Result**: Non-crew participants couldn't see the burst wave in their wave list
+
+**Root Cause:**
+The `getWavesForUser()` query has this logic:
+```sql
+WHERE (
+  w.privacy = 'public'
+  OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
+  OR ((w.privacy = 'crew' OR w.privacy = 'group') AND w.crew_id IN (...crew IDs...))
+)
+```
+
+For crew waves, it checks crew membership via `crew_id`, not the `wave_participants` table. So burst waves with crew privacy weren't visible to non-crew participants even though they were explicitly added as participants.
+
+**Solution:**
+Burst waves are now **always created as private waves** with explicit participants, regardless of parent wave privacy. This makes conceptual sense - bursts are focused subset conversations, not crew-wide discussions.
+
+**Code Change** (`server/database-sqlite.js:3542-3543`):
+```javascript
+// Before:
+privacy: originalWave.privacy || 'private',  // Inherited crew privacy
+crew_id: originalWave.groupId || null,       // Inherited crew ID
+
+// After:
+privacy: 'private', // Always private for burst waves (v2.1.1 fix)
+crew_id: null,      // No crew_id - use explicit participants instead
+```
+
+**Impact:**
+- ✅ Burst waves now appear in wave list for all invited participants
+- ✅ Conceptually correct: bursts are participant-based, not crew-based
+- ✅ Consistent behavior across all parent wave types (private, public, crew)
+- ✅ No breaking changes to existing functionality
+- ✅ Only affects newly created burst waves
+
+**Migration:**
+- No database migration required
+- Existing burst waves retain their current privacy settings
+- Only new burst waves use the updated logic
+
+**Files Modified:**
+- `server/database-sqlite.js` - Lines 3542-3543 in `breakoutDroplet()` method
+
 ### Technical Details
 
 **API Response Enhancement:**
