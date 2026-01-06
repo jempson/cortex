@@ -7699,8 +7699,7 @@ app.post('/api/bot/ping', authenticateBotToken, botLimiter, (req, res) => {
       return res.status(400).json({ error: 'Encrypted pings require nonce and keyVersion' });
     }
 
-    // Create ping with bot's owner as author (to satisfy FK constraint)
-    // We'll identify it as a bot ping via the broadcast metadata
+    // Create ping as bot (botId is stored in pings table)
     const ping = db.createMessage({
       waveId,
       parentId: req.body.parentId ? sanitizeInput(req.body.parentId) : null,
@@ -7710,30 +7709,22 @@ app.post('/api/bot/ping', authenticateBotToken, botLimiter, (req, res) => {
       encrypted: !!req.body.encrypted,
       nonce: req.body.nonce || null,
       keyVersion: req.body.keyVersion || null,
+      botId: req.bot.id, // Mark as bot ping
     });
 
     // Update bot stats
     db.updateBotStats(req.bot.id, 'ping');
 
-    // Broadcast to wave participants
-    const botPingData = {
-      ...ping,
-      sender_name: `[Bot] ${req.bot.name}`,
-      sender_handle: req.bot.name.toLowerCase().replace(/\s+/g, '-'),
-      sender_avatar: '🤖',
-      isBot: true,
-      botId: req.bot.id,
-    };
-
+    // Broadcast to wave participants (ping already has bot info from createMessage)
     broadcastToWave(waveId, {
       type: 'new_droplet',
-      data: botPingData,
+      data: ping,
     });
 
     // Also broadcast legacy event
     broadcastToWave(waveId, {
       type: 'new_message',
-      data: botPingData,
+      data: ping,
     });
 
     // Log activity (use bot owner's user ID to satisfy FK constraint)
@@ -7746,7 +7737,7 @@ app.post('/api/bot/ping', authenticateBotToken, botLimiter, (req, res) => {
       });
     }
 
-    res.status(201).json(botPingData);
+    res.status(201).json(ping);
   } catch (err) {
     console.error('Bot create ping error:', err);
     res.status(500).json({ error: 'Failed to create ping' });
@@ -7903,7 +7894,7 @@ app.post('/api/webhooks/:botId/:webhookSecret', express.json({ limit: '50kb' }),
     // Sanitize content (webhooks cannot send encrypted content)
     const sanitizedContent = sanitizeMessage(content);
 
-    // Create ping with bot's owner as author (to satisfy FK constraint)
+    // Create ping as bot (botId is stored in pings table)
     const ping = db.createMessage({
       waveId,
       parentId: parentId ? sanitizeInput(parentId) : null,
@@ -7913,23 +7904,15 @@ app.post('/api/webhooks/:botId/:webhookSecret', express.json({ limit: '50kb' }),
       encrypted: false,
       nonce: null,
       keyVersion: null,
+      botId: bot.id, // Mark as bot ping
     });
 
     // Update stats
     db.updateBotStats(botId, 'ping');
 
-    // Broadcast
-    const botPingData = {
-      ...ping,
-      sender_name: `[Bot] ${bot.name}`,
-      sender_handle: bot.name.toLowerCase().replace(/\s+/g, '-'),
-      sender_avatar: '🤖',
-      isBot: true,
-      botId: bot.id,
-    };
-
-    broadcastToWave(waveId, { type: 'new_droplet', data: botPingData });
-    broadcastToWave(waveId, { type: 'new_message', data: botPingData });
+    // Broadcast (ping already has bot info from createMessage)
+    broadcastToWave(waveId, { type: 'new_droplet', data: ping });
+    broadcastToWave(waveId, { type: 'new_message', data: ping });
 
     // Log activity (use bot owner's user ID to satisfy FK constraint)
     if (db.logActivity) {

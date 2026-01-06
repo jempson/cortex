@@ -1190,6 +1190,19 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Bot/webhook system tables created (v2.1.0)');
     }
+
+    // v2.1.0 - Add bot_id column to pings table for bot authorship
+    const pingsColumns = this.db.prepare(`PRAGMA table_info(pings)`).all();
+    const hasBotId = pingsColumns.some(c => c.name === 'bot_id');
+
+    if (!hasBotId) {
+      console.log('📝 Adding bot_id column to pings table (v2.1.0)...');
+      this.db.exec(`
+        ALTER TABLE pings ADD COLUMN bot_id TEXT REFERENCES bots(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_pings_bot_id ON pings(bot_id);
+      `);
+      console.log('✅ Bot_id column added to pings table');
+    }
   }
 
   prepareStatements() {
@@ -3852,24 +3865,46 @@ export class DatabaseSQLite {
       this.db.exec('PRAGMA foreign_keys = OFF');
       try {
         this.db.prepare(`
-          INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
-        `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion);
+          INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version, bot_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
+        `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion, data.botId || null);
       } finally {
         this.db.exec('PRAGMA foreign_keys = ON');
       }
     } else {
       this.db.prepare(`
-        INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
-      `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion);
+        INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version, bot_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
+      `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion, data.botId || null);
     }
 
-    // Author has read their own ping
-    this.db.prepare('INSERT INTO ping_read_by (ping_id, user_id, read_at) VALUES (?, ?, ?)').run(droplet.id, data.authorId, now);
+    // Author has read their own ping (skip for bot pings)
+    if (!data.botId) {
+      this.db.prepare('INSERT INTO ping_read_by (ping_id, user_id, read_at) VALUES (?, ?, ?)').run(droplet.id, data.authorId, now);
+    }
 
     // Update wave timestamp
     this.updateWaveTimestamp(data.waveId);
+
+    // If it's a bot ping, return bot information
+    if (data.botId) {
+      const bot = this.getBot(data.botId);
+      return {
+        ...droplet,
+        bot_id: data.botId,
+        sender_name: bot ? `[Bot] ${bot.name}` : '[Bot] Unknown',
+        sender_avatar: '🤖',
+        sender_avatar_url: null,
+        sender_handle: bot ? bot.name.toLowerCase().replace(/\s+/g, '-') : 'unknown-bot',
+        author_id: droplet.authorId,
+        parent_id: droplet.parentId,
+        wave_id: droplet.waveId,
+        created_at: droplet.createdAt,
+        edited_at: droplet.editedAt,
+        isBot: true,
+        botId: data.botId,
+      };
+    }
 
     const author = this.findUserById(data.authorId);
     return {
