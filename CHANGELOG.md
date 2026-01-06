@@ -5,6 +5,219 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-01-06
+
+### Added
+
+#### Bot/Webhook System
+Comprehensive automated posting system allowing external services and scripts to post into Farhold waves with full E2EE support.
+
+**Authentication:**
+- **API Key System**: Static token-based authentication with `fh_bot_` prefix
+- **256-bit Security**: API keys generated with `crypto.randomBytes(32)` (64 hex characters)
+- **SHA-256 Hashing**: Keys hashed before storage, never stored in plaintext
+- **One-Time Display**: API keys shown once at creation with copy-to-clipboard functionality
+- **Bearer Token Format**: Standard `Authorization: Bearer fh_bot_...` header authentication
+
+**Bot Management (Admin-Only):**
+- **BotsAdminPanel Component**: Full admin UI for bot lifecycle management
+- **Create Bot Modal**: Name, description, and optional webhook configuration
+- **Bot Details Modal**: Manage bot information, permissions, and wave access
+- **API Key Display Modal**: Secure one-time display of newly generated keys
+- **Regenerate Keys**: Invalidate old keys and generate new ones
+- **Status Management**: Activate, suspend, or delete bots
+- **Statistics Display**: Track total pings, API calls, and wave access per bot
+
+**Bot API Endpoints** (require bot authentication):
+- `POST /api/bot/ping` - Create ping in wave (returns bot-formatted ping data)
+- `GET /api/bot/waves` - List all accessible waves
+- `GET /api/bot/waves/:id` - Get wave details with recent pings
+- `GET /api/bot/waves/:id/key` - Get encrypted wave key for E2EE waves
+
+**Admin Bot Management Endpoints** (require ADMIN role):
+- `POST /api/admin/bots` - Create bot (returns API key once)
+- `GET /api/admin/bots` - List all bots with stats
+- `GET /api/admin/bots/:id` - Get bot details
+- `PATCH /api/admin/bots/:id` - Update bot (name, description, status)
+- `DELETE /api/admin/bots/:id` - Delete bot (cascade deletion)
+- `POST /api/admin/bots/:id/regenerate` - Regenerate API key
+- `POST /api/admin/bots/:id/permissions` - Grant wave access (can_post, can_read)
+- `DELETE /api/admin/bots/:id/permissions/:waveId` - Revoke wave access
+
+**Webhook Integration:**
+- `POST /api/webhooks/:botId/:webhookSecret` - Receive external webhooks
+- **Secret Validation**: Each bot has unique webhook secret for authentication
+- **50KB Payload Limit**: Prevents abuse from oversized webhook payloads
+- **Permission Enforcement**: Webhooks respect bot wave permissions
+- **URL Display**: Webhook endpoint URL shown in bot details modal
+
+**End-to-End Encryption Support:**
+- **Bot Keypairs**: ECDH P-384 keypairs generated for each bot
+- **Private Key Encryption**: Bot private keys encrypted with master bot key (`BOT_MASTER_KEY` env var)
+- **Wave Key Distribution**: Bots receive encrypted wave keys via `bot_wave_keys` table
+- **E2EE Posting**: Bots can post encrypted pings to encrypted waves
+- **Key Version Support**: Multi-version key support for reading after rotation
+- **Automatic Key Distribution**: Wave permissions automatically distribute encryption keys
+
+**Security Features:**
+- **Rate Limiting**: 300 requests/minute per bot (5x higher than user limit)
+- **Content Sanitization**: All bot-posted content sanitized with `sanitizeMessage()`
+- **Permission Checks**: Wave-level access control (can_post, can_read)
+- **Activity Logging**: All bot operations logged to `activity_log` table
+- **Status Validation**: Only active bots can use API (suspended/revoked bots blocked)
+- **Webhook Secret**: Cryptographically secure webhook authentication
+- **Admin-Only Management**: Only admins can create/modify/delete bots
+
+**Bot Ping Format:**
+Bot pings use special author format to distinguish from user pings:
+```javascript
+{
+  authorId: "bot:{botId}",
+  sender_name: "[Bot] {botName}",
+  sender_handle: "{botName-slugified}",
+  sender_avatar: "🤖",
+  isBot: true,
+  botId: "{botId}"
+}
+```
+
+**Database Schema:**
+Three new tables added:
+- `bots` - Bot identity, API key hash, stats, E2EE keypair, webhook secret
+- `bot_permissions` - Wave-level access control per bot
+- `bot_wave_keys` - Encrypted wave keys for E2EE support
+
+**Database Methods:**
+- `createBot()` - Create new bot with API key hash
+- `getBot()` - Get bot by ID
+- `findBotByApiKeyHash()` - Find bot by hashed API key
+- `getAllBots()` - List all bots
+- `updateBot()` - Update bot metadata
+- `deleteBot()` - Delete bot (cascade to permissions and keys)
+- `regenerateBotApiKey()` - Regenerate API key hash
+- `updateBotStats()` - Track API calls and ping counts
+- `grantBotPermission()` - Grant wave access
+- `revokeBotPermission()` - Revoke wave access
+- `botCanAccessWave()` - Check bot permission
+- `getBotPermissions()` - Get all bot permissions
+- `getBotWaves()` - Get accessible waves for bot
+- `createBotWaveKey()` - Store encrypted wave key
+- `getBotWaveKey()` - Retrieve encrypted wave key
+
+**Server Middleware:**
+- `authenticateBotToken()` - JWT-style bot authentication middleware
+- `botLimiter` - Rate limiter for bot endpoints (300 req/min)
+- `hashToken()` - SHA-256 token hashing utility
+
+**UI Components:**
+- **BotsAdminPanel** (542 lines) - Main bot management interface
+  - Bot list with stats display
+  - Create bot modal with webhook toggle
+  - API key display modal with copy button
+  - Status management actions
+  - Responsive mobile layout
+- **BotDetailsModal** (309 lines) - Bot configuration interface
+  - Bot information display
+  - Webhook endpoint URL with copy button
+  - Wave permissions list
+  - Add/revoke wave permissions modal
+  - Permission statistics
+  - Mobile-optimized layout
+
+**Admin UI Integration:**
+- Bot management panel added to Profile Settings admin section
+- Accessible via "Bots" toggle in admin panel
+- Same collapsible pattern as other admin panels
+- Restricted to admin role users only
+
+**Example Usage:**
+```bash
+# Create Bot (Admin)
+curl -X POST https://farhold.com/api/admin/bots \
+  -H "Authorization: Bearer {admin-jwt}" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "GitHub Bot", "description": "Posts commit notifications", "enableWebhook": true}'
+
+# Post Ping (Bot)
+curl -X POST https://farhold.com/api/bot/ping \
+  -H "Authorization: Bearer fh_bot_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"waveId": "wave-xyz", "content": "Build passed! ✅"}'
+
+# Webhook (External)
+curl -X POST https://farhold.com/api/webhooks/{botId}/{secret} \
+  -H "Content-Type: application/json" \
+  -d '{"waveId": "wave-xyz", "content": "Alert: Server down!"}'
+```
+
+### Technical Details
+
+**Files Modified:**
+- `server/schema.sql` - Added 3 new tables (bots, bot_permissions, bot_wave_keys)
+- `server/database-sqlite.js` - Added bot migration and 15+ database methods
+- `server/server.js` - Added bot middleware, admin endpoints, bot API, webhook receiver
+- `client/FarholdApp.jsx` - Added BotsAdminPanel and BotDetailsModal components
+
+**Migration:**
+- Auto-migration on server startup via `applySchemaUpdates()`
+- Creates tables if not exist (no manual migration required)
+- Backward compatible with existing waves/pings
+
+**Environment Variables:**
+```bash
+BOT_MASTER_KEY=your-secret-key  # Optional: For encrypting bot private keys
+```
+
+**Rate Limits:**
+- Bot API endpoints: 300 requests/minute
+- User API endpoints: 60 requests/minute (unchanged)
+
+**Activity Logging:**
+All bot operations logged with `bot:{botId}` as user_id:
+- Bot creation/deletion
+- API key regeneration
+- Permission grants/revokes
+- Ping creation
+- Webhook posts
+
+### Security Considerations
+
+**What's Protected:**
+- API keys never stored in plaintext (SHA-256 hashed)
+- API keys displayed once at creation only
+- Bot operations require active status (suspended bots blocked)
+- Wave permissions enforced before all operations
+- Content sanitized before storage and broadcast
+- Webhook secrets cryptographically secure
+- Rate limiting prevents abuse
+
+**Best Practices:**
+- Store API keys securely (environment variables, secrets managers)
+- Regenerate keys if compromised
+- Grant minimum necessary permissions per bot
+- Monitor bot activity via activity log
+- Suspend bots instead of deleting (preserves audit trail)
+- Use webhooks only when necessary (API keys preferred)
+
+### Known Limitations
+
+**v2.1.0 Scope:**
+- Bots are local-only (no federation support)
+- Bots cannot create waves (permission flag exists for future)
+- E2EE wave key distribution requires manual permission grant (auto-distribution coming in v2.1.1)
+- No bot analytics dashboard (statistics shown in bot list only)
+- No scheduled pings (cron-like feature planned for v2.2.0)
+
+**Future Enhancements (v2.2.0+):**
+- Bot wave creation permission
+- Bot analytics dashboard
+- Advanced webhook formats (Slack, Discord, GitHub)
+- Bot command parsing (e.g., `/bot-name command`)
+- Scheduled pings (cron-like)
+- Federation bot support
+
+---
+
 ## [2.0.5] - 2026-01-05
 
 ### Added

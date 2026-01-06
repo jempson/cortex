@@ -37,8 +37,9 @@ Three permanent branches are used:
 
 **Workflow:**
 1. Always work in the `develop` branch
-2. When ready for testing: create PR from `develop` → `qa`
-3. After QA approval: create PR from `qa` → `master` (owner merges)
+2. Apply version at start of feature work, not at the end
+3. When ready for testing: create PR from `develop` → `qa`
+4. After QA approval: create PR from `qa` → `master` (owner merges)
 
 **Never:**
 - Code directly on `master` or `qa`
