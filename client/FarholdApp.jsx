@@ -13340,9 +13340,11 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
     const loadWaves = async () => {
       try {
         const data = await fetchAPI('/waves');
+        // data is already an array of waves
+        const wavesArray = Array.isArray(data) ? data : [];
         // Filter out waves bot already has access to
         const permittedWaveIds = permissions.map(p => p.wave_id);
-        const availableWaves = (data.waves || []).filter(w => !permittedWaveIds.includes(w.id));
+        const availableWaves = wavesArray.filter(w => !permittedWaveIds.includes(w.id));
         setWaves(availableWaves);
       } catch (err) {
         console.error('Failed to load waves:', err);
