@@ -3531,14 +3531,16 @@ export class DatabaseSQLite {
     // Create the new wave with breakout metadata
     const newWaveId = `wave-${uuidv4()}`;
 
+    // Burst waves are always private with explicit participants (not crew waves)
+    // This ensures they show up for participants even if they're not crew members
     this.db.prepare(`
       INSERT INTO waves (id, title, privacy, crew_id, created_by, created_at, updated_at, root_ping_id, broken_out_from, breakout_chain)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       newWaveId,
       newWaveTitle.slice(0, 200),
-      originalWave.privacy || 'private',
-      originalWave.groupId || null,
+      'private', // Always private for burst waves (v2.1.1 fix)
+      null,      // No crew_id - use explicit participants instead
       userId,
       now,
       now,
