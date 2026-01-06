@@ -3993,6 +3993,60 @@ function authenticateToken(req, res, next) {
   });
 }
 
+// ============ Bot Authentication Middleware (v2.1.0) ============
+
+/**
+ * Authenticate bot using API key (Bearer token)
+ * Attaches req.bot object similar to req.user
+ */
+function authenticateBotToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Bot authentication required' });
+  }
+
+  // Validate format: fh_bot_xxxxx
+  if (!token.startsWith('fh_bot_')) {
+    return res.status(401).json({ error: 'Invalid bot token format' });
+  }
+
+  // Hash the token and look up bot
+  const tokenHash = hashToken(token);
+  const bot = db.findBotByApiKeyHash(tokenHash);
+
+  if (!bot) {
+    return res.status(403).json({ error: 'Invalid or revoked bot token' });
+  }
+
+  if (bot.status !== 'active') {
+    return res.status(403).json({ error: `Bot is ${bot.status}` });
+  }
+
+  // Update bot stats (async, don't block request)
+  setImmediate(() => {
+    try {
+      db.updateBotStats(bot.id, 'api_call');
+    } catch (err) {
+      console.error('Failed to update bot stats:', err);
+    }
+  });
+
+  req.bot = bot;
+  next();
+}
+
+// Bot-specific rate limiter (300 requests/min, higher than users)
+const botLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  message: { error: 'Bot rate limit exceeded. Maximum 300 requests per minute.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.bot?.id || req.ip,
+});
+
 // ============ Auth Routes ============
 app.post('/api/auth/register', registerLimiter, async (req, res) => {
   try {
@@ -7307,6 +7361,574 @@ app.delete('/api/admin/alert-subscriptions/:id', authenticateToken, async (req, 
 
   db.deleteAlertSubscription(subscriptionId);
   res.json({ success: true });
+});
+
+// ============ Bot Management Endpoints (v2.1.0) ============
+
+/**
+ * Create a new bot (admin only)
+ * Returns API key once - must be saved by client
+ */
+app.post('/api/admin/bots', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const name = sanitizeInput(req.body.name);
+    const description = sanitizeInput(req.body.description || '');
+
+    if (!name || name.length < 3) {
+      return res.status(400).json({ error: 'Bot name must be at least 3 characters' });
+    }
+
+    // Generate secure API key: fh_bot_{32 random hex chars}
+    const apiKey = `fh_bot_${crypto.randomBytes(32).toString('hex')}`;
+    const apiKeyHash = hashToken(apiKey);
+
+    // Generate optional webhook secret
+    const webhookSecret = req.body.enableWebhook ? crypto.randomBytes(16).toString('hex') : null;
+
+    // E2EE: Generate bot keypair if E2EE is enabled (optional, can be null)
+    let publicKey = null;
+    let encryptedPrivateKey = null;
+
+    const bot = db.createBot({
+      name,
+      description,
+      ownerUserId: req.user.userId,
+      apiKeyHash,
+      publicKey,
+      encryptedPrivateKey,
+      webhookSecret,
+    });
+
+    // Log activity
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'create_bot', 'bot', bot.id, {
+        ...getRequestMeta(req),
+        botName: name,
+      });
+    }
+
+    // Return API key ONCE - client must save it
+    res.status(201).json({
+      bot: {
+        ...bot,
+        apiKey, // Only returned on creation
+        webhookSecret: webhookSecret || undefined,
+      },
+    });
+  } catch (err) {
+    console.error('Create bot error:', err);
+    res.status(500).json({ error: 'Failed to create bot' });
+  }
+});
+
+/**
+ * List all bots (admin only)
+ */
+app.get('/api/admin/bots', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const status = req.query.status ? sanitizeInput(req.query.status) : null;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const offset = parseInt(req.query.offset) || 0;
+
+    const bots = db.getAllBots({ status, limit, offset });
+    const totalCount = db.db.prepare('SELECT COUNT(*) as count FROM bots').get().count;
+
+    res.json({ bots, count: bots.length, total: totalCount });
+  } catch (err) {
+    console.error('List bots error:', err);
+    res.status(500).json({ error: 'Failed to list bots' });
+  }
+});
+
+/**
+ * Get bot details (admin only)
+ */
+app.get('/api/admin/bots/:id', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const botId = sanitizeInput(req.params.id);
+    const bot = db.getBot(botId);
+
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot not found' });
+    }
+
+    // Include permissions
+    const permissions = db.getBotPermissions(botId);
+
+    res.json({ bot: { ...bot, permissions } });
+  } catch (err) {
+    console.error('Get bot error:', err);
+    res.status(500).json({ error: 'Failed to get bot' });
+  }
+});
+
+/**
+ * Update bot (admin only)
+ */
+app.patch('/api/admin/bots/:id', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const botId = sanitizeInput(req.params.id);
+    const bot = db.getBot(botId);
+
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot not found' });
+    }
+
+    const updates = {};
+    if (req.body.name) updates.name = sanitizeInput(req.body.name);
+    if (req.body.description !== undefined) updates.description = sanitizeInput(req.body.description);
+    if (req.body.status && ['active', 'suspended', 'revoked'].includes(req.body.status)) {
+      updates.status = req.body.status;
+    }
+
+    db.updateBot(botId, updates);
+
+    // Log activity
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'update_bot', 'bot', botId, {
+        ...getRequestMeta(req),
+        updates,
+      });
+    }
+
+    res.json({ bot: db.getBot(botId) });
+  } catch (err) {
+    console.error('Update bot error:', err);
+    res.status(500).json({ error: 'Failed to update bot' });
+  }
+});
+
+/**
+ * Delete bot (admin only)
+ */
+app.delete('/api/admin/bots/:id', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const botId = sanitizeInput(req.params.id);
+    const bot = db.getBot(botId);
+
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot not found' });
+    }
+
+    db.deleteBot(botId);
+
+    // Log activity
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'delete_bot', 'bot', botId, {
+        ...getRequestMeta(req),
+        botName: bot.name,
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete bot error:', err);
+    res.status(500).json({ error: 'Failed to delete bot' });
+  }
+});
+
+/**
+ * Regenerate bot API key (admin only)
+ */
+app.post('/api/admin/bots/:id/regenerate', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const botId = sanitizeInput(req.params.id);
+    const bot = db.getBot(botId);
+
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot not found' });
+    }
+
+    // Generate new API key
+    const newApiKey = `fh_bot_${crypto.randomBytes(32).toString('hex')}`;
+    const newApiKeyHash = hashToken(newApiKey);
+
+    db.regenerateBotApiKey(botId, newApiKeyHash);
+
+    // Log activity
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'regenerate_bot_key', 'bot', botId, {
+        ...getRequestMeta(req),
+        botName: bot.name,
+      });
+    }
+
+    // Return new key ONCE
+    res.json({ apiKey: newApiKey });
+  } catch (err) {
+    console.error('Regenerate bot key error:', err);
+    res.status(500).json({ error: 'Failed to regenerate bot key' });
+  }
+});
+
+/**
+ * Grant bot permission to wave (admin only)
+ */
+app.post('/api/admin/bots/:id/permissions', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const botId = sanitizeInput(req.params.id);
+    const waveId = sanitizeInput(req.body.waveId);
+    const canPost = req.body.canPost !== false; // Default true
+    const canRead = req.body.canRead !== false; // Default true
+
+    const bot = db.getBot(botId);
+    if (!bot) return res.status(404).json({ error: 'Bot not found' });
+
+    const wave = db.getWave(waveId);
+    if (!wave) return res.status(404).json({ error: 'Wave not found' });
+
+    // Check if wave is encrypted
+    if (wave.encrypted && !req.body.encryptedWaveKey) {
+      return res.status(400).json({
+        error: 'Wave is encrypted. Must provide encryptedWaveKey and senderPublicKey for bot.',
+      });
+    }
+
+    // Grant permission
+    const permId = db.grantBotPermission(botId, waveId, req.user.userId, { canPost, canRead });
+
+    // If encrypted wave, store bot's encrypted wave key
+    if (wave.encrypted && req.body.encryptedWaveKey && req.body.senderPublicKey) {
+      const keyVersion = wave.keyVersion || 1;
+      db.createBotWaveKey(botId, waveId, req.body.encryptedWaveKey, req.body.senderPublicKey, keyVersion);
+    }
+
+    // Log activity
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'grant_bot_permission', 'bot', botId, {
+        ...getRequestMeta(req),
+        waveId,
+        canPost,
+        canRead,
+      });
+    }
+
+    res.json({ permissionId: permId, success: true });
+  } catch (err) {
+    console.error('Grant bot permission error:', err);
+    res.status(500).json({ error: 'Failed to grant permission' });
+  }
+});
+
+/**
+ * Revoke bot permission from wave (admin only)
+ */
+app.delete('/api/admin/bots/:id/permissions/:waveId', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const botId = sanitizeInput(req.params.id);
+    const waveId = sanitizeInput(req.params.waveId);
+
+    const revoked = db.revokeBotPermission(botId, waveId);
+
+    if (!revoked) {
+      return res.status(404).json({ error: 'Permission not found' });
+    }
+
+    // Log activity
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'revoke_bot_permission', 'bot', botId, {
+        ...getRequestMeta(req),
+        waveId,
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Revoke bot permission error:', err);
+    res.status(500).json({ error: 'Failed to revoke permission' });
+  }
+});
+
+// ============ Bot API Endpoints (v2.1.0) ============
+// These endpoints use authenticateBotToken middleware
+
+/**
+ * Bot: Create ping in wave
+ */
+app.post('/api/bot/ping', authenticateBotToken, botLimiter, (req, res) => {
+  try {
+    const waveId = sanitizeInput(req.body.waveId);
+    const content = req.body.content;
+
+    if (!waveId || !content) {
+      return res.status(400).json({ error: 'waveId and content required' });
+    }
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Check bot permission
+    if (!db.botCanAccessWave(req.bot.id, waveId, true)) {
+      return res.status(403).json({ error: 'Bot does not have permission to post in this wave' });
+    }
+
+    // E2EE: encrypted content validation
+    const maxLength = req.body.encrypted ? 20000 : 10000;
+    if (content.length > maxLength) {
+      return res.status(400).json({ error: 'Content too long' });
+    }
+
+    // For encrypted content, require nonce and keyVersion
+    if (req.body.encrypted && (!req.body.nonce || !req.body.keyVersion)) {
+      return res.status(400).json({ error: 'Encrypted pings require nonce and keyVersion' });
+    }
+
+    // Create ping as bot (botId is stored in pings table)
+    const ping = db.createMessage({
+      waveId,
+      parentId: req.body.parentId ? sanitizeInput(req.body.parentId) : null,
+      authorId: req.bot.owner_user_id, // Use bot owner to satisfy FK constraint
+      content,
+      privacy: wave.privacy,
+      encrypted: !!req.body.encrypted,
+      nonce: req.body.nonce || null,
+      keyVersion: req.body.keyVersion || null,
+      botId: req.bot.id, // Mark as bot ping
+    });
+
+    // Update bot stats
+    db.updateBotStats(req.bot.id, 'ping');
+
+    // Broadcast to wave participants (ping already has bot info from createMessage)
+    broadcastToWave(waveId, {
+      type: 'new_droplet',
+      data: ping,
+    });
+
+    // Also broadcast legacy event
+    broadcastToWave(waveId, {
+      type: 'new_message',
+      data: ping,
+    });
+
+    // Log activity (use bot owner's user ID to satisfy FK constraint)
+    if (db.logActivity) {
+      db.logActivity(req.bot.owner_user_id, 'bot_create_ping', 'ping', ping.id, {
+        ...getRequestMeta(req),
+        waveId,
+        botId: req.bot.id,
+        botName: req.bot.name,
+      });
+    }
+
+    res.status(201).json(ping);
+  } catch (err) {
+    console.error('Bot create ping error:', err);
+    res.status(500).json({ error: 'Failed to create ping' });
+  }
+});
+
+/**
+ * Bot: List accessible waves
+ */
+app.get('/api/bot/waves', authenticateBotToken, botLimiter, (req, res) => {
+  try {
+    const waves = db.getBotWaves(req.bot.id);
+    res.json({ waves, count: waves.length });
+  } catch (err) {
+    console.error('Bot list waves error:', err);
+    res.status(500).json({ error: 'Failed to list waves' });
+  }
+});
+
+/**
+ * Bot: Get wave details
+ */
+app.get('/api/bot/waves/:id', authenticateBotToken, botLimiter, (req, res) => {
+  try {
+    const waveId = sanitizeInput(req.params.id);
+
+    // Check permission
+    if (!db.botCanAccessWave(req.bot.id, waveId, false)) {
+      return res.status(403).json({ error: 'Bot does not have permission to read this wave' });
+    }
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Get wave participants
+    const participants = db.getWaveParticipants(waveId);
+
+    // Get recent pings (limit 50)
+    const pings = db.getWaveDroplets(waveId, 50);
+
+    // If encrypted, include bot's wave key
+    let waveKey = null;
+    if (wave.encrypted) {
+      const keyData = db.getBotWaveKey(req.bot.id, waveId);
+      if (keyData) {
+        waveKey = {
+          encryptedWaveKey: keyData.encrypted_wave_key,
+          senderPublicKey: keyData.sender_public_key,
+          keyVersion: keyData.key_version,
+        };
+      }
+    }
+
+    res.json({
+      wave: {
+        ...wave,
+        participants,
+        message_count: pings.length,
+      },
+      pings,
+      waveKey,
+    });
+  } catch (err) {
+    console.error('Bot get wave error:', err);
+    res.status(500).json({ error: 'Failed to get wave' });
+  }
+});
+
+/**
+ * Bot: Get encrypted wave key
+ * Separate endpoint for E2EE key retrieval
+ */
+app.get('/api/bot/waves/:id/key', authenticateBotToken, botLimiter, (req, res) => {
+  try {
+    const waveId = sanitizeInput(req.params.id);
+
+    if (!db.botCanAccessWave(req.bot.id, waveId, false)) {
+      return res.status(403).json({ error: 'Bot does not have permission to read this wave' });
+    }
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    if (!wave.encrypted) {
+      return res.status(400).json({ error: 'Wave is not encrypted' });
+    }
+
+    const keyData = db.getBotWaveKey(req.bot.id, waveId);
+    if (!keyData) {
+      return res.status(404).json({ error: 'Bot does not have encryption key for this wave' });
+    }
+
+    res.json({
+      encryptedWaveKey: keyData.encrypted_wave_key,
+      senderPublicKey: keyData.sender_public_key,
+      keyVersion: keyData.key_version,
+    });
+  } catch (err) {
+    console.error('Bot get wave key error:', err);
+    res.status(500).json({ error: 'Failed to get wave key' });
+  }
+});
+
+/**
+ * Webhook receiver endpoint
+ * Allows external services to post to waves via webhook
+ * Format: POST /api/webhooks/:botId/:webhookSecret
+ */
+app.post('/api/webhooks/:botId/:webhookSecret', express.json({ limit: '50kb' }), botLimiter, (req, res) => {
+  try {
+    const botId = sanitizeInput(req.params.botId);
+    const webhookSecret = sanitizeInput(req.params.webhookSecret);
+
+    // Look up bot
+    const bot = db.getBot(botId);
+    if (!bot || bot.status !== 'active') {
+      return res.status(404).json({ error: 'Bot not found or inactive' });
+    }
+
+    // Validate webhook secret
+    if (!bot.webhook_secret || bot.webhook_secret !== webhookSecret) {
+      // Log potential security issue (use bot owner's user ID to satisfy FK constraint)
+      if (db.logActivity) {
+        db.logActivity(bot.owner_user_id, 'webhook_auth_failed', 'bot', botId, {
+          ...getRequestMeta(req),
+          botId,
+          reason: 'Invalid webhook secret',
+        });
+      }
+      return res.status(403).json({ error: 'Invalid webhook secret' });
+    }
+
+    // Extract payload
+    const { waveId, content, parentId } = req.body;
+
+    if (!waveId || !content) {
+      return res.status(400).json({ error: 'waveId and content required' });
+    }
+
+    // Validate wave access
+    if (!db.botCanAccessWave(botId, waveId, true)) {
+      return res.status(403).json({ error: 'Bot does not have permission to post in this wave' });
+    }
+
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Sanitize content (webhooks cannot send encrypted content)
+    const sanitizedContent = sanitizeMessage(content);
+
+    // Create ping as bot (botId is stored in pings table)
+    const ping = db.createMessage({
+      waveId,
+      parentId: parentId ? sanitizeInput(parentId) : null,
+      authorId: bot.owner_user_id, // Use bot owner to satisfy FK constraint
+      content: sanitizedContent,
+      privacy: wave.privacy,
+      encrypted: false,
+      nonce: null,
+      keyVersion: null,
+      botId: bot.id, // Mark as bot ping
+    });
+
+    // Update stats
+    db.updateBotStats(botId, 'ping');
+
+    // Broadcast (ping already has bot info from createMessage)
+    broadcastToWave(waveId, { type: 'new_droplet', data: ping });
+    broadcastToWave(waveId, { type: 'new_message', data: ping });
+
+    // Log activity (use bot owner's user ID to satisfy FK constraint)
+    if (db.logActivity) {
+      db.logActivity(bot.owner_user_id, 'webhook_ping', 'ping', ping.id, {
+        ...getRequestMeta(req),
+        waveId,
+        botId: bot.id,
+        botName: bot.name,
+      });
+    }
+
+    res.status(201).json({ success: true, pingId: ping.id });
+  } catch (err) {
+    console.error('Webhook error:', err);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
 });
 
 // ============ Share Routes (v1.17.0) ============

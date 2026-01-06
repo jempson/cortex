@@ -746,6 +746,64 @@ CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_status ON alert_subscriptions
 CREATE INDEX IF NOT EXISTS idx_alert_subscribers_node ON alert_subscribers(subscriber_node);
 CREATE INDEX IF NOT EXISTS idx_alert_dismissals_user ON alert_dismissals(user_id);
 
+-- ============ Bots & Webhooks (v2.1.0) ============
+
+-- Bots: Automated systems that can post to waves via API
+CREATE TABLE IF NOT EXISTS bots (
+    id TEXT PRIMARY KEY,                      -- bot-{uuid}
+    name TEXT NOT NULL,                       -- Display name (e.g., "GitHub Notifier")
+    description TEXT,                         -- Bot purpose description
+    owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    api_key_hash TEXT UNIQUE NOT NULL,        -- SHA-256 hash of API key
+    status TEXT DEFAULT 'active',             -- active, suspended, revoked
+    created_at TEXT NOT NULL,
+    last_used_at TEXT,                        -- Track last API call
+    -- E2EE support
+    public_key TEXT,                          -- Base64 SPKI-encoded ECDH public key
+    encrypted_private_key TEXT,               -- Base64 AES-KW encrypted with master bot key
+    key_version INTEGER DEFAULT 1,
+    -- Metadata
+    total_pings INTEGER DEFAULT 0,            -- Usage stats
+    total_api_calls INTEGER DEFAULT 0,
+    -- Settings
+    can_create_waves INTEGER DEFAULT 0,       -- Permission flag (future feature)
+    webhook_secret TEXT                       -- Optional webhook validation secret
+);
+
+CREATE INDEX IF NOT EXISTS idx_bots_owner ON bots(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_bots_status ON bots(status);
+CREATE INDEX IF NOT EXISTS idx_bots_api_key_hash ON bots(api_key_hash);
+
+-- Bot Permissions: Wave-level access control for bots
+CREATE TABLE IF NOT EXISTS bot_permissions (
+    id TEXT PRIMARY KEY,                      -- perm-{uuid}
+    bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+    wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+    can_post INTEGER DEFAULT 1,               -- Can send pings
+    can_read INTEGER DEFAULT 1,               -- Can read wave history
+    granted_at TEXT NOT NULL,
+    granted_by TEXT NOT NULL REFERENCES users(id),
+    UNIQUE(bot_id, wave_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_permissions_bot ON bot_permissions(bot_id);
+CREATE INDEX IF NOT EXISTS idx_bot_permissions_wave ON bot_permissions(wave_id);
+
+-- Bot Wave Keys: Encrypted wave keys for bots (E2EE support)
+CREATE TABLE IF NOT EXISTS bot_wave_keys (
+    id TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+    wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+    encrypted_wave_key TEXT NOT NULL,         -- Wave key encrypted for bot
+    sender_public_key TEXT NOT NULL,          -- Public key used to encrypt
+    key_version INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    UNIQUE(bot_id, wave_id, key_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_wave_keys_bot ON bot_wave_keys(bot_id);
+CREATE INDEX IF NOT EXISTS idx_bot_wave_keys_wave ON bot_wave_keys(wave_id);
+
 -- ============ Full-Text Search ============
 
 -- FTS5 virtual table for ping content search (formerly droplets_fts)

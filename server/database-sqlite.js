@@ -1126,6 +1126,83 @@ export class DatabaseSQLite {
       console.log('');
       throw new Error('Database migration required. Run: node migrate-v1.20-to-v2.0.js');
     }
+
+    // v2.1.0 - Bot/Webhook System
+    const botsTableExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='bots'
+    `).get();
+
+    if (!botsTableExists) {
+      console.log('📝 Creating bot/webhook system tables (v2.1.0)...');
+      this.db.exec(`
+        -- Bots: Automated systems that can post to waves via API
+        CREATE TABLE IF NOT EXISTS bots (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          api_key_hash TEXT UNIQUE NOT NULL,
+          status TEXT DEFAULT 'active',
+          created_at TEXT NOT NULL,
+          last_used_at TEXT,
+          public_key TEXT,
+          encrypted_private_key TEXT,
+          key_version INTEGER DEFAULT 1,
+          total_pings INTEGER DEFAULT 0,
+          total_api_calls INTEGER DEFAULT 0,
+          can_create_waves INTEGER DEFAULT 0,
+          webhook_secret TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_bots_owner ON bots(owner_user_id);
+        CREATE INDEX IF NOT EXISTS idx_bots_status ON bots(status);
+        CREATE INDEX IF NOT EXISTS idx_bots_api_key_hash ON bots(api_key_hash);
+
+        -- Bot Permissions: Wave-level access control for bots
+        CREATE TABLE IF NOT EXISTS bot_permissions (
+          id TEXT PRIMARY KEY,
+          bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+          wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+          can_post INTEGER DEFAULT 1,
+          can_read INTEGER DEFAULT 1,
+          granted_at TEXT NOT NULL,
+          granted_by TEXT NOT NULL REFERENCES users(id),
+          UNIQUE(bot_id, wave_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_bot_permissions_bot ON bot_permissions(bot_id);
+        CREATE INDEX IF NOT EXISTS idx_bot_permissions_wave ON bot_permissions(wave_id);
+
+        -- Bot Wave Keys: Encrypted wave keys for bots (E2EE support)
+        CREATE TABLE IF NOT EXISTS bot_wave_keys (
+          id TEXT PRIMARY KEY,
+          bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+          wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+          encrypted_wave_key TEXT NOT NULL,
+          sender_public_key TEXT NOT NULL,
+          key_version INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL,
+          UNIQUE(bot_id, wave_id, key_version)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_bot_wave_keys_bot ON bot_wave_keys(bot_id);
+        CREATE INDEX IF NOT EXISTS idx_bot_wave_keys_wave ON bot_wave_keys(wave_id);
+      `);
+      console.log('✅ Bot/webhook system tables created (v2.1.0)');
+    }
+
+    // v2.1.0 - Add bot_id column to pings table for bot authorship
+    const pingsColumns = this.db.prepare(`PRAGMA table_info(pings)`).all();
+    const hasBotId = pingsColumns.some(c => c.name === 'bot_id');
+
+    if (!hasBotId) {
+      console.log('📝 Adding bot_id column to pings table (v2.1.0)...');
+      this.db.exec(`
+        ALTER TABLE pings ADD COLUMN bot_id TEXT REFERENCES bots(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_pings_bot_id ON pings(bot_id);
+      `);
+      console.log('✅ Bot_id column added to pings table');
+    }
   }
 
   prepareStatements() {
@@ -3556,10 +3633,13 @@ export class DatabaseSQLite {
     // Get root droplet and all its descendants
     const getAllDescendants = (parentId, results = []) => {
       const droplet = this.db.prepare(`
-        SELECT d.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle,
+        SELECT d.*,
+               u.display_name as user_display_name, u.avatar as user_avatar, u.avatar_url as user_avatar_url, u.handle as user_handle,
+               b.name as bot_name, b.id as bot_id,
                bow.title as broken_out_to_title
         FROM pings d
         JOIN users u ON d.author_id = u.id
+        LEFT JOIN bots b ON d.bot_id = b.id
         LEFT JOIN waves bow ON d.broken_out_to = bow.id
         WHERE d.id = ?
       `).get(parentId);
@@ -3569,6 +3649,21 @@ export class DatabaseSQLite {
       // Skip blocked/muted users
       if (blockedIds.includes(droplet.author_id) || mutedIds.includes(droplet.author_id)) {
         return results;
+      }
+
+      // Transform bot pings to use bot info
+      if (droplet.bot_id) {
+        droplet.sender_name = `[Bot] ${droplet.bot_name}`;
+        droplet.sender_avatar = '🤖';
+        droplet.sender_avatar_url = null;
+        droplet.sender_handle = droplet.bot_name.toLowerCase().replace(/\s+/g, '-');
+        droplet.isBot = true;
+        droplet.botId = droplet.bot_id;
+      } else {
+        droplet.sender_name = droplet.user_display_name;
+        droplet.sender_avatar = droplet.user_avatar;
+        droplet.sender_avatar_url = droplet.user_avatar_url;
+        droplet.sender_handle = droplet.user_handle;
       }
 
       results.push(droplet);
@@ -3616,6 +3711,8 @@ export class DatabaseSQLite {
         is_unread: isUnread,
         brokenOutTo: d.broken_out_to,
         brokenOutToTitle: d.broken_out_to_title,
+        isBot: d.isBot || false,
+        botId: d.botId || undefined,
       };
     });
   }
@@ -3631,10 +3728,13 @@ export class DatabaseSQLite {
     }
 
     let sql = `
-      SELECT d.*, u.display_name as sender_name, u.avatar as sender_avatar, u.avatar_url as sender_avatar_url, u.handle as sender_handle,
+      SELECT d.*,
+             u.display_name as user_display_name, u.avatar as user_avatar, u.avatar_url as user_avatar_url, u.handle as user_handle,
+             b.name as bot_name, b.id as bot_id,
              bow.title as broken_out_to_title
       FROM pings d
       JOIN users u ON d.author_id = u.id
+      LEFT JOIN bots b ON d.bot_id = b.id
       LEFT JOIN waves bow ON d.broken_out_to = bow.id
       WHERE d.wave_id = ?
     `;
@@ -3661,6 +3761,13 @@ export class DatabaseSQLite {
       // Get read by users
       const readBy = this.db.prepare('SELECT user_id FROM ping_read_by WHERE ping_id = ?').all(d.id).map(r => r.user_id);
 
+      // Use bot information if this is a bot ping
+      const isBot = !!d.bot_id;
+      const senderName = isBot ? `[Bot] ${d.bot_name}` : d.user_display_name;
+      const senderAvatar = isBot ? '🤖' : d.user_avatar;
+      const senderAvatarUrl = isBot ? null : d.user_avatar_url;
+      const senderHandle = isBot ? d.bot_name.toLowerCase().replace(/\s+/g, '-') : d.user_handle;
+
       return {
         id: d.id,
         waveId: d.wave_id,
@@ -3675,10 +3782,10 @@ export class DatabaseSQLite {
         deletedAt: d.deleted_at,
         reactions: d.reactions ? JSON.parse(d.reactions) : {},
         readBy,
-        sender_name: d.sender_name,
-        sender_avatar: d.sender_avatar,
-        sender_avatar_url: d.sender_avatar_url,
-        sender_handle: d.sender_handle,
+        sender_name: senderName,
+        sender_avatar: senderAvatar,
+        sender_avatar_url: senderAvatarUrl,
+        sender_handle: senderHandle,
         author_id: d.author_id,
         parent_id: d.parent_id,
         wave_id: d.wave_id,
@@ -3692,6 +3799,8 @@ export class DatabaseSQLite {
         encrypted: d.encrypted === 1,
         nonce: d.nonce,
         keyVersion: d.key_version,
+        isBot: isBot,
+        botId: d.bot_id || undefined,
       };
     });
 
@@ -3788,24 +3897,46 @@ export class DatabaseSQLite {
       this.db.exec('PRAGMA foreign_keys = OFF');
       try {
         this.db.prepare(`
-          INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
-        `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion);
+          INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version, bot_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
+        `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion, data.botId || null);
       } finally {
         this.db.exec('PRAGMA foreign_keys = ON');
       }
     } else {
       this.db.prepare(`
-        INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
-      `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion);
+        INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version, bot_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
+      `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion, data.botId || null);
     }
 
-    // Author has read their own ping
-    this.db.prepare('INSERT INTO ping_read_by (ping_id, user_id, read_at) VALUES (?, ?, ?)').run(droplet.id, data.authorId, now);
+    // Author has read their own ping (skip for bot pings)
+    if (!data.botId) {
+      this.db.prepare('INSERT INTO ping_read_by (ping_id, user_id, read_at) VALUES (?, ?, ?)').run(droplet.id, data.authorId, now);
+    }
 
     // Update wave timestamp
     this.updateWaveTimestamp(data.waveId);
+
+    // If it's a bot ping, return bot information
+    if (data.botId) {
+      const bot = this.getBot(data.botId);
+      return {
+        ...droplet,
+        bot_id: data.botId,
+        sender_name: bot ? `[Bot] ${bot.name}` : '[Bot] Unknown',
+        sender_avatar: '🤖',
+        sender_avatar_url: null,
+        sender_handle: bot ? bot.name.toLowerCase().replace(/\s+/g, '-') : 'unknown-bot',
+        author_id: droplet.authorId,
+        parent_id: droplet.parentId,
+        wave_id: droplet.waveId,
+        created_at: droplet.createdAt,
+        edited_at: droplet.editedAt,
+        isBot: true,
+        botId: data.botId,
+      };
+    }
 
     const author = this.findUserById(data.authorId);
     return {
@@ -6241,6 +6372,254 @@ export class DatabaseSQLite {
       SET content = ?, nonce = ?, key_version = ?, encrypted = 1
       WHERE id = ?
     `).run(encryptedContent, nonce, keyVersion, dropletId);
+  }
+
+  // ============ Bot Management (v2.1.0) ============
+
+  /**
+   * Create a new bot
+   * @returns {object} Bot object with id, name, apiKeyHash, etc.
+   */
+  createBot({ name, description, ownerUserId, apiKeyHash, publicKey, encryptedPrivateKey, webhookSecret }) {
+    const id = `bot-${uuidv4()}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO bots (
+        id, name, description, owner_user_id, api_key_hash,
+        public_key, encrypted_private_key, webhook_secret,
+        status, created_at, total_pings, total_api_calls
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, 0)
+    `).run(id, name, description, ownerUserId, apiKeyHash, publicKey, encryptedPrivateKey, webhookSecret, now);
+
+    return this.getBot(id);
+  }
+
+  /**
+   * Get bot by ID
+   */
+  getBot(botId) {
+    return this.db.prepare(`
+      SELECT b.*, u.display_name as owner_name, u.handle as owner_handle
+      FROM bots b
+      LEFT JOIN users u ON b.owner_user_id = u.id
+      WHERE b.id = ?
+    `).get(botId);
+  }
+
+  /**
+   * Find bot by API key hash (for authentication)
+   */
+  findBotByApiKeyHash(apiKeyHash) {
+    return this.db.prepare(`
+      SELECT * FROM bots WHERE api_key_hash = ? AND status = 'active'
+    `).get(apiKeyHash);
+  }
+
+  /**
+   * Get all bots (admin view)
+   */
+  getAllBots({ status = null, ownerId = null, limit = 50, offset = 0 } = {}) {
+    let query = `
+      SELECT b.*, u.display_name as owner_name, u.handle as owner_handle,
+             COUNT(DISTINCT bp.wave_id) as wave_count
+      FROM bots b
+      LEFT JOIN users u ON b.owner_user_id = u.id
+      LEFT JOIN bot_permissions bp ON b.id = bp.bot_id
+    `;
+    const conditions = [];
+    const params = [];
+
+    if (status) {
+      conditions.push('b.status = ?');
+      params.push(status);
+    }
+    if (ownerId) {
+      conditions.push('b.owner_user_id = ?');
+      params.push(ownerId);
+    }
+
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    query += ' GROUP BY b.id ORDER BY b.created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    return this.db.prepare(query).all(...params);
+  }
+
+  /**
+   * Update bot
+   */
+  updateBot(botId, updates) {
+    const allowedFields = ['name', 'description', 'status', 'webhook_secret'];
+    const sets = [];
+    const values = [];
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (allowedFields.includes(key)) {
+        sets.push(`${key} = ?`);
+        values.push(value);
+      }
+    }
+
+    if (sets.length === 0) return false;
+
+    values.push(botId);
+    this.db.prepare(`UPDATE bots SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    return true;
+  }
+
+  /**
+   * Update bot API key hash (for key regeneration)
+   */
+  regenerateBotApiKey(botId, newApiKeyHash) {
+    this.db.prepare('UPDATE bots SET api_key_hash = ? WHERE id = ?').run(newApiKeyHash, botId);
+    return true;
+  }
+
+  /**
+   * Delete bot (cascades to permissions and keys)
+   */
+  deleteBot(botId) {
+    const result = this.db.prepare('DELETE FROM bots WHERE id = ?').run(botId);
+    return result.changes > 0;
+  }
+
+  /**
+   * Update bot usage stats
+   */
+  updateBotStats(botId, type = 'api_call') {
+    const now = new Date().toISOString();
+    if (type === 'ping') {
+      this.db.prepare('UPDATE bots SET total_pings = total_pings + 1, total_api_calls = total_api_calls + 1, last_used_at = ? WHERE id = ?').run(now, botId);
+    } else {
+      this.db.prepare('UPDATE bots SET total_api_calls = total_api_calls + 1, last_used_at = ? WHERE id = ?').run(now, botId);
+    }
+  }
+
+  // ---- Bot Permissions ----
+
+  /**
+   * Grant bot access to a wave
+   */
+  grantBotPermission(botId, waveId, grantedBy, { canPost = true, canRead = true } = {}) {
+    const id = `perm-${uuidv4()}`;
+    const now = new Date().toISOString();
+
+    // Check if permission already exists
+    const existing = this.db.prepare('SELECT id FROM bot_permissions WHERE bot_id = ? AND wave_id = ?').get(botId, waveId);
+    if (existing) {
+      // Update existing
+      this.db.prepare(`
+        UPDATE bot_permissions SET can_post = ?, can_read = ?
+        WHERE bot_id = ? AND wave_id = ?
+      `).run(canPost ? 1 : 0, canRead ? 1 : 0, botId, waveId);
+      return existing.id;
+    }
+
+    this.db.prepare(`
+      INSERT INTO bot_permissions (id, bot_id, wave_id, can_post, can_read, granted_at, granted_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, botId, waveId, canPost ? 1 : 0, canRead ? 1 : 0, now, grantedBy);
+
+    return id;
+  }
+
+  /**
+   * Revoke bot access to a wave
+   */
+  revokeBotPermission(botId, waveId) {
+    const result = this.db.prepare('DELETE FROM bot_permissions WHERE bot_id = ? AND wave_id = ?').run(botId, waveId);
+    return result.changes > 0;
+  }
+
+  /**
+   * Check if bot has permission to access wave
+   */
+  botCanAccessWave(botId, waveId, requirePost = false) {
+    const perm = this.db.prepare(`
+      SELECT can_post, can_read FROM bot_permissions WHERE bot_id = ? AND wave_id = ?
+    `).get(botId, waveId);
+
+    if (!perm) return false;
+    if (requirePost) return perm.can_post === 1;
+    return perm.can_read === 1;
+  }
+
+  /**
+   * Get bot's wave permissions
+   */
+  getBotPermissions(botId) {
+    return this.db.prepare(`
+      SELECT bp.*, w.title as wave_title, w.privacy as wave_privacy
+      FROM bot_permissions bp
+      LEFT JOIN waves w ON bp.wave_id = w.id
+      WHERE bp.bot_id = ?
+      ORDER BY bp.granted_at DESC
+    `).all(botId);
+  }
+
+  /**
+   * Get waves accessible to bot
+   */
+  getBotWaves(botId) {
+    return this.db.prepare(`
+      SELECT w.*, bp.can_post, bp.can_read,
+             COUNT(DISTINCT p.id) as message_count
+      FROM waves w
+      INNER JOIN bot_permissions bp ON w.id = bp.wave_id
+      LEFT JOIN pings p ON w.id = p.wave_id AND p.deleted = 0
+      WHERE bp.bot_id = ? AND bp.can_read = 1
+      GROUP BY w.id
+      ORDER BY w.updated_at DESC
+    `).all(botId);
+  }
+
+  // ---- Bot E2EE Keys ----
+
+  /**
+   * Store encrypted wave key for bot
+   */
+  createBotWaveKey(botId, waveId, encryptedWaveKey, senderPublicKey, keyVersion = 1) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    const existing = this.db.prepare(`
+      SELECT id FROM bot_wave_keys WHERE bot_id = ? AND wave_id = ? AND key_version = ?
+    `).get(botId, waveId, keyVersion);
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE bot_wave_keys SET encrypted_wave_key = ?, sender_public_key = ?
+        WHERE bot_id = ? AND wave_id = ? AND key_version = ?
+      `).run(encryptedWaveKey, senderPublicKey, botId, waveId, keyVersion);
+      return existing.id;
+    }
+
+    this.db.prepare(`
+      INSERT INTO bot_wave_keys (id, bot_id, wave_id, encrypted_wave_key, sender_public_key, key_version, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, botId, waveId, encryptedWaveKey, senderPublicKey, keyVersion, now);
+
+    return id;
+  }
+
+  /**
+   * Get bot's encrypted wave key
+   */
+  getBotWaveKey(botId, waveId, keyVersion = null) {
+    if (keyVersion) {
+      return this.db.prepare(`
+        SELECT * FROM bot_wave_keys WHERE bot_id = ? AND wave_id = ? AND key_version = ?
+      `).get(botId, waveId, keyVersion);
+    }
+    // Get latest version
+    return this.db.prepare(`
+      SELECT * FROM bot_wave_keys WHERE bot_id = ? AND wave_id = ?
+      ORDER BY key_version DESC LIMIT 1
+    `).get(botId, waveId);
   }
 
   // Placeholder for JSON compatibility - not needed with SQLite
