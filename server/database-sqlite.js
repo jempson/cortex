@@ -3533,9 +3533,10 @@ export class DatabaseSQLite {
 
     // Burst waves are always private with explicit participants (not crew waves)
     // This ensures they show up for participants even if they're not crew members
+    // Inherit encryption status from parent wave (v2.1.1 fix)
     this.db.prepare(`
-      INSERT INTO waves (id, title, privacy, crew_id, created_by, created_at, updated_at, root_ping_id, broken_out_from, breakout_chain)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO waves (id, title, privacy, crew_id, created_by, created_at, updated_at, root_ping_id, broken_out_from, breakout_chain, encrypted)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       newWaveId,
       newWaveTitle.slice(0, 200),
@@ -3546,7 +3547,8 @@ export class DatabaseSQLite {
       now,
       dropletId,
       originalWaveId,
-      JSON.stringify(breakoutChain)
+      JSON.stringify(breakoutChain),
+      originalWave.encrypted ? 1 : 0  // Inherit encryption from parent wave
     );
 
     // Add participants to new wave
@@ -3554,6 +3556,25 @@ export class DatabaseSQLite {
     participantSet.add(userId); // Ensure creator is included
     for (const participantId of participantSet) {
       this.db.prepare('INSERT OR IGNORE INTO wave_participants (wave_id, user_id, joined_at, archived) VALUES (?, ?, ?, 0)').run(newWaveId, participantId, now);
+    }
+
+    // If parent wave is encrypted, copy encryption keys for all participants
+    if (originalWave.encrypted) {
+      const parentWaveKeys = this.db.prepare(`
+        SELECT user_id, encrypted_wave_key, sender_public_key, key_version
+        FROM wave_encryption_keys
+        WHERE wave_id = ?
+      `).all(originalWaveId);
+
+      for (const key of parentWaveKeys) {
+        // Only copy keys for participants who are in the burst wave
+        if (participantSet.has(key.user_id)) {
+          this.db.prepare(`
+            INSERT OR IGNORE INTO wave_encryption_keys (wave_id, user_id, encrypted_wave_key, sender_public_key, key_version)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(newWaveId, key.user_id, key.encrypted_wave_key, key.sender_public_key, key.key_version);
+        }
+      }
     }
 
     // Move all droplets to the new wave (update wave_id, set original_wave_id)
