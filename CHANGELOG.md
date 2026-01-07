@@ -5,6 +5,65 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-01-07
+
+### Fixed
+
+#### Wave Categories - Mobile Support and Critical Bug Fixes
+Post-deployment fixes for wave categories feature introduced in v2.2.0.
+
+**Mobile Support Improvements:**
+- **Mobile "Manage Categories" Button**: Added settings button to mobile view with touch-friendly sizing (44px minimum)
+  - Previously hidden with `!isMobile` condition
+  - Now displays as "⚙" icon on mobile, full "⚙ MANAGE" text on desktop
+  - File: `client/FarholdApp.jsx` (lines 4086-4103)
+
+- **Mobile/PWA Wave Organization**: Implemented 3-dot menu (⋮) as alternative to drag-and-drop
+  - HTML5 drag-and-drop doesn't work reliably on touch devices
+  - Added menu button to each wave item with dropdown options:
+    - Pin/unpin wave
+    - Move to category (shows all available categories)
+  - Click-outside handler to auto-close menu
+  - File: `client/FarholdApp.jsx` (lines 3922-4027)
+
+**UI/UX Improvements:**
+- **Unread Badge Positioning**: Moved notification and unread count badges to the left of the menu button
+  - Improves visual hierarchy and clarity
+  - Badges now appear before the action button
+  - File: `client/FarholdApp.jsx` (lines 3911-3920)
+
+**Critical Bug Fixes:**
+- **Category Reordering 400 Error**: Fixed Express route ordering issue preventing category reordering
+  - **Root Cause**: The parameterized route `/api/wave-categories/:id` was defined before the literal route `/api/wave-categories/reorder`
+  - Express matches routes sequentially, so `:id` was matching the string "reorder" before the specific handler could execute
+  - **Solution**: Moved `/api/wave-categories/reorder` route definition to line 11382 (before `:id` route at line 11440)
+  - Added comment: "MUST be before :id route to avoid matching 'reorder' as an id"
+  - File: `server/server.js` (lines 11382-11423)
+
+- **Activity Logging**: Added activity logging for category reorder operations
+  - File: `server/server.js` (line 11416)
+
+**Code Cleanup:**
+- Removed extensive debug logging added during troubleshooting:
+  - Removed request logging middleware
+  - Removed body buffer verification
+  - Removed JSON parsing error handlers
+  - Cleaned up client-side debug console.log statements
+  - Cleaned up database method debug logging
+  - Files: `server/server.js`, `server/database-sqlite.js`, `client/FarholdApp.jsx`
+
+**Testing:**
+Confirmed working on:
+- ✅ PWA mobile (iOS/Android)
+- ✅ PWA desktop
+- ✅ Desktop browser (Chrome, Firefox, Safari)
+- ✅ Non-PWA mobile browsers
+
+**Technical Details:**
+- Express route matching is sequential - more specific routes must be defined before parameterized routes
+- Touch devices don't support HTML5 drag-and-drop API reliably, requiring alternative UI patterns
+- The 3-dot menu pattern provides consistent UX across all platforms
+
 ## [2.2.0] - 2026-01-07
 
 ### Added
