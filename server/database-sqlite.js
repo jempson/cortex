@@ -2725,7 +2725,7 @@ export class DatabaseSQLite {
 
     return rows.map(r => ({
       id: r.id,
-      group_id: r.group_id,
+      group_id: r.crew_id, // Map from crew_id column
       invited_by: r.invited_by,
       invited_user_id: r.invited_user_id,
       message: r.message,
@@ -2747,7 +2747,7 @@ export class DatabaseSQLite {
 
     return rows.map(r => ({
       id: r.id,
-      group_id: r.group_id,
+      group_id: r.crew_id, // Map from crew_id column
       invited_by: r.invited_by,
       invited_user_id: r.invited_user_id,
       message: r.message,
@@ -2758,7 +2758,13 @@ export class DatabaseSQLite {
   }
 
   getGroupInvitation(invitationId) {
-    return this.db.prepare('SELECT * FROM crew_invitations WHERE id = ?').get(invitationId);
+    const row = this.db.prepare('SELECT * FROM crew_invitations WHERE id = ?').get(invitationId);
+    if (!row) return null;
+    // Map crew_id to group_id for consistency with JavaScript code
+    return {
+      ...row,
+      group_id: row.crew_id
+    };
   }
 
   acceptGroupInvitation(invitationId, userId) {
@@ -3279,6 +3285,7 @@ export class DatabaseSQLite {
       title: row.title,
       privacy: row.privacy,
       crewId: row.crew_id,
+      groupId: row.crew_id, // Alias for backward compatibility
       createdBy: row.created_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -3532,8 +3539,8 @@ export class DatabaseSQLite {
     const newWaveId = `wave-${uuidv4()}`;
 
     this.db.prepare(`
-      INSERT INTO waves (id, title, privacy, crew_id, created_by, created_at, updated_at, root_ping_id, broken_out_from, breakout_chain)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO waves (id, title, privacy, crew_id, created_by, created_at, updated_at, root_ping_id, broken_out_from, breakout_chain, encrypted)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       newWaveId,
       newWaveTitle.slice(0, 200),
@@ -3544,7 +3551,8 @@ export class DatabaseSQLite {
       now,
       dropletId,
       originalWaveId,
-      JSON.stringify(breakoutChain)
+      JSON.stringify(breakoutChain),
+      originalWave.encrypted ? 1 : 0
     );
 
     // Add participants to new wave
@@ -3552,6 +3560,24 @@ export class DatabaseSQLite {
     participantSet.add(userId); // Ensure creator is included
     for (const participantId of participantSet) {
       this.db.prepare('INSERT OR IGNORE INTO wave_participants (wave_id, user_id, joined_at, archived) VALUES (?, ?, ?, 0)').run(newWaveId, participantId, now);
+    }
+
+    // If parent wave is encrypted, copy encryption keys for burst wave participants
+    if (originalWave.encrypted) {
+      const parentWaveKeys = this.db.prepare(`
+        SELECT user_id, encrypted_wave_key, sender_public_key, key_version
+        FROM wave_encryption_keys
+        WHERE wave_id = ?
+      `).all(originalWaveId);
+
+      for (const key of parentWaveKeys) {
+        if (participantSet.has(key.user_id)) {
+          this.db.prepare(`
+            INSERT OR IGNORE INTO wave_encryption_keys (wave_id, user_id, encrypted_wave_key, sender_public_key, key_version)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(newWaveId, key.user_id, key.encrypted_wave_key, key.sender_public_key, key.key_version);
+        }
+      }
     }
 
     // Move all droplets to the new wave (update wave_id, set original_wave_id)
