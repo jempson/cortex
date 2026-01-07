@@ -3584,6 +3584,24 @@ export class DatabaseSQLite {
       this.db.prepare('INSERT OR IGNORE INTO wave_participants (wave_id, user_id, joined_at, archived) VALUES (?, ?, ?, 0)').run(newWaveId, participantId, now);
     }
 
+    // If parent wave is encrypted, copy encryption keys for burst wave participants
+    if (originalWave.encrypted) {
+      const parentWaveKeys = this.db.prepare(`
+        SELECT user_id, encrypted_wave_key, sender_public_key, key_version
+        FROM wave_encryption_keys
+        WHERE wave_id = ?
+      `).all(originalWaveId);
+
+      for (const key of parentWaveKeys) {
+        if (participantSet.has(key.user_id)) {
+          this.db.prepare(`
+            INSERT OR IGNORE INTO wave_encryption_keys (wave_id, user_id, encrypted_wave_key, sender_public_key, key_version)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(newWaveId, key.user_id, key.encrypted_wave_key, key.sender_public_key, key.key_version);
+        }
+      }
+    }
+
     // Move all droplets to the new wave (update wave_id, set original_wave_id)
     // The root droplet becomes the root of the new wave (parent_id stays null or its existing value)
     for (const id of allDropletIds) {
