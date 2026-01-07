@@ -11257,12 +11257,26 @@ app.post('/api/waves/:id/archive', authenticateToken, (req, res) => {
 
 app.post('/api/waves/:id/read', authenticateToken, (req, res) => {
   const waveId = sanitizeInput(req.params.id);
-  console.log(`📖 Marking wave ${waveId} as read for user ${req.user.userId}`);
+  const userId = req.user.userId;
+  console.log(`📖 Marking wave ${waveId} as read for user ${userId}`);
 
-  if (!db.markWaveAsRead(waveId, req.user.userId)) {
+  if (!db.markWaveAsRead(waveId, userId)) {
     console.log(`❌ Failed to mark wave ${waveId} as read`);
     return res.status(404).json({ error: 'Wave not found or access denied' });
   }
+
+  // Mark any notifications for this wave as read
+  const notificationsMarked = db.markNotificationsReadByWave ? db.markNotificationsReadByWave(waveId, userId) : 0;
+  if (notificationsMarked > 0) {
+    console.log(`🔔 Marked ${notificationsMarked} notification(s) as read for wave ${waveId}`);
+  }
+
+  // Broadcast unread count update to ensure notification bell and wave list stay in sync
+  broadcast({ type: 'unread_count_update', userId }, [userId]);
+
+  // Broadcast wave read event so all clients can update
+  broadcast({ type: 'wave_read', waveId, userId }, [userId]);
+
   console.log(`✅ Wave ${waveId} marked as read`);
   res.json({ success: true });
 });
@@ -12416,9 +12430,11 @@ app.post('/api/droplets/:id/read', authenticateToken, (req, res) => {
   const notificationsMarked = db.markNotificationsReadByDroplet(dropletId, userId);
   if (notificationsMarked > 0) {
     console.log(`🔔 Marked ${notificationsMarked} notification(s) as read for droplet ${dropletId}`);
-    // Broadcast notification count update to user
-    broadcast({ type: 'unread_count_update', userId }, [userId]);
   }
+
+  // Always broadcast unread count update to ensure notification bell and wave list stay in sync
+  // This must happen even if there are no notifications, as the ping unread count still changed
+  broadcast({ type: 'unread_count_update', userId }, [userId]);
 
   // Broadcast droplet read event so all clients (including this user) can update wave list
   broadcast({ type: 'droplet_read', dropletId, waveId, userId }, [userId]);
