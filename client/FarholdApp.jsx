@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.1.2';
+const VERSION = '2.2.0';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -3819,7 +3819,256 @@ const NOTIFICATION_BADGE_COLORS = {
   wave_activity: { bg: 'var(--accent-orange)', shadow: 'var(--glow-orange)', icon: null },  // Orange - general activity
 };
 
-const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile, waveNotifications = {} }) => (
+// ============ WAVE CATEGORY LIST (v2.2.0) ============
+const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCategoryToggle, onWaveMove, onWavePin, isMobile, waveNotifications = {} }) => {
+  const [draggedWave, setDraggedWave] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null);
+
+  // Group waves by category
+  const groupedWaves = useMemo(() => {
+    const pinned = waves.filter(w => w.pinned);
+    const uncategorized = waves.filter(w => !w.pinned && !w.category_id);
+
+    const categorized = {};
+    categories.forEach(cat => {
+      categorized[cat.id] = waves.filter(w => !w.pinned && w.category_id === cat.id);
+    });
+
+    return { pinned, uncategorized, categorized };
+  }, [waves, categories]);
+
+  // Calculate unread count for a group of waves
+  const getGroupUnreadCount = (wavesInGroup) => {
+    return wavesInGroup.reduce((sum, wave) => {
+      const notifInfo = waveNotifications[wave.id];
+      return sum + (notifInfo?.count || wave.unread_count || 0);
+    }, 0);
+  };
+
+  // Render a single wave item
+  const renderWaveItem = (wave, showPinButton = false) => {
+    const config = PRIVACY_LEVELS[wave.privacy] || PRIVACY_LEVELS.private;
+    const isSelected = selectedWave?.id === wave.id;
+    const notifInfo = waveNotifications[wave.id];
+    const notifCount = notifInfo?.count || 0;
+    const notifType = notifInfo?.highestType || 'wave_activity';
+    const badgeStyle = NOTIFICATION_BADGE_COLORS[notifType] || NOTIFICATION_BADGE_COLORS.wave_activity;
+    const showNotificationBadge = notifCount > 0;
+    const showUnreadBadge = !showNotificationBadge && wave.unread_count > 0;
+
+    return (
+      <div
+        key={wave.id}
+        draggable={!isMobile}
+        onDragStart={(e) => {
+          if (isMobile) return;
+          setDraggedWave(wave);
+          e.dataTransfer.effectAllowed = 'move';
+          e.currentTarget.style.opacity = '0.5';
+        }}
+        onDragEnd={(e) => {
+          if (isMobile) return;
+          e.currentTarget.style.opacity = '1';
+          setDraggedWave(null);
+          setDropTarget(null);
+        }}
+        onClick={() => onSelectWave(wave)}
+        onMouseEnter={(e) => {
+          if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)';
+        }}
+        onMouseLeave={(e) => {
+          if (!isSelected) e.currentTarget.style.background = 'transparent';
+        }}
+        style={{
+          padding: '12px 16px',
+          cursor: isMobile ? 'pointer' : 'move',
+          background: isSelected ? 'var(--accent-amber)10' : (showNotificationBadge ? `${badgeStyle.bg}08` : 'transparent'),
+          borderBottom: '1px solid var(--bg-hover)',
+          borderLeft: `3px solid ${showNotificationBadge ? badgeStyle.bg : (isSelected ? config.color : 'transparent')}`,
+          transition: 'background 0.2s ease',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', alignItems: 'center' }}>
+          <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: '8px' }}>
+            {wave.is_archived && '📦 '}
+            {showPinButton && wave.pinned && '📌 '}
+            {wave.title}
+          </div>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+            {showPinButton && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onWavePin(wave.id, !wave.pinned);
+                }}
+                title={wave.pinned ? 'Unpin wave' : 'Pin wave'}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: wave.pinned ? 'var(--accent-amber)' : 'var(--text-dim)',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  padding: '2px 4px',
+                }}
+              >
+                {wave.pinned ? '📌' : '📍'}
+              </button>
+            )}
+            {showNotificationBadge && (
+              <span style={{
+                background: badgeStyle.bg,
+                color: '#000',
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                padding: '2px 6px',
+                borderRadius: '10px',
+                boxShadow: `0 0 8px ${badgeStyle.shadow}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px',
+              }}>
+                {badgeStyle.icon && <span style={{ fontSize: '0.7rem' }}>{badgeStyle.icon}</span>}
+                {notifCount}
+              </span>
+            )}
+            {showUnreadBadge && (
+              <span style={{
+                background: 'var(--accent-orange)',
+                color: '#fff',
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                padding: '2px 6px',
+                borderRadius: '10px',
+                boxShadow: '0 0 8px var(--glow-orange)',
+              }}>{wave.unread_count}</span>
+            )}
+            <span style={{ color: config.color }}>{config.icon}</span>
+          </div>
+        </div>
+        <div style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.85rem' : '0.7rem' }}>
+          {wave.creator_name || 'Unknown'} • {wave.ping_count || 0} pings
+          {wave.crew_name && <span> • {wave.crew_name}</span>}
+        </div>
+      </div>
+    );
+  };
+
+  // Render drop zone for category
+  const renderDropZone = (categoryId, categoryName) => {
+    if (isMobile || !draggedWave) return null;
+
+    const isOver = dropTarget === categoryId;
+
+    return (
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          setDropTarget(categoryId);
+        }}
+        onDragLeave={() => {
+          setDropTarget(null);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (draggedWave) {
+            onWaveMove(draggedWave.id, categoryId);
+          }
+          setDropTarget(null);
+        }}
+        style={{
+          padding: '8px',
+          margin: '4px 8px',
+          background: isOver ? 'var(--accent-green)20' : 'transparent',
+          border: isOver ? '2px dashed var(--accent-green)' : '2px dashed transparent',
+          borderRadius: '4px',
+          fontSize: '0.7rem',
+          color: 'var(--text-muted)',
+          textAlign: 'center',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        {isOver ? `Drop to move to ${categoryName}` : ''}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto' }}>
+      {/* Pinned Section */}
+      {groupedWaves.pinned.length > 0 && (
+        <div style={{ marginBottom: '8px' }}>
+          <CollapsibleSection
+            title="PINNED"
+            badge={groupedWaves.pinned.length.toString()}
+            defaultOpen={true}
+            titleColor="var(--accent-amber)"
+            accentColor="var(--accent-amber)"
+            isMobile={isMobile}
+          >
+            {renderDropZone('__pinned__', 'Pinned')}
+            {groupedWaves.pinned.map(wave => renderWaveItem(wave, true))}
+          </CollapsibleSection>
+        </div>
+      )}
+
+      {/* Category Sections */}
+      {categories.map(category => {
+        const categoryWaves = groupedWaves.categorized[category.id] || [];
+        const unreadCount = getGroupUnreadCount(categoryWaves);
+
+        return (
+          <div key={category.id} style={{ marginBottom: '8px' }}>
+            <CollapsibleSection
+              title={category.name.toUpperCase()}
+              badge={categoryWaves.length > 0 ? `${categoryWaves.length}${unreadCount > 0 ? ` (${unreadCount})` : ''}` : '0'}
+              isOpen={!category.collapsed}
+              onToggle={() => onCategoryToggle(category.id, !category.collapsed)}
+              titleColor={category.color}
+              accentColor={category.color}
+              isMobile={isMobile}
+            >
+              {renderDropZone(category.id, category.name)}
+              {categoryWaves.length === 0 ? (
+                <div style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.75rem', textAlign: 'center' }}>
+                  No waves in this category
+                </div>
+              ) : (
+                categoryWaves.map(wave => renderWaveItem(wave, true))
+              )}
+            </CollapsibleSection>
+          </div>
+        );
+      })}
+
+      {/* Uncategorized Section */}
+      {groupedWaves.uncategorized.length > 0 && (
+        <div style={{ marginBottom: '8px' }}>
+          <CollapsibleSection
+            title="UNCATEGORIZED"
+            badge={groupedWaves.uncategorized.length.toString()}
+            defaultOpen={true}
+            titleColor="var(--text-dim)"
+            accentColor="var(--border-primary)"
+            isMobile={isMobile}
+          >
+            {renderDropZone(null, 'Uncategorized')}
+            {groupedWaves.uncategorized.map(wave => renderWaveItem(wave, true))}
+          </CollapsibleSection>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {waves.length === 0 && (
+        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          {EMPTY.noWavesCreate}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile, waveNotifications = {}, onCategoryToggle, onWaveMove, onWavePin, onManageCategories }) => (
   <div style={{
     width: isMobile ? '100%' : '300px',
     minWidth: isMobile ? 'auto' : '280px',
@@ -3829,7 +4078,24 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
   }}>
     <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
       <GlowText color="var(--accent-amber)" size={isMobile ? '1rem' : '0.9rem'}>WAVES</GlowText>
-      <div style={{ display: 'flex', gap: '8px' }}>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {!isMobile && categories.length > 0 && (
+          <button
+            onClick={onManageCategories}
+            title="Manage categories"
+            style={{
+              padding: '6px 10px',
+              background: 'transparent',
+              border: '1px solid var(--border-primary)',
+              color: 'var(--text-dim)',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '0.7rem',
+            }}
+          >
+            ⚙ MANAGE
+          </button>
+        )}
         <button
           onClick={onToggleArchived}
           title={showArchived ? 'Show active waves' : 'Show archived waves'}
@@ -3850,12 +4116,25 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
         }}>+ NEW</button>
       </div>
     </div>
-    <div style={{ flex: 1, overflowY: 'auto' }}>
-      {waves.length === 0 ? (
-        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          {showArchived ? 'No archived waves' : EMPTY.noWavesCreate}
-        </div>
-      ) : waves.map(wave => {
+    {categories.length > 0 ? (
+      <WaveCategoryList
+        waves={waves}
+        categories={categories}
+        selectedWave={selectedWave}
+        onSelectWave={onSelectWave}
+        onCategoryToggle={onCategoryToggle}
+        onWaveMove={onWaveMove}
+        onWavePin={onWavePin}
+        isMobile={isMobile}
+        waveNotifications={waveNotifications}
+      />
+    ) : (
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {waves.length === 0 ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            {showArchived ? 'No archived waves' : EMPTY.noWavesCreate}
+          </div>
+        ) : waves.map(wave => {
         const config = PRIVACY_LEVELS[wave.privacy] || PRIVACY_LEVELS.private;
         const isSelected = selectedWave?.id === wave.id;
         // Get notification info for this wave (priority-based type from server)
@@ -3928,7 +4207,8 @@ const WaveList = ({ waves, selectedWave, onSelectWave, onNewWave, showArchived, 
           </div>
         );
       })}
-    </div>
+      </div>
+    )}
   </div>
 );
 
@@ -5072,6 +5352,243 @@ const RippledLinkCard = ({ droplet, waveTitle, onClick, isMobile, unreadCount = 
       }}>
         <span>→</span>
         <span>Click to open</span>
+      </div>
+    </div>
+  );
+};
+
+// ============ CATEGORY MANAGEMENT MODAL (v2.2.0) ============
+const CategoryManagementModal = ({ isOpen, onClose, categories, fetchAPI, showToast, onCategoriesChange, isMobile }) => {
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState('var(--accent-green)');
+
+  const colorOptions = [
+    { label: 'Green', value: 'var(--accent-green)' },
+    { label: 'Amber', value: 'var(--accent-amber)' },
+    { label: 'Orange', value: 'var(--accent-orange)' },
+    { label: 'Teal', value: 'var(--accent-teal)' },
+    { label: 'Purple', value: 'var(--accent-purple)' },
+  ];
+
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) {
+      showToast('Category name is required', 'error');
+      return;
+    }
+
+    try {
+      const data = await fetchAPI('/wave-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: {
+          name: newCategoryName.trim(),
+          color: newCategoryColor,
+        },
+      });
+
+      showToast('Category created successfully', 'success');
+      setNewCategoryName('');
+      setNewCategoryColor('var(--accent-green)');
+      onCategoriesChange();
+    } catch (error) {
+      showToast(error.message || 'Failed to create category', 'error');
+    }
+  };
+
+  const handleUpdateCategory = async (categoryId, updates) => {
+    try {
+      await fetchAPI(`/wave-categories/${categoryId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: updates,
+      });
+
+      showToast('Category updated successfully', 'success');
+      setEditingCategory(null);
+      onCategoriesChange();
+    } catch (error) {
+      showToast(error.message || 'Failed to update category', 'error');
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId) => {
+    if (!confirm('Delete this category? Waves in it will move to Uncategorized.')) {
+      return;
+    }
+
+    try {
+      await fetchAPI(`/wave-categories/${categoryId}`, {
+        method: 'DELETE',
+      });
+
+      showToast('Category deleted successfully', 'success');
+      onCategoriesChange();
+    } catch (error) {
+      showToast(error.message || 'Failed to delete category', 'error');
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 10000, padding: isMobile ? '16px' : '20px',
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--bg-elevated)', border: '1px solid var(--accent-green)',
+        borderRadius: '4px', padding: isMobile ? '20px' : '28px',
+        maxWidth: '600px', width: '100%', maxHeight: '85vh', overflow: 'auto',
+        boxShadow: '0 0 30px var(--glow-green)',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <GlowText color="var(--accent-green)" size="1.2rem">MANAGE CATEGORIES</GlowText>
+          <button onClick={onClose} style={{
+            background: 'transparent', border: 'none', color: 'var(--text-dim)',
+            cursor: 'pointer', fontSize: '1.5rem', padding: '4px 8px',
+          }}>×</button>
+        </div>
+
+        {/* Create New Category */}
+        <div style={{
+          padding: '16px', background: 'var(--bg-hover)',
+          border: '1px solid var(--border-subtle)', borderRadius: '4px', marginBottom: '24px',
+        }}>
+          <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: '12px', fontSize: '0.9rem' }}>
+            Create New Category
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <input
+              type="text"
+              placeholder="Category name (e.g., Work, Personal)"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              maxLength={50}
+              style={{
+                padding: '10px', background: 'var(--bg-primary)', color: 'var(--text-primary)',
+                border: '1px solid var(--border-primary)', borderRadius: '4px',
+                fontFamily: 'monospace', fontSize: '0.85rem',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {colorOptions.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setNewCategoryColor(opt.value)}
+                  style={{
+                    padding: '8px 12px', background: newCategoryColor === opt.value ? `${opt.value}30` : 'transparent',
+                    border: `2px solid ${opt.value}`,
+                    color: opt.value, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+                    borderRadius: '4px',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={handleCreateCategory}
+              style={{
+                padding: '10px', background: 'var(--accent-green)20',
+                border: '1px solid var(--accent-green)', color: 'var(--accent-green)',
+                cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.85rem', borderRadius: '4px',
+              }}
+            >
+              + CREATE
+            </button>
+          </div>
+        </div>
+
+        {/* Existing Categories */}
+        <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: '12px', fontSize: '0.9rem' }}>
+          Your Categories ({categories.length})
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {categories.map(category => (
+            <div
+              key={category.id}
+              style={{
+                padding: '14px', background: 'var(--bg-hover)',
+                border: `1px solid ${category.color}40`, borderRadius: '4px',
+                borderLeft: `4px solid ${category.color}`,
+              }}
+            >
+              {editingCategory === category.id ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <input
+                    type="text"
+                    defaultValue={category.name}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() && e.target.value !== category.name) {
+                        handleUpdateCategory(category.id, { name: e.target.value.trim() });
+                      } else {
+                        setEditingCategory(null);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.target.blur();
+                      } else if (e.key === 'Escape') {
+                        setEditingCategory(null);
+                      }
+                    }}
+                    autoFocus
+                    maxLength={50}
+                    style={{
+                      padding: '8px', background: 'var(--bg-primary)', color: 'var(--text-primary)',
+                      border: '1px solid var(--border-primary)', borderRadius: '4px',
+                      fontFamily: 'monospace', fontSize: '0.85rem',
+                    }}
+                  />
+                </div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                    <span style={{ color: category.color, fontSize: '1.2rem' }}>●</span>
+                    <div>
+                      <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 500 }}>
+                        {category.name}
+                      </div>
+                      <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', fontFamily: 'monospace' }}>
+                        {category.waveCount} wave{category.waveCount !== 1 ? 's' : ''}
+                        {category.unreadCount > 0 && ` • ${category.unreadCount} unread`}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => setEditingCategory(category.id)}
+                      title="Rename category"
+                      style={{
+                        background: 'transparent', border: 'none', color: 'var(--text-dim)',
+                        cursor: 'pointer', fontSize: '0.9rem', padding: '4px 8px',
+                      }}
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCategory(category.id)}
+                      title="Delete category"
+                      style={{
+                        background: 'transparent', border: 'none', color: 'var(--text-dim)',
+                        cursor: 'pointer', fontSize: '0.9rem', padding: '4px 8px',
+                      }}
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {categories.length === 0 && (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              No categories yet. Create one above to get started!
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -16106,6 +16623,8 @@ function MainApp({ shareDropletId }) {
   const [waveNotifications, setWaveNotifications] = useState({}); // Notification counts/types by wave ID
   const [selectedAlert, setSelectedAlert] = useState(null); // Alert to show in detail modal
   const [footerTagline, setFooterTagline] = useState(getRandomTagline()); // Rotating Firefly tagline
+  const [waveCategories, setWaveCategories] = useState([]); // User's wave categories (v2.2.0)
+  const [categoryManagementOpen, setCategoryManagementOpen] = useState(false); // Category management modal (v2.2.0)
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
@@ -16229,6 +16748,70 @@ function MainApp({ shareDropletId }) {
     }
   }, [fetchAPI, showArchived]);
 
+  // Load wave categories (v2.2.0)
+  const loadCategories = useCallback(async () => {
+    console.log('📁 loadCategories called');
+    try {
+      const data = await fetchAPI('/wave-categories');
+      console.log('📁 loadCategories received', data.length, 'categories');
+      setWaveCategories(data);
+    } catch (err) {
+      console.error('loadCategories failed:', err);
+    }
+  }, [fetchAPI]);
+
+  // Handle category toggle (collapse/expand)
+  const handleCategoryToggle = useCallback(async (categoryId, collapsed) => {
+    try {
+      await fetchAPI(`/wave-categories/${categoryId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: { collapsed },
+      });
+      // Update local state immediately for responsiveness
+      setWaveCategories(prev => prev.map(cat =>
+        cat.id === categoryId ? { ...cat, collapsed } : cat
+      ));
+    } catch (err) {
+      console.error('Failed to toggle category:', err);
+    }
+  }, [fetchAPI]);
+
+  // Handle wave move between categories (drag-and-drop)
+  const handleWaveMove = useCallback(async (waveId, categoryId) => {
+    try {
+      await fetchAPI(`/waves/${waveId}/category`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: { category_id: categoryId },
+      });
+      // Reload waves to reflect new category
+      loadWaves();
+      loadCategories();
+    } catch (err) {
+      console.error('Failed to move wave:', err);
+      showToastMsg('Failed to move wave', 'error');
+    }
+  }, [fetchAPI, loadWaves, loadCategories, showToastMsg]);
+
+  // Handle wave pin/unpin
+  const handleWavePin = useCallback(async (waveId, pinned) => {
+    try {
+      await fetchAPI(`/waves/${waveId}/pin`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: { pinned },
+      });
+      // Update local state immediately
+      setWaves(prev => prev.map(w =>
+        w.id === waveId ? { ...w, pinned } : w
+      ));
+    } catch (err) {
+      console.error('Failed to pin/unpin wave:', err);
+      showToastMsg('Failed to update wave', 'error');
+    }
+  }, [fetchAPI, showToastMsg]);
+
   const handleWSMessage = useCallback((data) => {
     // Handle droplet read events - refresh wave list to update unread counts
     if (data.type === 'droplet_read' || data.type === 'message_read') {
@@ -16327,6 +16910,15 @@ function MainApp({ shareDropletId }) {
       // We were added to a wave
       showToastMsg(`You were added to "${data.wave?.title || 'a wave'}"`, 'success');
       loadWaves();
+    } else if (data.type === 'category_created' || data.type === 'category_updated' || data.type === 'category_deleted' || data.type === 'categories_reordered') {
+      // Category management events (v2.2.0)
+      console.log(`📁 Category event: ${data.type}`);
+      loadCategories();
+    } else if (data.type === 'wave_category_changed' || data.type === 'wave_pinned_changed') {
+      // Wave organization events (v2.2.0)
+      console.log(`📌 Wave organization event: ${data.type}`);
+      loadWaves();
+      loadCategories();
     } else if (data.type === 'removed_from_wave') {
       // We were removed from a wave (by someone else)
       showToastMsg(`You were removed from "${data.wave?.title || 'a wave'}"`, 'info');
@@ -16618,6 +17210,7 @@ function MainApp({ shareDropletId }) {
 
   useEffect(() => {
     loadWaves();
+    loadCategories();
     loadContacts();
     loadGroups();
     loadContactRequests();
@@ -16628,7 +17221,7 @@ function MainApp({ shareDropletId }) {
     fetch(`${API_URL}/federation/identity`)
       .then(res => setFederationEnabled(res.ok))
       .catch(() => setFederationEnabled(false));
-  }, [loadWaves, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications]);
+  }, [loadWaves, loadCategories, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications]);
 
   // Rotate footer tagline every 30 seconds
   useEffect(() => {
@@ -16951,10 +17544,21 @@ function MainApp({ shareDropletId }) {
         {activeView === 'waves' && (
           <>
             {(!isMobile || !selectedWave) && (
-              <WaveList waves={waves} selectedWave={selectedWave}
-                onSelectWave={setSelectedWave} onNewWave={() => setShowNewWave(true)}
-                showArchived={showArchived} onToggleArchived={() => { setShowArchived(!showArchived); loadWaves(); }}
-                isMobile={isMobile} waveNotifications={waveNotifications} />
+              <WaveList
+                waves={waves}
+                categories={waveCategories}
+                selectedWave={selectedWave}
+                onSelectWave={setSelectedWave}
+                onNewWave={() => setShowNewWave(true)}
+                showArchived={showArchived}
+                onToggleArchived={() => { setShowArchived(!showArchived); loadWaves(); }}
+                isMobile={isMobile}
+                waveNotifications={waveNotifications}
+                onCategoryToggle={handleCategoryToggle}
+                onWaveMove={handleWaveMove}
+                onWavePin={handleWavePin}
+                onManageCategories={() => setCategoryManagementOpen(true)}
+              />
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
               {selectedWave && focusStack.length > 0 ? (
@@ -17098,6 +17702,16 @@ function MainApp({ shareDropletId }) {
           isMobile={isMobile}
         />
       )}
+
+      <CategoryManagementModal
+        isOpen={categoryManagementOpen}
+        onClose={() => setCategoryManagementOpen(false)}
+        categories={waveCategories}
+        fetchAPI={fetchAPI}
+        showToast={showToastMsg}
+        onCategoriesChange={loadCategories}
+        isMobile={isMobile}
+      />
 
       <UserProfileModal
         isOpen={!!profileUserId}

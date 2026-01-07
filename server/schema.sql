@@ -75,7 +75,32 @@ CREATE TABLE IF NOT EXISTS wave_participants (
     joined_at TEXT NOT NULL,
     archived INTEGER DEFAULT 0,
     last_read TEXT,
+    pinned INTEGER DEFAULT 0,  -- v2.2.0: Pin wave to top of list
     PRIMARY KEY (wave_id, user_id)
+);
+
+-- ============ Wave Organization (v2.2.0) ============
+
+-- User-defined wave categories for organizing wave list
+CREATE TABLE IF NOT EXISTS wave_categories (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    color TEXT DEFAULT 'var(--accent-green)',
+    sort_order INTEGER DEFAULT 0,
+    collapsed INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(user_id, name)
+);
+
+-- Wave category assignments (which wave belongs to which category for each user)
+CREATE TABLE IF NOT EXISTS wave_category_assignments (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+    category_id TEXT REFERENCES wave_categories(id) ON DELETE SET NULL,
+    assigned_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, wave_id)
 );
 
 -- ============ Pings (formerly Droplets/Messages) ============
@@ -404,6 +429,14 @@ CREATE INDEX IF NOT EXISTS idx_waves_broken_out_from ON waves(broken_out_from);
 CREATE INDEX IF NOT EXISTS idx_wave_participants_user ON wave_participants(user_id);
 CREATE INDEX IF NOT EXISTS idx_wave_participants_wave ON wave_participants(wave_id);
 CREATE INDEX IF NOT EXISTS idx_wave_participants_archived ON wave_participants(user_id, archived);
+CREATE INDEX IF NOT EXISTS idx_wave_participants_pinned ON wave_participants(user_id, pinned) WHERE pinned = 1;
+
+-- Wave category lookups (v2.2.0)
+CREATE INDEX IF NOT EXISTS idx_wave_categories_user ON wave_categories(user_id);
+CREATE INDEX IF NOT EXISTS idx_wave_categories_sort ON wave_categories(user_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_wave_category_assignments_user ON wave_category_assignments(user_id);
+CREATE INDEX IF NOT EXISTS idx_wave_category_assignments_category ON wave_category_assignments(category_id);
+CREATE INDEX IF NOT EXISTS idx_wave_category_assignments_wave ON wave_category_assignments(wave_id);
 
 -- Ping lookups (formerly droplet lookups)
 CREATE INDEX IF NOT EXISTS idx_pings_wave ON pings(wave_id);
