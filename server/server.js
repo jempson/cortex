@@ -3961,6 +3961,7 @@ if (!ALLOWED_ORIGINS && process.env.NODE_ENV === 'production') {
 }
 
 app.use(express.json({ limit: '100kb' }));
+
 app.use('/api/', apiLimiter);
 app.set('trust proxy', 1);
 
@@ -11350,6 +11351,49 @@ app.post('/api/wave-categories', authenticateToken, (req, res) => {
   }
 });
 
+// Reorder categories (MUST be before :id route to avoid matching "reorder" as an id)
+app.put('/api/wave-categories/reorder', authenticateToken, (req, res) => {
+  const { categories } = req.body;
+
+  if (!Array.isArray(categories)) {
+    return res.status(400).json({ error: 'Categories must be an array' });
+  }
+
+  try {
+    const categoryOrders = categories.map(c => ({
+      id: sanitizeInput(c.id),
+      sortOrder: parseInt(c.sortOrder)
+    }));
+
+    const result = db.reorderCategories(req.user.userId, categoryOrders);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Broadcast reorder to user
+    const userClients = clients.get(req.user.userId);
+    if (userClients) {
+      userClients.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'categories_reordered',
+            categories: categoryOrders
+          }));
+        }
+      });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'reorder_categories', 'wave_category', null, getRequestMeta(req));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error reordering categories:', error);
+    res.status(500).json({ error: 'Failed to reorder categories' });
+  }
+});
+
 // Update a category
 app.put('/api/wave-categories/:id', authenticateToken, (req, res) => {
   const categoryId = sanitizeInput(req.params.id);
@@ -11430,46 +11474,6 @@ app.delete('/api/wave-categories/:id', authenticateToken, (req, res) => {
   } catch (error) {
     console.error('Error deleting category:', error);
     res.status(500).json({ error: 'Failed to delete category' });
-  }
-});
-
-// Reorder categories
-app.put('/api/wave-categories/reorder', authenticateToken, (req, res) => {
-  const { categories } = req.body;
-
-  if (!Array.isArray(categories)) {
-    return res.status(400).json({ error: 'Categories must be an array' });
-  }
-
-  try {
-    const categoryOrders = categories.map(c => ({
-      id: sanitizeInput(c.id),
-      sortOrder: parseInt(c.sortOrder)
-    }));
-
-    const result = db.reorderCategories(req.user.userId, categoryOrders);
-
-    if (!result.success) {
-      return res.status(400).json({ error: result.error });
-    }
-
-    // Broadcast reorder to user
-    const userClients = clients.get(req.user.userId);
-    if (userClients) {
-      userClients.forEach(ws => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'categories_reordered',
-            categories: categoryOrders
-          }));
-        }
-      });
-    }
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error reordering categories:', error);
-    res.status(500).json({ error: 'Failed to reorder categories' });
   }
 });
 
