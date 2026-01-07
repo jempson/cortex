@@ -1,7 +1,7 @@
 # Farhold - Outstanding Features & Future Roadmap
 
-**Last Updated:** January 3, 2026
-**Current Version:** v2.0.0
+**Last Updated:** January 7, 2026
+**Current Version:** v2.2.2
 
 This document tracks planned but not-yet-implemented features for future releases.
 
@@ -92,6 +92,21 @@ The following features have been implemented and are no longer outstanding:
 | **Restrictive CORS** | v1.18.0 | Strict CORS by default, requires ALLOWED_ORIGINS in production |
 | **Farhold Rebrand** | v2.0.0 | Complete nomenclature overhaul: Cortex→Farhold, Droplet→Ping, Ripple→Burst, Group→Crew |
 | **API Aliases** | v2.0.0 | /api/pings/* and /api/crews/* endpoints with backward compatibility |
+| **End-to-End Encryption** | v2.1.0 | ECDH P-384 + AES-256-GCM for wave and ping encryption |
+| **Encryption Keys UI** | v2.1.0 | Key management interface with generation and rotation |
+| **Encrypted Waves** | v2.1.0 | Per-wave encryption with key distribution |
+| **Encrypted Pings** | v2.1.0 | Client-side encryption/decryption with nonce and keyVersion |
+| **Encrypted Burst Waves** | v2.1.2 | Burst waves inherit parent encryption keys |
+| **Bot System** | v2.1.0 | Create bots with API keys for automated posting |
+| **Bot Permissions** | v2.1.0 | Per-wave access control for bots |
+| **Bot Rate Limiting** | v2.1.0 | Separate rate limits for bot API calls |
+| **Wave Categories** | v2.2.0 | User-defined categories to organize waves |
+| **Pinned Waves** | v2.2.0 | Pin important waves to top of wave list |
+| **Collapsible Groups** | v2.2.0 | Collapse/expand categories with persistent state |
+| **Group-Level Notifications** | v2.2.0 | Unread count badges at category level |
+| **Drag-and-Drop Organization** | v2.2.0 | Move waves between categories (desktop) |
+| **Mobile Wave Organization** | v2.2.1 | 3-dot menu for mobile/PWA wave management |
+| **Read/Unread Sync Fix** | v2.2.2 | Fixed critical synchronization issues |
 
 ---
 
@@ -137,14 +152,20 @@ Enhanced search with advanced filters and boolean operators.
 
 ### 3. End-to-End Encryption for Federation
 **Complexity:** High
+**Status:** Partially Complete (v2.1.0 - local E2E encryption implemented)
 
-Encrypt federated messages so only participants can read them.
+Extend E2E encryption to federated messages between servers.
 
 **Requirements:**
-- Key exchange between federated users
-- Client-side encryption/decryption
-- Key rotation and recovery
-- Backward compatibility with non-E2E waves
+- Key exchange between federated users across different servers
+- Secure key distribution via federation protocol
+- Maintain encryption across server boundaries
+- Handle key rotation for multi-server participants
+
+**Current Status:**
+- ✅ Local E2E encryption working (v2.1.0)
+- ❌ Federated E2E encryption not yet implemented
+- Note: Federated waves currently send encrypted content but keys are not exchanged between servers
 
 ---
 

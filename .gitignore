@@ -6,6 +6,9 @@ package-lock.json
 server/data/
 server/cortex-data.json
 server/cortex-data.json.backup
+server/*.db
+server/*.db-shm
+server/*.db-wal
 
 # User uploads (avatars, attachments)
 server/uploads/
