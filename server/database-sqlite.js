@@ -1203,6 +1203,100 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Bot_id column added to pings table');
     }
+
+    // v2.2.0 - Wave Categories and Organization
+    const waveCategoriesExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='wave_categories'
+    `).get();
+
+    if (!waveCategoriesExists) {
+      console.log('📝 Adding wave organization features (v2.2.0)...');
+
+      // Check if pinned column already exists before adding it
+      const waveParticipantColumns = this.db.prepare(`PRAGMA table_info(wave_participants)`).all();
+      const hasPinnedColumn = waveParticipantColumns.some(c => c.name === 'pinned');
+
+      if (!hasPinnedColumn) {
+        console.log('  → Adding pinned column to wave_participants...');
+        this.db.exec(`
+          ALTER TABLE wave_participants ADD COLUMN pinned INTEGER DEFAULT 0;
+        `);
+        console.log('    ✓ Added pinned column');
+      }
+
+      // Create wave_categories table
+      console.log('  → Creating wave_categories table...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS wave_categories (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          color TEXT DEFAULT 'var(--accent-green)',
+          sort_order INTEGER DEFAULT 0,
+          collapsed INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(user_id, name)
+        );
+      `);
+      console.log('    ✓ Created wave_categories table');
+
+      // Create wave_category_assignments table
+      console.log('  → Creating wave_category_assignments table...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS wave_category_assignments (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+          category_id TEXT REFERENCES wave_categories(id) ON DELETE SET NULL,
+          assigned_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, wave_id)
+        );
+      `);
+      console.log('    ✓ Created wave_category_assignments table');
+
+      // Create indexes
+      console.log('  → Creating indexes...');
+      this.db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_wave_participants_pinned
+        ON wave_participants(user_id, pinned) WHERE pinned = 1;
+
+        CREATE INDEX IF NOT EXISTS idx_wave_categories_user
+        ON wave_categories(user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_wave_categories_sort
+        ON wave_categories(user_id, sort_order);
+
+        CREATE INDEX IF NOT EXISTS idx_wave_category_assignments_user
+        ON wave_category_assignments(user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_wave_category_assignments_category
+        ON wave_category_assignments(category_id);
+
+        CREATE INDEX IF NOT EXISTS idx_wave_category_assignments_wave
+        ON wave_category_assignments(wave_id);
+      `);
+      console.log('    ✓ Created indexes');
+
+      // Create default "General" category for all existing users
+      console.log('  → Creating default "General" category for existing users...');
+      const users = this.db.prepare('SELECT id FROM users').all();
+      const now = new Date().toISOString();
+
+      const insertCategory = this.db.prepare(`
+        INSERT INTO wave_categories (id, user_id, name, color, sort_order, collapsed, created_at, updated_at)
+        VALUES (?, ?, 'General', 'var(--accent-green)', 0, 0, ?, ?)
+      `);
+
+      let categoryCount = 0;
+      for (const user of users) {
+        const categoryId = `cat-${uuidv4()}`;
+        insertCategory.run(categoryId, user.id, now, now);
+        categoryCount++;
+      }
+
+      console.log(`    ✓ Created ${categoryCount} default categories`);
+      console.log('✅ Wave organization features added (v2.2.0)');
+    }
   }
 
   prepareStatements() {
@@ -3219,14 +3313,17 @@ export class DatabaseSQLite {
     // Build wave query
     // Note: federated participant waves (crossServer with federation_state='participant') are shown to all local users
     let sql = `
-      SELECT w.*, wp.archived, wp.last_read,
+      SELECT w.*, wp.archived, wp.last_read, wp.pinned,
         u.display_name as creator_name, u.avatar as creator_avatar, u.handle as creator_handle,
         cr.name as crew_name,
+        wca.category_id, wc.name as category_name,
         (SELECT COUNT(*) FROM pings WHERE wave_id = w.id) as ping_count
       FROM waves w
       LEFT JOIN wave_participants wp ON w.id = wp.wave_id AND wp.user_id = ?
       LEFT JOIN users u ON w.created_by = u.id
       LEFT JOIN crews cr ON w.crew_id = cr.id
+      LEFT JOIN wave_category_assignments wca ON w.id = wca.wave_id AND wca.user_id = ?
+      LEFT JOIN wave_categories wc ON wca.category_id = wc.id
       WHERE (
         w.privacy = 'public'
         OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
@@ -3238,7 +3335,7 @@ export class DatabaseSQLite {
       )
     `;
 
-    const params = [userId, ...userCrewIds];
+    const params = [userId, userId, ...userCrewIds];
 
     // When showArchived=true, return ONLY archived waves
     // When showArchived=false, return ONLY non-archived waves
@@ -3294,6 +3391,9 @@ export class DatabaseSQLite {
         federationState: r.federation_state || 'local',
         originNode: r.origin_node || null,
         originWaveId: r.origin_wave_id || null,
+        category_id: r.category_id || null,
+        category_name: r.category_name || null,
+        pinned: r.pinned === 1,
       };
     });
   }
@@ -3766,6 +3866,239 @@ export class DatabaseSQLite {
         keyVersion: d.key_version,
       };
     });
+  }
+
+  // ============ Wave Category Methods (v2.2.0) ============
+
+  // Get all categories for a user with wave counts and unread counts
+  getCategoriesForUser(userId) {
+    const categories = this.db.prepare(`
+      SELECT wc.*,
+        (SELECT COUNT(*) FROM wave_category_assignments wca WHERE wca.category_id = wc.id) as wave_count,
+        (SELECT COUNT(DISTINCT wca.wave_id)
+         FROM wave_category_assignments wca
+         JOIN waves w ON wca.wave_id = w.id
+         JOIN wave_participants wp ON w.id = wp.wave_id AND wp.user_id = ?
+         WHERE wca.category_id = wc.id
+           AND EXISTS (
+             SELECT 1 FROM pings p
+             WHERE p.wave_id = w.id
+               AND p.deleted = 0
+               AND p.author_id != ?
+               AND NOT EXISTS (SELECT 1 FROM ping_read_by prb WHERE prb.ping_id = p.id AND prb.user_id = ?)
+           )
+        ) as unread_count
+      FROM wave_categories wc
+      WHERE wc.user_id = ?
+      ORDER BY wc.sort_order ASC, wc.created_at ASC
+    `).all(userId, userId, userId, userId);
+
+    return categories.map(c => ({
+      id: c.id,
+      name: c.name,
+      color: c.color,
+      sortOrder: c.sort_order,
+      collapsed: c.collapsed === 1,
+      waveCount: c.wave_count,
+      unreadCount: c.unread_count,
+      createdAt: c.created_at,
+      updatedAt: c.updated_at,
+    }));
+  }
+
+  // Create a new category
+  createCategory(userId, data) {
+    const now = new Date().toISOString();
+    const id = `cat-${uuidv4()}`;
+
+    // Check for duplicate name
+    const existing = this.db.prepare(`
+      SELECT id FROM wave_categories WHERE user_id = ? AND name = ?
+    `).get(userId, data.name);
+
+    if (existing) {
+      return { success: false, error: 'Category with this name already exists' };
+    }
+
+    // Get max sort_order
+    const maxSort = this.db.prepare(`
+      SELECT MAX(sort_order) as max FROM wave_categories WHERE user_id = ?
+    `).get(userId);
+
+    const sortOrder = (maxSort?.max ?? -1) + 1;
+
+    this.db.prepare(`
+      INSERT INTO wave_categories (id, user_id, name, color, sort_order, collapsed, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(id, userId, data.name, data.color || 'var(--accent-green)', sortOrder, now, now);
+
+    return {
+      success: true,
+      category: {
+        id,
+        name: data.name,
+        color: data.color || 'var(--accent-green)',
+        sortOrder,
+        collapsed: false,
+        createdAt: now,
+        updatedAt: now,
+      },
+    };
+  }
+
+  // Update a category
+  updateCategory(categoryId, userId, data) {
+    const now = new Date().toISOString();
+
+    // Verify ownership
+    const category = this.db.prepare(`
+      SELECT * FROM wave_categories WHERE id = ? AND user_id = ?
+    `).get(categoryId, userId);
+
+    if (!category) {
+      return { success: false, error: 'Category not found or access denied' };
+    }
+
+    // Check for duplicate name if name is being changed
+    if (data.name && data.name !== category.name) {
+      const existing = this.db.prepare(`
+        SELECT id FROM wave_categories WHERE user_id = ? AND name = ? AND id != ?
+      `).get(userId, data.name, categoryId);
+
+      if (existing) {
+        return { success: false, error: 'Category with this name already exists' };
+      }
+    }
+
+    // Build update query dynamically
+    const updates = [];
+    const params = [];
+
+    if (data.name !== undefined) {
+      updates.push('name = ?');
+      params.push(data.name);
+    }
+    if (data.color !== undefined) {
+      updates.push('color = ?');
+      params.push(data.color);
+    }
+    if (data.collapsed !== undefined) {
+      updates.push('collapsed = ?');
+      params.push(data.collapsed ? 1 : 0);
+    }
+
+    updates.push('updated_at = ?');
+    params.push(now);
+
+    params.push(categoryId, userId);
+
+    this.db.prepare(`
+      UPDATE wave_categories
+      SET ${updates.join(', ')}
+      WHERE id = ? AND user_id = ?
+    `).run(...params);
+
+    return { success: true };
+  }
+
+  // Delete a category
+  deleteCategory(categoryId, userId) {
+    // Verify ownership
+    const category = this.db.prepare(`
+      SELECT * FROM wave_categories WHERE id = ? AND user_id = ?
+    `).get(categoryId, userId);
+
+    if (!category) {
+      return { success: false, error: 'Category not found or access denied' };
+    }
+
+    // Check if it's the only category
+    const categoryCount = this.db.prepare(`
+      SELECT COUNT(*) as count FROM wave_categories WHERE user_id = ?
+    `).get(userId).count;
+
+    if (categoryCount <= 1) {
+      return { success: false, error: 'Cannot delete the last category' };
+    }
+
+    // Delete category (CASCADE will set category_id to NULL in assignments)
+    this.db.prepare('DELETE FROM wave_categories WHERE id = ?').run(categoryId);
+
+    return { success: true };
+  }
+
+  // Reorder categories
+  reorderCategories(userId, categoryOrders) {
+    const stmt = this.db.prepare(`
+      UPDATE wave_categories
+      SET sort_order = ?, updated_at = ?
+      WHERE id = ? AND user_id = ?
+    `);
+
+    const now = new Date().toISOString();
+
+    for (const { id, sortOrder } of categoryOrders) {
+      stmt.run(sortOrder, now, id, userId);
+    }
+
+    return { success: true };
+  }
+
+  // Assign wave to category
+  assignWaveToCategory(waveId, userId, categoryId) {
+    const now = new Date().toISOString();
+
+    // Verify category ownership if category_id is not null
+    if (categoryId !== null) {
+      const category = this.db.prepare(`
+        SELECT id FROM wave_categories WHERE id = ? AND user_id = ?
+      `).get(categoryId, userId);
+
+      if (!category) {
+        return { success: false, error: 'Category not found or access denied' };
+      }
+    }
+
+    // Insert or update assignment
+    this.db.prepare(`
+      INSERT INTO wave_category_assignments (user_id, wave_id, category_id, assigned_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, wave_id) DO UPDATE SET
+        category_id = excluded.category_id,
+        assigned_at = excluded.assigned_at
+    `).run(userId, waveId, categoryId, now);
+
+    return { success: true };
+  }
+
+  // Get category assignment for a wave
+  getWaveCategoryAssignment(waveId, userId) {
+    const assignment = this.db.prepare(`
+      SELECT wca.*, wc.name as category_name
+      FROM wave_category_assignments wca
+      LEFT JOIN wave_categories wc ON wca.category_id = wc.id
+      WHERE wca.wave_id = ? AND wca.user_id = ?
+    `).get(waveId, userId);
+
+    if (!assignment) return null;
+
+    return {
+      waveId: assignment.wave_id,
+      categoryId: assignment.category_id,
+      categoryName: assignment.category_name,
+      assignedAt: assignment.assigned_at,
+    };
+  }
+
+  // Pin/unpin wave for user
+  pinWaveForUser(waveId, userId, pinned) {
+    this.db.prepare(`
+      UPDATE wave_participants
+      SET pinned = ?
+      WHERE wave_id = ? AND user_id = ?
+    `).run(pinned ? 1 : 0, waveId, userId);
+
+    return { success: true };
   }
 
   // === Droplet Methods (formerly Message Methods) ===
