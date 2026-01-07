@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.2.1';
+const VERSION = '2.2.2';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -16888,8 +16888,27 @@ function MainApp({ shareDropletId }) {
 
   const showToastMsg = useCallback((message, type) => setToast({ message, type }), []);
 
+  // Debounced loadWaves to prevent multiple simultaneous API calls
+  const loadWavesTimerRef = useRef(null);
+  const loadWavesInProgressRef = useRef(false);
+
   const loadWaves = useCallback(async () => {
+    // Clear any pending debounced call
+    if (loadWavesTimerRef.current) {
+      clearTimeout(loadWavesTimerRef.current);
+      loadWavesTimerRef.current = null;
+    }
+
+    // If already loading, debounce this call
+    if (loadWavesInProgressRef.current) {
+      console.log('🔄 loadWaves already in progress, debouncing...');
+      loadWavesTimerRef.current = setTimeout(loadWaves, 300);
+      return;
+    }
+
     console.log('🔄 loadWaves called, fetching waves...');
+    loadWavesInProgressRef.current = true;
+
     try {
       const data = await fetchAPI(`/waves?archived=${showArchived}`);
       console.log('🔄 loadWaves received', data.length, 'waves');
@@ -16903,6 +16922,8 @@ function MainApp({ shareDropletId }) {
     } catch (err) {
       console.error('loadWaves failed:', err);
       setApiConnected(false);
+    } finally {
+      loadWavesInProgressRef.current = false;
     }
   }, [fetchAPI, showArchived]);
 
@@ -16971,10 +16992,10 @@ function MainApp({ shareDropletId }) {
   }, [fetchAPI, showToastMsg]);
 
   const handleWSMessage = useCallback((data) => {
-    // Handle droplet read events - refresh wave list to update unread counts
-    if (data.type === 'droplet_read' || data.type === 'message_read') {
-      console.log(`📖 Droplet marked as read, refreshing wave list...`);
-      loadWaves();
+    // Handle droplet/wave read events - these are always followed by unread_count_update event
+    // Don't call loadWaves() here to avoid duplicate API calls and race conditions
+    if (data.type === 'droplet_read' || data.type === 'message_read' || data.type === 'wave_read') {
+      console.log(`📖 ${data.type} event received, waiting for unread_count_update...`);
       return;
     }
 

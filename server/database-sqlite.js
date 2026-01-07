@@ -4868,6 +4868,16 @@ export class DatabaseSQLite {
     return result.changes;
   }
 
+  // Mark all notifications for a specific wave as read for a user
+  markNotificationsReadByWave(waveId, userId) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE notifications SET read = 1, read_at = ?
+      WHERE wave_id = ? AND user_id = ? AND read = 0
+    `).run(now, waveId, userId);
+    return result.changes;
+  }
+
   markAllNotificationsRead(userId) {
     const now = new Date().toISOString();
     const result = this.db.prepare(`
