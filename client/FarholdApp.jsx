@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.1.1';
+const VERSION = '2.1.2';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -6223,7 +6223,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           );
           return { ...droplet, content: plaintext, _decrypted: true };
         } catch (err) {
-          console.error('Failed to decrypt droplet:', droplet.id, err);
+          console.error(`❌ Failed to decrypt droplet ${droplet.id}:`, err.message);
           errors[droplet.id] = err.message;
           return { ...droplet, content: '[Unable to decrypt]', _decryptError: true };
         }
