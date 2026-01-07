@@ -3592,18 +3592,14 @@ export class DatabaseSQLite {
         WHERE wave_id = ?
       `).all(originalWaveId);
 
-      console.log(`🔐 Burst: Parent wave ${originalWaveId} has ${parentWaveKeys.length} encryption keys`);
-      let copiedCount = 0;
       for (const key of parentWaveKeys) {
         if (participantSet.has(key.user_id)) {
           this.db.prepare(`
             INSERT OR IGNORE INTO wave_encryption_keys (id, wave_id, user_id, encrypted_wave_key, sender_public_key, key_version, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
           `).run(`wavekey-${uuidv4()}`, newWaveId, key.user_id, key.encrypted_wave_key, key.sender_public_key, key.key_version, now);
-          copiedCount++;
         }
       }
-      console.log(`🔐 Burst: Copied ${copiedCount} encryption keys to burst wave ${newWaveId}`);
     }
 
     // Move all droplets to the new wave (update wave_id, set original_wave_id)
