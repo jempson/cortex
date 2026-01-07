@@ -4029,13 +4029,25 @@ export class DatabaseSQLite {
 
   // Reorder categories
   reorderCategories(userId, categoryOrders) {
+    const now = new Date().toISOString();
+
+    // Verify all categories belong to the user
+    for (const { id } of categoryOrders) {
+      const category = this.db.prepare(`
+        SELECT id FROM wave_categories WHERE id = ? AND user_id = ?
+      `).get(id, userId);
+
+      if (!category) {
+        return { success: false, error: 'Category not found or access denied' };
+      }
+    }
+
+    // Update sort_order for all categories
     const stmt = this.db.prepare(`
       UPDATE wave_categories
       SET sort_order = ?, updated_at = ?
       WHERE id = ? AND user_id = ?
     `);
-
-    const now = new Date().toISOString();
 
     for (const { id, sortOrder } of categoryOrders) {
       stmt.run(sortOrder, now, id, userId);
