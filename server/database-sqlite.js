@@ -2641,11 +2641,16 @@ export class DatabaseSQLite {
   }
 
   addGroupMember(groupId, userId, role = 'member') {
-    if (this.isGroupMember(groupId, userId)) return false;
+    if (this.isGroupMember(groupId, userId)) {
+      console.log(`👥 User ${userId} is already a member of group ${groupId}`);
+      return false;
+    }
     try {
       this.db.prepare('INSERT INTO crew_members (crew_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)').run(groupId, userId, role, new Date().toISOString());
+      console.log(`👥 Added user ${userId} to group ${groupId} as ${role}`);
       return true;
-    } catch {
+    } catch (err) {
+      console.error(`❌ Failed to add user ${userId} to group ${groupId}:`, err.message);
       return false;
     }
   }
@@ -2725,7 +2730,7 @@ export class DatabaseSQLite {
 
     return rows.map(r => ({
       id: r.id,
-      group_id: r.group_id,
+      group_id: r.crew_id, // Map from crew_id column
       invited_by: r.invited_by,
       invited_user_id: r.invited_user_id,
       message: r.message,
@@ -2747,7 +2752,7 @@ export class DatabaseSQLite {
 
     return rows.map(r => ({
       id: r.id,
-      group_id: r.group_id,
+      group_id: r.crew_id, // Map from crew_id column
       invited_by: r.invited_by,
       invited_user_id: r.invited_user_id,
       message: r.message,
@@ -2758,25 +2763,47 @@ export class DatabaseSQLite {
   }
 
   getGroupInvitation(invitationId) {
-    return this.db.prepare('SELECT * FROM crew_invitations WHERE id = ?').get(invitationId);
+    const row = this.db.prepare('SELECT * FROM crew_invitations WHERE id = ?').get(invitationId);
+    if (!row) return null;
+    // Map crew_id to group_id for consistency with JavaScript code
+    return {
+      ...row,
+      group_id: row.crew_id
+    };
   }
 
   acceptGroupInvitation(invitationId, userId) {
+    console.log(`👥 Accepting group invitation ${invitationId} for user ${userId}`);
     const invitation = this.getGroupInvitation(invitationId);
-    if (!invitation) return { error: 'Invitation not found' };
-    if (invitation.invited_user_id !== userId) return { error: 'Not authorized' };
-    if (invitation.status !== 'pending') return { error: 'Invitation already processed' };
+    if (!invitation) {
+      console.log(`❌ Invitation ${invitationId} not found`);
+      return { error: 'Invitation not found' };
+    }
+    if (invitation.invited_user_id !== userId) {
+      console.log(`❌ User ${userId} not authorized for invitation ${invitationId}`);
+      return { error: 'Not authorized' };
+    }
+    if (invitation.status !== 'pending') {
+      console.log(`❌ Invitation ${invitationId} already processed: ${invitation.status}`);
+      return { error: 'Invitation already processed' };
+    }
 
     if (this.isGroupMember(invitation.group_id, userId)) {
       this.db.prepare('UPDATE crew_invitations SET status = ?, responded_at = ? WHERE id = ?').run('accepted', new Date().toISOString(), invitationId);
+      console.log(`⚠️ User ${userId} already a member of group ${invitation.group_id}`);
       return { error: 'Already a group member' };
     }
 
     const now = new Date().toISOString();
     this.db.prepare('UPDATE crew_invitations SET status = ?, responded_at = ? WHERE id = ?').run('accepted', now, invitationId);
-    this.addGroupMember(invitation.group_id, userId, 'member');
+    const added = this.addGroupMember(invitation.group_id, userId, 'member');
+
+    if (!added) {
+      console.error(`❌ Failed to add user ${userId} to group ${invitation.group_id} after accepting invitation`);
+    }
 
     const group = this.getGroup(invitation.group_id);
+    console.log(`✅ Group invitation ${invitationId} accepted successfully`);
     return { success: true, invitation: { ...invitation, status: 'accepted', responded_at: now }, group: group ? { id: group.id, name: group.name } : null };
   }
 
@@ -3279,6 +3306,7 @@ export class DatabaseSQLite {
       title: row.title,
       privacy: row.privacy,
       crewId: row.crew_id,
+      groupId: row.crew_id, // Alias for backward compatibility
       createdBy: row.created_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -3531,24 +3559,22 @@ export class DatabaseSQLite {
     // Create the new wave with breakout metadata
     const newWaveId = `wave-${uuidv4()}`;
 
-    // Burst waves are always private with explicit participants (not crew waves)
-    // This ensures they show up for participants even if they're not crew members
-    // Inherit encryption status from parent wave (v2.1.1 fix)
+    // Burst waves inherit privacy and crew from parent wave
     this.db.prepare(`
       INSERT INTO waves (id, title, privacy, crew_id, created_by, created_at, updated_at, root_ping_id, broken_out_from, breakout_chain, encrypted)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       newWaveId,
       newWaveTitle.slice(0, 200),
-      'private', // Always private for burst waves (v2.1.1 fix)
-      null,      // No crew_id - use explicit participants instead
+      originalWave.privacy || 'private',
+      originalWave.crew_id || null,
       userId,
       now,
       now,
       dropletId,
       originalWaveId,
       JSON.stringify(breakoutChain),
-      originalWave.encrypted ? 1 : 0  // Inherit encryption from parent wave
+      originalWave.encrypted ? 1 : 0
     );
 
     // Add participants to new wave
@@ -3556,25 +3582,6 @@ export class DatabaseSQLite {
     participantSet.add(userId); // Ensure creator is included
     for (const participantId of participantSet) {
       this.db.prepare('INSERT OR IGNORE INTO wave_participants (wave_id, user_id, joined_at, archived) VALUES (?, ?, ?, 0)').run(newWaveId, participantId, now);
-    }
-
-    // If parent wave is encrypted, copy encryption keys for all participants
-    if (originalWave.encrypted) {
-      const parentWaveKeys = this.db.prepare(`
-        SELECT user_id, encrypted_wave_key, sender_public_key, key_version
-        FROM wave_encryption_keys
-        WHERE wave_id = ?
-      `).all(originalWaveId);
-
-      for (const key of parentWaveKeys) {
-        // Only copy keys for participants who are in the burst wave
-        if (participantSet.has(key.user_id)) {
-          this.db.prepare(`
-            INSERT OR IGNORE INTO wave_encryption_keys (wave_id, user_id, encrypted_wave_key, sender_public_key, key_version)
-            VALUES (?, ?, ?, ?, ?)
-          `).run(newWaveId, key.user_id, key.encrypted_wave_key, key.sender_public_key, key.key_version);
-        }
-      }
     }
 
     // Move all droplets to the new wave (update wave_id, set original_wave_id)
