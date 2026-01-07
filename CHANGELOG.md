@@ -5,6 +5,99 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-01-07
+
+### Fixed
+
+#### Critical: Read/Unread Count Synchronization
+Fixed critical issue where marking pings as read would update the database but not update the unread counts in the notification bell or wave list, forcing users to manually click each notification to clear counts.
+
+**Problem Statement:**
+- Clicking on a ping would mark messages as read in the database
+- Unread counts in the notification bell and wave list would not update
+- Users had to manually click each notification in the bell to force count updates
+- The two tracking systems (notifications and ping reads) were out of sync
+
+**Root Causes Identified:**
+1. **Incomplete Event Broadcasting**: Server only broadcast `unread_count_update` event when notifications existed
+2. **Race Conditions**: Client had overlapping `loadWaves()` API calls with no coordination
+3. **Redundant Event Handlers**: Multiple event types all calling `loadWaves()` independently
+4. **No Debouncing**: Rapid WebSocket events created "thundering herd" problem
+
+**Server-Side Fixes** (`server/server.js`, `server/database-sqlite.js`):
+- **Always broadcast `unread_count_update`** when marking pings read (line 12423)
+  - Previously only broadcast when `notificationsMarked > 0`
+  - Now broadcasts every time to ensure UI consistency
+  - File: `server/server.js` (lines 12415-12426)
+
+- **Enhanced wave read endpoint** (lines 11268-11278)
+  - Marks all notifications for the wave via `markNotificationsReadByWave()`
+  - Broadcasts both `unread_count_update` and `wave_read` events
+  - Ensures complete synchronization between systems
+  - File: `server/server.js` (lines 11268-11281)
+
+- **Added `markNotificationsReadByWave()` database method** (lines 4872-4879)
+  - Bulk marks all notifications for a specific wave as read
+  - Complements existing per-ping notification marking
+  - File: `server/database-sqlite.js` (lines 4871-4879)
+
+**Client-Side Fixes** (`client/FarholdApp.jsx`):
+- **Removed duplicate API calls** (lines 16974-16978)
+  - `droplet_read` and `wave_read` events no longer call `loadWaves()` directly
+  - Events now wait for `unread_count_update` which handles all refreshing
+  - Eliminates race conditions from overlapping requests
+  - Proper event chaining: `droplet_read` → `unread_count_update` → refresh
+
+- **Added debouncing to `loadWaves()`** (lines 16892-16928)
+  - Tracks if a load is already in progress using `useRef`
+  - Queues subsequent calls with 300ms debounce if busy
+  - Prevents thundering herd problem from multiple simultaneous events
+  - Uses `loadWavesTimerRef` and `loadWavesInProgressRef` for coordination
+
+**Event Flow (After Fix):**
+```
+User marks ping as read
+    ↓
+Server marks in database
+    ↓
+Server broadcasts: unread_count_update (ALWAYS)
+    ↓
+Server broadcasts: droplet_read (for UI consistency)
+    ↓
+Client receives unread_count_update
+    ↓
+Client refreshes: notification bell + wave list (with debouncing)
+    ↓
+UI fully synchronized ✓
+```
+
+**Testing:**
+Confirmed working across all scenarios:
+- ✅ Mark individual pings as read - counts update immediately
+- ✅ Mark entire waves as read - counts update correctly
+- ✅ Click notifications in bell - wave list updates properly
+- ✅ Real-time synchronization across multiple browser tabs
+- ✅ No race conditions or missed updates
+
+**Technical Details:**
+- Single source of truth: `unread_count_update` event handles all count refreshes
+- Proper event chaining prevents duplicate work
+- Debouncing prevents overlapping API calls
+- Both notification and ping-unread systems update atomically
+
+**Performance Improvements:**
+- Reduced API call frequency through debouncing
+- Eliminated redundant database queries
+- Better WebSocket event coordination
+- More predictable UI update behavior
+
+**Files Changed:**
+- `client/FarholdApp.jsx` - Debouncing and event handler improvements
+- `client/package.json` - Version 2.2.2
+- `server/server.js` - Event broadcasting fixes
+- `server/database-sqlite.js` - Bulk notification marking method
+- `server/package.json` - Version 2.2.2
+
 ## [2.2.1] - 2026-01-07
 
 ### Fixed
