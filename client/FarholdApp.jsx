@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.1.1';
+const VERSION = '2.1.2';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
