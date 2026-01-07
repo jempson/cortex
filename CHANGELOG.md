@@ -5,6 +5,164 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-01-07
+
+### Added
+
+#### Wave List Organization with Custom Categories
+Complete wave organization system allowing users to create custom categories to organize their waves, with pinned waves, drag-and-drop functionality, collapsible groups, and group-level notifications.
+
+**Features:**
+- **Custom Categories**: Create user-defined categories (e.g., "Work", "Personal", "Projects") with custom names and colors
+- **Pinned Waves**: Pin important waves to keep them always visible at the top of the list
+- **Drag-and-Drop**: Move waves between categories using drag-and-drop (desktop) or long-press menu (mobile)
+- **Collapsible Groups**: Collapse/expand categories to manage screen space, with state persisting across sessions
+- **Group-Level Notifications**: See unread count badges at both wave and category level
+- **Visual Organization**: Color-coded categories with wave counts and unread indicators
+- **Per-User System**: Each user has their own category structure independent of other participants
+
+**User Experience:**
+```
+┌─────────────────────────────────────┐
+│ WAVES            [MANAGE] [📦] [+NEW]│
+├─────────────────────────────────────┤
+│ ⭐ PINNED (3)                    [▼] │
+│   📌 Important Wave            (2)   │
+│   📌 Quick Access              (1)   │
+├─────────────────────────────────────┤
+│ 💼 WORK (5)                      [▼] │
+│   • Team Standup              (12)  │
+│   • Project Alpha             (3)   │
+├─────────────────────────────────────┤
+│ 👥 PERSONAL (2)                  [▼] │
+│   • Family Chat               (5)   │
+├─────────────────────────────────────┤
+│ 📂 UNCATEGORIZED (1)             [▼] │
+│   • Random Wave               (0)   │
+└─────────────────────────────────────┘
+```
+
+**Technical Implementation:**
+
+**Database Schema** (`server/schema.sql`):
+- **New Table: `wave_categories`** - Stores user-defined categories
+  - Fields: id, user_id, name, color, sort_order, collapsed, created_at, updated_at
+  - UNIQUE constraint on (user_id, name) prevents duplicate category names
+  - Indexed on user_id and sort_order for fast lookups
+
+- **New Table: `wave_category_assignments`** - Maps waves to categories per user
+  - Fields: user_id, wave_id, category_id (nullable), assigned_at
+  - PRIMARY KEY (user_id, wave_id) ensures one category per wave
+  - category_id NULL represents uncategorized waves
+  - Indexed on user_id, category_id, and wave_id
+
+- **Enhanced: `wave_participants`** table
+  - Added `pinned INTEGER DEFAULT 0` column for wave pinning
+  - Indexed on (user_id, pinned) for fast pinned wave queries
+
+**Database Methods** (`server/database-sqlite.js`):
+- `getCategoriesForUser(userId)` - Fetch all categories with wave counts and unread counts
+- `createCategory(userId, data)` - Create new category with validation
+- `updateCategory(categoryId, userId, data)` - Update category name, color, or collapsed state
+- `deleteCategory(categoryId, userId)` - Delete category with safety checks
+- `reorderCategories(userId, categoryOrders)` - Bulk update category sort order
+- `assignWaveToCategory(waveId, userId, categoryId)` - Assign wave to category
+- `getWaveCategoryAssignment(waveId, userId)` - Get current category assignment
+- `pinWaveForUser(waveId, userId, pinned)` - Pin/unpin wave for user
+- Modified `getWavesForUser()` - Enhanced to JOIN category data and pinned status
+
+**API Endpoints** (`server/server.js`):
+- `GET /api/wave-categories` - List user's categories
+- `POST /api/wave-categories` - Create new category
+- `PUT /api/wave-categories/:id` - Update category (name, color, collapsed state)
+- `DELETE /api/wave-categories/:id` - Delete category
+- `PUT /api/wave-categories/reorder` - Reorder categories
+- `PUT /api/waves/:waveId/category` - Assign wave to category
+- `PUT /api/waves/:waveId/pin` - Pin/unpin wave
+
+**WebSocket Events** (Real-time Updates):
+- `category_created` - New category created
+- `category_updated` - Category modified
+- `category_deleted` - Category removed
+- `categories_reordered` - Category order changed
+- `wave_category_changed` - Wave moved between categories
+- `wave_pinned_changed` - Wave pinned/unpinned
+
+**Client Components** (`client/FarholdApp.jsx`):
+- **WaveCategoryList** (lines 3822-4069) - Main category list component
+  - Groups waves by category with pinned section
+  - Renders collapsible sections for each category
+  - Implements drag-and-drop handlers
+  - Calculates group-level unread counts
+  - Shows "Uncategorized" section for waves without category
+
+- **CategoryManagementModal** (lines 5360-5595) - Category CRUD interface
+  - Create new categories with name and color selection
+  - Rename/delete existing categories
+  - View wave counts and unread counts per category
+  - Color picker with Farhold theme colors
+  - Inline editing with Enter/Escape keyboard shortcuts
+
+- **Enhanced WaveList** (lines 4071-4213) - Updated to use categories
+  - Conditionally renders WaveCategoryList if categories exist
+  - Falls back to flat list if no categories
+  - Added "Manage Categories" button
+  - Passes all category handlers to child components
+
+- **State Management** (lines 16626-16627, 16751-16813) - Category state
+  - `waveCategories` state for storing user's categories
+  - `categoryManagementOpen` state for modal visibility
+  - `loadCategories()` - Fetch categories from API
+  - `handleCategoryToggle()` - Toggle collapse state with optimistic UI update
+  - `handleWaveMove()` - Move wave between categories
+  - `handleWavePin()` - Pin/unpin wave with immediate local state update
+
+- **WebSocket Integration** (lines 16913-16922) - Real-time category updates
+  - Handles all category-related WebSocket events
+  - Automatically reloads categories and waves on changes
+  - Maintains sync across multiple clients
+
+**Migration** (`server/database-sqlite.js` lines 1207-1299):
+- Automated migration runs on server startup via `applySchemaUpdates()`
+- Creates all tables and indexes automatically
+- Creates default "General" category for all existing users
+- Backward compatible - runs safely on existing databases
+- Idempotent - checks if tables exist before running
+
+**How It Works:**
+1. User creates categories via "Manage Categories" button
+2. Waves can be dragged into categories or moved via API
+3. Categories are rendered as collapsible sections with CollapsibleSection component
+4. Pinned waves always appear at top regardless of category
+5. Category collapsed state persists in database per user
+6. Real-time WebSocket events keep all clients synchronized
+7. Archive toggle works across all categories
+
+**Design Decisions:**
+- **Per-User Categories**: Each user organizes their wave list independently
+- **One Category Per Wave**: Simplifies mental model and UI (no multi-assignment)
+- **Pinned Section**: Always visible at top, spans all categories
+- **Uncategorized Fallback**: Waves without category go to "Uncategorized" section
+- **Server-Side State**: Collapsed state stored in database for cross-device persistence
+- **Archive Compatibility**: Archive toggle applies across all categories
+- **Federation Safe**: Category data is local-only, doesn't affect cross-server waves
+
+**Files Modified:**
+- `server/schema.sql` - Added wave_categories, wave_category_assignments tables, pinned column
+- `server/database-sqlite.js` - Added 9 category methods, modified getWavesForUser (lines 3771-4003, 3222-3302)
+- `server/server.js` - Added 7 API endpoints with WebSocket broadcasts (lines 11295-11576)
+- `client/FarholdApp.jsx` - Added WaveCategoryList, CategoryManagementModal, state management
+- `server/package.json` - Version 2.2.0
+- `client/package.json` - Version 2.2.0
+
+**Migration:**
+- Automatic migration on server startup via `applySchemaUpdates()` method
+- Checks if `wave_categories` table exists before running
+- Zero downtime deployment
+- Backward compatible with existing waves
+- Default "General" category auto-created for all users
+- Migration integrated in `database-sqlite.js` lines 1207-1299
+
 ## [2.1.1] - 2026-01-06
 
 ### Added

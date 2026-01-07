@@ -7,7 +7,7 @@ import sanitizeHtml from 'sanitize-html';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import fs from 'fs';
 import path from 'path';
@@ -11290,6 +11290,287 @@ app.delete('/api/waves/:id', authenticateToken, (req, res) => {
   if (db.logActivity) db.logActivity(req.user.userId, 'delete_wave', 'wave', waveId, getRequestMeta(req));
 
   res.json({ success: true });
+});
+
+// ============ Wave Category Routes (v2.2.0) ============
+
+// Get all categories for current user
+app.get('/api/wave-categories', authenticateToken, (req, res) => {
+  try {
+    const categories = db.getCategoriesForUser(req.user.userId);
+    res.json(categories);
+  } catch (error) {
+    console.error('Error fetching wave categories:', error);
+    res.status(500).json({ error: 'Failed to fetch categories' });
+  }
+});
+
+// Create a new category
+app.post('/api/wave-categories', authenticateToken, (req, res) => {
+  const { name, color } = req.body;
+
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    return res.status(400).json({ error: 'Category name is required' });
+  }
+
+  if (name.length > 50) {
+    return res.status(400).json({ error: 'Category name must be 50 characters or less' });
+  }
+
+  try {
+    const result = db.createCategory(req.user.userId, {
+      name: sanitizeInput(name.trim()),
+      color: color || 'var(--accent-green)'
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Broadcast category creation to user
+    const userClients = clients.get(req.user.userId);
+    if (userClients) {
+      userClients.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'category_created',
+            category: result.category
+          }));
+        }
+      });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'create_category', 'wave_category', result.category.id, getRequestMeta(req));
+
+    res.json(result.category);
+  } catch (error) {
+    console.error('Error creating category:', error);
+    res.status(500).json({ error: 'Failed to create category' });
+  }
+});
+
+// Update a category
+app.put('/api/wave-categories/:id', authenticateToken, (req, res) => {
+  const categoryId = sanitizeInput(req.params.id);
+  const { name, color, collapsed } = req.body;
+
+  const updates = {};
+  if (name !== undefined) {
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'Category name cannot be empty' });
+    }
+    if (name.length > 50) {
+      return res.status(400).json({ error: 'Category name must be 50 characters or less' });
+    }
+    updates.name = sanitizeInput(name.trim());
+  }
+  if (color !== undefined) updates.color = color;
+  if (collapsed !== undefined) updates.collapsed = collapsed;
+
+  try {
+    const result = db.updateCategory(categoryId, req.user.userId, updates);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Broadcast category update to user
+    const userClients = clients.get(req.user.userId);
+    if (userClients) {
+      userClients.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'category_updated',
+            categoryId,
+            updates
+          }));
+        }
+      });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'update_category', 'wave_category', categoryId, getRequestMeta(req));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating category:', error);
+    res.status(500).json({ error: 'Failed to update category' });
+  }
+});
+
+// Delete a category
+app.delete('/api/wave-categories/:id', authenticateToken, (req, res) => {
+  const categoryId = sanitizeInput(req.params.id);
+
+  try {
+    const result = db.deleteCategory(categoryId, req.user.userId);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Broadcast category deletion to user
+    const userClients = clients.get(req.user.userId);
+    if (userClients) {
+      userClients.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'category_deleted',
+            categoryId
+          }));
+        }
+      });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'delete_category', 'wave_category', categoryId, getRequestMeta(req));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
+// Reorder categories
+app.put('/api/wave-categories/reorder', authenticateToken, (req, res) => {
+  const { categories } = req.body;
+
+  if (!Array.isArray(categories)) {
+    return res.status(400).json({ error: 'Categories must be an array' });
+  }
+
+  try {
+    const categoryOrders = categories.map(c => ({
+      id: sanitizeInput(c.id),
+      sortOrder: parseInt(c.sortOrder)
+    }));
+
+    const result = db.reorderCategories(req.user.userId, categoryOrders);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Broadcast reorder to user
+    const userClients = clients.get(req.user.userId);
+    if (userClients) {
+      userClients.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'categories_reordered',
+            categories: categoryOrders
+          }));
+        }
+      });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error reordering categories:', error);
+    res.status(500).json({ error: 'Failed to reorder categories' });
+  }
+});
+
+// Assign wave to category
+app.put('/api/waves/:waveId/category', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.waveId);
+  const { category_id } = req.body;
+
+  const categoryId = category_id === null ? null : sanitizeInput(category_id);
+
+  try {
+    // Verify user has access to wave
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    const isParticipant = db.isWaveParticipant(waveId, req.user.userId);
+    if (!isParticipant && wave.privacy !== 'public') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const result = db.assignWaveToCategory(waveId, req.user.userId, categoryId);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Broadcast wave category change to user
+    const userClients = clients.get(req.user.userId);
+    if (userClients) {
+      userClients.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'wave_category_changed',
+            waveId,
+            categoryId
+          }));
+        }
+      });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'assign_wave_category', 'wave', waveId, getRequestMeta(req));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error assigning wave to category:', error);
+    res.status(500).json({ error: 'Failed to assign wave to category' });
+  }
+});
+
+// Pin/unpin wave
+app.put('/api/waves/:waveId/pin', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.waveId);
+  const { pinned } = req.body;
+
+  if (typeof pinned !== 'boolean') {
+    return res.status(400).json({ error: 'Pinned must be a boolean' });
+  }
+
+  try {
+    // Verify user has access to wave
+    const wave = db.getWave(waveId);
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    const isParticipant = db.isWaveParticipant(waveId, req.user.userId);
+    if (!isParticipant && wave.privacy !== 'public') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const result = db.pinWaveForUser(waveId, req.user.userId, pinned);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Broadcast wave pin change to user
+    const userClients = clients.get(req.user.userId);
+    if (userClients) {
+      userClients.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'wave_pinned_changed',
+            waveId,
+            pinned
+          }));
+        }
+      });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, pinned ? 'pin_wave' : 'unpin_wave', 'wave', waveId, getRequestMeta(req));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error pinning/unpinning wave:', error);
+    res.status(500).json({ error: 'Failed to pin/unpin wave' });
+  }
 });
 
 // ============ Wave Participant Management ============
