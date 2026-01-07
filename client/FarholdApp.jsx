@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.2.0';
+const VERSION = '2.2.1';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -1727,10 +1727,13 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
 
 // ============ RESPONSIVE HOOK ============
 function useWindowSize() {
-  const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [size, setSize] = useState({ width: 0, height: 0 });
   useEffect(() => {
-    const handleResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
+    function handleResize() {
+      setSize({ width: window.innerWidth, height: window.innerHeight });
+    }
     window.addEventListener('resize', handleResize);
+    handleResize(); // Set initial size
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
@@ -1738,8 +1741,9 @@ function useWindowSize() {
   const isMobile = size.width < 600;      // Phone screens
   const isTablet = size.width >= 600 && size.width < 1024;  // Tablet screens
   const isDesktop = size.width >= 1024;   // Desktop screens
+  const hasMeasured = size.width !== 0;
 
-  return { ...size, isMobile, isTablet, isDesktop };
+  return { ...size, isMobile, isTablet, isDesktop, hasMeasured };
 }
 
 // ============ SWIPE GESTURE HOOK ============
@@ -3823,6 +3827,16 @@ const NOTIFICATION_BADGE_COLORS = {
 const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCategoryToggle, onWaveMove, onWavePin, isMobile, waveNotifications = {} }) => {
   const [draggedWave, setDraggedWave] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
+  const [moveMenuOpen, setMoveMenuOpen] = useState(null); // Track which wave's move menu is open
+
+  // Close move menu when clicking outside
+  useEffect(() => {
+    if (!moveMenuOpen) return;
+
+    const handleClickOutside = () => setMoveMenuOpen(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [moveMenuOpen]);
 
   // Group waves by category
   const groupedWaves = useMemo(() => {
@@ -3895,25 +3909,6 @@ const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCat
             {wave.title}
           </div>
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-            {showPinButton && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onWavePin(wave.id, !wave.pinned);
-                }}
-                title={wave.pinned ? 'Unpin wave' : 'Pin wave'}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: wave.pinned ? 'var(--accent-amber)' : 'var(--text-dim)',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem',
-                  padding: '2px 4px',
-                }}
-              >
-                {wave.pinned ? '📌' : '📍'}
-              </button>
-            )}
             {showNotificationBadge && (
               <span style={{
                 background: badgeStyle.bg,
@@ -3942,6 +3937,112 @@ const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCat
                 boxShadow: '0 0 8px var(--glow-orange)',
               }}>{wave.unread_count}</span>
             )}
+            {/* Move menu button (mobile/PWA alternative to drag-and-drop) */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMoveMenuOpen(moveMenuOpen === wave.id ? null : wave.id);
+                }}
+                title="Move wave to category"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-dim)',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  padding: '2px 4px',
+                  lineHeight: 1,
+                }}
+              >
+                ⋮
+              </button>
+              {/* Move menu dropdown */}
+              {moveMenuOpen === wave.id && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: '100%',
+                    marginTop: '4px',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-primary)',
+                    borderRadius: '4px',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                    minWidth: '150px',
+                    zIndex: 1000,
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ padding: '4px 0' }}>
+                    {/* Pin/Unpin option */}
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onWavePin(wave.id, !wave.pinned);
+                        setMoveMenuOpen(null);
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-primary)',
+                        background: 'transparent',
+                        borderBottom: '1px solid var(--border-subtle)',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      {wave.pinned ? '📌 Unpin' : '📍 Pin to top'}
+                    </div>
+                    {/* Category options */}
+                    {categories.map(cat => (
+                      <div
+                        key={cat.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onWaveMove(wave.id, cat.id);
+                          setMoveMenuOpen(null);
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          fontSize: '0.8rem',
+                          color: 'var(--text-primary)',
+                          background: wave.category_id === cat.id ? 'var(--accent-green)20' : 'transparent',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = wave.category_id === cat.id ? 'var(--accent-green)20' : 'transparent'}
+                      >
+                        {wave.category_id === cat.id ? '✓ ' : ''}{cat.name}
+                      </div>
+                    ))}
+                    {/* Uncategorized option */}
+                    {wave.category_id && (
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onWaveMove(wave.id, null);
+                          setMoveMenuOpen(null);
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          fontSize: '0.8rem',
+                          color: 'var(--text-primary)',
+                          background: 'transparent',
+                          borderTop: '1px solid var(--border-subtle)',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        Remove from category
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <span style={{ color: config.color }}>{config.icon}</span>
           </div>
         </div>
@@ -4079,21 +4180,23 @@ const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWav
     <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
       <GlowText color="var(--accent-amber)" size={isMobile ? '1rem' : '0.9rem'}>WAVES</GlowText>
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        {!isMobile && categories.length > 0 && (
+        {categories.length > 0 && (
           <button
             onClick={onManageCategories}
             title="Manage categories"
             style={{
-              padding: '6px 10px',
+              padding: isMobile ? '12px 14px' : '6px 10px',
+              minHeight: isMobile ? '44px' : 'auto',
+              minWidth: isMobile ? '44px' : 'auto',
               background: 'transparent',
               border: '1px solid var(--border-primary)',
               color: 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
-              fontSize: '0.7rem',
+              fontSize: isMobile ? '0.85rem' : '0.7rem',
             }}
           >
-            ⚙ MANAGE
+            {isMobile ? '⚙' : '⚙ MANAGE'}
           </button>
         )}
         <button
@@ -5429,6 +5532,35 @@ const CategoryManagementModal = ({ isOpen, onClose, categories, fetchAPI, showTo
     }
   };
 
+  const handleReorderCategory = async (categoryIndex, direction) => {
+    const newIndex = direction === 'up' ? categoryIndex - 1 : categoryIndex + 1;
+    if (newIndex < 0 || newIndex >= categories.length) return;
+
+    // Create reordered array
+    const reordered = [...categories];
+    const [moved] = reordered.splice(categoryIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+
+    // Create categories array with new sortOrder values
+    const reorderedCategories = reordered.map((cat, index) => ({
+      id: cat.id,
+      sortOrder: index,
+    }));
+
+    try {
+      await fetchAPI('/wave-categories/reorder', {
+        method: 'PUT',
+        body: { categories: reorderedCategories },
+      });
+
+      showToast('Categories reordered successfully', 'success');
+      onCategoriesChange();
+    } catch (error) {
+      console.error('Error reordering categories:', error);
+      showToast(error.message || 'Failed to reorder categories', 'error');
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -5506,7 +5638,7 @@ const CategoryManagementModal = ({ isOpen, onClose, categories, fetchAPI, showTo
           Your Categories ({categories.length})
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {categories.map(category => (
+          {categories.map((category, index) => (
             <div
               key={category.id}
               style={{
@@ -5558,6 +5690,32 @@ const CategoryManagementModal = ({ isOpen, onClose, categories, fetchAPI, showTo
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => handleReorderCategory(index, 'up')}
+                      disabled={index === 0}
+                      title="Move up"
+                      style={{
+                        background: 'transparent', border: 'none',
+                        color: index === 0 ? 'var(--border-subtle)' : 'var(--text-dim)',
+                        cursor: index === 0 ? 'not-allowed' : 'pointer',
+                        fontSize: '0.9rem', padding: '4px 8px',
+                      }}
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => handleReorderCategory(index, 'down')}
+                      disabled={index === categories.length - 1}
+                      title="Move down"
+                      style={{
+                        background: 'transparent', border: 'none',
+                        color: index === categories.length - 1 ? 'var(--border-subtle)' : 'var(--text-dim)',
+                        cursor: index === categories.length - 1 ? 'not-allowed' : 'pointer',
+                        fontSize: '0.9rem', padding: '4px 8px',
+                      }}
+                    >
+                      ▼
+                    </button>
                     <button
                       onClick={() => setEditingCategory(category.id)}
                       title="Rename category"
@@ -16626,7 +16784,7 @@ function MainApp({ shareDropletId }) {
   const [waveCategories, setWaveCategories] = useState([]); // User's wave categories (v2.2.0)
   const [categoryManagementOpen, setCategoryManagementOpen] = useState(false); // Category management modal (v2.2.0)
   const typingTimeoutsRef = useRef({});
-  const { width, isMobile, isTablet, isDesktop } = useWindowSize();
+  const { width, isMobile, isTablet, isDesktop, hasMeasured } = useWindowSize();
 
   // Calculate font scale from user preferences
   const fontSizePreference = user?.preferences?.fontSize || 'medium';
@@ -17334,6 +17492,14 @@ function MainApp({ shareDropletId }) {
   const navLabels = { waves: 'WAVES', groups: 'CREWS', contacts: 'CONTACTS', profile: 'PROFILE' };
 
   const scanLinesEnabled = user?.preferences?.scanLines !== false; // Default to true
+
+  if (!hasMeasured) {
+    return (
+      <div style={{ height: '100vh', background: 'var(--bg-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontFamily: "'Courier New', monospace" }}>
+        Initializing...
+      </div>
+    );
+  }
 
   return (
     <div style={{
