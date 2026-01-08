@@ -11622,6 +11622,68 @@ app.put('/api/waves/:waveId/pin', authenticateToken, (req, res) => {
   }
 });
 
+// Decrypt wave - Convert encrypted wave to unencrypted
+app.post('/api/waves/:id/decrypt', authenticateToken, async (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const { pings } = req.body;
+
+  if (!Array.isArray(pings)) {
+    return res.status(400).json({ error: 'pings array required' });
+  }
+
+  const wave = db.getWave(waveId);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Verify user is a participant
+  const participants = db.getWaveParticipants(waveId);
+  const isParticipant = participants.some(p => p.id === req.user.userId);
+  if (!isParticipant) {
+    return res.status(403).json({ error: 'Must be a participant to decrypt wave' });
+  }
+
+  if (!wave.encrypted) {
+    return res.status(400).json({ error: 'Wave is not encrypted' });
+  }
+
+  try {
+    console.log(`🔓 Decrypting wave ${waveId} with ${pings.length} pings...`);
+
+    // Update wave to be unencrypted
+    db.db.prepare('UPDATE waves SET encrypted = 0 WHERE id = ?').run(waveId);
+
+    // Update all ping contents (table is called 'pings' in production)
+    const updateStmt = db.db.prepare('UPDATE pings SET content = ? WHERE id = ?');
+    for (const ping of pings) {
+      if (ping.id && ping.content !== undefined) {
+        updateStmt.run(ping.content, ping.id);
+      }
+    }
+
+    // Delete wave encryption keys (no longer needed)
+    db.db.prepare('DELETE FROM wave_encryption_keys WHERE wave_id = ?').run(waveId);
+
+    console.log(`✅ Wave ${waveId} decrypted successfully`);
+
+    // Broadcast wave update to all participants
+    broadcastToWave(waveId, {
+      type: 'wave_updated',
+      data: { ...wave, encrypted: false }
+    });
+
+    // Log activity
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'decrypt_wave', 'wave', waveId, getRequestMeta(req));
+    }
+
+    res.json({ success: true, message: 'Wave decrypted successfully' });
+  } catch (error) {
+    console.error('Error decrypting wave:', error);
+    res.status(500).json({ error: 'Failed to decrypt wave' });
+  }
+});
+
 // ============ Wave Participant Management ============
 
 // Add participant to wave

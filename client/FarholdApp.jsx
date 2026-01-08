@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.2.3';
+const VERSION = '2.2.4';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -6453,9 +6453,11 @@ const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
 
 // ============ WAVE SETTINGS MODAL ============
 const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast, onUpdate, participants = [], showParticipants, setShowParticipants, federationEnabled, currentUserId, onFederate, isMobile }) => {
+  const e2ee = useE2EE();
   const [privacy, setPrivacy] = useState(wave?.privacy || 'private');
   const [selectedGroup, setSelectedGroup] = useState(wave?.groupId || null);
   const [title, setTitle] = useState(wave?.title || '');
+  const [decrypting, setDecrypting] = useState(false);
 
   useEffect(() => {
     if (wave) {
@@ -6478,6 +6480,75 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
       onClose();
     } catch (err) {
       showToast(err.message || 'Failed to update wave', 'error');
+    }
+  };
+
+  const handleDecryptWave = async () => {
+    if (!wave.encrypted) {
+      showToast('Wave is not encrypted', 'error');
+      return;
+    }
+
+    if (!e2ee.isUnlocked) {
+      showToast('Unlock E2EE first to decrypt this wave', 'error');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'This will permanently decrypt all messages in this wave. Encrypted content will be converted to plain text. This cannot be undone.\n\nContinue?'
+    );
+    if (!confirmed) return;
+
+    setDecrypting(true);
+    try {
+      // Fetch all pings in the wave
+      const pingsData = await fetchAPI(`/waves/${wave.id}/droplets`);
+      const pings = pingsData.droplets || [];
+
+      console.log(`Decrypting ${pings.length} pings in wave ${wave.id}...`);
+
+      // Decrypt each ping
+      const decryptedPings = [];
+      for (const ping of pings) {
+        try {
+          // Check if ping is encrypted (has nonce)
+          if (ping.encrypted && ping.nonce) {
+            const decryptedContent = await e2ee.decryptDroplet(ping.content, ping.nonce, wave.id, ping.keyVersion);
+            decryptedPings.push({
+              id: ping.id,
+              content: decryptedContent
+            });
+          } else {
+            // Already decrypted or not encrypted
+            decryptedPings.push({
+              id: ping.id,
+              content: ping.content
+            });
+          }
+        } catch (decryptErr) {
+          console.error(`Failed to decrypt ping ${ping.id}:`, decryptErr);
+          // If decryption fails, keep original content (might already be decrypted)
+          decryptedPings.push({
+            id: ping.id,
+            content: ping.content
+          });
+        }
+      }
+
+      // Send decrypted pings to server
+      await fetchAPI(`/waves/${wave.id}/decrypt`, {
+        method: 'POST',
+        body: { pings: decryptedPings }
+      });
+
+      showToast('Wave decrypted successfully! All messages are now unencrypted.', 'success');
+      onUpdate();
+      onClose();
+    } catch (err) {
+      console.error('Wave decryption error:', err);
+      showToast(err.message || 'Failed to decrypt wave', 'error');
+    } finally {
+      setDecrypting(false);
     }
   };
 
@@ -6579,6 +6650,35 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
             >
               <span>◇</span>
               {wave?.federationState === 'origin' ? 'Manage federated participants' : 'Federate this wave'}
+            </button>
+          </div>
+        )}
+
+        {/* Decrypt Wave Button - Only show for encrypted waves */}
+        {wave.encrypted && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>ENCRYPTION</div>
+            <button
+              onClick={handleDecryptWave}
+              disabled={decrypting}
+              style={{
+                width: '100%', padding: '12px', textAlign: 'left',
+                background: 'var(--accent-orange)15',
+                border: '1px solid var(--accent-orange)',
+                color: 'var(--accent-orange)',
+                cursor: decrypting ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                display: 'flex', alignItems: 'center', gap: '8px',
+                opacity: decrypting ? 0.6 : 1,
+              }}
+            >
+              <span>🔓</span>
+              <div style={{ flex: 1 }}>
+                <div>{decrypting ? 'Decrypting wave...' : 'Decrypt Wave (Remove E2EE)'}</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Convert all encrypted messages to plain text
+                </div>
+              </div>
             </button>
           </div>
         )}
@@ -6990,6 +7090,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For ripple activity badges
   const [decryptionErrors, setDecryptionErrors] = useState({}); // Track droplets that failed to decrypt
+  const [decryptingWave, setDecryptingWave] = useState(false); // Wave decryption in progress
 
   // E2EE Migration state
   const [encryptionStatus, setEncryptionStatus] = useState(null); // { state, progress, participantsWithE2EE, totalParticipants }
@@ -7966,6 +8067,75 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   };
 
+  const handleDecryptWave = async () => {
+    if (!waveData.encrypted) {
+      showToast('Wave is not encrypted', 'error');
+      return;
+    }
+
+    if (!e2ee.isUnlocked) {
+      showToast('Unlock E2EE first to decrypt this wave', 'error');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'This will permanently decrypt all messages in this wave. Encrypted content will be converted to plain text. This cannot be undone.\n\nContinue?'
+    );
+    if (!confirmed) return;
+
+    setDecryptingWave(true);
+    try {
+      // Fetch all pings in the wave
+      const pingsData = await fetchAPI(`/waves/${wave.id}/droplets`);
+      const pings = pingsData.droplets || [];
+
+      console.log(`Decrypting ${pings.length} pings in wave ${wave.id}...`);
+
+      // Decrypt each ping
+      const decryptedPings = [];
+      for (const ping of pings) {
+        try {
+          // Check if ping is encrypted (has nonce)
+          if (ping.encrypted && ping.nonce) {
+            const decryptedContent = await e2ee.decryptDroplet(ping.content, ping.nonce, wave.id, ping.keyVersion);
+            decryptedPings.push({
+              id: ping.id,
+              content: decryptedContent
+            });
+          } else {
+            // Already decrypted or not encrypted
+            decryptedPings.push({
+              id: ping.id,
+              content: ping.content
+            });
+          }
+        } catch (decryptErr) {
+          console.error(`Failed to decrypt ping ${ping.id}:`, decryptErr);
+          // If decryption fails, keep original content (might already be decrypted)
+          decryptedPings.push({
+            id: ping.id,
+            content: ping.content
+          });
+        }
+      }
+
+      // Send decrypted pings to server
+      await fetchAPI(`/waves/${wave.id}/decrypt`, {
+        method: 'POST',
+        body: { pings: decryptedPings }
+      });
+
+      showToast('Wave decrypted successfully! All messages are now unencrypted.', 'success');
+      await loadWave(true);
+      onWaveUpdate?.();
+    } catch (err) {
+      console.error('Wave decryption error:', err);
+      showToast(err.message || 'Failed to decrypt wave', 'error');
+    } finally {
+      setDecryptingWave(false);
+    }
+  };
+
   const handleDeleteMessage = (message) => {
     setMessageToDelete(message);
   };
@@ -8197,6 +8367,20 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
             }}
           >{waveData.is_archived ? '📬 RESTORE' : '📦'}</button>
+          {/* Decrypt button - show for any participant of encrypted wave */}
+          {waveData.encrypted && (
+            <button onClick={handleDecryptWave} disabled={decryptingWave} style={{
+              padding: isMobile ? '10px 12px' : '6px 10px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: 'var(--accent-orange)15',
+              border: '1px solid var(--accent-orange)',
+              color: 'var(--accent-orange)',
+              cursor: decryptingWave ? 'wait' : 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.85rem' : '0.7rem',
+              opacity: decryptingWave ? 0.6 : 1,
+            }}>{decryptingWave ? '⏳' : '🔓'}</button>
+          )}
           {/* Settings and Delete buttons only show for wave creator (all privacy levels) */}
           {waveData.can_edit && (
             <>
@@ -17596,27 +17780,10 @@ function MainApp({ shareDropletId }) {
 
   const handleCreateWave = async (data) => {
     try {
-      // E2EE: If E2EE is set up, create encrypted wave with keys
-      if (e2ee.isUnlocked && e2ee.isE2EEEnabled) {
-        // Get participant IDs from the data
-        const participantIds = data.participants || [];
-
-        // Set up encryption for this wave
-        const { keyDistribution } = await e2ee.createWaveWithEncryption(participantIds);
-
-        // Create wave with encryption enabled
-        await fetchAPI('/waves', {
-          method: 'POST',
-          body: {
-            ...data,
-            encrypted: true,
-            keyDistribution
-          }
-        });
-      } else {
-        // Create unencrypted wave
-        await fetchAPI('/waves', { method: 'POST', body: data });
-      }
+      // E2EE disabled for new waves - always create unencrypted
+      // Previous behavior: if (e2ee.isUnlocked && e2ee.isE2EEEnabled) { create encrypted }
+      // New default: all waves are unencrypted
+      await fetchAPI('/waves', { method: 'POST', body: data });
       showToastMsg('Wave created', 'success');
       loadWaves();
     } catch (err) {
