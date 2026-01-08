@@ -5,6 +5,203 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] - 2026-01-08
+
+### Added
+
+#### GIF Search Pagination with Tenor API v2 Support
+Added "Load More" button to GIF picker modal allowing users to browse beyond the initial 20 results. Implemented proper token-based pagination for Tenor API v2.
+
+**Problem:**
+- Initial implementation used numeric offsets which work for GIPHY but not Tenor
+- Tenor API v2 requires token-based pagination (`next` token from previous response)
+- Users saw the same 20 GIFs repeatedly when clicking "Load More" with Tenor provider
+- Trending GIFs would also repeat on initial modal open
+
+**Solution:**
+Implemented dual pagination strategy supporting both GIPHY (numeric offset) and Tenor (token-based):
+
+**Server Changes** (`server/server.js`):
+1. **Modified `searchTenor()` helper** (lines 6361-6398):
+   - Changed signature from `searchTenor(query, limit, offset)` to `searchTenor(query, limit, pos)`
+   - Now returns `{ gifs: [...], next: 'token' }` instead of just array
+   - Uses Tenor's `pos` parameter for token-based pagination
+   - Returns Tenor's `next` token for subsequent requests
+
+2. **Modified `trendingTenor()` helper** (lines 6431-6472):
+   - Same token-based pagination structure
+   - Returns `{ gifs: [...], next: 'token' }`
+   - Logs pagination tokens for debugging
+
+3. **Updated `/api/gifs/search` endpoint** (lines 6490-6555):
+   - Accepts new `pos` query parameter for Tenor pagination tokens
+   - Returns `pagination.next` in response for client to use in next request
+   - Maintains backward compatibility with GIPHY's offset-based pagination
+
+4. **Updated `/api/gifs/trending` endpoint** (lines 6558-6617):
+   - Same `pos` parameter and `pagination.next` response structure
+   - Logs token values for debugging
+
+**Client Changes** (`client/FarholdApp.jsx`):
+1. **Added token tracking** (lines 1218-1219):
+   - `offsetRef` for GIPHY numeric offsets
+   - `nextTokenRef` for Tenor pagination tokens
+   - Both reset when modal opens or new search starts
+
+2. **Modified `loadTrending()`** (lines 1234-1276):
+   - Builds URL with `pos` parameter when `nextTokenRef` has a value
+   - Stores `data.pagination.next` token from response
+   - Determines `hasMore` based on token presence or result count
+   - Console logs show offset and token values for debugging
+
+3. **Modified `searchGifs()`** (lines 1278-1326):
+   - Same token-based pagination logic
+   - Appends `pos` parameter to URL when available
+   - Stores and uses Tenor tokens across "Load More" clicks
+
+**How It Works:**
+```
+Initial Request (Tenor):
+  → Client: /api/gifs/trending?limit=20
+  → Server: calls Tenor API without pos
+  → Tenor: returns 20 GIFs + next="CAIQAA"
+  → Client: stores next="CAIQAA"
+
+Load More Click:
+  → Client: /api/gifs/trending?limit=20&pos=CAIQAA
+  → Server: calls Tenor API with pos="CAIQAA"
+  → Tenor: returns next 20 GIFs + next="CBAQAA"
+  → Client: appends to existing GIFs, stores next="CBAQAA"
+
+Continues until Tenor returns no next token...
+```
+
+**User Experience:**
+- Initial load: 20 GIFs from Tenor/GIPHY
+- Click "LOAD MORE GIFs": **Different** 20 GIFs appended below
+- Works for both search results and trending GIFs
+- Shows "Loading more..." text while fetching
+- Button disappears when no more results available
+- Mobile-friendly: Full-width button on mobile, auto-width on desktop
+- Fixed: Trending GIFs now show fresh results when opening modal
+
+**Technical Details:**
+- Tenor tokens are opaque strings (e.g., "CAIQAA") managed server-side by Tenor
+- GIPHY continues using numeric offsets (0, 20, 40, etc.)
+- Both pagination methods coexist in same codebase
+- When `provider='both'`, uses Tenor tokens since GIPHY supports both methods
+- Console logging helps debug pagination state
+
+**Files Changed:**
+- `server/server.js` (lines 6358-6617):
+  - Modified `searchTenor()` and `trendingTenor()` helpers
+  - Updated `/api/gifs/search` and `/api/gifs/trending` endpoints
+- `client/FarholdApp.jsx` (lines 1207-1520):
+  - Added `nextTokenRef` for token tracking
+  - Modified `loadTrending()` and `searchGifs()` with token support
+  - Added "Load More" button UI
+
+**Testing:**
+- ✅ GIPHY pagination with numeric offsets
+- ✅ Tenor pagination with next tokens
+- ✅ Search results load more correctly
+- ✅ Trending GIFs load more correctly
+- ✅ Trending GIFs refresh on modal open
+- ✅ Console logs show token progression
+
+### Fixed
+
+#### E2EE Key Distribution for New Participants
+Fixed issue where adding participants to encrypted waves would fail silently, leaving new members unable to read messages.
+
+**Problem Statement:**
+- When adding participants to encrypted waves, key distribution could fail if:
+  1. The person adding the participant hadn't loaded the wave recently (wave key not in cache)
+  2. The new participant didn't have E2EE enabled
+  3. Network issues during key distribution
+- Failures were caught and shown as warnings, but participants were still added
+- New participants would see encrypted gibberish instead of readable messages
+
+**Root Cause:**
+The `distributeKeyToParticipant()` function required the wave key to be in local cache:
+```javascript
+const waveKey = waveKeyCacheRef.current.get(waveId);
+if (!waveKey) {
+  throw new Error('Wave key not found in cache - reload the wave first');
+}
+```
+If the user hadn't recently viewed the encrypted wave, the key wouldn't be cached.
+
+**Solution (Option D - Automatic Key Refresh):**
+Modified `InviteToWaveModal.handleInvite()` to:
+1. **Pre-fetch wave key** before attempting to add any participants
+2. **Block participant addition** if key fetch fails for encrypted waves
+3. **Show clear error messages** for different failure scenarios
+4. **Provide detailed warnings** when key distribution fails per-participant
+
+**Implementation Details** (client/FarholdApp.jsx:6597-6671):
+
+1. **Pre-fetch wave key** (lines 6608-6620):
+```javascript
+// If wave is encrypted, ensure we have the wave key cached
+if (wave.encrypted && e2ee.isUnlocked) {
+  try {
+    console.log(`E2EE: Pre-fetching wave key for ${wave.id}...`);
+    await e2ee.getWaveKey(wave.id);
+    console.log(`E2EE: Wave key cached successfully`);
+  } catch (keyErr) {
+    console.error('E2EE: Failed to fetch wave key:', keyErr);
+    setLoading(false);
+    showToast('Cannot add participants: Failed to load encryption key...', 'error');
+    return; // Block entire operation
+  }
+}
+```
+
+2. **Better error handling per participant** (lines 6638-6649):
+- Distinguishes between different error types:
+  - User doesn't have E2EE enabled: `"doesn't have encryption enabled"`
+  - Wave key still not available: `"encryption key distribution failed"`
+  - Other errors: Shows specific error message
+- Collects warnings separately from fatal errors
+- Still adds participant but shows clear warning about encryption failure
+
+3. **Enhanced user feedback** (lines 6665-6667):
+```javascript
+if (e2eeWarnings.length > 0) {
+  showToast(`⚠️ ${e2eeWarnings.join('; ')}`, 'warning');
+}
+```
+
+**User Experience Improvements:**
+- ✅ **Automatic**: No need to manually reload wave before adding participants
+- ✅ **Clear errors**: If key fetch fails, shows: "Cannot add participants: Failed to load encryption key for this wave. Try reloading the wave first."
+- ✅ **Specific warnings**: Tells user exactly why key distribution failed per participant:
+  - "Alice doesn't have encryption enabled - they won't be able to read messages"
+  - "Bob added but encryption key distribution failed - they won't be able to read messages"
+- ✅ **Prevents confusion**: Users understand immediately when encryption will/won't work
+- ✅ **Graceful degradation**: If one participant fails, others can still be added successfully
+
+**Technical Details:**
+- Uses existing `e2ee.getWaveKey()` which fetches from server if not cached
+- Wave key remains cached after fetch for subsequent participants
+- Logging helps debug E2EE issues: "E2EE: Pre-fetching wave key", "E2EE: Successfully distributed key to {user}"
+- Error messages help users understand E2EE requirements
+
+**Files Changed:**
+- `client/FarholdApp.jsx` (lines 6597-6671):
+  - Modified `InviteToWaveModal.handleInvite()` function
+  - Added pre-fetch wave key logic
+  - Enhanced error handling and user feedback
+  - Added detailed E2EE warnings array
+
+**Testing Scenarios:**
+- ✅ Adding participant to encrypted wave (key in cache) → Success
+- ✅ Adding participant to encrypted wave (key not in cache) → Auto-fetches, then succeeds
+- ✅ Adding participant without E2EE enabled → Shows warning, participant added
+- ✅ Network failure during key distribution → Shows specific error, participant still added
+- ✅ Cannot fetch wave key at all → Blocks addition, shows error, no participants added
+
 ## [2.2.2] - 2026-01-07
 
 ### Fixed
