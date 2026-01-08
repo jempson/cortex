@@ -4433,6 +4433,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   const canDelete = !isDeleted && message.author_id === currentUserId;
   const isEditing = !isDeleted && editingMessageId === message.id;
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [showPingMenu, setShowPingMenu] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
   const isUnread = !isDeleted && message.is_unread && message.author_id !== currentUserId;
   const isReply = depth > 0 && message.parentId;
@@ -4550,7 +4551,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
 
           {/* Compact inline actions */}
           {!isDeleted && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', opacity: 0.6, transition: 'opacity 0.15s' }}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.6, transition: 'opacity 0.15s', position: 'relative' }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
               onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
             >
@@ -4573,41 +4574,172 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                   color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.8rem' : '0.65rem',
                 }}>{isCollapsed ? `▶${totalChildCount}` : '▼'}</button>
               )}
-              {/* Focus */}
-              {hasChildren && !isAtDepthLimit && onFocus && (
-                <button onClick={() => onFocus(message)} title="Focus" style={{
-                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
-                }}>⤢</button>
+
+              {/* Three-dot menu for additional actions */}
+              {!isEditing && (
+                <div style={{ position: 'relative' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPingMenu(!showPingMenu);
+                    }}
+                    title="More actions"
+                    style={{
+                      padding: isMobile ? '8px 10px' : '2px 4px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-dim)',
+                      cursor: 'pointer',
+                      fontSize: isMobile ? '0.85rem' : '0.7rem',
+                    }}
+                  >
+                    ⋮
+                  </button>
+                  {/* Ping actions dropdown */}
+                  {showPingMenu && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        right: 0,
+                        top: '100%',
+                        marginTop: '4px',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: '4px',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                        minWidth: '140px',
+                        zIndex: 1000,
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div style={{ padding: '4px 0' }}>
+                        {/* Focus */}
+                        {hasChildren && !isAtDepthLimit && onFocus && (
+                          <div
+                            onClick={() => {
+                              onFocus(message);
+                              setShowPingMenu(false);
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                              color: 'var(--text-primary)',
+                              background: 'transparent',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <span>⤢</span>
+                            <span>Focus</span>
+                          </div>
+                        )}
+                        {/* Share */}
+                        {wave?.privacy === 'public' && onShare && (
+                          <div
+                            onClick={() => {
+                              onShare(message);
+                              setShowPingMenu(false);
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                              color: 'var(--text-primary)',
+                              background: 'transparent',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <span>⤴</span>
+                            <span>Share</span>
+                          </div>
+                        )}
+                        {/* Burst */}
+                        {onRipple && (
+                          <div
+                            onClick={() => {
+                              onRipple(message);
+                              setShowPingMenu(false);
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                              color: 'var(--accent-teal)',
+                              background: 'transparent',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <span>◈</span>
+                            <span>Burst</span>
+                          </div>
+                        )}
+                        {/* Edit (author only) */}
+                        {canDelete && (
+                          <div
+                            onClick={() => {
+                              onEdit(message);
+                              setShowPingMenu(false);
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                              color: 'var(--accent-amber)',
+                              background: 'transparent',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              borderTop: '1px solid var(--border-subtle)',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <span>✏</span>
+                            <span>Edit</span>
+                          </div>
+                        )}
+                        {/* Delete (author only) */}
+                        {canDelete && (
+                          <div
+                            onClick={() => {
+                              onDelete(message);
+                              setShowPingMenu(false);
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                              color: 'var(--accent-orange)',
+                              background: 'transparent',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <span>✕</span>
+                            <span>Delete</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
-              {/* Share */}
-              {wave?.privacy === 'public' && onShare && (
-                <button onClick={() => onShare(message)} title="Share" style={{
-                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-purple)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
-                }}>⤴</button>
-              )}
-              {/* Burst (create new wave from this ping) */}
-              {onRipple && (
-                <button onClick={() => onRipple(message)} title="Burst to new wave" style={{
-                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-teal)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
-                }}>◈</button>
-              )}
-              {/* Edit */}
-              {canDelete && !isEditing && (
-                <button onClick={() => onEdit(message)} title="Edit" style={{
-                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
-                }}>✏</button>
-              )}
-              {/* Delete */}
-              {canDelete && !isEditing && (
-                <button onClick={() => onDelete(message)} title="Delete" style={{
-                  padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
-                  color: 'var(--accent-orange)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
-                }}>✕</button>
-              )}
+
               {/* Reaction */}
               <button onClick={() => setShowReactionPicker(!showReactionPicker)} title="React" style={{
                 padding: isMobile ? '8px 10px' : '2px 4px', background: showReactionPicker ? 'var(--bg-hover)' : 'transparent', border: 'none',
@@ -7091,6 +7223,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For ripple activity badges
   const [decryptionErrors, setDecryptionErrors] = useState({}); // Track droplets that failed to decrypt
   const [decryptingWave, setDecryptingWave] = useState(false); // Wave decryption in progress
+  const [showWaveMenu, setShowWaveMenu] = useState(false); // Wave header actions menu
 
   // E2EE Migration state
   const [encryptionStatus, setEncryptionStatus] = useState(null); // { state, progress, participantsWithE2EE, totalParticipants }
@@ -8353,53 +8486,151 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             {participants.length} participants • {total} pings
           </div>
         </div>
-        <PrivacyBadge level={wave.privacy} compact={isMobile} />
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            onClick={handleArchive}
-            title={waveData.is_archived ? 'Restore this wave from archive' : 'Archive this wave'}
-            style={{
-              padding: isMobile ? '10px 12px' : '6px 10px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: waveData.is_archived ? 'var(--accent-teal)20' : 'transparent',
-              border: `1px solid ${waveData.is_archived ? 'var(--accent-teal)' : 'var(--border-primary)'}`,
-              color: waveData.is_archived ? 'var(--accent-teal)' : 'var(--text-dim)',
-              cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-            }}
-          >{waveData.is_archived ? '📬 RESTORE' : '📦'}</button>
-          {/* Decrypt button - show for any participant of encrypted wave */}
-          {waveData.encrypted && (
-            <button onClick={handleDecryptWave} disabled={decryptingWave} style={{
-              padding: isMobile ? '10px 12px' : '6px 10px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: 'var(--accent-orange)15',
-              border: '1px solid var(--accent-orange)',
-              color: 'var(--accent-orange)',
-              cursor: decryptingWave ? 'wait' : 'pointer',
-              fontFamily: 'monospace',
-              fontSize: isMobile ? '0.85rem' : '0.7rem',
-              opacity: decryptingWave ? 0.6 : 1,
-            }}>{decryptingWave ? '⏳' : '🔓'}</button>
-          )}
-          {/* Settings and Delete buttons only show for wave creator (all privacy levels) */}
-          {waveData.can_edit && (
-            <>
-              <button onClick={() => setShowSettings(true)} style={{
-                padding: isMobile ? '10px 12px' : '6px 10px',
+        {/* Wave header actions: three-dot menu + privacy badge */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {/* Three-dot menu */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowWaveMenu(!showWaveMenu)}
+              title="Wave actions"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '1.2rem',
+                padding: isMobile ? '8px 10px' : '4px 8px',
+                lineHeight: 1,
                 minHeight: isMobile ? '44px' : 'auto',
-                background: 'transparent', border: '1px solid var(--accent-teal)50',
-                color: 'var(--accent-teal)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
-              }}>⚙</button>
-              <button onClick={handleDeleteWave} style={{
-                padding: isMobile ? '10px 14px' : '6px 12px',
-                minHeight: isMobile ? '44px' : 'auto',
-                background: 'var(--accent-orange)20',
-                border: '1px solid var(--accent-orange)',
-                color: 'var(--accent-orange)', cursor: 'pointer',
-                fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.75rem',
-              }}>DELETE</button>
-            </>
-          )}
+              }}
+            >
+              ⋮
+            </button>
+            {/* Wave actions dropdown */}
+            {showWaveMenu && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '100%',
+                  marginTop: '4px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '4px',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                  minWidth: '180px',
+                  zIndex: 1000,
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ padding: '4px 0' }}>
+                  {/* Archive/Restore */}
+                  <div
+                    onClick={() => {
+                      handleArchive();
+                      setShowWaveMenu(false);
+                    }}
+                    style={{
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      color: 'var(--text-primary)',
+                      background: 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span>{waveData.is_archived ? '📬' : '📦'}</span>
+                    <span>{waveData.is_archived ? 'Restore from Archive' : 'Archive Wave'}</span>
+                  </div>
+
+                  {/* Decrypt (if encrypted) */}
+                  {waveData.encrypted && (
+                    <div
+                      onClick={() => {
+                        if (!decryptingWave) {
+                          handleDecryptWave();
+                          setShowWaveMenu(false);
+                        }
+                      }}
+                      style={{
+                        padding: '10px 14px',
+                        cursor: decryptingWave ? 'wait' : 'pointer',
+                        fontSize: '0.85rem',
+                        color: 'var(--accent-orange)',
+                        background: 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        opacity: decryptingWave ? 0.6 : 1,
+                      }}
+                      onMouseEnter={(e) => !decryptingWave && (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span>{decryptingWave ? '⏳' : '🔓'}</span>
+                      <span>Decrypt Wave</span>
+                    </div>
+                  )}
+
+                  {/* Settings (creator only) */}
+                  {waveData.can_edit && (
+                    <>
+                      <div
+                        onClick={() => {
+                          setShowSettings(true);
+                          setShowWaveMenu(false);
+                        }}
+                        style={{
+                          padding: '10px 14px',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem',
+                          color: 'var(--accent-teal)',
+                          background: 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          borderTop: '1px solid var(--border-subtle)',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <span>⚙</span>
+                        <span>Wave Settings</span>
+                      </div>
+
+                      {/* Delete (creator only) */}
+                      <div
+                        onClick={() => {
+                          handleDeleteWave();
+                          setShowWaveMenu(false);
+                        }}
+                        style={{
+                          padding: '10px 14px',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem',
+                          color: 'var(--accent-orange)',
+                          background: 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <span>✕</span>
+                        <span>Delete Wave</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          {/* Privacy badge (always visible, farthest right) */}
+          <PrivacyBadge level={wave.privacy} compact={isMobile} />
         </div>
       </div>
 
