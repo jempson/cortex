@@ -6356,14 +6356,18 @@ async function searchGiphy(query, limit, offset) {
 }
 
 // Helper: Search GIFs from Tenor
-async function searchTenor(query, limit, offset) {
+// Tenor API v2 uses token-based pagination, not numeric offsets
+// Returns: { gifs: [...], next: 'token' }
+async function searchTenor(query, limit, pos = '') {
   if (!TENOR_API_KEY) return null;
 
   const searchUrl = new URL('https://tenor.googleapis.com/v2/search');
   searchUrl.searchParams.set('key', TENOR_API_KEY);
   searchUrl.searchParams.set('q', query);
   searchUrl.searchParams.set('limit', limit.toString());
-  searchUrl.searchParams.set('pos', offset.toString());
+  if (pos) {
+    searchUrl.searchParams.set('pos', pos);
+  }
   searchUrl.searchParams.set('contentfilter', 'medium'); // PG-13 equivalent
   searchUrl.searchParams.set('media_filter', 'gif,tinygif');
 
@@ -6377,7 +6381,7 @@ async function searchTenor(query, limit, offset) {
   }
 
   const data = await response.json();
-  return (data.results || []).map(gif => ({
+  const gifs = (data.results || []).map(gif => ({
     id: gif.id,
     title: gif.title || gif.content_description || '',
     url: gif.media_formats?.gif?.url || '',
@@ -6386,6 +6390,11 @@ async function searchTenor(query, limit, offset) {
     height: gif.media_formats?.tinygif?.dims?.[1] || 100,
     provider: 'tenor'
   })).filter(gif => gif.url && gif.preview);
+
+  return {
+    gifs,
+    next: data.next || null // Pagination token for next page
+  };
 }
 
 // Helper: Get trending GIFs from GIPHY
@@ -6417,7 +6426,9 @@ async function trendingGiphy(limit, offset) {
 }
 
 // Helper: Get trending/featured GIFs from Tenor
-async function trendingTenor(limit, offset) {
+// Tenor API v2 uses token-based pagination, not numeric offsets
+// Returns: { gifs: [...], next: 'token' }
+async function trendingTenor(limit, pos = '') {
   if (!TENOR_API_KEY) {
     console.log('🎬 Tenor trending: No API key');
     return null;
@@ -6426,11 +6437,13 @@ async function trendingTenor(limit, offset) {
   const featuredUrl = new URL('https://tenor.googleapis.com/v2/featured');
   featuredUrl.searchParams.set('key', TENOR_API_KEY);
   featuredUrl.searchParams.set('limit', limit.toString());
-  featuredUrl.searchParams.set('pos', offset.toString());
+  if (pos) {
+    featuredUrl.searchParams.set('pos', pos);
+  }
   featuredUrl.searchParams.set('contentfilter', 'medium');
   featuredUrl.searchParams.set('media_filter', 'gif,tinygif');
 
-  console.log(`🎬 Tenor trending: Fetching ${limit} GIFs...`);
+  console.log(`🎬 Tenor trending: Fetching ${limit} GIFs with pos="${pos}"...`);
   const response = await fetch(featuredUrl.toString(), {
     headers: { 'Accept': 'application/json' }
   });
@@ -6441,7 +6454,7 @@ async function trendingTenor(limit, offset) {
   }
 
   const data = await response.json();
-  return (data.results || []).map(gif => ({
+  const gifs = (data.results || []).map(gif => ({
     id: gif.id,
     title: gif.title || gif.content_description || '',
     url: gif.media_formats?.gif?.url || '',
@@ -6450,6 +6463,12 @@ async function trendingTenor(limit, offset) {
     height: gif.media_formats?.tinygif?.dims?.[1] || 100,
     provider: 'tenor'
   })).filter(gif => gif.url && gif.preview);
+
+  console.log(`🎬 Tenor trending: Returned ${gifs.length} GIFs, next="${data.next || 'none'}"`);
+  return {
+    gifs,
+    next: data.next || null // Pagination token for next page
+  };
 }
 
 // Get GIF provider configuration
@@ -6470,7 +6489,7 @@ app.get('/api/gifs/config', authenticateToken, (req, res) => {
 
 // Search GIFs
 app.get('/api/gifs/search', authenticateToken, gifSearchLimiter, async (req, res) => {
-  const { q, limit = 20, offset = 0, provider } = req.query;
+  const { q, limit = 20, offset = 0, pos, provider } = req.query;
 
   if (!q || typeof q !== 'string' || q.trim().length === 0) {
     return res.status(400).json({ error: 'Search query is required' });
@@ -6479,6 +6498,7 @@ app.get('/api/gifs/search', authenticateToken, gifSearchLimiter, async (req, res
   const maxLimit = Math.min(parseInt(limit) || 20, 50);
   const startOffset = parseInt(offset) || 0;
   const query = q.trim();
+  const tenorPos = pos || ''; // Tenor pagination token
 
   // Determine which provider(s) to use
   const useProvider = provider || GIF_PROVIDER;
@@ -6493,26 +6513,30 @@ app.get('/api/gifs/search', authenticateToken, gifSearchLimiter, async (req, res
 
   try {
     let gifs = [];
+    let nextToken = null;
 
     if (useProvider === 'both' && hasGiphy && hasTenor) {
       // Fetch from both and interleave results
       const halfLimit = Math.ceil(maxLimit / 2);
-      const [giphyGifs, tenorGifs] = await Promise.all([
+      const [giphyGifs, tenorResult] = await Promise.all([
         searchGiphy(query, halfLimit, Math.floor(startOffset / 2)),
-        searchTenor(query, halfLimit, Math.floor(startOffset / 2))
+        searchTenor(query, halfLimit, tenorPos)
       ]);
 
       // Interleave results
       const g = giphyGifs || [];
-      const t = tenorGifs || [];
+      const t = tenorResult?.gifs || [];
       for (let i = 0; i < Math.max(g.length, t.length); i++) {
         if (i < g.length) gifs.push(g[i]);
         if (i < t.length) gifs.push(t[i]);
       }
+      nextToken = tenorResult?.next || null;
     } else if (hasGiphy) {
       gifs = await searchGiphy(query, maxLimit, startOffset) || [];
     } else if (hasTenor) {
-      gifs = await searchTenor(query, maxLimit, startOffset) || [];
+      const tenorResult = await searchTenor(query, maxLimit, tenorPos);
+      gifs = tenorResult?.gifs || [];
+      nextToken = tenorResult?.next || null;
     }
 
     res.json({
@@ -6521,6 +6545,7 @@ app.get('/api/gifs/search', authenticateToken, gifSearchLimiter, async (req, res
         total_count: gifs.length * 10, // Estimate
         count: gifs.length,
         offset: startOffset,
+        next: nextToken // Tenor pagination token (null for GIPHY)
       },
       provider: useProvider
     });
@@ -6532,17 +6557,18 @@ app.get('/api/gifs/search', authenticateToken, gifSearchLimiter, async (req, res
 
 // Get trending GIFs
 app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, res) => {
-  const { limit = 20, offset = 0, provider } = req.query;
+  const { limit = 20, offset = 0, pos, provider } = req.query;
 
   const maxLimit = Math.min(parseInt(limit) || 20, 50);
   const startOffset = parseInt(offset) || 0;
+  const tenorPos = pos || ''; // Tenor pagination token
 
   // Determine which provider(s) to use
   const useProvider = provider || GIF_PROVIDER;
   const hasGiphy = GIPHY_API_KEY && (useProvider === 'giphy' || useProvider === 'both');
   const hasTenor = TENOR_API_KEY && (useProvider === 'tenor' || useProvider === 'both');
 
-  console.log(`🎬 GIF trending: provider=${useProvider}, hasGiphy=${hasGiphy}, hasTenor=${hasTenor}`);
+  console.log(`🎬 GIF trending: provider=${useProvider}, hasGiphy=${hasGiphy}, hasTenor=${hasTenor}, pos="${tenorPos}"`);
 
   if (!hasGiphy && !hasTenor) {
     return res.status(503).json({
@@ -6552,24 +6578,28 @@ app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, r
 
   try {
     let gifs = [];
+    let nextToken = null;
 
     if (useProvider === 'both' && hasGiphy && hasTenor) {
       const halfLimit = Math.ceil(maxLimit / 2);
-      const [giphyGifs, tenorGifs] = await Promise.all([
+      const [giphyGifs, tenorResult] = await Promise.all([
         trendingGiphy(halfLimit, Math.floor(startOffset / 2)),
-        trendingTenor(halfLimit, Math.floor(startOffset / 2))
+        trendingTenor(halfLimit, tenorPos)
       ]);
 
       const g = giphyGifs || [];
-      const t = tenorGifs || [];
+      const t = tenorResult?.gifs || [];
       for (let i = 0; i < Math.max(g.length, t.length); i++) {
         if (i < g.length) gifs.push(g[i]);
         if (i < t.length) gifs.push(t[i]);
       }
+      nextToken = tenorResult?.next || null;
     } else if (hasGiphy) {
       gifs = await trendingGiphy(maxLimit, startOffset) || [];
     } else if (hasTenor) {
-      gifs = await trendingTenor(maxLimit, startOffset) || [];
+      const tenorResult = await trendingTenor(maxLimit, tenorPos);
+      gifs = tenorResult?.gifs || [];
+      nextToken = tenorResult?.next || null;
     }
 
     res.json({
@@ -6578,6 +6608,7 @@ app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, r
         total_count: gifs.length * 10,
         count: gifs.length,
         offset: startOffset,
+        next: nextToken // Tenor pagination token (null for GIPHY)
       },
       provider: useProvider
     });
