@@ -11665,6 +11665,32 @@ app.post('/api/waves/:id/participants', authenticateToken, async (req, res) => {
     return res.status(500).json({ error: 'Failed to add participant' });
   }
 
+  // If this is an encrypted burst wave, copy parent wave encryption keys for new participant
+  if (wave.encrypted && wave.broken_out_from) {
+    console.log(`🔐 Burst wave ${waveId} is encrypted, checking parent ${wave.broken_out_from} for encryption keys...`);
+    const parentWave = db.getWave(wave.broken_out_from);
+    if (parentWave && parentWave.encrypted) {
+      // Get parent wave's encryption key for this user
+      const parentKey = db.db.prepare(`
+        SELECT user_id, encrypted_wave_key, sender_public_key, key_version
+        FROM wave_encryption_keys
+        WHERE wave_id = ? AND user_id = ?
+      `).get(wave.broken_out_from, userId);
+
+      if (parentKey) {
+        // Copy the key to the burst wave
+        const now = new Date().toISOString();
+        db.db.prepare(`
+          INSERT OR IGNORE INTO wave_encryption_keys (id, wave_id, user_id, encrypted_wave_key, sender_public_key, key_version, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(`wavekey-${uuidv4()}`, waveId, userId, parentKey.encrypted_wave_key, parentKey.sender_public_key, parentKey.key_version, now);
+        console.log(`🔐 Copied parent encryption key to burst wave for user ${userId}`);
+      } else {
+        console.log(`⚠️  No encryption key found in parent wave for user ${userId}`);
+      }
+    }
+  }
+
   // Get updated participant list
   const participants = db.getWaveParticipants(waveId);
 
