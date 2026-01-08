@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.2.2';
+const VERSION = '2.2.3';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -1209,49 +1209,119 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [gifs, setGifs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [showTrending, setShowTrending] = useState(true);
   const [provider, setProvider] = useState('giphy'); // Track which provider returned results
+  const [hasMore, setHasMore] = useState(true);
   const searchTimeoutRef = useRef(null);
+  const offsetRef = useRef(0); // Use ref for synchronous offset tracking (GIPHY)
+  const nextTokenRef = useRef(''); // Tenor pagination token
 
-  // Load trending GIFs when modal opens
+  // Load trending GIFs when modal opens and reset state
   useEffect(() => {
-    if (isOpen && showTrending) {
-      loadTrending();
+    if (isOpen) {
+      offsetRef.current = 0;
+      nextTokenRef.current = '';
+      setGifs([]);
+      setHasMore(true);
+      if (showTrending) {
+        loadTrending();
+      }
     }
   }, [isOpen]);
 
-  const loadTrending = async () => {
-    setLoading(true);
+  const loadTrending = async (loadMore = false) => {
+    if (loadMore) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      offsetRef.current = 0;
+      nextTokenRef.current = '';
+    }
     setError(null);
     try {
-      const data = await fetchAPI('/gifs/trending?limit=20');
-      setGifs(data.gifs || []);
+      const currentOffset = loadMore ? offsetRef.current : 0;
+      const currentPos = loadMore ? nextTokenRef.current : '';
+
+      // Build URL with pos parameter for Tenor token pagination
+      let url = `/gifs/trending?limit=20&offset=${currentOffset}`;
+      if (currentPos) {
+        url += `&pos=${encodeURIComponent(currentPos)}`;
+      }
+
+      console.log(`Loading trending GIFs with offset: ${currentOffset}, pos: "${currentPos}"`);
+      const data = await fetchAPI(url);
+      const newGifs = data.gifs || [];
+      if (loadMore) {
+        setGifs(prev => [...prev, ...newGifs]);
+      } else {
+        setGifs(newGifs);
+      }
       setProvider(data.provider || 'giphy');
+      offsetRef.current = currentOffset + newGifs.length;
+
+      // Store next token from Tenor API (null/undefined for GIPHY)
+      nextTokenRef.current = data.pagination?.next || '';
+      console.log(`Loaded ${newGifs.length} GIFs, new offset: ${offsetRef.current}, next token: "${nextTokenRef.current}"`);
+
+      // Has more if: we got 20 GIFs AND (there's a next token OR we're using GIPHY)
+      setHasMore(newGifs.length === 20 && (nextTokenRef.current || !data.pagination?.next));
     } catch (err) {
       setError(err.message || 'Failed to load trending GIFs');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
-  const searchGifs = async (query) => {
+  const searchGifs = async (query, loadMore = false) => {
     if (!query.trim()) {
       setShowTrending(true);
       loadTrending();
       return;
     }
     setShowTrending(false);
-    setLoading(true);
+    if (loadMore) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      offsetRef.current = 0;
+      nextTokenRef.current = '';
+    }
     setError(null);
     try {
-      const data = await fetchAPI(`/gifs/search?q=${encodeURIComponent(query)}&limit=20`);
-      setGifs(data.gifs || []);
+      const currentOffset = loadMore ? offsetRef.current : 0;
+      const currentPos = loadMore ? nextTokenRef.current : '';
+
+      // Build URL with pos parameter for Tenor token pagination
+      let url = `/gifs/search?q=${encodeURIComponent(query)}&limit=20&offset=${currentOffset}`;
+      if (currentPos) {
+        url += `&pos=${encodeURIComponent(currentPos)}`;
+      }
+
+      console.log(`Searching GIFs for "${query}" with offset: ${currentOffset}, pos: "${currentPos}"`);
+      const data = await fetchAPI(url);
+      const newGifs = data.gifs || [];
+      if (loadMore) {
+        setGifs(prev => [...prev, ...newGifs]);
+      } else {
+        setGifs(newGifs);
+      }
       setProvider(data.provider || 'giphy');
+      offsetRef.current = currentOffset + newGifs.length;
+
+      // Store next token from Tenor API (null/undefined for GIPHY)
+      nextTokenRef.current = data.pagination?.next || '';
+      console.log(`Loaded ${newGifs.length} GIFs, new offset: ${offsetRef.current}, next token: "${nextTokenRef.current}"`);
+
+      // Has more if: we got 20 GIFs AND (there's a next token OR we're using GIPHY)
+      setHasMore(newGifs.length === 20 && (nextTokenRef.current || !data.pagination?.next));
     } catch (err) {
       setError(err.message || 'Failed to search GIFs');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -1374,41 +1444,72 @@ const GifSearchModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile }) => {
           )}
 
           {!loading && gifs.length > 0 && (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
-              gap: '8px',
-            }}>
-              {gifs.map((gif) => (
-                <button
-                  key={gif.id}
-                  onClick={() => onSelect(gif.url)}
-                  style={{
-                    background: 'var(--bg-elevated)',
-                    border: '1px solid var(--border-subtle)',
-                    padding: 0,
-                    cursor: 'pointer',
-                    aspectRatio: '1',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  title={gif.title}
-                >
-                  <img
-                    src={gif.preview}
-                    alt={gif.title}
-                    loading="lazy"
+            <>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
+                gap: '8px',
+              }}>
+                {gifs.map((gif) => (
+                  <button
+                    key={gif.id}
+                    onClick={() => onSelect(gif.url)}
                     style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
+                      background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border-subtle)',
+                      padding: 0,
+                      cursor: 'pointer',
+                      aspectRatio: '1',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
-                  />
-                </button>
-              ))}
-            </div>
+                    title={gif.title}
+                  >
+                    <img
+                      src={gif.preview}
+                      alt={gif.title}
+                      loading="lazy"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+
+              {/* Load More Button */}
+              {hasMore && !loadingMore && (
+                <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                  <button
+                    onClick={() => showTrending ? loadTrending(true) : searchGifs(searchQuery, true)}
+                    style={{
+                      background: 'var(--bg-elevated)',
+                      border: '1px solid var(--accent-teal)50',
+                      color: 'var(--accent-teal)',
+                      padding: isMobile ? '14px 24px' : '10px 20px',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem',
+                      fontWeight: 'bold',
+                      minHeight: isMobile ? '44px' : 'auto',
+                      width: isMobile ? '100%' : 'auto',
+                    }}
+                  >
+                    LOAD MORE GIFs
+                  </button>
+                </div>
+              )}
+
+              {loadingMore && (
+                <div style={{ textAlign: 'center', marginTop: '16px', color: 'var(--text-dim)', fontSize: '0.75rem' }}>
+                  Loading more...
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -6541,8 +6642,26 @@ const InviteToWaveModal = ({ isOpen, onClose, wave, contacts, participants, fetc
     setLoading(true);
     let successCount = 0;
     let errors = [];
+    let e2eeWarnings = [];
+
+    // If wave is encrypted, ensure we have the wave key cached
+    if (wave.encrypted && e2ee.isUnlocked) {
+      try {
+        console.log(`E2EE: Pre-fetching wave key for ${wave.id} before adding participants...`);
+        await e2ee.getWaveKey(wave.id);
+        console.log(`E2EE: Wave key cached successfully`);
+      } catch (keyErr) {
+        console.error('E2EE: Failed to fetch wave key:', keyErr);
+        setLoading(false);
+        showToast('Cannot add participants: Failed to load encryption key for this wave. Try reloading the wave first.', 'error');
+        return;
+      }
+    }
 
     for (const userId of selectedUsers) {
+      const user = availableContacts.find(c => c.id === userId);
+      const userName = user?.displayName || user?.name || userId;
+
       try {
         // Add participant to wave
         await fetchAPI(`/waves/${wave.id}/participants`, {
@@ -6554,17 +6673,24 @@ const InviteToWaveModal = ({ isOpen, onClose, wave, contacts, participants, fetc
         if (wave.encrypted && e2ee.isUnlocked) {
           try {
             await e2ee.distributeKeyToParticipant(wave.id, userId);
+            console.log(`E2EE: Successfully distributed key to ${userName}`);
           } catch (keyErr) {
-            console.error('Failed to distribute E2EE key:', keyErr);
-            // Don't fail the whole operation, just warn
-            showToast(`Added ${availableContacts.find(c => c.id === userId)?.displayName || 'user'} but E2EE key distribution failed`, 'warning');
+            console.error(`E2EE: Failed to distribute key to ${userName}:`, keyErr);
+
+            // Determine the specific error
+            if (keyErr.message && keyErr.message.includes('does not have E2EE set up')) {
+              e2eeWarnings.push(`${userName} doesn't have encryption enabled - they won't be able to read messages`);
+            } else if (keyErr.message && keyErr.message.includes('Wave key not found')) {
+              e2eeWarnings.push(`${userName} added but encryption key distribution failed - they won't be able to read messages`);
+            } else {
+              e2eeWarnings.push(`${userName} added but encryption failed: ${keyErr.message}`);
+            }
           }
         }
 
         successCount++;
       } catch (err) {
-        const user = availableContacts.find(c => c.id === userId);
-        errors.push(`${user?.displayName || user?.name || userId}: ${err.message}`);
+        errors.push(`${userName}: ${err.message}`);
       }
     }
 
@@ -6574,6 +6700,9 @@ const InviteToWaveModal = ({ isOpen, onClose, wave, contacts, participants, fetc
       showToast(`Added ${successCount} participant${successCount > 1 ? 's' : ''} to wave`, 'success');
       if (onParticipantsChange) onParticipantsChange();
       onClose();
+    }
+    if (e2eeWarnings.length > 0) {
+      showToast(`⚠️ ${e2eeWarnings.join('; ')}`, 'warning');
     }
     if (errors.length > 0) {
       showToast(errors.join(', '), 'error');
