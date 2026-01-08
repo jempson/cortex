@@ -11653,8 +11653,8 @@ app.post('/api/waves/:id/decrypt', authenticateToken, async (req, res) => {
     // Update wave to be unencrypted
     db.db.prepare('UPDATE waves SET encrypted = 0 WHERE id = ?').run(waveId);
 
-    // Update all ping contents
-    const updateStmt = db.db.prepare('UPDATE droplets SET content = ? WHERE id = ?');
+    // Update all ping contents (table is called 'pings' in production)
+    const updateStmt = db.db.prepare('UPDATE pings SET content = ? WHERE id = ?');
     for (const ping of pings) {
       if (ping.id && ping.content !== undefined) {
         updateStmt.run(ping.content, ping.id);
