@@ -6511,11 +6511,20 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
       const decryptedPings = [];
       for (const ping of pings) {
         try {
-          const decryptedContent = await e2ee.decryptMessage(ping.content, wave.id);
-          decryptedPings.push({
-            id: ping.id,
-            content: decryptedContent
-          });
+          // Check if ping is encrypted (has nonce)
+          if (ping.encrypted && ping.nonce) {
+            const decryptedContent = await e2ee.decryptDroplet(ping.content, ping.nonce, wave.id, ping.keyVersion);
+            decryptedPings.push({
+              id: ping.id,
+              content: decryptedContent
+            });
+          } else {
+            // Already decrypted or not encrypted
+            decryptedPings.push({
+              id: ping.id,
+              content: ping.content
+            });
+          }
         } catch (decryptErr) {
           console.error(`Failed to decrypt ping ${ping.id}:`, decryptErr);
           // If decryption fails, keep original content (might already be decrypted)
@@ -8086,11 +8095,20 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       const decryptedPings = [];
       for (const ping of pings) {
         try {
-          const decryptedContent = await e2ee.decryptMessage(ping.content, wave.id);
-          decryptedPings.push({
-            id: ping.id,
-            content: decryptedContent
-          });
+          // Check if ping is encrypted (has nonce)
+          if (ping.encrypted && ping.nonce) {
+            const decryptedContent = await e2ee.decryptDroplet(ping.content, ping.nonce, wave.id, ping.keyVersion);
+            decryptedPings.push({
+              id: ping.id,
+              content: decryptedContent
+            });
+          } else {
+            // Already decrypted or not encrypted
+            decryptedPings.push({
+              id: ping.id,
+              content: ping.content
+            });
+          }
         } catch (decryptErr) {
           console.error(`Failed to decrypt ping ${ping.id}:`, decryptErr);
           // If decryption fails, keep original content (might already be decrypted)
