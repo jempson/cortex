@@ -5,6 +5,38 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.6] - 2026-01-08
+
+### Fixed
+
+#### Exclude Deleted Pings from Wave Ping Counts (`server/database-sqlite.js` line 3320)
+
+**Problem:**
+- Deleted pings (soft-deleted with `deleted = 1`) were still counting toward wave ping totals
+- Wave list showed inflated ping counts that included `"[Droplet deleted]"` entries
+- This created confusion as the visible ping count didn't match the actual active pings
+- Unread counts already correctly excluded deleted pings, creating inconsistency
+
+**Solution:**
+Modified the wave list query to exclude deleted pings from the count:
+
+```sql
+-- Before
+(SELECT COUNT(*) FROM pings WHERE wave_id = w.id) as ping_count
+
+-- After
+(SELECT COUNT(*) FROM pings WHERE wave_id = w.id AND deleted = 0) as ping_count
+```
+
+**Impact:**
+- Wave ping counts now accurately reflect only active (non-deleted) pings
+- Consistent with unread count logic (which already excluded deleted pings)
+- Users see accurate ping totals in wave lists
+- Deleted pings remain recoverable (soft delete unchanged)
+
+**Files Changed:**
+- `server/database-sqlite.js` (line 3320): Added `deleted = 0` filter to ping count subquery
+
 ## [2.2.5] - 2026-01-08
 
 ### Changed
