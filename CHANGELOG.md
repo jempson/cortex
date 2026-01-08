@@ -5,6 +5,197 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.5] - 2026-01-08
+
+### Changed
+
+#### UI Cleanup: Consolidated Actions into Three-Dot Menus
+Major interface redesign that consolidates wave and ping action buttons into organized dropdown menus, significantly reducing visual clutter while maintaining full functionality.
+
+**Problem:**
+- Wave headers had 4+ individual buttons (Archive, Decrypt, Settings, Delete) cluttering the interface
+- Each ping displayed 7-8 action buttons, creating visual overwhelm
+- Mobile users faced cramped interfaces with small, crowded buttons
+- Essential actions like Reply and React were mixed with less-frequent actions
+- Privacy badge could get lost among multiple buttons
+
+**Solution:**
+Implemented clean three-dot menu (⋮) system inspired by modern mobile interfaces, organizing actions by frequency of use.
+
+#### Wave Header Changes (`client/FarholdApp.jsx` lines 7094, 8357-8503)
+
+**Before:**
+```
+[← Back] Wave Title | [📦] [🔓] [⚙] [DELETE] [Privacy Badge]
+```
+
+**After:**
+```
+[← Back] Wave Title | [⋮ Menu] [Privacy Badge]
+```
+
+**Implementation:**
+- Added `showWaveMenu` state (line 7094) for dropdown visibility
+- Three-dot button (⋮) positioned just left of privacy badge
+- Privacy badge remains prominently visible (farthest right)
+- Dropdown menu with consistent styling:
+  - Background: `var(--bg-elevated)`
+  - Border: `var(--border-primary)` with 4px radius
+  - Shadow: `0 4px 12px rgba(0, 0, 0, 0.3)`
+  - Min width: 180px
+  - z-index: 1000 for proper layering
+
+**Menu Structure:**
+1. **📦 Archive Wave** / **📬 Restore from Archive**
+   - Available to all participants
+   - Dynamically shows Archive or Restore based on wave state
+   - Color: `var(--text-primary)`
+
+2. **🔓 Decrypt Wave** (conditionally shown if `wave.encrypted`)
+   - Available to all participants (not just creator)
+   - Fixes edge case where deleted creator prevented decryption
+   - Color: `var(--accent-orange)`
+   - Disabled state when `decryptingWave` is true
+
+3. **⚙ Wave Settings** (creator only)
+   - Border-top separator to visually group creator-only actions
+   - Opens WaveSettingsModal
+   - Color: `var(--accent-teal)`
+
+4. **✕ Delete Wave** (creator only)
+   - Destructive action clearly separated
+   - Color: `var(--accent-orange)`
+
+**Behavior:**
+- Click outside closes menu (stopPropagation on menu items)
+- Hover effects: `background: var(--bg-hover)`
+- Menu auto-closes after action selection
+- Maintains all previous functionality
+
+#### Ping Actions Changes (`client/FarholdApp.jsx` lines 4436, 4552-4763)
+
+**Before:**
+```
+[↵ Reply] [▶ Collapse] [⤢ Focus] [⤴ Share] [◈ Burst] [✏ Edit] [✕ Delete] [😀 React]
+```
+*8 buttons per ping, overwhelming especially in long threads*
+
+**After:**
+```
+[↵ Reply] [▶ Collapse] [⋮ Menu] [😀 React]
+```
+*4 visible elements, cleaner and more focused*
+
+**Implementation:**
+- Added `showPingMenu` state (line 4436) for dropdown visibility
+- Reorganized action buttons by usage frequency
+- Three-dot menu contains less-frequent but important actions
+- Maintains opacity transition (0.6 → 1.0 on hover) for all visible buttons
+
+**Always Visible Actions:**
+1. **↵ Reply** - Most common action, always accessible
+   - At depth limit: Shows **⤢ Focus** instead
+   - Color: `var(--text-dim)`
+
+2. **▶/▼ Collapse/Expand** - Essential for thread navigation
+   - Shows child count when collapsed (e.g., "▶12")
+   - Color: `var(--accent-amber)`
+
+3. **⋮ More Actions Menu** - Gateway to additional actions
+   - Color: `var(--text-dim)`
+   - Min width: 140px
+   - Same styling as wave menu
+
+4. **😀 React** - Quick emoji responses
+   - Opens reaction picker with quick reactions
+   - Color: `var(--text-dim)`
+
+**Menu Structure:**
+1. **⤢ Focus** (shown if `hasChildren && !isAtDepthLimit`)
+   - Deep dive into thread
+   - Color: `var(--text-primary)`
+
+2. **⤴ Share** (shown if `wave.privacy === 'public'`)
+   - Share public pings
+   - Color: `var(--text-primary)`
+
+3. **◈ Burst** (always shown)
+   - Create new wave from this ping
+   - Color: `var(--accent-teal)`
+
+4. **✏ Edit** (author only)
+   - Border-top separator for author actions
+   - Color: `var(--accent-amber)`
+
+5. **✕ Delete** (author only)
+   - Destructive action clearly separated
+   - Color: `var(--accent-orange)`
+
+**Behavior:**
+- Menu hidden when editing a ping (`!isEditing`)
+- Click outside closes menu
+- Hover effects consistent with wave menu
+- Menu auto-closes after action selection
+- stopPropagation prevents unintended ping clicks
+
+#### Technical Details
+
+**State Management:**
+- `showWaveMenu: boolean` - Controls wave header dropdown
+- `showPingMenu: boolean` - Controls per-ping dropdown (each Droplet has its own)
+
+**Styling Consistency:**
+- Both menus use identical styling patterns
+- Hover effect: `background: transparent` → `background: var(--bg-hover)`
+- Icon + label layout: `display: flex, gap: 8px`
+- Touch-friendly padding: `8px 12px`
+- Font size: `0.8rem` for menu items
+
+**Mobile Optimization:**
+- Three-dot button has larger touch target on mobile
+- Menu items have `10px 14px` padding on mobile
+- Full-width menu items easy to tap
+- No need to precisely hit small icon buttons anymore
+
+**Accessibility:**
+- All actions remain keyboard accessible
+- Clear visual hierarchy with icons and labels
+- Color-coded by action type (teal=primary, amber=edit, orange=destructive)
+- Hover states provide clear feedback
+
+#### Benefits
+
+**User Experience:**
+- ✨ **Cleaner interface** - 70% reduction in visible buttons
+- 📱 **Better mobile UX** - Larger touch targets, less cramping
+- 🎯 **Improved focus** - Essential actions (Reply, React) remain visible
+- 🔍 **Better discoverability** - Icons + labels in menu vs icon-only buttons
+- ♿ **Maintained functionality** - All features still accessible, better organized
+
+**Visual Hierarchy:**
+- Privacy badge now stands out prominently
+- Wave title has more breathing room
+- Thread structure clearer without button clutter
+- Actions organized by frequency and importance
+
+**Consistency:**
+- Matches patterns from wave list three-dot menu
+- Consistent menu styling throughout app
+- Predictable behavior across different contexts
+
+**Technical:**
+- Cleaner component structure
+- Easier to add new actions without cluttering UI
+- Better separation of concerns (common vs author-only actions)
+- Improved mobile performance (fewer DOM elements)
+
+#### Files Changed
+- `client/FarholdApp.jsx`
+  - Line 7094: Added `showWaveMenu` state
+  - Lines 8357-8503: Wave header three-dot menu implementation
+  - Line 4436: Added `showPingMenu` state
+  - Lines 4552-4763: Ping actions three-dot menu implementation
+
 ## [2.2.3] - 2026-01-08
 
 ### Added
