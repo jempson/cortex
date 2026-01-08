@@ -3317,7 +3317,7 @@ export class DatabaseSQLite {
         u.display_name as creator_name, u.avatar as creator_avatar, u.handle as creator_handle,
         cr.name as crew_name,
         wca.category_id, wc.name as category_name,
-        (SELECT COUNT(*) FROM pings WHERE wave_id = w.id) as ping_count
+        (SELECT COUNT(*) FROM pings WHERE wave_id = w.id AND deleted = 0) as ping_count
       FROM waves w
       LEFT JOIN wave_participants wp ON w.id = wp.wave_id AND wp.user_id = ?
       LEFT JOIN users u ON w.created_by = u.id
