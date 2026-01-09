@@ -5626,7 +5626,7 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const updates = {};
-  const validThemes = ['firefly', 'highContrast', 'amoled', 'light', 'ocean'];
+  const validThemes = ['firefly', 'highContrast', 'amoled', 'light', 'ocean', 'blackAndWhite', 'red', 'gray', 'burntUmber', 'sage'];
   const validFontSizes = ['small', 'medium', 'large', 'xlarge'];
 
   if (req.body.theme && validThemes.includes(req.body.theme)) {
