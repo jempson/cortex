@@ -83,9 +83,29 @@ const THEMES = {
     name: 'Light Mode',
     description: 'Light background for daytime',
   },
+  blackAndWhite: {
+    name: 'Black and White',
+    description: 'A simple, high-contrast light theme.',
+  },
   ocean: {
     name: 'Ocean Blue',
     description: 'Blue-tinted dark theme',
+  },
+  red: {
+    name: 'Red',
+    description: 'A dark, red-based theme.',
+  },
+  gray: {
+    name: 'Gray',
+    description: 'A simple grayscale theme.',
+  },
+  burntUmber: {
+    name: 'Burnt Umber',
+    description: 'A dark, orange-brown theme.',
+  },
+  sage: {
+    name: 'Sage',
+    description: 'A light, desaturated green theme.',
   },
 };
 

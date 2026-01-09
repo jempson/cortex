@@ -127,6 +127,35 @@
         --overlay-green: rgba(10, 138, 82, 0.12);
       }
 
+      /* Black and White Theme */
+      [data-theme="blackAndWhite"] {
+        --bg-base: #ffffff;
+        --bg-elevated: #f5f5f5;
+        --bg-surface: #eeeeee;
+        --bg-hover: #e0e0e0;
+        --bg-active: #d0d0d0;
+        --text-primary: #000000;
+        --text-secondary: #222222;
+        --text-dim: #444444;
+        --text-muted: #666666;
+        --border-primary: #bbbbbb;
+        --border-secondary: #cccccc;
+        --border-subtle: #dddddd;
+        --accent-amber: #333333;
+        --accent-teal: #555555;
+        --accent-green: #444444;
+        --accent-orange: #666666;
+        --accent-purple: #777777;
+        --status-success: #444444;
+        --status-info: #555555;
+        --status-warning: #666666;
+        --glow-amber: rgba(51, 51, 51, 0.4);
+        --glow-teal: rgba(85, 85, 85, 0.4);
+        --glow-green: rgba(68, 68, 68, 0.4);
+        --overlay-amber: rgba(51, 51, 51, 0.12);
+        --overlay-green: rgba(68, 68, 68, 0.12);
+      }
+
       /* Ocean Blue Theme */
       [data-theme="ocean"] {
         --bg-base: #0a1420;
@@ -151,6 +180,90 @@
         --glow-amber: rgba(255, 193, 7, 0.6);
         --glow-teal: rgba(0, 188, 212, 0.6);
         --glow-green: rgba(76, 175, 80, 0.6);
+      }
+
+      /* Red Theme */
+      [data-theme="red"] {
+        --bg-base: #200000;
+        --bg-elevated: #300000;
+        --bg-surface: #400000;
+        --bg-hover: #500000;
+        --bg-active: #600000;
+        --text-primary: #ffffff;
+        --text-secondary: #f0f0f0;
+        --text-dim: #d0d0d0;
+        --text-muted: #b0b0b0;
+        --border-primary: #800000;
+        --border-secondary: #900000;
+        --border-subtle: #700000;
+        --accent-amber: #ffc107;
+        --accent-teal: #00bcd4;
+        --accent-green: #4caf50;
+        --accent-orange: #ff7043;
+        --accent-purple: #7c4dff;
+      }
+
+      /* Gray Theme */
+      [data-theme="gray"] {
+        --bg-base: #333333;
+        --bg-elevated: #444444;
+        --bg-surface: #555555;
+        --bg-hover: #666666;
+        --bg-active: #777777;
+        --text-primary: #ffffff;
+        --text-secondary: #f0f0f0;
+        --text-dim: #d0d0d0;
+        --text-muted: #b0b0b0;
+        --border-primary: #888888;
+        --border-secondary: #999999;
+        --border-subtle: #777777;
+        --accent-amber: #ffffff;
+        --accent-teal: #eeeeee;
+        --accent-green: #dddddd;
+        --accent-orange: #cccccc;
+        --accent-purple: #bbbbbb;
+      }
+
+      /* Burnt Umber Theme */
+      [data-theme="burntUmber"] {
+        --bg-base: #3e1e00;
+        --bg-elevated: #4e2e10;
+        --bg-surface: #5e3e20;
+        --bg-hover: #6e4e30;
+        --bg-active: #7e5e40;
+        --text-primary: #ffffff;
+        --text-secondary: #f0f0f0;
+        --text-dim: #d0d0d0;
+        --text-muted: #b0b0b0;
+        --border-primary: #8e7e60;
+        --border-secondary: #9e8e70;
+        --border-subtle: #7e6e50;
+        --accent-amber: #ffc107;
+        --accent-teal: #00bcd4;
+        --accent-green: #4caf50;
+        --accent-orange: #ff7043;
+        --accent-purple: #7c4dff;
+      }
+
+      /* Sage Theme (Dark) */
+      [data-theme="sage"] {
+        --bg-base: #2c3e2c;
+        --bg-elevated: #384f38;
+        --bg-surface: #435f43;
+        --bg-hover: #506f50;
+        --bg-active: #5d805d;
+        --text-primary: #ffd23f; /* Amber */
+        --text-secondary: #ffc107; /* Darker Amber */
+        --text-dim: #e5a900;
+        --text-muted: #c99400;
+        --border-primary: #5d805d;
+        --border-secondary: #6e946e;
+        --border-subtle: #435f43;
+        --accent-amber: #ffd23f;
+        --accent-teal: #3bceac;
+        --accent-green: #0ead69;
+        --accent-orange: #ff6b35; /* Orange for text highlight */
+        --accent-purple: #a855f7;
       }
 
       /* ============ BASE STYLES ============ */
@@ -258,7 +371,7 @@
               theme = parsed && parsed.preferences && parsed.preferences.theme;
             }
           }
-          if (theme && ['firefly', 'highContrast', 'amoled', 'light', 'ocean'].indexOf(theme) !== -1) {
+          if (theme && ['firefly', 'highContrast', 'amoled', 'light', 'ocean', 'blackAndWhite', 'red', 'gray', 'burntUmber', 'sage'].indexOf(theme) !== -1) {
             document.documentElement.setAttribute('data-theme', theme);
           }
         } catch (e) {
