@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.2.6';
+const VERSION = '2.2.7';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -18795,8 +18795,8 @@ function AuthProvider({ children }) {
       fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => {
           if (res.ok) return res.json();
-          // Only clear session on 401 (invalid/expired token), not on other errors
-          if (res.status === 401) {
+          // Clear session on 401 (invalid) or 403 (expired token/session)
+          if (res.status === 401 || res.status === 403) {
             storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
             setToken(null); setUser(null);
           }
