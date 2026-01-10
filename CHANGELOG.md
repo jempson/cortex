@@ -5,6 +5,56 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.7] - 2026-01-10
+
+### Fixed
+
+#### PWA Authentication Issue - Fix Spinning Wheel on Startup (`client/FarholdApp.jsx` line 18799)
+
+**Problem:**
+- PWA users experienced spinning wheel on app startup after tokens expired (24h default)
+- Console errors: `GET /api/auth/me 403 (Forbidden)` and `Auth check failed, keeping cached session`
+- Required daily PWA uninstall/reinstall to clear expired sessions
+- 403 errors (expired token/session) were treated as "network errors" instead of auth failures
+- Client kept expired token in localStorage instead of clearing it
+
+**Root Cause:**
+- PWA sessions configured to "never expire by time" (isPWA() check)
+- But JWT tokens still expired server-side after 24h (or user-selected duration)
+- When token expired, server returned 403 "Invalid or expired token"
+- Client auth check only cleared session on 401, not 403
+- Expired sessions remained cached, causing perpetual loading state
+
+**Solution:**
+Modified auth check to treat both 401 and 403 responses as session invalidation:
+
+```javascript
+// Before
+if (res.status === 401) {
+  storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
+  setToken(null); setUser(null);
+}
+
+// After
+if (res.status === 401 || res.status === 403) {
+  storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
+  setToken(null); setUser(null);
+}
+```
+
+**Impact:**
+- PWA no longer gets stuck on spinning wheel with expired tokens
+- Users gracefully logged out when tokens expire (no more daily reinstalls)
+- Session duration still respects user's login choice (24h, 7d, or 30d)
+- Network errors (500, timeout) still preserve cached session for offline access
+
+**Files Changed:**
+- `client/FarholdApp.jsx` (line 18799): Changed 401 check to include 403
+
+**Additional Changes:**
+- Added missing CSS variables to blackAndWhite theme (`client/index.html` lines 144-156)
+- Added blackAndWhite to server-side theme validation (`server/server.js` line 5629)
+
 ## [2.2.6] - 2026-01-08
 
 ### Fixed
