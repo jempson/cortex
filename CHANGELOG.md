@@ -5,6 +5,83 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.8] - 2026-01-11
+
+### Fixed
+
+#### Session Duration Not Honored - Users Logged Out After 24h Regardless of Selection
+
+**Problem:**
+- Users selecting 30-day session duration were still being logged out after 24 hours
+- Client-side had hardcoded 24-hour browser session timeout that overrode user's choice
+- Particularly affected mobile/PWA users where PWA detection might fail
+- Periodic session check (every 5 minutes) enforced 24h limit even with valid 30-day JWT
+
+**Root Cause:**
+- Client stored user's selected session duration but didn't use it for expiration checks
+- Hardcoded `BROWSER_SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000` at line 243
+- `isSessionExpired()` always checked against 24 hours, not user's selection
+- Server correctly created JWTs with user-selected duration (24h/7d/30d)
+- But client-side periodic check logged users out after 24h regardless
+
+**Solution:**
+Modified client to store and respect user's selected session duration:
+
+1. **Store session duration** (`client/FarholdApp.jsx` lines 274-282):
+```javascript
+// Before
+setSessionStart: () => localStorage.setItem('farhold_session_start', Date.now().toString()),
+
+// After
+setSessionStart: (duration = '24h') => {
+  localStorage.setItem('farhold_session_start', Date.now().toString());
+  localStorage.setItem('farhold_session_duration', duration);
+},
+getSessionDuration: () => localStorage.getItem('farhold_session_duration') || '24h',
+```
+
+2. **Use stored duration for expiration check** (`client/FarholdApp.jsx` lines 284-299):
+```javascript
+isSessionExpired: () => {
+  // PWA sessions don't expire based on time
+  if (isPWA()) return false;
+
+  const sessionStart = storage.getSessionStart();
+  if (!sessionStart) return false;
+
+  // Use the user's selected session duration instead of hardcoded 24h
+  const duration = storage.getSessionDuration();
+  const durationMs = duration === '7d' ? 7 * 24 * 60 * 60 * 1000 :
+                     duration === '30d' ? 30 * 24 * 60 * 60 * 1000 :
+                     24 * 60 * 60 * 1000; // Default 24h
+
+  const elapsed = Date.now() - sessionStart;
+  return elapsed > durationMs;
+},
+```
+
+3. **Pass duration during login/registration** (lines 18877, 18893, 18908):
+```javascript
+storage.setSessionStart(sessionDuration); // Store user's selected duration
+```
+
+**Server-Side Debugging:**
+Added logging to track session duration selection (for debugging):
+- Login: logs requested vs. used duration (line 4116)
+- Registration: logs requested vs. used duration (line 4059)
+- Success: logs session creation with duration (line 4167)
+
+**Impact:**
+- ✅ 30-day sessions now last full 30 days (not just 24 hours)
+- ✅ 7-day sessions now last full 7 days
+- ✅ Client-side timeout matches server-side JWT expiration
+- ✅ Fixes premature logouts on mobile/PWA
+- ✅ Users' session duration choice is now fully respected
+
+**Files Changed:**
+- `client/FarholdApp.jsx` (lines 241-299, 18877, 18893, 18908): Store and use session duration
+- `server/server.js` (lines 4059, 4116, 4167): Add debug logging
+
 ## [2.2.7] - 2026-01-10
 
 ### Fixed
