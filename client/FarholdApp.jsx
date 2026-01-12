@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.2.7';
+const VERSION = '2.2.8';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -239,9 +239,6 @@ const stopFaviconFlash = () => {
 };
 
 // ============ STORAGE ============
-// Browser session timeout (24 hours for non-PWA browser sessions)
-const BROWSER_SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
-
 // Check if running as installed PWA (standalone mode)
 const isPWA = () => {
   return window.matchMedia('(display-mode: standalone)').matches ||
@@ -271,9 +268,16 @@ const storage = {
     const start = localStorage.getItem('farhold_session_start');
     return start ? parseInt(start, 10) : null;
   },
-  setSessionStart: () => localStorage.setItem('farhold_session_start', Date.now().toString()),
-  removeSessionStart: () => localStorage.removeItem('farhold_session_start'),
-  // Check if browser session has expired (24 hours for non-PWA)
+  setSessionStart: (duration = '24h') => {
+    localStorage.setItem('farhold_session_start', Date.now().toString());
+    localStorage.setItem('farhold_session_duration', duration);
+  },
+  removeSessionStart: () => {
+    localStorage.removeItem('farhold_session_start');
+    localStorage.removeItem('farhold_session_duration');
+  },
+  getSessionDuration: () => localStorage.getItem('farhold_session_duration') || '24h',
+  // Check if browser session has expired (respects user-selected duration)
   isSessionExpired: () => {
     // PWA sessions don't expire based on time (they use device session)
     if (isPWA()) return false;
@@ -281,8 +285,14 @@ const storage = {
     const sessionStart = storage.getSessionStart();
     if (!sessionStart) return false; // No session start = legacy session, let it continue
 
+    // Use the user's selected session duration instead of hardcoded 24h
+    const duration = storage.getSessionDuration();
+    const durationMs = duration === '7d' ? 7 * 24 * 60 * 60 * 1000 :
+                       duration === '30d' ? 30 * 24 * 60 * 60 * 1000 :
+                       24 * 60 * 60 * 1000; // Default 24h
+
     const elapsed = Date.now() - sessionStart;
-    return elapsed > BROWSER_SESSION_TIMEOUT_MS;
+    return elapsed > durationMs;
   },
 };
 
@@ -18861,7 +18871,7 @@ function AuthProvider({ children }) {
     // Store password for E2EE unlock
     pendingPasswordRef.current = password;
     storage.setToken(data.token); storage.setUser(data.user);
-    storage.setSessionStart(); // Start browser session timer
+    storage.setSessionStart(sessionDuration); // Start browser session timer with user's selected duration
     setToken(data.token); setUser(data.user);
     return { success: true };
   };
@@ -18873,8 +18883,11 @@ function AuthProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'MFA verification failed');
+    // Note: MFA completion should use the duration from the original login attempt
+    // For now, we'll use a safe default since the duration isn't passed through MFA flow
+    const duration = storage.getSessionDuration() || '24h';
     storage.setToken(data.token); storage.setUser(data.user);
-    storage.setSessionStart(); // Start browser session timer
+    storage.setSessionStart(duration); // Start browser session timer
     setToken(data.token); setUser(data.user);
     return { success: true };
   };
@@ -18889,7 +18902,7 @@ function AuthProvider({ children }) {
     // Store password for E2EE setup
     pendingPasswordRef.current = password;
     storage.setToken(data.token); storage.setUser(data.user);
-    storage.setSessionStart(); // Start browser session timer
+    storage.setSessionStart(sessionDuration); // Start browser session timer with user's selected duration
     setToken(data.token); setUser(data.user);
   };
 

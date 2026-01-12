@@ -4056,6 +4056,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
     const password = req.body.password;
     const displayName = sanitizeInput(req.body.displayName);
     const sessionDuration = getSessionDuration(req.body.sessionDuration);
+    console.log(`🔑 Registration for ${handle} - Requested: ${req.body.sessionDuration}, Using: ${sessionDuration}`);
 
     if (!handle || !email || !password) {
       return res.status(400).json({ error: 'Handle, email and password are required' });
@@ -4113,6 +4114,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const handle = sanitizeInput(req.body.handle || req.body.username);
     const password = req.body.password;
     const sessionDuration = getSessionDuration(req.body.sessionDuration);
+    console.log(`🔑 Login attempt for ${handle} - Requested: ${req.body.sessionDuration}, Using: ${sessionDuration}`);
 
     if (!handle || !password) {
       return res.status(400).json({ error: 'Handle and password are required' });
@@ -4163,7 +4165,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const requirePasswordChange = db.requiresPasswordChange ? db.requiresPasswordChange(user.id) : false;
 
     const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: sessionDuration });
-    console.log(`✅ User logged in: ${handle}`);
+    console.log(`✅ User logged in: ${handle} with ${sessionDuration} session`);
 
     // Create session for the login
     const session = createSession(user.id, token, req);
