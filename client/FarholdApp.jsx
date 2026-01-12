@@ -86,9 +86,9 @@ const THEMES = {
     name: "Wash's Sky",
     description: 'The Pilot - ocean blue, flying through clouds',
   },
-  kayleeEngine: {
-    name: "Kaylee's Engine",
-    description: 'The Mechanic - warm pinks and peaches, sunny optimism',
+  kayleeFloweredDress: {
+    name: "Kaylee's Flowered Dress",
+    description: 'The Mechanic - pink and peach like her fancy ball dress',
   },
   jaynesKnitCap: {
     name: "Jayne's Knit Cap",

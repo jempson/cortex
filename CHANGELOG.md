@@ -23,7 +23,7 @@ Completely redesigned the application's color themes with Firefly-inspired chara
 - **Mal's Browncoat** (new) - The Captain: dusty earth tones of rebellion
 - **Zoe's Warrior** (formerly "Sage") - The Soldier: dark military green, strong and tactical
 - **Wash's Sky** (formerly "Ocean Blue") - The Pilot: ocean blue, flying through clouds
-- **Kaylee's Engine** (new) - The Mechanic: warm pinks and peaches, sunny optimism
+- **Kaylee's Flowered Dress** (new) - The Mechanic: pink and peach like her fancy ball dress
 - **Jayne's Knit Cap** (formerly "Burnt Umber") - The Mercenary: rust orange like his iconic knit cap (darkened per user feedback)
 - **Inara's Silk** (new) - The Companion: deep purple and burgundy, elegant grace
 - **Simon's Clinic** (new) - The Doctor: clean blues and whites, precise and sterile
