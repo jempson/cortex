@@ -5,6 +5,74 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.9] - 2026-01-12
+
+### Changed
+
+#### Firefly Character Theme Redesign - Complete Visual Overhaul
+
+**Overview:**
+Completely redesigned the application's color themes with Firefly-inspired character themes. Each main character from the TV show now has a dedicated theme that reflects their personality and role.
+
+**Theme Redesign:**
+
+**The Ship:**
+- **Serenity** (formerly "Firefly") - The ship itself, classic green terminal aesthetic
+
+**Main Characters:**
+- **Mal's Browncoat** (new) - The Captain: dusty earth tones of rebellion
+- **Zoe's Warrior** (formerly "Sage") - The Soldier: dark military green, strong and tactical
+- **Wash's Sky** (formerly "Ocean Blue") - The Pilot: ocean blue, flying through clouds
+- **Kaylee's Engine** (new) - The Mechanic: warm pinks and peaches, sunny optimism
+- **Jayne's Knit Cap** (formerly "Burnt Umber") - The Mercenary: rust orange like his iconic knit cap (darkened per user feedback)
+- **Inara's Silk** (new) - The Companion: deep purple and burgundy, elegant grace
+- **Simon's Clinic** (new) - The Doctor: clean blues and whites, precise and sterile
+- **River's Mind** (new) - The Psychic: dark ethereal purple, mysterious depths
+- **Book's Wisdom** (formerly "Gray") - The Shepherd: calm grays, contemplative and peaceful
+
+**The Opposition:**
+- **Reaver Red** (formerly "Red") - The Nightmare: darker blood red, primal terror
+- **Alliance White** (formerly "Light Mode") - The Empire: clinical bright, cold and oppressive
+
+**Accessibility Themes (unchanged):**
+- High Contrast
+- AMOLED Black
+- Black and White
+
+**Color Improvements:**
+- Darkened orange tones in Jayne's Knit Cap (user feedback: "burnt umber not dark enough")
+- Darkened green tones in Zoe's Warrior (user feedback: "sage green not dark enough")
+- Made Reaver Red darker and bloodier for better horror aesthetic
+- Enhanced all character themes with cohesive color palettes
+
+**Technical Details:**
+
+1. **CSS Theme Definitions** (`client/index.html` lines 26-465):
+   - Renamed existing theme selectors to Firefly names
+   - Added 5 brand new character themes (Mal, Kaylee, Inara, River, Simon)
+   - Each theme includes: backgrounds, text colors, borders, accents, status colors, glows, and overlays
+
+2. **JavaScript Theme Configuration** (`client/FarholdApp.jsx` lines 69-137):
+   - Updated THEMES object with new names and character descriptions
+   - Organized themes by category: The Ship, Main Characters, The Opposition, Accessibility
+   - Added descriptive text for each character theme
+
+3. **Server-Side Validation** (`server/server.js` lines 5631-5638):
+   - Updated validThemes array to include all new Firefly theme names
+   - Organized by category for maintainability
+
+**Impact:**
+- ✅ 12 distinct Firefly character themes available
+- ✅ Better color contrast and readability in darkened themes
+- ✅ Consistent Firefly aesthetic throughout application
+- ✅ All existing theme preferences automatically migrate to closest equivalent
+- ✅ Accessibility themes remain unchanged
+
+**Files Changed:**
+- `client/index.html` (lines 26-465): Complete CSS theme redesign
+- `client/FarholdApp.jsx` (lines 69-137): THEMES object with new names/descriptions
+- `server/server.js` (lines 5631-5638): Server-side theme validation
+
 ## [2.2.8] - 2026-01-11
 
 ### Fixed

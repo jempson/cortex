@@ -5,7 +5,7 @@ import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.2.8';
+const VERSION = '2.2.9';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -67,10 +67,61 @@ const PRIVACY_LEVELS = {
 
 // ============ THEMES ============
 const THEMES = {
-  firefly: {
-    name: 'Firefly',
-    description: 'Classic green terminal aesthetic',
+  // The Ship
+  serenity: {
+    name: 'Serenity',
+    description: 'The ship - classic green terminal aesthetic',
   },
+
+  // Main Characters
+  malsBrowncoat: {
+    name: "Mal's Browncoat",
+    description: 'The Captain - dusty earth tones of rebellion',
+  },
+  zoesWarrior: {
+    name: "Zoe's Warrior",
+    description: 'The Soldier - military green, strong and tactical',
+  },
+  washSky: {
+    name: "Wash's Sky",
+    description: 'The Pilot - ocean blue, flying through clouds',
+  },
+  kayleeEngine: {
+    name: "Kaylee's Engine",
+    description: 'The Mechanic - warm pinks and peaches, sunny optimism',
+  },
+  jaynesKnitCap: {
+    name: "Jayne's Knit Cap",
+    description: 'The Mercenary - rust orange like the hat his ma made',
+  },
+  inaraSilk: {
+    name: "Inara's Silk",
+    description: 'The Companion - deep purple and burgundy, elegant grace',
+  },
+  simonsClinic: {
+    name: "Simon's Clinic",
+    description: 'The Doctor - clean blues and whites, precise and sterile',
+  },
+  riversMind: {
+    name: "River's Mind",
+    description: 'The Psychic - dark ethereal purple, mysterious depths',
+  },
+  booksWisdom: {
+    name: "Book's Wisdom",
+    description: 'The Shepherd - calm grays, contemplative and peaceful',
+  },
+
+  // The Opposition
+  reaverRed: {
+    name: 'Reaver Red',
+    description: 'The Nightmare - dark blood red, primal terror',
+  },
+  allianceWhite: {
+    name: 'Alliance White',
+    description: 'The Empire - clinical bright, cold and oppressive',
+  },
+
+  // Accessibility Themes
   highContrast: {
     name: 'High Contrast',
     description: 'Maximum readability',
@@ -79,33 +130,9 @@ const THEMES = {
     name: 'AMOLED Black',
     description: 'True black for OLED screens',
   },
-  light: {
-    name: 'Light Mode',
-    description: 'Light background for daytime',
-  },
   blackAndWhite: {
     name: 'Black and White',
-    description: 'A simple, high-contrast light theme.',
-  },
-  ocean: {
-    name: 'Ocean Blue',
-    description: 'Blue-tinted dark theme',
-  },
-  red: {
-    name: 'Red',
-    description: 'A dark, red-based theme.',
-  },
-  gray: {
-    name: 'Gray',
-    description: 'A simple grayscale theme.',
-  },
-  burntUmber: {
-    name: 'Burnt Umber',
-    description: 'A dark, orange-brown theme.',
-  },
-  sage: {
-    name: 'Sage',
-    description: 'A light, desaturated green theme.',
+    description: 'Simple high-contrast light theme',
   },
 };
 
