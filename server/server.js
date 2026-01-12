@@ -5630,7 +5630,7 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   const updates = {};
   const validThemes = [
     // Firefly Character Themes
-    'serenity', 'malsBrowncoat', 'zoesWarrior', 'washSky', 'kayleeEngine',
+    'serenity', 'malsBrowncoat', 'zoesWarrior', 'washSky', 'kayleeFloweredDress',
     'jaynesKnitCap', 'inaraSilk', 'simonsClinic', 'riversMind', 'booksWisdom',
     'reaverRed', 'allianceWhite',
     // Accessibility Themes
