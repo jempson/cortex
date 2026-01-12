@@ -5628,7 +5628,14 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const updates = {};
-  const validThemes = ['firefly', 'highContrast', 'amoled', 'light', 'ocean', 'blackAndWhite', 'red', 'gray', 'burntUmber', 'sage'];
+  const validThemes = [
+    // Firefly Character Themes
+    'serenity', 'malsBrowncoat', 'zoesWarrior', 'washSky', 'kayleeEngine',
+    'jaynesKnitCap', 'inaraSilk', 'simonsClinic', 'riversMind', 'booksWisdom',
+    'reaverRed', 'allianceWhite',
+    // Accessibility Themes
+    'highContrast', 'amoled', 'blackAndWhite'
+  ];
   const validFontSizes = ['small', 'medium', 'large', 'xlarge'];
 
   if (req.body.theme && validThemes.includes(req.body.theme)) {

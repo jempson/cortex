@@ -23,8 +23,10 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
 
     <style>
-      /* ============ CSS THEME VARIABLES ============ */
-      :root {
+      /* ============ FIREFLY-THEMED CSS VARIABLES ============ */
+
+      /* Serenity - The Ship (Classic Green Terminal - Default) */
+      :root, [data-theme="serenity"] {
         /* Backgrounds */
         --bg-base: #050805;
         --bg-elevated: #0a100a;
@@ -103,28 +105,34 @@
         --border-subtle: #1a1a1a;
       }
 
-      /* Light Mode Theme */
-      [data-theme="light"] {
-        --bg-base: #f0f2f0;
+      /* Alliance White - The Oppressive Empire (Light Theme) */
+      [data-theme="allianceWhite"] {
+        --bg-base: #f5f5f5;
         --bg-elevated: #ffffff;
-        --bg-surface: #e8eae8;
-        --bg-hover: #d8dad8;
-        --bg-active: #c8cac8;
+        --bg-surface: #e8e8e8;
+        --bg-hover: #d5d5d5;
+        --bg-active: #c5c5c5;
         --text-primary: #1a1a1a;
         --text-secondary: #3a3a3a;
         --text-dim: #5a5a5a;
         --text-muted: #7a7a7a;
-        --border-primary: #c0c0c0;
-        --border-secondary: #d0d0d0;
+        --border-primary: #b0b0b0;
+        --border-secondary: #c5c5c5;
         --border-subtle: #e0e0e0;
-        --accent-amber: #c9a000;
-        --accent-green: #0a8a52;
-        --status-success: #0a8a52;
-        --status-warning: #c9a000;
-        --glow-amber: rgba(201, 160, 0, 0.4);
-        --glow-green: rgba(10, 138, 82, 0.4);
-        --overlay-amber: rgba(201, 160, 0, 0.12);
-        --overlay-green: rgba(10, 138, 82, 0.12);
+        --accent-amber: #b89000;
+        --accent-teal: #2a7070;
+        --accent-green: #0a7a52;
+        --accent-orange: #d55a25;
+        --accent-purple: #7545c7;
+        --status-success: #0a7a52;
+        --status-warning: #b89000;
+        --status-error: #d55a25;
+        --status-info: #2a7070;
+        --glow-amber: rgba(184, 144, 0, 0.4);
+        --glow-teal: rgba(42, 112, 112, 0.4);
+        --glow-green: rgba(10, 122, 82, 0.4);
+        --overlay-amber: rgba(184, 144, 0, 0.12);
+        --overlay-green: rgba(10, 122, 82, 0.12);
       }
 
       /* Black and White Theme */
@@ -156,114 +164,304 @@
         --overlay-green: rgba(68, 68, 68, 0.12);
       }
 
-      /* Ocean Blue Theme */
-      [data-theme="ocean"] {
+      /* Wash's Sky - The Pilot (Ocean Blue Theme) */
+      [data-theme="washSky"] {
         --bg-base: #0a1420;
         --bg-elevated: #0f1a28;
         --bg-surface: #142230;
         --bg-hover: #1a2a3a;
         --bg-active: #203444;
         --text-primary: #e0eef8;
-        --text-secondary: #a0c0d8;
-        --text-dim: #6090b0;
-        --text-muted: #406080;
-        --border-primary: #2a4050;
-        --border-secondary: #3a5060;
-        --border-subtle: #1a3040;
+        --text-secondary: #b0d0e8;
+        --text-dim: #7090b0;
+        --text-muted: #506080;
+        --border-primary: #2a4558;
+        --border-secondary: #3a5568;
+        --border-subtle: #1a3548;
         --accent-amber: #ffc107;
         --accent-teal: #00bcd4;
         --accent-green: #4caf50;
         --accent-orange: #ff7043;
         --accent-purple: #7c4dff;
         --status-success: #4caf50;
+        --status-warning: #ffc107;
+        --status-error: #ff7043;
         --status-info: #00bcd4;
         --glow-amber: rgba(255, 193, 7, 0.6);
         --glow-teal: rgba(0, 188, 212, 0.6);
         --glow-green: rgba(76, 175, 80, 0.6);
+        --overlay-amber: rgba(255, 193, 7, 0.15);
+        --overlay-teal: rgba(0, 188, 212, 0.15);
       }
 
-      /* Red Theme */
-      [data-theme="red"] {
-        --bg-base: #200000;
-        --bg-elevated: #300000;
-        --bg-surface: #400000;
-        --bg-hover: #500000;
-        --bg-active: #600000;
-        --text-primary: #ffffff;
-        --text-secondary: #f0f0f0;
-        --text-dim: #d0d0d0;
-        --text-muted: #b0b0b0;
-        --border-primary: #800000;
-        --border-secondary: #900000;
-        --border-subtle: #700000;
-        --accent-amber: #ffc107;
-        --accent-teal: #00bcd4;
-        --accent-green: #4caf50;
-        --accent-orange: #ff7043;
-        --accent-purple: #7c4dff;
+      /* Reaver Red - The Nightmare (Dark Blood Red) */
+      [data-theme="reaverRed"] {
+        --bg-base: #180000;
+        --bg-elevated: #250505;
+        --bg-surface: #320a0a;
+        --bg-hover: #421515;
+        --bg-active: #522020;
+        --text-primary: #ffdddd;
+        --text-secondary: #ffcccc;
+        --text-dim: #cc8888;
+        --text-muted: #994444;
+        --border-primary: #661111;
+        --border-secondary: #771111;
+        --border-subtle: #441111;
+        --accent-amber: #ffaa00;
+        --accent-teal: #ff5555;
+        --accent-green: #ff7777;
+        --accent-orange: #ff4433;
+        --accent-purple: #cc5588;
+        --status-success: #ff7777;
+        --status-warning: #ffaa00;
+        --status-error: #ff4433;
+        --status-info: #ff5555;
+        --glow-amber: rgba(255, 170, 0, 0.6);
+        --glow-teal: rgba(255, 85, 85, 0.6);
+        --glow-green: rgba(255, 119, 119, 0.6);
+        --overlay-amber: rgba(255, 170, 0, 0.15);
+        --overlay-teal: rgba(255, 85, 85, 0.15);
       }
 
-      /* Gray Theme */
-      [data-theme="gray"] {
-        --bg-base: #333333;
-        --bg-elevated: #444444;
-        --bg-surface: #555555;
-        --bg-hover: #666666;
-        --bg-active: #777777;
-        --text-primary: #ffffff;
-        --text-secondary: #f0f0f0;
-        --text-dim: #d0d0d0;
-        --text-muted: #b0b0b0;
-        --border-primary: #888888;
-        --border-secondary: #999999;
-        --border-subtle: #777777;
-        --accent-amber: #ffffff;
-        --accent-teal: #eeeeee;
-        --accent-green: #dddddd;
-        --accent-orange: #cccccc;
-        --accent-purple: #bbbbbb;
+      /* Book's Wisdom - The Shepherd (Calm Gray) */
+      [data-theme="booksWisdom"] {
+        --bg-base: #2a2a2a;
+        --bg-elevated: #353535;
+        --bg-surface: #404040;
+        --bg-hover: #4a4a4a;
+        --bg-active: #555555;
+        --text-primary: #e8e8e8;
+        --text-secondary: #d0d0d0;
+        --text-dim: #a8a8a8;
+        --text-muted: #808080;
+        --border-primary: #606060;
+        --border-secondary: #707070;
+        --border-subtle: #505050;
+        --accent-amber: #d4a574;
+        --accent-teal: #8ba8b7;
+        --accent-green: #88a888;
+        --accent-orange: #c89060;
+        --accent-purple: #a48cb4;
+        --status-success: #88a888;
+        --status-warning: #d4a574;
+        --status-error: #c89060;
+        --status-info: #8ba8b7;
+        --glow-amber: rgba(212, 165, 116, 0.5);
+        --glow-teal: rgba(139, 168, 183, 0.5);
+        --glow-green: rgba(136, 168, 136, 0.5);
+        --overlay-amber: rgba(212, 165, 116, 0.12);
+        --overlay-green: rgba(136, 168, 136, 0.12);
       }
 
-      /* Burnt Umber Theme */
-      [data-theme="burntUmber"] {
-        --bg-base: #3e1e00;
-        --bg-elevated: #4e2e10;
-        --bg-surface: #5e3e20;
-        --bg-hover: #6e4e30;
-        --bg-active: #7e5e40;
-        --text-primary: #ffffff;
-        --text-secondary: #f0f0f0;
-        --text-dim: #d0d0d0;
-        --text-muted: #b0b0b0;
-        --border-primary: #8e7e60;
-        --border-secondary: #9e8e70;
-        --border-subtle: #7e6e50;
-        --accent-amber: #ffc107;
-        --accent-teal: #00bcd4;
-        --accent-green: #4caf50;
-        --accent-orange: #ff7043;
-        --accent-purple: #7c4dff;
+      /* Jayne's Knit Cap - The Mercenary (Dark Rust Orange) */
+      [data-theme="jaynesKnitCap"] {
+        --bg-base: #2a1508;
+        --bg-elevated: #361a0a;
+        --bg-surface: #42200d;
+        --bg-hover: #522810;
+        --bg-active: #623014;
+        --text-primary: #f5e5d5;
+        --text-secondary: #e5c5a5;
+        --text-dim: #c0a080;
+        --text-muted: #907050;
+        --border-primary: #6a4020;
+        --border-secondary: #7a5030;
+        --border-subtle: #5a3518;
+        --accent-amber: #ffb350;
+        --accent-teal: #d08850;
+        --accent-green: #88a060;
+        --accent-orange: #e86830;
+        --accent-purple: #b87050;
+        --status-success: #88a060;
+        --status-warning: #ffb350;
+        --status-error: #e86830;
+        --status-info: #d08850;
+        --glow-amber: rgba(255, 179, 80, 0.6);
+        --glow-teal: rgba(208, 136, 80, 0.6);
+        --glow-green: rgba(136, 160, 96, 0.6);
+        --overlay-amber: rgba(255, 179, 80, 0.15);
+        --overlay-green: rgba(136, 160, 96, 0.15);
       }
 
-      /* Sage Theme (Dark) */
-      [data-theme="sage"] {
-        --bg-base: #2c3e2c;
-        --bg-elevated: #384f38;
-        --bg-surface: #435f43;
-        --bg-hover: #506f50;
-        --bg-active: #5d805d;
-        --text-primary: #ffd23f; /* Amber */
-        --text-secondary: #ffc107; /* Darker Amber */
-        --text-dim: #e5a900;
-        --text-muted: #c99400;
-        --border-primary: #5d805d;
-        --border-secondary: #6e946e;
-        --border-subtle: #435f43;
-        --accent-amber: #ffd23f;
-        --accent-teal: #3bceac;
-        --accent-green: #0ead69;
-        --accent-orange: #ff6b35; /* Orange for text highlight */
-        --accent-purple: #a855f7;
+      /* Zoe's Warrior - The Soldier (Dark Military Green) */
+      [data-theme="zoesWarrior"] {
+        --bg-base: #1a2418;
+        --bg-elevated: #222c20;
+        --bg-surface: #2a3428;
+        --bg-hover: #343f32;
+        --bg-active: #3e4a3c;
+        --text-primary: #e0e8d8;
+        --text-secondary: #c0d0b8;
+        --text-dim: #90a888;
+        --text-muted: #607858;
+        --border-primary: #4a5848;
+        --border-secondary: #5a6858;
+        --border-subtle: #3a4838;
+        --accent-amber: #d4b860;
+        --accent-teal: #70a888;
+        --accent-green: #5a9860;
+        --accent-orange: #c88850;
+        --accent-purple: #8a7890;
+        --status-success: #5a9860;
+        --status-warning: #d4b860;
+        --status-error: #c88850;
+        --status-info: #70a888;
+        --glow-amber: rgba(212, 184, 96, 0.6);
+        --glow-teal: rgba(112, 168, 136, 0.6);
+        --glow-green: rgba(90, 152, 96, 0.6);
+        --overlay-amber: rgba(212, 184, 96, 0.15);
+        --overlay-green: rgba(90, 152, 96, 0.15);
+      }
+
+      /* Mal's Browncoat - The Captain (Dusty Earth Tones) */
+      [data-theme="malsBrowncoat"] {
+        --bg-base: #2a2216;
+        --bg-elevated: #362a1c;
+        --bg-surface: #423222;
+        --bg-hover: #4e3a28;
+        --bg-active: #5a422e;
+        --text-primary: #e8d8c0;
+        --text-secondary: #d0c0a8;
+        --text-dim: #a89878;
+        --text-muted: #807050;
+        --border-primary: #604830;
+        --border-secondary: #705838;
+        --border-subtle: #504028;
+        --accent-amber: #c9a66b;
+        --accent-teal: #8f9a7a;
+        --accent-green: #7a9060;
+        --accent-orange: #b8844a;
+        --accent-purple: #947868;
+        --status-success: #7a9060;
+        --status-warning: #c9a66b;
+        --status-error: #b8844a;
+        --status-info: #8f9a7a;
+        --glow-amber: rgba(201, 166, 107, 0.6);
+        --glow-teal: rgba(143, 154, 122, 0.6);
+        --glow-green: rgba(122, 144, 96, 0.6);
+        --overlay-amber: rgba(201, 166, 107, 0.15);
+        --overlay-green: rgba(122, 144, 96, 0.15);
+      }
+
+      /* Kaylee's Engine - The Mechanic (Warm Pinks and Peaches) */
+      [data-theme="kayleeEngine"] {
+        --bg-base: #2a1818;
+        --bg-elevated: #382020;
+        --bg-surface: #442828;
+        --bg-hover: #523030;
+        --bg-active: #603838;
+        --text-primary: #ffd8c8;
+        --text-secondary: #ffcab8;
+        --text-dim: #e0a898;
+        --text-muted: #c08878;
+        --border-primary: #704848;
+        --border-secondary: #805858;
+        --border-subtle: #604040;
+        --accent-amber: #ffb380;
+        --accent-teal: #ff9999;
+        --accent-green: #ffa0a0;
+        --accent-orange: #ff8866;
+        --accent-purple: #e89bb0;
+        --status-success: #ffa0a0;
+        --status-warning: #ffb380;
+        --status-error: #ff8866;
+        --status-info: #ff9999;
+        --glow-amber: rgba(255, 179, 128, 0.6);
+        --glow-teal: rgba(255, 153, 153, 0.6);
+        --glow-green: rgba(255, 160, 160, 0.6);
+        --overlay-amber: rgba(255, 179, 128, 0.15);
+        --overlay-green: rgba(255, 160, 160, 0.15);
+      }
+
+      /* Inara's Silk - The Companion (Deep Purple and Burgundy) */
+      [data-theme="inaraSilk"] {
+        --bg-base: #1a0f1a;
+        --bg-elevated: #251525;
+        --bg-surface: #301a30;
+        --bg-hover: #3c203c;
+        --bg-active: #482648;
+        --text-primary: #f0d8f0;
+        --text-secondary: #e0c0e0;
+        --text-dim: #c0a0c0;
+        --text-muted: #987898;
+        --border-primary: #583858;
+        --border-secondary: #684868;
+        --border-subtle: #482838;
+        --accent-amber: #d8a880;
+        --accent-teal: #b888c8;
+        --accent-green: #9888a8;
+        --accent-orange: #c87890;
+        --accent-purple: #a868b8;
+        --status-success: #9888a8;
+        --status-warning: #d8a880;
+        --status-error: #c87890;
+        --status-info: #b888c8;
+        --glow-amber: rgba(216, 168, 128, 0.6);
+        --glow-teal: rgba(184, 136, 200, 0.6);
+        --glow-green: rgba(152, 136, 168, 0.6);
+        --overlay-amber: rgba(216, 168, 128, 0.15);
+        --overlay-green: rgba(152, 136, 168, 0.15);
+      }
+
+      /* River's Mind - The Psychic (Dark Ethereal Purple) */
+      [data-theme="riversMind"] {
+        --bg-base: #0f0a18;
+        --bg-elevated: #150f22;
+        --bg-surface: #1a142c;
+        --bg-hover: #201a36;
+        --bg-active: #262040;
+        --text-primary: #dcd0ff;
+        --text-secondary: #c8b8ff;
+        --text-dim: #9888cc;
+        --text-muted: #7868a8;
+        --border-primary: #403060;
+        --border-secondary: #504070;
+        --border-subtle: #302050;
+        --accent-amber: #b8a8ff;
+        --accent-teal: #8098ff;
+        --accent-green: #88b8d8;
+        --accent-orange: #a888c8;
+        --accent-purple: #9878d8;
+        --status-success: #88b8d8;
+        --status-warning: #b8a8ff;
+        --status-error: #a888c8;
+        --status-info: #8098ff;
+        --glow-amber: rgba(184, 168, 255, 0.7);
+        --glow-teal: rgba(128, 152, 255, 0.7);
+        --glow-green: rgba(136, 184, 216, 0.7);
+        --overlay-amber: rgba(184, 168, 255, 0.18);
+        --overlay-green: rgba(136, 184, 216, 0.18);
+      }
+
+      /* Simon's Clinic - The Doctor (Clean Medical Blue and White) */
+      [data-theme="simonsClinic"] {
+        --bg-base: #0f1418;
+        --bg-elevated: #151c22;
+        --bg-surface: #1a242c;
+        --bg-hover: #202c36;
+        --bg-active: #263440;
+        --text-primary: #d8e8f0;
+        --text-secondary: #c0d8e8;
+        --text-dim: #90b0c8;
+        --text-muted: #6888a8;
+        --border-primary: #384858;
+        --border-secondary: #485868;
+        --border-subtle: #283848;
+        --accent-amber: #90c8f0;
+        --accent-teal: #70b8d8;
+        --accent-green: #88c8a8;
+        --accent-orange: #a8b8c8;
+        --accent-purple: #88a8c8;
+        --status-success: #88c8a8;
+        --status-warning: #90c8f0;
+        --status-error: #a8b8c8;
+        --status-info: #70b8d8;
+        --glow-amber: rgba(144, 200, 240, 0.6);
+        --glow-teal: rgba(112, 184, 216, 0.6);
+        --glow-green: rgba(136, 200, 168, 0.6);
+        --overlay-amber: rgba(144, 200, 240, 0.15);
+        --overlay-green: rgba(136, 200, 168, 0.15);
       }
 
       /* ============ BASE STYLES ============ */
