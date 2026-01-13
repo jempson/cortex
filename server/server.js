@@ -7,6 +7,7 @@ import sanitizeHtml from 'sanitize-html';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import fs from 'fs';
@@ -29,6 +30,25 @@ const VERSION = packageJson.version;
 
 // ============ Configuration ============
 const PORT = process.env.PORT || 3001;
+
+// ============ LIVEKIT CONFIGURATION (v2.4.0) ============
+
+const LIVEKIT_URL = process.env.LIVEKIT_URL || '';
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || '';
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
+
+// Validate LiveKit configuration on startup
+if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
+  console.warn('⚠️  LiveKit not configured - voice calling will not work');
+  console.warn('   Set LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET in .env');
+} else {
+  console.log('✅ LiveKit configured:', LIVEKIT_URL);
+}
+
+// Initialize LiveKit RoomService client for admin operations
+const livekitRoomService = (LIVEKIT_API_KEY && LIVEKIT_API_SECRET)
+  ? new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+  : null;
 
 // JWT_SECRET is REQUIRED in production - fail fast if not configured
 const JWT_SECRET_ENV = process.env.JWT_SECRET;
@@ -10945,6 +10965,165 @@ app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
   });
 });
 
+// ============ LIVEKIT VOICE CALLS (v2.4.0) ============
+
+/**
+ * Generate LiveKit access token for joining a wave's voice call
+ * POST /api/waves/:waveId/call/token
+ */
+app.post('/api/waves/:waveId/call/token', authenticateToken, async (req, res) => {
+  const waveId = sanitizeInput(req.params.waveId);
+  const userId = req.user.userId;
+
+  // Validate LiveKit configuration
+  if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
+    return res.status(503).json({
+      error: 'Voice calling not configured',
+      message: 'LiveKit credentials missing on server'
+    });
+  }
+
+  // Verify wave exists
+  const wave = db.getWave(waveId);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Verify user can access this wave
+  if (!db.canAccessWave(waveId, userId)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  // Get user info for participant name
+  const user = db.findUserById(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  try {
+    // Create LiveKit access token
+    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+      identity: userId,
+      name: user.displayName || user.handle || 'Unknown',
+    });
+
+    // Grant permissions for voice calling
+    at.addGrant({
+      roomJoin: true,
+      room: waveId,          // Use waveId as room name
+      canPublish: true,      // Allow publishing audio
+      canSubscribe: true,    // Allow subscribing to others' audio
+      canPublishData: false  // No data channel needed
+    });
+
+    // Generate JWT token
+    const token = await at.toJwt();
+
+    console.log(`🎤 Generated LiveKit token for user ${userId} (${user.handle}) to join wave ${waveId}`);
+
+    res.json({
+      token,
+      url: LIVEKIT_URL,
+      roomName: waveId,
+      identity: userId,
+      userName: user.displayName || user.handle
+    });
+  } catch (error) {
+    console.error('Error generating LiveKit token:', error);
+    res.status(500).json({
+      error: 'Failed to generate token',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * Admin: List all active LiveKit rooms
+ * GET /api/admin/livekit/rooms
+ */
+app.get('/api/admin/livekit/rooms', authenticateToken, async (req, res) => {
+  if (!requireRole(req.user, ROLES.ADMIN, res)) return;
+
+  if (!livekitRoomService) {
+    return res.status(503).json({ error: 'LiveKit not configured' });
+  }
+
+  try {
+    const rooms = await livekitRoomService.listRooms();
+
+    // Enrich with wave info
+    const enrichedRooms = rooms.map(room => {
+      const wave = db.getWave(room.name); // room.name is waveId
+      return {
+        roomName: room.name,
+        waveTitle: wave?.title || 'Unknown Wave',
+        numParticipants: room.numParticipants,
+        creationTime: room.creationTime,
+        participants: room.participants || []
+      };
+    });
+
+    res.json({
+      rooms: enrichedRooms,
+      count: enrichedRooms.length
+    });
+  } catch (error) {
+    console.error('Error fetching LiveKit rooms:', error);
+    res.status(500).json({
+      error: 'Failed to fetch rooms',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * Check if a wave has an active LiveKit call
+ * GET /api/waves/:waveId/call/status
+ */
+app.get('/api/waves/:waveId/call/status', authenticateToken, async (req, res) => {
+  const waveId = sanitizeInput(req.params.waveId);
+  const userId = req.user.userId;
+
+  // Verify wave exists
+  const wave = db.getWave(waveId);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Verify user can access this wave
+  if (!db.canAccessWave(waveId, userId)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  if (!livekitRoomService) {
+    return res.json({
+      active: false,
+      participantCount: 0
+    });
+  }
+
+  try {
+    // Check if this room exists and has participants
+    const rooms = await livekitRoomService.listRooms();
+    const room = rooms.find(r => r.name === waveId);
+
+    const active = room && room.numParticipants > 0;
+
+    res.json({
+      active,
+      participantCount: room?.numParticipants || 0,
+      participants: room?.participants?.map(p => p.identity) || []
+    });
+  } catch (error) {
+    console.error('Error checking LiveKit room status:', error);
+    // Don't fail hard - just return no active call
+    res.json({
+      active: false,
+      participantCount: 0
+    });
+  }
+});
+
 app.post('/api/waves', authenticateToken, async (req, res) => {
   const title = sanitizeInput(req.body.title);
   if (!title) return res.status(400).json({ error: 'Title is required' });
@@ -13048,7 +13227,11 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', (data) => {
     try {
-      if (data.length > 10000) { ws.close(1009, 'Message too large'); return; }
+      // Mark connection as alive on ANY message (not just pong)
+      // This is important for voice calls where audio chunks prove the connection is working
+      ws.isAlive = true;
+
+      if (data.length > 20000) { ws.close(1009, 'Message too large'); return; }
       const message = JSON.parse(data.toString());
 
       // Rate limit all messages (except auth and ping which are essential)
@@ -13145,7 +13328,7 @@ const heartbeatInterval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) {
       // Connection didn't respond to last ping - terminate it
-      console.log('💀 Terminating dead WebSocket connection');
+      console.log(`💀 Terminating dead WebSocket connection (userId: ${ws.userId || 'unknown'})`);
       return ws.terminate();
     }
     ws.isAlive = false;
