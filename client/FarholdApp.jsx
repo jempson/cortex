@@ -2,10 +2,12 @@ import React, { useState, useEffect, useLayoutEffect, useRef, createContext, use
 import { E2EEProvider, useE2EE } from './e2ee-context.jsx';
 import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWaveBadge, LegacyWaveNotice, PartialEncryptionBanner } from './e2ee-components.jsx';
 import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './messages.js';
+import { LiveKitRoom, useParticipants, useLocalParticipant, RoomAudioRenderer } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.2.9';
+const VERSION = '2.4.0';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -2067,6 +2069,12 @@ function useWebSocket(token, onMessage) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Log ALL message types for debugging (except call_audio which spams)
+          if (data.type && data.type !== 'call_audio' && data.type !== 'pong') {
+            console.log(`🔌 [WS] Received: ${data.type}`, data);
+          }
+
           if (data.type === 'auth_success') {
             setConnected(true);
             console.log('✅ WebSocket authenticated');
@@ -2121,12 +2129,489 @@ function useWebSocket(token, onMessage) {
 
   const sendMessage = useCallback((message) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('🔌 [WS] Sending message:', message.type);
       wsRef.current.send(JSON.stringify(message));
+    } else {
+      console.error('🔌 [WS] Cannot send - WebSocket not open:', {
+        hasWs: !!wsRef.current,
+        readyState: wsRef.current?.readyState,
+        messageType: message.type
+      });
     }
   }, []);
 
   return { connected, sendMessage };
 }
+
+// ============ LIVEKIT VOICE CALL HOOK (v2.4.0) ============
+
+function useVoiceCall(waveId) {
+  const { token } = useAuth();
+  const [connectionState, setConnectionState] = useState('disconnected');
+  const [participants, setParticipants] = useState([]);
+  const [isMuted, setIsMuted] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [error, setError] = useState(null);
+  const [livekitToken, setLivekitToken] = useState(null);
+  const [livekitUrl, setLivekitUrl] = useState(null);
+  const [callActive, setCallActive] = useState(false);
+  const [serverParticipantCount, setServerParticipantCount] = useState(0);
+
+  const roomRef = useRef(null);
+  const audioLevelIntervalRef = useRef(null);
+  const statusPollIntervalRef = useRef(null);
+
+  // Fetch LiveKit token from server
+  const fetchToken = useCallback(async () => {
+    if (!token || !waveId) {
+      setError('Authentication required');
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${BASE_URL}/api/waves/${waveId}/call/token`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || data.error || 'Failed to get call token');
+      }
+
+      const data = await response.json();
+      console.log('🎤 Received LiveKit token:', { url: data.url, roomName: data.roomName });
+      return data;
+    } catch (err) {
+      console.error('Error fetching LiveKit token:', err);
+      setError(err.message || 'Failed to connect to call');
+      return null;
+    }
+  }, [waveId, token]);
+
+  // Start call
+  const startCall = useCallback(async () => {
+    if (connectionState !== 'disconnected') {
+      console.warn('Already in a call');
+      return;
+    }
+
+    setConnectionState('connecting');
+    setError(null);
+
+    const tokenData = await fetchToken();
+    if (!tokenData) {
+      setConnectionState('disconnected');
+      return;
+    }
+
+    setLivekitToken(tokenData.token);
+    setLivekitUrl(tokenData.url);
+    console.log('🎤 Starting call...');
+  }, [connectionState, fetchToken]);
+
+  // Leave call
+  const leaveCall = useCallback(async () => {
+    if (roomRef.current) {
+      await roomRef.current.disconnect();
+      roomRef.current = null;
+    }
+    setConnectionState('disconnected');
+    setLivekitToken(null);
+    setLivekitUrl(null);
+    setParticipants([]);
+    setAudioLevel(0);
+    setError(null);
+    console.log('🎤 Left call');
+  }, []);
+
+  // Toggle mute
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => !prev);
+  }, []);
+
+  // Check call status from server
+  const checkCallStatus = useCallback(async () => {
+    if (!token || !waveId) return;
+
+    try {
+      const response = await fetch(`${BASE_URL}/api/waves/${waveId}/call/status`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCallActive(data.active);
+        setServerParticipantCount(data.participantCount || 0);
+      }
+    } catch (err) {
+      console.error('Error checking call status:', err);
+    }
+  }, [waveId, token]);
+
+  // Poll call status - check more frequently when not in call
+  useEffect(() => {
+    if (!waveId) return;
+
+    // Initial check
+    checkCallStatus();
+
+    // Poll every 5 seconds
+    statusPollIntervalRef.current = setInterval(checkCallStatus, 5000);
+
+    return () => {
+      if (statusPollIntervalRef.current) {
+        clearInterval(statusPollIntervalRef.current);
+      }
+    };
+  }, [waveId, checkCallStatus]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (roomRef.current) {
+        roomRef.current.disconnect();
+      }
+      if (audioLevelIntervalRef.current) {
+        clearInterval(audioLevelIntervalRef.current);
+      }
+      if (statusPollIntervalRef.current) {
+        clearInterval(statusPollIntervalRef.current);
+      }
+    };
+  }, []);
+
+  return {
+    connectionState,
+    participants,
+    isMuted,
+    audioLevel,
+    error,
+    livekitToken,
+    livekitUrl,
+    roomName: waveId,
+    callActive,
+    serverParticipantCount,
+    startCall,
+    leaveCall,
+    toggleMute,
+    setConnectionState,
+    setParticipants,
+    setAudioLevel,
+    roomRef
+  };
+}
+
+// ============ LIVEKIT VOICE CALL UI (v2.4.0) ============
+
+const LiveKitCallRoom = ({ token, url, roomName, voiceCall, children }) => {
+  const handleConnected = useCallback(() => {
+    console.log('🎤 Connected to LiveKit room:', roomName);
+    voiceCall.setConnectionState('connected');
+  }, [roomName, voiceCall]);
+
+  const handleDisconnected = useCallback(() => {
+    console.log('🎤 Disconnected from LiveKit room');
+    voiceCall.setConnectionState('disconnected');
+  }, [voiceCall]);
+
+  const handleError = useCallback((error) => {
+    console.error('🎤 LiveKit error:', error);
+    voiceCall.setConnectionState('disconnected');
+  }, [voiceCall]);
+
+  if (!token || !url) return null;
+
+  return (
+    <LiveKitRoom
+      token={token}
+      serverUrl={url}
+      connect={true}
+      audio={true}
+      video={false}
+      onConnected={handleConnected}
+      onDisconnected={handleDisconnected}
+      onError={handleError}
+      options={{
+        audioCaptureDefaults: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      }}
+    >
+      <RoomAudioRenderer />
+      <CallControls voiceCall={voiceCall} />
+      {children}
+    </LiveKitRoom>
+  );
+};
+
+const CallControls = ({ voiceCall }) => {
+  const participants = useParticipants();
+  const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
+
+  // Update participants list
+  useEffect(() => {
+    const participantIds = participants.map(p => p.identity);
+    voiceCall.setParticipants(participantIds);
+  }, [participants, voiceCall]);
+
+  // Monitor audio level
+  useEffect(() => {
+    if (!localParticipant) return;
+
+    const interval = setInterval(() => {
+      const audioTrack = localParticipant.getTrackPublication(Track.Source.Microphone);
+      if (audioTrack?.track) {
+        const level = audioTrack.isSpeaking ? 0.7 : 0.1;
+        voiceCall.setAudioLevel(level);
+      } else {
+        voiceCall.setAudioLevel(0);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [localParticipant, voiceCall]);
+
+  // Sync mute state with LiveKit
+  useEffect(() => {
+    if (localParticipant) {
+      localParticipant.setMicrophoneEnabled(!voiceCall.isMuted);
+    }
+  }, [voiceCall.isMuted, localParticipant]);
+
+  return null;
+};
+
+const VoiceCallControls = ({ wave, voiceCall, user }) => {
+  if (!wave || !user) return null;
+
+  const { connectionState, participants, isMuted, audioLevel, error, livekitToken, livekitUrl, callActive, serverParticipantCount } = voiceCall;
+  const isConnected = connectionState === 'connected';
+  const isConnecting = connectionState === 'connecting';
+  const participantCount = participants.length;
+
+  // Not in call - check if others are in call
+  if (!isConnected && !isConnecting && !livekitToken) {
+    // Call is active with other participants - show Join button
+    if (callActive && serverParticipantCount > 0) {
+      return (
+        <div style={{
+          padding: '12px',
+          background: 'var(--accent-green-bg)',
+          border: '1px solid var(--accent-green)',
+          borderRadius: '4px',
+          marginBottom: '12px'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '8px'
+          }}>
+            <span style={{
+              color: 'var(--accent-green)',
+              fontSize: '14px',
+              fontFamily: 'monospace'
+            }}>
+              📞 Call in progress
+            </span>
+            <span style={{
+              color: 'var(--text-secondary)',
+              fontSize: '12px',
+              fontFamily: 'monospace'
+            }}>
+              {serverParticipantCount} participant{serverParticipantCount !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <button
+            onClick={voiceCall.startCall}
+            disabled={!!error}
+            style={{
+              width: '100%',
+              padding: '10px',
+              background: 'var(--accent-green)',
+              color: 'var(--bg-primary)',
+              border: '1px solid var(--accent-green)',
+              borderRadius: '2px',
+              cursor: error ? 'not-allowed' : 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              opacity: error ? 0.5 : 1
+            }}
+          >
+            Join Call
+          </button>
+          {error && (
+            <div style={{
+              marginTop: '8px',
+              padding: '8px',
+              background: 'var(--error-bg)',
+              border: '1px solid var(--error-border)',
+              borderRadius: '2px',
+              color: 'var(--error-text)',
+              fontSize: '12px',
+              fontFamily: 'monospace'
+            }}>
+              {error}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // No active call - show Start button
+    return (
+      <div style={{
+        padding: '12px',
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border)',
+        borderRadius: '4px',
+        marginBottom: '12px'
+      }}>
+        <button
+          onClick={voiceCall.startCall}
+          disabled={!!error}
+          style={{
+            width: '100%',
+            padding: '10px',
+            background: 'var(--accent-green)',
+            color: 'var(--bg-primary)',
+            border: '1px solid var(--accent-green)',
+            borderRadius: '2px',
+            cursor: error ? 'not-allowed' : 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            opacity: error ? 0.5 : 1
+          }}
+        >
+          📞 Start Voice Call
+        </button>
+        {error && (
+          <div style={{
+            marginTop: '8px',
+            padding: '8px',
+            background: 'var(--error-bg)',
+            border: '1px solid var(--error-border)',
+            borderRadius: '2px',
+            color: 'var(--error-text)',
+            fontSize: '12px',
+            fontFamily: 'monospace'
+          }}>
+            {error}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // In call - show controls
+  return (
+    <div style={{
+      padding: '12px',
+      background: 'var(--accent-green-bg)',
+      border: '1px solid var(--accent-green)',
+      borderRadius: '4px',
+      marginBottom: '12px'
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '12px'
+      }}>
+        <span style={{
+          color: 'var(--accent-green)',
+          fontSize: '14px',
+          fontFamily: 'monospace',
+          fontWeight: 'bold'
+        }}>
+          {isConnecting ? '📞 Connecting...' : '📞 In Call'}
+        </span>
+        <span style={{
+          color: 'var(--text-secondary)',
+          fontSize: '12px',
+          fontFamily: 'monospace'
+        }}>
+          {participantCount} participant{participantCount !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {audioLevel > 0 && !isMuted && (
+        <div style={{
+          marginBottom: '12px',
+          height: '4px',
+          background: 'var(--bg-secondary)',
+          borderRadius: '2px',
+          overflow: 'hidden'
+        }}>
+          <div style={{
+            height: '100%',
+            background: 'var(--accent-green)',
+            width: `${audioLevel * 100}%`,
+            transition: 'width 0.1s ease-out'
+          }} />
+        </div>
+      )}
+
+      {isConnected && (
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={voiceCall.toggleMute}
+            style={{
+              flex: 1,
+              padding: '10px',
+              background: isMuted ? 'var(--error-bg)' : 'var(--bg-secondary)',
+              color: isMuted ? 'var(--error-text)' : 'var(--text-primary)',
+              border: `1px solid ${isMuted ? 'var(--error-border)' : 'var(--border)'}`,
+              borderRadius: '2px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '14px'
+            }}
+          >
+            {isMuted ? '🔇 Unmute' : '🎤 Mute'}
+          </button>
+          <button
+            onClick={voiceCall.leaveCall}
+            style={{
+              flex: 1,
+              padding: '10px',
+              background: 'var(--error-bg)',
+              color: 'var(--error-text)',
+              border: '1px solid var(--error-border)',
+              borderRadius: '2px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '14px',
+              fontWeight: 'bold'
+            }}
+          >
+            📞 Leave Call
+          </button>
+        </div>
+      )}
+
+      {livekitToken && livekitUrl && (
+        <LiveKitCallRoom
+          token={livekitToken}
+          url={livekitUrl}
+          roomName={wave.id}
+          voiceCall={voiceCall}
+        />
+      )}
+    </div>
+  );
+};
 
 // ============ UI COMPONENTS ============
 const ScanLines = ({ enabled = true }) => {
@@ -7239,6 +7724,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // E2EE context
   const e2ee = useE2EE();
 
+  // Voice call hook (v2.4.0 - LiveKit)
+  const voiceCall = useVoiceCall(wave?.id);
+
   const [waveData, setWaveData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -9076,6 +9564,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       {/* Messages */}
       <div ref={messagesRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '12px' : '20px' }}>
+        {/* Voice Call Controls (v2.4.0 - LiveKit) */}
+        <VoiceCallControls
+          wave={wave}
+          voiceCall={voiceCall}
+          user={currentUser}
+        />
         {/* E2EE: Show encryption status banners */}
         {e2ee.isE2EEEnabled && waveData?.encrypted === 0 && (
           <LegacyWaveNotice
@@ -17593,6 +18087,11 @@ function MainApp({ shareDropletId }) {
   }, [fetchAPI, showToastMsg]);
 
   const handleWSMessage = useCallback((data) => {
+    // Log ALL incoming WebSocket messages (for debugging)
+    if (data.type?.startsWith('call_')) {
+      console.log('🔌 [WS] Received message:', data.type, data);
+    }
+
     // Handle droplet/wave read events - these are always followed by unread_count_update event
     // Don't call loadWaves() here to avoid duplicate API calls and race conditions
     if (data.type === 'droplet_read' || data.type === 'message_read' || data.type === 'wave_read') {

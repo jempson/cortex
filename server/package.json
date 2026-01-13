@@ -1,6 +1,6 @@
 {
   "name": "farhold-server",
-  "version": "2.2.9",
+  "version": "2.4.0",
   "description": "Farhold - Privacy-First Federated Communication Platform (formerly Cortex)",
   "type": "module",
   "scripts": {
@@ -24,7 +24,8 @@
     "sharp": "^0.34.5",
     "uuid": "^10.0.0",
     "web-push": "^3.6.7",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "livekit-server-sdk": "^2.8.0"
   },
   "keywords": [
     "communication",
