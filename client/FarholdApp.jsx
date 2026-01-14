@@ -19,6 +19,11 @@ import { AuthContext, useAuth, useAPI } from './src/hooks/useAPI.js';
 import { useWebSocket } from './src/hooks/useWebSocket.js';
 import { useVoiceCall } from './src/hooks/useVoiceCall.js';
 
+// Extracted UI components
+import ImageLightbox from './src/components/ui/ImageLightbox.jsx';
+import { ScanLines, GlowText, Avatar, PrivacyBadge, Toast, LoadingSpinner, OfflineIndicator, PullIndicator } from './src/components/ui/SimpleComponents.jsx';
+import BottomNav from './src/components/ui/BottomNav.jsx';
+
 // ============ SERVICE WORKER REGISTRATION ============
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -53,64 +58,6 @@ if ('serviceWorker' in navigator) {
 // ============ UI COMPONENTS ============
 // PWA Badge API - shows unread count on installed app icon
 // ============ IMAGE LIGHTBOX COMPONENT ============
-const ImageLightbox = ({ src, onClose }) => {
-  if (!src) return null;
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.9)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-        cursor: 'zoom-out',
-        padding: '20px',
-      }}
-    >
-      <img
-        src={src}
-        alt="Full size"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: '95vw',
-          maxHeight: '95vh',
-          objectFit: 'contain',
-          borderRadius: '4px',
-          boxShadow: '0 0 30px rgba(0, 0, 0, 0.5)',
-        }}
-      />
-      <button
-        onClick={onClose}
-        style={{
-          position: 'absolute',
-          top: '20px',
-          right: '20px',
-          background: 'rgba(0, 0, 0, 0.5)',
-          border: '1px solid var(--border-secondary)',
-          color: '#fff',
-          fontSize: '1.5rem',
-          width: '44px',
-          height: '44px',
-          borderRadius: '50%',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        ✕
-      </button>
-    </div>
-  );
-};
-
 
 // Single embed component with click-to-load
 const RichEmbed = ({ embed, autoLoad = false }) => {
@@ -1197,143 +1144,7 @@ const InstallPrompt = ({ isMobile }) => {
 };
 
 // ============ OFFLINE INDICATOR ============
-const OfflineIndicator = () => {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  if (isOnline) return null;
-
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      background: 'var(--accent-orange)',
-      color: 'var(--bg-base)',
-      padding: '8px',
-      textAlign: 'center',
-      fontFamily: 'monospace',
-      fontSize: '0.85rem',
-      fontWeight: 'bold',
-      zIndex: 9999
-    }}>
-      OFFLINE - Some features unavailable
-    </div>
-  );
-};
-
 // ============ BOTTOM NAVIGATION ============
-const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendingGroups }) => {
-  const items = [
-    { id: 'waves', icon: '◈', label: 'Waves', badge: unreadCount },
-    { id: 'contacts', icon: '●', label: 'Contacts', badge: pendingContacts },
-    { id: 'groups', icon: '◆', label: 'Crews', badge: pendingGroups },
-    { id: 'profile', icon: '⚙', label: 'Profile' },
-  ];
-
-  const handleNavigate = (view) => {
-    // Haptic feedback if available
-    if (navigator.vibrate) {
-      navigator.vibrate(10);
-    }
-    onNavigate(view);
-  };
-
-  return (
-    <nav style={{
-      position: 'fixed',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: '60px',
-      paddingBottom: 'env(safe-area-inset-bottom)',
-      background: 'var(--bg-surface)',
-      borderTop: '1px solid var(--border-subtle)',
-      display: 'flex',
-      justifyContent: 'space-around',
-      alignItems: 'center',
-      zIndex: 1000,
-    }}>
-      {items.map(item => {
-        const isActive = activeView === item.id;
-        const badgeColor = item.badgeColor ? item.badgeColor :
-                          item.id === 'contacts' && item.badge > 0 ? 'var(--accent-teal)' :
-                          item.id === 'groups' && item.badge > 0 ? 'var(--accent-amber)' : 'var(--accent-orange)';
-
-        return (
-          <button
-            key={item.id}
-            onClick={() => handleNavigate(item.id)}
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-              padding: '8px 4px',
-              background: 'transparent',
-              border: 'none',
-              color: isActive ? 'var(--accent-amber)' : 'var(--text-dim)',
-              cursor: 'pointer',
-              position: 'relative',
-              transition: 'color 0.2s ease',
-            }}
-          >
-            <span style={{
-              fontSize: '1.2rem',
-              textShadow: isActive ? '0 0 10px var(--accent-amber)80' : 'none',
-            }}>
-              {item.icon}
-            </span>
-            <span style={{
-              fontSize: '0.6rem',
-              fontFamily: 'monospace',
-              textTransform: 'uppercase',
-              textShadow: isActive ? '0 0 8px var(--accent-amber)40' : 'none',
-            }}>
-              {item.label}
-            </span>
-            {item.badge > 0 && (
-              <span style={{
-                position: 'absolute',
-                top: '4px',
-                right: '10%',
-                background: badgeColor,
-                color: item.id === 'groups' ? '#000' : '#fff',
-                fontSize: '0.55rem',
-                fontWeight: 700,
-                padding: '2px 4px',
-                borderRadius: '10px',
-                minWidth: '16px',
-                textAlign: 'center',
-                boxShadow: `0 0 8px ${badgeColor}80`,
-              }}>
-                {item.badge}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </nav>
-  );
-};
-
-// ============ LIVEKIT VOICE CALL UI (v2.4.0) ============
-
 const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children }) => {
   const handleConnected = useCallback(() => {
     console.log('🎤 Connected to LiveKit room:', roomName);
@@ -2322,98 +2133,6 @@ const VoiceCallControls = ({ wave, voiceCall, user }) => {
 };
 
 // ============ UI COMPONENTS ============
-const ScanLines = ({ enabled = true }) => {
-  if (!enabled) return null;
-  return (
-    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1000,
-      background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px)' }} />
-  );
-};
-
-const GlowText = ({ children, color = 'var(--accent-amber)', size = '1rem', weight = 400 }) => (
-  <span style={{ color, fontSize: size, fontWeight: weight, textShadow: `0 0 10px ${color}80, 0 0 20px ${color}40` }}>
-    {children}
-  </span>
-);
-
-const Avatar = ({ letter, color = 'var(--accent-amber)', size = 40, status, imageUrl }) => {
-  const [imgError, setImgError] = useState(false);
-
-  // Reset error state when imageUrl changes
-  useEffect(() => {
-    setImgError(false);
-  }, [imageUrl]);
-
-  const showImage = imageUrl && !imgError;
-
-  return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
-      <div style={{
-        width: size, height: size,
-        background: showImage ? 'transparent' : `linear-gradient(135deg, ${color}40, ${color}10)`,
-        border: `1px solid ${color}60`, borderRadius: '2px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'monospace', color, fontSize: size * 0.4,
-        overflow: 'hidden',
-      }}>
-        {showImage ? (
-          <img
-            src={`${BASE_URL}${imageUrl}`}
-            alt=""
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={() => setImgError(true)}
-            loading="lazy"
-          />
-        ) : (
-          letter
-        )}
-      </div>
-      {status && (
-        <div style={{
-          position: 'absolute', bottom: -2, right: -2,
-          width: '8px', height: '8px', borderRadius: '50%',
-          background: status === 'online' ? 'var(--accent-green)' : status === 'away' ? 'var(--accent-amber)' : 'var(--text-muted)',
-          boxShadow: status === 'online' ? '0 0 6px var(--accent-green)' : 'none',
-        }} />
-      )}
-    </div>
-  );
-};
-
-const PrivacyBadge = ({ level, compact = false }) => {
-  const config = PRIVACY_LEVELS[level] || PRIVACY_LEVELS.private;
-  return (
-    <div style={{
-      display: 'inline-flex', alignItems: 'center', gap: '6px',
-      padding: compact ? '2px 8px' : '4px 12px',
-      background: config.bgColor,
-      border: `1px solid ${config.color}50`,
-      borderRadius: '2px',
-      fontSize: compact ? '0.7rem' : '0.75rem',
-      flexShrink: 0,
-    }}>
-      <span style={{ color: config.color }}>{config.icon}</span>
-      {!compact && <span style={{ color: config.color }}>{config.name}</span>}
-    </div>
-  );
-};
-
-const Toast = ({ message, type = 'info', onClose }) => {
-  const colors = { success: 'var(--accent-green)', error: 'var(--accent-orange)', info: 'var(--accent-amber)' };
-  useEffect(() => { const t = setTimeout(onClose, 4000); return () => clearTimeout(t); }, [onClose]);
-  return (
-    <div style={{
-      position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)',
-      padding: '12px 24px', background: 'var(--bg-surface)',
-      border: `1px solid ${colors[type]}`, color: colors[type],
-      fontFamily: 'monospace', fontSize: '0.85rem', zIndex: 200,
-      maxWidth: '90vw', textAlign: 'center',
-    }}>
-      {message}
-    </div>
-  );
-};
-
 // ============ CRAWL BAR COMPONENT ============
 const CRAWL_SCROLL_SPEEDS = {
   slow: 60,     // seconds for full scroll - leisurely pace
@@ -2947,17 +2666,6 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false, 
   );
 };
 
-const LoadingSpinner = () => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>
-    <div style={{
-      width: '40px', height: '40px', border: '3px solid var(--border-subtle)',
-      borderTop: '3px solid var(--accent-amber)', borderRadius: '50%',
-      animation: 'spin 1s linear infinite',
-    }} />
-    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-  </div>
-);
-
 // Notification type styling
 const NOTIFICATION_TYPES = {
   direct_mention: { icon: '@', color: 'var(--accent-amber)', label: 'Mentioned you' },
@@ -3318,42 +3026,6 @@ const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger
           onClose={() => setShowDropdown(false)}
           isMobile={isMobile}
         />
-      )}
-    </div>
-  );
-};
-
-const PullIndicator = ({ pulling, pullDistance, refreshing, threshold = 60 }) => {
-  const progress = Math.min(pullDistance / threshold, 1);
-  const rotation = progress * 360;
-
-  return (
-    <div style={{
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      height: `${Math.max(pullDistance, 0)}px`,
-      display: 'flex',
-      alignItems: 'flex-end',
-      justifyContent: 'center',
-      paddingBottom: '10px',
-      background: 'linear-gradient(to bottom, var(--bg-surface), transparent)',
-      transition: refreshing ? 'height 0.3s ease' : 'none',
-      pointerEvents: 'none',
-      zIndex: 100,
-    }}>
-      {(pulling || refreshing) && (
-        <div style={{
-          width: '24px',
-          height: '24px',
-          border: '2px solid var(--border-subtle)',
-          borderTop: '2px solid var(--accent-green)',
-          borderRadius: '50%',
-          transform: refreshing ? 'none' : `rotate(${rotation}deg)`,
-          animation: refreshing ? 'spin 1s linear infinite' : 'none',
-          opacity: Math.max(progress, 0.3),
-        }} />
       )}
     </div>
   );
