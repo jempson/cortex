@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { VERSION, API_URL, BASE_URL, PRIVACY_LEVELS } from '../config/constants.js';
 import { useWindowSize } from '../hooks/useWindowSize.js';
-import { LoadingSpinner, Toast, Avatar, GlowText } from '../components/ui/SimpleComponents.jsx';
+import { LoadingSpinner, Toast, Avatar, GlowText, ScanLines } from '../components/ui/SimpleComponents.jsx';
 
 const ResetPasswordPage = ({ onBack }) => {
   const [token, setToken] = useState('');

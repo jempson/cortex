@@ -7,7 +7,7 @@ import { BASE_URL, canAccess } from '../config/constants.js';
 import { updateAppBadge } from '../utils/pwa.js';
 import { updateDocumentTitle, startFaviconFlash, stopFaviconFlash } from '../utils/favicon.js';
 import BottomNav from '../components/ui/BottomNav.jsx';
-import { Toast, OfflineIndicator } from '../components/ui/SimpleComponents.jsx';
+import { Toast, OfflineIndicator, ScanLines } from '../components/ui/SimpleComponents.jsx';
 
 function MainApp({ shareDropletId }) {
   const { user, token, logout, updateUser } = useAuth();
