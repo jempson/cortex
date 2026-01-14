@@ -563,6 +563,82 @@ export function E2EEProvider({ children, token, API_URL }) {
     return crypto.decryptDroplet(ciphertext, nonce, waveKey);
   }, [getWaveKey, fetchAPI, privateKey]);
 
+  // ============ Audio Encryption (v2.3.0) ============
+
+  // Encrypt audio chunk for voice calls
+  const encryptAudioChunk = useCallback(async (audioBuffer, waveId) => {
+    if (!privateKey) {
+      throw new Error('E2EE not unlocked');
+    }
+
+    // Get wave key
+    const waveKey = await getWaveKey(waveId);
+    if (!waveKey) {
+      throw new Error('Wave key not found');
+    }
+
+    // Generate random nonce (12 bytes for AES-GCM)
+    const nonce = window.crypto.getRandomValues(new Uint8Array(12));
+
+    // Encrypt the audio data
+    const ciphertext = await window.crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: nonce },
+      waveKey,
+      audioBuffer
+    );
+
+    // Convert to base64 for transmission
+    const ciphertextBase64 = btoa(String.fromCharCode(...new Uint8Array(ciphertext)));
+    const nonceBase64 = btoa(String.fromCharCode(...nonce));
+
+    return { ciphertext: ciphertextBase64, nonce: nonceBase64 };
+  }, [privateKey, getWaveKey]);
+
+  // Decrypt audio chunk for voice calls
+  const decryptAudioChunk = useCallback(async (encryptedData, waveId) => {
+    if (!privateKey) {
+      throw new Error('E2EE not unlocked');
+    }
+
+    // Get wave key
+    const waveKey = await getWaveKey(waveId);
+    if (!waveKey) {
+      throw new Error('Wave key not found');
+    }
+
+    // Parse encrypted data
+    let ciphertextBase64, nonceBase64;
+    if (typeof encryptedData === 'string') {
+      // Assume format: "ciphertext:nonce" or just base64 ciphertext
+      const parts = encryptedData.split(':');
+      if (parts.length === 2) {
+        ciphertextBase64 = parts[0];
+        nonceBase64 = parts[1];
+      } else {
+        throw new Error('Invalid encrypted audio format');
+      }
+    } else if (encryptedData.ciphertext && encryptedData.nonce) {
+      // Object format
+      ciphertextBase64 = encryptedData.ciphertext;
+      nonceBase64 = encryptedData.nonce;
+    } else {
+      throw new Error('Invalid encrypted audio data');
+    }
+
+    // Decode from base64
+    const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
+    const nonce = Uint8Array.from(atob(nonceBase64), c => c.charCodeAt(0));
+
+    // Decrypt
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: nonce },
+      waveKey,
+      ciphertext
+    );
+
+    return decrypted; // Returns ArrayBuffer
+  }, [privateKey, getWaveKey]);
+
   // ============ Legacy Wave Migration ============
 
   // Get wave encryption status and progress
@@ -884,6 +960,10 @@ export function E2EEProvider({ children, token, API_URL }) {
     // Droplet operations
     encryptDroplet,
     decryptDroplet,
+
+    // Audio operations (v2.3.0)
+    encryptAudioChunk,
+    decryptAudioChunk,
 
     // Crypto availability check
     isCryptoAvailable: crypto.isCryptoAvailable()

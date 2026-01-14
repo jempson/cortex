@@ -1297,6 +1297,18 @@ export class DatabaseSQLite {
       console.log(`    ✓ Created ${categoryCount} default categories`);
       console.log('✅ Wave organization features added (v2.2.0)');
     }
+
+    // v2.3.0 - Voice Calls: Add audio encryption toggle to waves
+    const waveColumnsV230 = this.db.prepare(`PRAGMA table_info(waves)`).all();
+    const hasAudioEncryptionColumn = waveColumnsV230.some(c => c.name === 'audio_encryption_enabled');
+
+    if (!hasAudioEncryptionColumn) {
+      console.log('📝 Adding audio_encryption_enabled column to waves table (v2.3.0)...');
+      this.db.exec(`
+        ALTER TABLE waves ADD COLUMN audio_encryption_enabled INTEGER DEFAULT 0;
+      `);
+      console.log('✅ Audio encryption toggle added to waves table');
+    }
   }
 
   prepareStatements() {
