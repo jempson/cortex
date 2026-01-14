@@ -10779,6 +10779,44 @@ app.put('/api/groups/:id/members/:userId', authenticateToken, (req, res) => {
 });
 
 // ============ Wave Routes (renamed from Thread) ============
+/**
+ * Get all active calls across all waves the user has access to
+ * GET /api/waves/active-calls
+ * IMPORTANT: Must come BEFORE /api/waves/:id to avoid parameter matching
+ */
+app.get('/api/waves/active-calls', authenticateToken, async (req, res) => {
+  const userId = req.user.userId;
+
+  if (!livekitRoomService) {
+    return res.json({ calls: [] });
+  }
+
+  try {
+    const rooms = await livekitRoomService.listRooms();
+    const activeCalls = [];
+    for (const room of rooms) {
+      try {
+        if (room.numParticipants > 0) {
+          const wave = db.getWave(room.name);
+          if (wave && db.canAccessWave(room.name, userId)) {
+            activeCalls.push({
+              waveId: room.name,
+              participantCount: room.numParticipants,
+              participants: room.participants?.map(p => p.identity) || []
+            });
+          }
+        }
+      } catch (err) {
+        console.log(`Skipping room ${room.name} due to error:`, err.message);
+      }
+    }
+    res.json({ calls: activeCalls });
+  } catch (error) {
+    console.error('Error fetching active calls:', error);
+    res.json({ calls: [] });
+  }
+});
+
 app.get('/api/waves', authenticateToken, (req, res) => {
   const includeArchived = req.query.archived === 'true';
   const waves = db.getWavesForUser(req.user.userId, includeArchived);
@@ -11007,12 +11045,12 @@ app.post('/api/waves/:waveId/call/token', authenticateToken, async (req, res) =>
       name: user.displayName || user.handle || 'Unknown',
     });
 
-    // Grant permissions for voice calling
+    // Grant permissions for voice/video calling
     at.addGrant({
       roomJoin: true,
       room: waveId,          // Use waveId as room name
-      canPublish: true,      // Allow publishing audio
-      canSubscribe: true,    // Allow subscribing to others' audio
+      canPublish: true,      // Allow publishing audio and video
+      canSubscribe: true,    // Allow subscribing to others' audio/video
       canPublishData: false  // No data channel needed
     });
 
@@ -11107,7 +11145,11 @@ app.get('/api/waves/:waveId/call/status', authenticateToken, async (req, res) =>
     const rooms = await livekitRoomService.listRooms();
     const room = rooms.find(r => r.name === waveId);
 
-    const active = room && room.numParticipants > 0;
+    // Consider a room "active" if:
+    // 1. It has participants, OR
+    // 2. It exists and was created within the last 30 seconds (someone is connecting)
+    const roomAgeSeconds = room?.creationTime ? (Date.now() / 1000) - Number(room.creationTime) : Infinity;
+    const active = room && (room.numParticipants > 0 || roomAgeSeconds < 30);
 
     res.json({
       active,

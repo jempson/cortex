@@ -2,12 +2,12 @@ import React, { useState, useEffect, useLayoutEffect, useRef, createContext, use
 import { E2EEProvider, useE2EE } from './e2ee-context.jsx';
 import { E2EESetupModal, PassphraseUnlockModal, E2EEStatusIndicator, EncryptedWaveBadge, LegacyWaveNotice, PartialEncryptionBanner } from './e2ee-components.jsx';
 import { SUCCESS, EMPTY, LOADING, CONFIRM, TAGLINES, getRandomTagline } from './messages.js';
-import { LiveKitRoom, useParticipants, useLocalParticipant, RoomAudioRenderer } from '@livekit/components-react';
+import { LiveKitRoom, useParticipants, useLocalParticipant, RoomAudioRenderer, ParticipantTile, useTracks } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-const VERSION = '2.4.0';
+const VERSION = '2.5.0';
 
 // Auto-detect production vs development
 const isProduction = window.location.hostname !== 'localhost';
@@ -2150,12 +2150,18 @@ function useVoiceCall(waveId) {
   const [connectionState, setConnectionState] = useState('disconnected');
   const [participants, setParticipants] = useState([]);
   const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOff, setIsCameraOff] = useState(true); // Camera off by default
   const [audioLevel, setAudioLevel] = useState(0);
   const [error, setError] = useState(null);
   const [livekitToken, setLivekitToken] = useState(null);
   const [livekitUrl, setLivekitUrl] = useState(null);
   const [callActive, setCallActive] = useState(false);
   const [serverParticipantCount, setServerParticipantCount] = useState(0);
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [selectedMic, setSelectedMic] = useState(localStorage.getItem('farhold_mic_device') || 'default');
+  const [selectedCamera, setSelectedCamera] = useState(localStorage.getItem('farhold_camera_device') || 'default');
+  const [selectedSpeaker, setSelectedSpeaker] = useState(localStorage.getItem('farhold_speaker_device') || 'default');
 
   const roomRef = useRef(null);
   const audioLevelIntervalRef = useRef(null);
@@ -2193,7 +2199,7 @@ function useVoiceCall(waveId) {
   }, [waveId, token]);
 
   // Start call
-  const startCall = useCallback(async () => {
+  const startCall = useCallback(async (withVideo = false) => {
     if (connectionState !== 'disconnected') {
       console.warn('Already in a call');
       return;
@@ -2201,6 +2207,15 @@ function useVoiceCall(waveId) {
 
     setConnectionState('connecting');
     setError(null);
+
+    // Set camera state before connecting
+    if (withVideo) {
+      console.log('🎥 Starting video call - camera will be enabled');
+      setIsCameraOff(false);
+    } else {
+      console.log('🎤 Starting voice call - camera will be disabled');
+      setIsCameraOff(true);
+    }
 
     const tokenData = await fetchToken();
     if (!tokenData) {
@@ -2210,7 +2225,7 @@ function useVoiceCall(waveId) {
 
     setLivekitToken(tokenData.token);
     setLivekitUrl(tokenData.url);
-    console.log('🎤 Starting call...');
+    console.log(`🎤 Starting ${withVideo ? 'video' : 'voice'} call...`);
   }, [connectionState, fetchToken]);
 
   // Leave call
@@ -2231,6 +2246,14 @@ function useVoiceCall(waveId) {
   // Toggle mute
   const toggleMute = useCallback(() => {
     setIsMuted(prev => !prev);
+  }, []);
+
+  // Toggle camera
+  const toggleCamera = useCallback(() => {
+    setIsCameraOff(prev => {
+      console.log(`🎥 toggleCamera: ${prev ? 'OFF' : 'ON'} -> ${prev ? 'ON' : 'OFF'}`);
+      return !prev;
+    });
   }, []);
 
   // Check call status from server
@@ -2254,6 +2277,47 @@ function useVoiceCall(waveId) {
       console.error('Error checking call status:', err);
     }
   }, [waveId, token]);
+
+  // Enumerate available devices
+  const enumerateDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+      const videoInputs = devices.filter(d => d.kind === 'videoinput');
+      const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+
+      setAudioDevices([...audioInputs, ...audioOutputs]);
+      setVideoDevices(videoInputs);
+    } catch (err) {
+      console.error('Failed to enumerate devices:', err);
+    }
+  }, []);
+
+  // Device change handlers
+  const changeMic = useCallback((deviceId) => {
+    setSelectedMic(deviceId);
+    localStorage.setItem('farhold_mic_device', deviceId);
+  }, []);
+
+  const changeCamera = useCallback((deviceId) => {
+    setSelectedCamera(deviceId);
+    localStorage.setItem('farhold_camera_device', deviceId);
+  }, []);
+
+  const changeSpeaker = useCallback((deviceId) => {
+    setSelectedSpeaker(deviceId);
+    localStorage.setItem('farhold_speaker_device', deviceId);
+  }, []);
+
+  // Enumerate devices on mount
+  useEffect(() => {
+    enumerateDevices();
+    // Re-enumerate when devices change
+    navigator.mediaDevices.addEventListener('devicechange', enumerateDevices);
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', enumerateDevices);
+    };
+  }, [enumerateDevices]);
 
   // Poll call status - check more frequently when not in call
   useEffect(() => {
@@ -2291,6 +2355,7 @@ function useVoiceCall(waveId) {
     connectionState,
     participants,
     isMuted,
+    isCameraOff,
     audioLevel,
     error,
     livekitToken,
@@ -2301,32 +2366,48 @@ function useVoiceCall(waveId) {
     startCall,
     leaveCall,
     toggleMute,
+    toggleCamera,
+    checkCallStatus,
     setConnectionState,
     setParticipants,
     setAudioLevel,
-    roomRef
+    roomRef,
+    // Device management
+    audioDevices,
+    videoDevices,
+    selectedMic,
+    selectedCamera,
+    selectedSpeaker,
+    changeMic,
+    changeCamera,
+    changeSpeaker,
+    enumerateDevices
   };
 }
 
 // ============ LIVEKIT VOICE CALL UI (v2.4.0) ============
 
-const LiveKitCallRoom = ({ token, url, roomName, voiceCall, children }) => {
+const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children }) => {
   const handleConnected = useCallback(() => {
     console.log('🎤 Connected to LiveKit room:', roomName);
     voiceCall.setConnectionState('connected');
-  }, [roomName, voiceCall]);
+  }, [roomName]);
 
   const handleDisconnected = useCallback(() => {
     console.log('🎤 Disconnected from LiveKit room');
     voiceCall.setConnectionState('disconnected');
-  }, [voiceCall]);
+  }, []);
 
   const handleError = useCallback((error) => {
     console.error('🎤 LiveKit error:', error);
     voiceCall.setConnectionState('disconnected');
-  }, [voiceCall]);
+  }, []);
 
   if (!token || !url) return null;
+
+  // Build device constraints - memoize to prevent re-renders
+  const audioDeviceId = voiceCall.selectedMic !== 'default' ? voiceCall.selectedMic : undefined;
+  const videoDeviceId = voiceCall.selectedCamera !== 'default' ? voiceCall.selectedCamera : undefined;
 
   return (
     <LiveKitRoom
@@ -2334,7 +2415,7 @@ const LiveKitCallRoom = ({ token, url, roomName, voiceCall, children }) => {
       serverUrl={url}
       connect={true}
       audio={true}
-      video={false}
+      video={!voiceCall.isCameraOff}
       onConnected={handleConnected}
       onDisconnected={handleDisconnected}
       onError={handleError}
@@ -2342,26 +2423,46 @@ const LiveKitCallRoom = ({ token, url, roomName, voiceCall, children }) => {
         audioCaptureDefaults: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true
+          autoGainControl: true,
+          deviceId: audioDeviceId
+        },
+        videoCaptureDefaults: {
+          resolution: {
+            width: 1280,
+            height: 720,
+            frameRate: 30
+          },
+          deviceId: videoDeviceId
         }
       }}
     >
       <RoomAudioRenderer />
-      <CallControls voiceCall={voiceCall} />
+      <CallControls
+        isMuted={voiceCall.isMuted}
+        isCameraOff={voiceCall.isCameraOff}
+        setParticipants={voiceCall.setParticipants}
+        setAudioLevel={voiceCall.setAudioLevel}
+      />
       {children}
     </LiveKitRoom>
   );
-};
+}, (prevProps, nextProps) => {
+  // Only skip re-render if token, url, AND voiceCall control states are unchanged
+  return prevProps.token === nextProps.token &&
+         prevProps.url === nextProps.url &&
+         prevProps.voiceCall.isMuted === nextProps.voiceCall.isMuted &&
+         prevProps.voiceCall.isCameraOff === nextProps.voiceCall.isCameraOff;
+});
 
-const CallControls = ({ voiceCall }) => {
+const CallControls = ({ isMuted, isCameraOff, setParticipants, setAudioLevel }) => {
   const participants = useParticipants();
-  const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
+  const { localParticipant } = useLocalParticipant();
 
   // Update participants list
   useEffect(() => {
     const participantIds = participants.map(p => p.identity);
-    voiceCall.setParticipants(participantIds);
-  }, [participants, voiceCall]);
+    setParticipants(participantIds);
+  }, [participants, setParticipants]);
 
   // Monitor audio level
   useEffect(() => {
@@ -2371,23 +2472,683 @@ const CallControls = ({ voiceCall }) => {
       const audioTrack = localParticipant.getTrackPublication(Track.Source.Microphone);
       if (audioTrack?.track) {
         const level = audioTrack.isSpeaking ? 0.7 : 0.1;
-        voiceCall.setAudioLevel(level);
+        setAudioLevel(level);
       } else {
-        voiceCall.setAudioLevel(0);
+        setAudioLevel(0);
       }
     }, 100);
 
     return () => clearInterval(interval);
-  }, [localParticipant, voiceCall]);
+  }, [localParticipant, setAudioLevel]);
 
   // Sync mute state with LiveKit
   useEffect(() => {
     if (localParticipant) {
-      localParticipant.setMicrophoneEnabled(!voiceCall.isMuted);
+      localParticipant.setMicrophoneEnabled(!isMuted);
     }
-  }, [voiceCall.isMuted, localParticipant]);
+  }, [isMuted, localParticipant]);
+
+  // Sync camera state with LiveKit
+  useEffect(() => {
+    if (!localParticipant) return;
+
+    const shouldEnable = !isCameraOff;
+    console.log(`🎥 Syncing camera state: ${shouldEnable ? 'enabling' : 'disabling'} (isCameraOff=${isCameraOff})`);
+
+    // Get the current camera track
+    const cameraPublication = localParticipant.getTrackPublication(Track.Source.Camera);
+    console.log(`🎥 Camera track exists: ${!!cameraPublication}, isEnabled: ${cameraPublication?.track?.isEnabled}, isMuted: ${cameraPublication?.isMuted}`);
+
+    const updateCamera = async () => {
+      try {
+        if (shouldEnable) {
+          // Enable camera - unmute if it was muted
+          console.log('🎥 Enabling camera track...');
+          const cameraPub = localParticipant.getTrackPublication(Track.Source.Camera);
+          if (cameraPub && cameraPub.isMuted) {
+            await cameraPub.unmute();
+            console.log('🎥 Camera unmuted successfully');
+          } else {
+            await localParticipant.setCameraEnabled(true);
+            console.log('🎥 Camera enabled successfully');
+          }
+        } else {
+          // Disable camera by muting the track (more reliable than setCameraEnabled(false))
+          console.log('🎥 Disabling camera track...');
+          const cameraPub = localParticipant.getTrackPublication(Track.Source.Camera);
+          if (cameraPub) {
+            await cameraPub.mute();
+            console.log('🎥 Camera muted successfully');
+          } else {
+            console.log('🎥 No camera track to mute');
+          }
+        }
+      } catch (err) {
+        console.error('🎥 Failed to change camera state:', err);
+      }
+    };
+
+    updateCamera();
+  }, [isCameraOff, localParticipant]);
 
   return null;
+};
+
+// ============ CALL MODAL (v2.5.0 - Voice/Video) ============
+
+const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
+  if (!isOpen || !wave || !user) return null;
+
+  const { connectionState, participants, isMuted, isCameraOff, audioLevel, error, livekitToken, livekitUrl, callActive, serverParticipantCount, checkCallStatus } = voiceCall;
+  const isConnected = connectionState === 'connected';
+  const isConnecting = connectionState === 'connecting';
+  const participantCount = participants.length;
+
+  // Check if there are actual video tracks to determine window size
+  const [hasAnyVideo, setHasAnyVideo] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(true);
+
+  // Check call status immediately when modal opens
+  useEffect(() => {
+    if (isOpen && checkCallStatus) {
+      setCheckingStatus(true);
+      checkCallStatus().finally(() => {
+        // Keep loading state for at least 300ms to prevent flickering
+        setTimeout(() => setCheckingStatus(false), 300);
+      });
+    }
+  }, [isOpen, checkCallStatus]);
+
+  // Pop-out window handler
+  const handlePopOut = useCallback(() => {
+    const width = 900;
+    const height = 700;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+
+    // Build URL with call parameters
+    const baseUrl = window.location.origin + window.location.pathname;
+    const callUrl = `${baseUrl}?call=${wave.id}&popout=true`;
+
+    const popoutWindow = window.open(
+      callUrl,
+      'FarholdCall_' + wave.id,
+      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`
+    );
+
+    // Close the modal in the parent window after pop-out opens
+    if (popoutWindow) {
+      setTimeout(() => onClose(), 100);
+    }
+  }, [wave, onClose]);
+
+  // Video Tiles and Audio Level Component (must be inside LiveKitRoom)
+  const CallContent = () => {
+    const tracks = useTracks([
+      { source: Track.Source.Camera, withPlaceholder: false },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ]);
+
+    // Filter for tracks that are actually enabled and publishing
+    const activeTracks = tracks.filter(trackRef => {
+      const track = trackRef.publication?.track;
+      return track && !track.isMuted && trackRef.publication?.isSubscribed;
+    });
+
+    const hasVideoTracks = activeTracks.length > 0;
+
+    // Update parent state when video tracks change
+    useEffect(() => {
+      setHasAnyVideo(hasVideoTracks);
+    }, [hasVideoTracks]);
+
+    // Calculate grid layout based on participant count
+    const getGridLayout = (count) => {
+      if (count === 1) return { columns: '1fr', minSize: '400px' };
+      if (count === 2) return { columns: 'repeat(2, 1fr)', minSize: '300px' };
+      if (count <= 4) return { columns: 'repeat(2, 1fr)', minSize: '250px' };
+      if (count <= 6) return { columns: 'repeat(3, 1fr)', minSize: '200px' };
+      return { columns: 'repeat(auto-fit, minmax(200px, 1fr))', minSize: '200px' };
+    };
+
+    const layout = getGridLayout(activeTracks.length);
+
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* Video Tiles */}
+        {hasVideoTracks ? (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: layout.columns,
+            gap: '8px',
+            padding: '12px',
+            flex: 1,
+            overflow: 'auto',
+            minHeight: 0,
+            alignContent: 'start'
+          }}>
+            {activeTracks.map((trackRef) => (
+              <ParticipantTile
+                key={trackRef.publication.trackSid}
+                trackRef={trackRef}
+                style={{
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  minHeight: layout.minSize,
+                  aspectRatio: '16/9'
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          /* Audio level indicator (when no video) */
+          <div style={{
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
+            flex: 1
+          }}>
+            <div style={{ fontSize: '3rem' }}>🎤</div>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Voice Only</div>
+            {audioLevel > 0 && !isMuted && (
+              <div style={{ width: '200px' }}>
+                <div style={{
+                  height: '4px',
+                  background: 'var(--bg-secondary)',
+                  borderRadius: '2px',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    height: '100%',
+                    background: 'var(--accent-green)',
+                    width: `${audioLevel * 100}%`,
+                    transition: 'width 0.1s ease-out'
+                  }} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(0, 0, 0, 0.85)',
+      zIndex: 2000,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: isMobile ? '0' : '20px'
+    }}
+      onClick={onClose}
+    >
+      <div style={{
+        background: 'var(--bg-primary)',
+        border: isMobile ? 'none' : '1px solid var(--border-primary)',
+        borderRadius: isMobile ? '0' : '8px',
+        width: isMobile ? '100%' : (hasAnyVideo ? 'min(900px, 90vw)' : '400px'),
+        height: isMobile ? '100%' : (hasAnyVideo ? 'min(700px, 85vh)' : 'auto'),
+        maxHeight: isMobile ? '100%' : '85vh',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        transition: 'width 0.3s ease, height 0.3s ease'
+      }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{
+          padding: '16px 20px',
+          borderBottom: '1px solid var(--border-primary)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'var(--bg-elevated)',
+          flexShrink: 0
+        }}>
+          <div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+              {isConnecting ? '📞 Connecting...' : isConnected ? '📞 In Call' : '📞 Voice/Video Call'}
+            </div>
+            {isConnected && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                {participantCount} participant{participantCount !== 1 ? 's' : ''} • {wave.title}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {isConnected && (
+              <button
+                onClick={handlePopOut}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-dim)',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  padding: '4px 8px',
+                  lineHeight: 1
+                }}
+                title="Pop Out"
+              >
+                ⧉
+              </button>
+            )}
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '1.2rem',
+                padding: '4px 8px',
+                lineHeight: 1
+              }}
+              title="Settings"
+            >
+              ⚙️
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '1.5rem',
+                padding: '4px 8px',
+                lineHeight: 1
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+          {!isConnected && !isConnecting && !livekitToken ? (
+            // Not in call - show start/join UI
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '40px 20px'
+            }}>
+              {checkingStatus ? (
+                <>
+                  <div style={{
+                    fontSize: '3rem',
+                    marginBottom: '20px'
+                  }}>📞</div>
+                  <div style={{
+                    fontSize: '1.2rem',
+                    color: 'var(--text-secondary)',
+                    marginBottom: '30px'
+                  }}>
+                    Checking call status...
+                  </div>
+                </>
+              ) : callActive ? (
+                <>
+                  <div style={{
+                    fontSize: '3rem',
+                    marginBottom: '20px'
+                  }}>📞</div>
+                  <div style={{
+                    fontSize: '1.2rem',
+                    color: 'var(--accent-green)',
+                    marginBottom: '8px',
+                    fontWeight: 'bold'
+                  }}>
+                    Call in Progress
+                  </div>
+                  <div style={{
+                    fontSize: '0.9rem',
+                    color: 'var(--text-secondary)',
+                    marginBottom: '30px'
+                  }}>
+                    {serverParticipantCount > 0
+                      ? `${serverParticipantCount} participant${serverParticipantCount !== 1 ? 's' : ''} in call`
+                      : 'Someone is connecting...'}
+                  </div>
+                  <button
+                    onClick={() => voiceCall.startCall(false)}
+                    disabled={!!error}
+                    style={{
+                      padding: '14px 32px',
+                      background: 'var(--accent-green)',
+                      color: 'var(--bg-primary)',
+                      border: '1px solid var(--accent-green)',
+                      borderRadius: '6px',
+                      cursor: error ? 'not-allowed' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: '1rem',
+                      fontWeight: 'bold',
+                      opacity: error ? 0.5 : 1
+                    }}
+                  >
+                    Join Call
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{
+                    fontSize: '3rem',
+                    marginBottom: '20px'
+                  }}>📞</div>
+                  <div style={{
+                    fontSize: '1.2rem',
+                    color: 'var(--text-primary)',
+                    marginBottom: '30px'
+                  }}>
+                    Start a call
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <button
+                      onClick={() => voiceCall.startCall(false)}
+                      disabled={!!error}
+                      style={{
+                        padding: '14px 32px',
+                        background: 'var(--accent-green)',
+                        color: 'var(--bg-primary)',
+                        border: '1px solid var(--accent-green)',
+                        borderRadius: '6px',
+                        cursor: error ? 'not-allowed' : 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '1rem',
+                        fontWeight: 'bold',
+                        opacity: error ? 0.5 : 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      🎤 Voice Call
+                    </button>
+                    <button
+                      onClick={() => voiceCall.startCall(true)}
+                      disabled={!!error}
+                      style={{
+                        padding: '14px 32px',
+                        background: 'var(--accent-teal-bg)',
+                        color: 'var(--accent-teal)',
+                        border: '1px solid var(--accent-teal)',
+                        borderRadius: '6px',
+                        cursor: error ? 'not-allowed' : 'pointer',
+                        fontFamily: 'monospace',
+                        fontSize: '1rem',
+                        fontWeight: 'bold',
+                        opacity: error ? 0.5 : 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      🎥 Video Call
+                    </button>
+                  </div>
+                </>
+              )}
+              {error && (
+                <div style={{
+                  marginTop: '20px',
+                  padding: '12px 20px',
+                  background: 'var(--error-bg)',
+                  border: '1px solid var(--error-border)',
+                  borderRadius: '4px',
+                  color: 'var(--error-text)',
+                  fontSize: '0.85rem',
+                  maxWidth: '400px',
+                  textAlign: 'center'
+                }}>
+                  {error}
+                </div>
+              )}
+            </div>
+          ) : (
+            // In call - show video tiles and controls
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', minHeight: 0 }}>
+              {livekitToken && livekitUrl && (
+                <LiveKitCallRoom
+                  token={livekitToken}
+                  url={livekitUrl}
+                  roomName={wave.id}
+                  voiceCall={voiceCall}
+                >
+                  <CallContent />
+                </LiveKitCallRoom>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <div style={{
+            padding: '16px 20px',
+            borderTop: '1px solid var(--border-primary)',
+            background: 'var(--bg-secondary)',
+            maxHeight: '300px',
+            overflowY: 'auto',
+            flexShrink: 0
+          }}>
+            <div style={{
+              fontSize: '0.9rem',
+              fontWeight: 'bold',
+              color: 'var(--text-primary)',
+              marginBottom: '12px'
+            }}>
+              Device Settings
+            </div>
+
+            {/* Microphone Selection */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+                marginBottom: '4px',
+                fontFamily: 'monospace'
+              }}>
+                Microphone
+              </label>
+              <select
+                value={voiceCall.selectedMic}
+                onChange={(e) => voiceCall.changeMic(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem'
+                }}
+              >
+                <option value="default">Default Microphone</option>
+                {voiceCall.audioDevices
+                  .filter(d => d.kind === 'audioinput')
+                  .map(device => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            {/* Camera Selection */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+                marginBottom: '4px',
+                fontFamily: 'monospace'
+              }}>
+                Camera
+              </label>
+              <select
+                value={voiceCall.selectedCamera}
+                onChange={(e) => voiceCall.changeCamera(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem'
+                }}
+              >
+                <option value="default">Default Camera</option>
+                {voiceCall.videoDevices.map(device => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label || `Camera ${device.deviceId.slice(0, 8)}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Speaker Selection */}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+                marginBottom: '4px',
+                fontFamily: 'monospace'
+              }}>
+                Speaker
+              </label>
+              <select
+                value={voiceCall.selectedSpeaker}
+                onChange={(e) => voiceCall.changeSpeaker(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem'
+                }}
+              >
+                <option value="default">Default Speaker</option>
+                {voiceCall.audioDevices
+                  .filter(d => d.kind === 'audiooutput')
+                  .map(device => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Speaker ${device.deviceId.slice(0, 8)}`}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div style={{
+              fontSize: '0.7rem',
+              color: 'var(--text-dim)',
+              fontStyle: 'italic',
+              marginTop: '12px'
+            }}>
+              Note: Changes will apply to new calls. You may need to rejoin for changes to take effect.
+            </div>
+          </div>
+        )}
+
+        {/* Controls (when connected) */}
+        {isConnected && (
+          <div style={{
+            padding: '16px 20px',
+            borderTop: '1px solid var(--border-primary)',
+            background: 'var(--bg-elevated)',
+            display: 'flex',
+            gap: '12px',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            flexShrink: 0
+          }}>
+            <button
+              onClick={voiceCall.toggleMute}
+              style={{
+                padding: '12px 24px',
+                background: isMuted ? 'var(--error-bg)' : 'var(--bg-secondary)',
+                color: isMuted ? 'var(--error-text)' : 'var(--text-primary)',
+                border: `1px solid ${isMuted ? 'var(--error-border)' : 'var(--border)'}`,
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              {isMuted ? '🔇' : '🎤'} {isMuted ? 'Unmute' : 'Mute'}
+            </button>
+            <button
+              onClick={voiceCall.toggleCamera}
+              style={{
+                padding: '12px 24px',
+                background: isCameraOff ? 'var(--bg-secondary)' : 'var(--accent-teal-bg)',
+                color: isCameraOff ? 'var(--text-primary)' : 'var(--accent-teal)',
+                border: `1px solid ${isCameraOff ? 'var(--border)' : 'var(--accent-teal)'}`,
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              {isCameraOff ? '📹' : '🎥'} {isCameraOff ? 'Start Video' : 'Stop Video'}
+            </button>
+            <button
+              onClick={() => {
+                voiceCall.leaveCall();
+                onClose();
+              }}
+              style={{
+                padding: '12px 24px',
+                background: 'var(--error-bg)',
+                color: 'var(--error-text)',
+                border: '1px solid var(--error-border)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              📞 Leave
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 const VoiceCallControls = ({ wave, voiceCall, user }) => {
@@ -4467,7 +5228,7 @@ const NOTIFICATION_BADGE_COLORS = {
 };
 
 // ============ WAVE CATEGORY LIST (v2.2.0) ============
-const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCategoryToggle, onWaveMove, onWavePin, isMobile, waveNotifications = {} }) => {
+const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCategoryToggle, onWaveMove, onWavePin, isMobile, waveNotifications = {}, activeCalls = {} }) => {
   const [draggedWave, setDraggedWave] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [moveMenuOpen, setMoveMenuOpen] = useState(null); // Track which wave's move menu is open
@@ -4512,6 +5273,8 @@ const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCat
     const badgeStyle = NOTIFICATION_BADGE_COLORS[notifType] || NOTIFICATION_BADGE_COLORS.wave_activity;
     const showNotificationBadge = notifCount > 0;
     const showUnreadBadge = !showNotificationBadge && wave.unread_count > 0;
+    const callInfo = activeCalls[wave.id];
+    const hasActiveCall = callInfo && callInfo.participantCount > 0;
 
     return (
       <div
@@ -4579,6 +5342,22 @@ const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCat
                 borderRadius: '10px',
                 boxShadow: '0 0 8px var(--glow-orange)',
               }}>{wave.unread_count}</span>
+            )}
+            {hasActiveCall && (
+              <span style={{
+                background: 'var(--accent-green)',
+                color: '#000',
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                padding: '2px 6px',
+                borderRadius: '10px',
+                boxShadow: '0 0 8px var(--glow-green)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px',
+              }}>
+                📞 {callInfo.participantCount}
+              </span>
             )}
             {/* Move menu button (mobile/PWA alternative to drag-and-drop) */}
             <div style={{ position: 'relative' }}>
@@ -4812,7 +5591,7 @@ const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCat
   );
 };
 
-const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile, waveNotifications = {}, onCategoryToggle, onWaveMove, onWavePin, onManageCategories }) => (
+const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile, waveNotifications = {}, activeCalls = {}, onCategoryToggle, onWaveMove, onWavePin, onManageCategories }) => (
   <div style={{
     width: isMobile ? '100%' : '300px',
     minWidth: isMobile ? 'auto' : '280px',
@@ -4873,6 +5652,7 @@ const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWav
         onWavePin={onWavePin}
         isMobile={isMobile}
         waveNotifications={waveNotifications}
+        activeCalls={activeCalls}
       />
     ) : (
       <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -4891,6 +5671,8 @@ const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWav
         // Show notification badge OR unread count (notification badge takes priority)
         const showNotificationBadge = notifCount > 0;
         const showUnreadBadge = !showNotificationBadge && wave.unread_count > 0;
+        const callInfo = activeCalls[wave.id];
+        const hasActiveCall = callInfo && callInfo.participantCount > 0;
         return (
           <div key={wave.id} onClick={() => onSelectWave(wave)}
             onMouseEnter={(e) => {
@@ -4942,6 +5724,22 @@ const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWav
                     borderRadius: '10px',
                     boxShadow: '0 0 8px var(--glow-orange)',
                   }}>{wave.unread_count}</span>
+                )}
+                {hasActiveCall && (
+                  <span style={{
+                    background: 'var(--accent-green)',
+                    color: '#000',
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: '10px',
+                    boxShadow: '0 0 8px var(--glow-green)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '2px',
+                  }}>
+                    📞 {callInfo.participantCount}
+                  </span>
                 )}
                 <span style={{ color: config.color }}>{config.icon}</span>
               </div>
@@ -7769,11 +8567,29 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [decryptionErrors, setDecryptionErrors] = useState({}); // Track droplets that failed to decrypt
   const [decryptingWave, setDecryptingWave] = useState(false); // Wave decryption in progress
   const [showWaveMenu, setShowWaveMenu] = useState(false); // Wave header actions menu
+  const [showCallModal, setShowCallModal] = useState(false); // Voice/Video call modal
 
   // E2EE Migration state
   const [encryptionStatus, setEncryptionStatus] = useState(null); // { state, progress, participantsWithE2EE, totalParticipants }
   const [isEnablingEncryption, setIsEnablingEncryption] = useState(false);
   const [isEncryptingBatch, setIsEncryptingBatch] = useState(false);
+
+  // Auto-open call modal if URL has call parameter (for pop-out windows)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const callWaveId = urlParams.get('call');
+    const isPopout = urlParams.get('popout') === 'true';
+
+    if (callWaveId && isPopout && callWaveId === wave?.id && !showCallModal) {
+      // Auto-join the call in pop-out window
+      setShowCallModal(true);
+      setTimeout(() => {
+        if (voiceCall.connectionState === 'disconnected') {
+          voiceCall.startCall();
+        }
+      }, 500);
+    }
+  }, [wave?.id, showCallModal, voiceCall]);
 
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -9069,6 +9885,29 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 onClick={(e) => e.stopPropagation()}
               >
                 <div style={{ padding: '4px 0' }}>
+                  {/* Voice/Video Call */}
+                  <div
+                    onClick={() => {
+                      setShowCallModal(true);
+                      setShowWaveMenu(false);
+                    }}
+                    style={{
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      color: 'var(--accent-green)',
+                      background: 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span>📞</span>
+                    <span>Voice/Video Call</span>
+                  </div>
+
                   {/* Archive/Restore */}
                   <div
                     onClick={() => {
@@ -9174,6 +10013,30 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               </div>
             )}
           </div>
+          {/* Call indicator badge (when call is active) */}
+          {voiceCall.callActive && voiceCall.serverParticipantCount > 0 && (
+            <div
+              onClick={() => setShowCallModal(true)}
+              style={{
+                padding: '4px 10px',
+                background: 'var(--accent-green-bg)',
+                border: '1px solid var(--accent-green)',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                color: 'var(--accent-green)',
+                fontFamily: 'monospace',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              title="Join call"
+            >
+              <span>📞</span>
+              <span>{voiceCall.serverParticipantCount}</span>
+            </div>
+          )}
           {/* Privacy badge (always visible, farthest right) */}
           <PrivacyBadge level={wave.privacy} compact={isMobile} />
         </div>
@@ -9564,12 +10427,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       {/* Messages */}
       <div ref={messagesRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: isMobile ? '12px' : '20px' }}>
-        {/* Voice Call Controls (v2.4.0 - LiveKit) */}
-        <VoiceCallControls
-          wave={wave}
-          voiceCall={voiceCall}
-          user={currentUser}
-        />
         {/* E2EE: Show encryption status banners */}
         {e2ee.isE2EEEnabled && waveData?.encrypted === 0 && (
           <LegacyWaveNotice
@@ -10045,6 +10902,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           }}
         />
       )}
+
+      <CallModal
+        isOpen={showCallModal}
+        onClose={() => setShowCallModal(false)}
+        wave={wave}
+        voiceCall={voiceCall}
+        user={currentUser}
+        isMobile={isMobile}
+      />
 
       <InviteToWaveModal
         isOpen={showInviteModal}
@@ -17851,6 +18717,12 @@ function MainApp({ shareDropletId }) {
   const { fetchAPI } = useAPI();
   const e2ee = useE2EE();
   const [toast, setToast] = useState(null);
+
+  // Check if this is a pop-out call window
+  const urlParams = new URLSearchParams(window.location.search);
+  const isPopoutWindow = urlParams.get('popout') === 'true';
+  const popoutCallWaveId = urlParams.get('call');
+
   const [activeView, setActiveView] = useState('waves');
   const [apiConnected, setApiConnected] = useState(false);
   const [waves, setWaves] = useState([]);
@@ -17874,6 +18746,7 @@ function MainApp({ shareDropletId }) {
   const [federationRequestsRefresh, setFederationRequestsRefresh] = useState(0); // Increment to refresh federation requests
   const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0); // Increment to refresh notifications
   const [waveNotifications, setWaveNotifications] = useState({}); // Notification counts/types by wave ID
+  const [activeCalls, setActiveCalls] = useState({}); // Active calls by wave ID: { waveId: { participantCount, participants } }
   const [selectedAlert, setSelectedAlert] = useState(null); // Alert to show in detail modal
   const [footerTagline, setFooterTagline] = useState(getRandomTagline()); // Rotating Firefly tagline
   const [waveCategories, setWaveCategories] = useState([]); // User's wave categories (v2.2.0)
@@ -17986,6 +18859,17 @@ function MainApp({ shareDropletId }) {
   // Debounced loadWaves to prevent multiple simultaneous API calls
   const loadWavesTimerRef = useRef(null);
   const loadWavesInProgressRef = useRef(false);
+
+  // Auto-select wave for popout call windows
+  useEffect(() => {
+    if (isPopoutWindow && popoutCallWaveId && waves.length > 0 && !selectedWave) {
+      const targetWave = waves.find(w => w.id === popoutCallWaveId);
+      if (targetWave) {
+        console.log('📞 Pop-out call window: Auto-selecting wave', targetWave.title);
+        setSelectedWave(targetWave);
+      }
+    }
+  }, [isPopoutWindow, popoutCallWaveId, waves, selectedWave]);
 
   const loadWaves = useCallback(async () => {
     // Clear any pending debounced call
@@ -18333,6 +19217,20 @@ function MainApp({ shareDropletId }) {
     } catch (e) { console.error('Failed to load wave notifications:', e); }
   }, [fetchAPI]);
 
+  const loadActiveCalls = useCallback(async () => {
+    try {
+      const data = await fetchAPI('/waves/active-calls');
+      const callsMap = {};
+      (data.calls || []).forEach(call => {
+        callsMap[call.waveId] = {
+          participantCount: call.participantCount,
+          participants: call.participants
+        };
+      });
+      setActiveCalls(callsMap);
+    } catch (e) { console.error('Failed to load active calls:', e); }
+  }, [fetchAPI]);
+
   const loadBlockedMutedUsers = useCallback(async () => {
     try {
       const [blockedData, mutedData] = await Promise.all([
@@ -18496,11 +19394,20 @@ function MainApp({ shareDropletId }) {
     loadGroupInvitations();
     loadBlockedMutedUsers();
     loadWaveNotifications();
+    loadActiveCalls();
     // Check if federation is enabled (public endpoint returns 404 if disabled)
     fetch(`${API_URL}/federation/identity`)
       .then(res => setFederationEnabled(res.ok))
       .catch(() => setFederationEnabled(false));
-  }, [loadWaves, loadCategories, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications]);
+  }, [loadWaves, loadCategories, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications, loadActiveCalls]);
+
+  // Poll active calls every 10 seconds (v2.5.0 - call indicators in wave list)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadActiveCalls();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [loadActiveCalls]);
 
   // Rotate footer tagline every 30 seconds
   useEffect(() => {
@@ -18824,6 +19731,7 @@ function MainApp({ shareDropletId }) {
                 onToggleArchived={() => { setShowArchived(!showArchived); loadWaves(); }}
                 isMobile={isMobile}
                 waveNotifications={waveNotifications}
+                activeCalls={activeCalls}
                 onCategoryToggle={handleCategoryToggle}
                 onWaveMove={handleWaveMove}
                 onWavePin={handleWavePin}
