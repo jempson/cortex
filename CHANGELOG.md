@@ -5,6 +5,39 @@ All notable changes to Farhold (formerly Cortex) will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Development Notes
+
+#### v2.6.0 - Docked Voice Chat (Attempted, Not Implemented)
+
+**Date:** 2026-01-14
+**Status:** Reverted to v2.5.0
+
+Attempted to implement persistent docked voice chat widget that would allow users to stay in voice calls while navigating between waves (similar to Discord/Slack). After multiple implementation attempts, this feature was abandoned due to fundamental React component lifecycle issues.
+
+**Attempted Approaches:**
+1. **Context-based state management**: Failed with React error #310 (infinite re-render)
+2. **Restructured render logic with slots**: Disconnected immediately when modal closed
+3. **Persistent LiveKitRoom outside CallModal**: Component context issues
+4. **Global LiveKitRoom at MainApp level**: Hook context errors
+5. **Hidden WaveView for active call wave**: Caused rendering conflicts, wave headers off-screen
+
+**Core Problem:**
+LiveKitRoom component unmounts/reconnects when React state changes trigger re-renders. Every approach to keep the LiveKit connection alive while navigating between waves resulted in either:
+- Immediate disconnection after call connect
+- React re-render loops
+- Rendering conflicts with duplicate component instances
+- Loss of LiveKit component context
+
+**Conclusion:**
+The current architecture with wave-scoped voice calls works well. Docked/persistent calls require either:
+- Significant React architecture refactoring (separate call app outside wave context)
+- LiveKit connection management outside React component lifecycle
+- Different calling paradigm (e.g., dedicated call tab vs. in-wave calling)
+
+This feature is postponed indefinitely. v2.5.0 remains the current version.
+
 ## [2.5.0] - 2026-01-13
 
 ### Changed
