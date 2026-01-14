@@ -37,6 +37,7 @@ const BotsAdminPanel = React.lazy(() => import('./src/components/admin/BotsAdmin
 const BotDetailsModal = React.lazy(() => import('./src/components/admin/BotDetailsModal.jsx'));
 
 // Extracted views
+import AuthProvider from './src/views/AuthProvider.jsx';
 import E2EEWrapper from './src/views/E2EEWrapper.jsx';
 
 // ============ SERVICE WORKER REGISTRATION ============
@@ -3089,5 +3090,9 @@ class ErrorBoundary extends React.Component {
 
 // ============ MAIN APP ENTRY POINT ============
 export default function FarholdApp() {
-  return <E2EEWrapper />;
+  return (
+    <AuthProvider>
+      <E2EEWrapper />
+    </AuthProvider>
+  );
 }
