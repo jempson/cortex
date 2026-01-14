@@ -1,6 +1,8 @@
-import React, { useState, useEffect, createContext } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { API_URL } from '../config/constants.js';
 import { storage } from '../utils/storage.js';
+import { AuthContext } from '../hooks/useAPI.js';
+import { LoadingSpinner } from '../components/ui/SimpleComponents.jsx';
 
 function AuthProvider({ children }) {
   const [user, setUser] = useState(storage.getUser());
