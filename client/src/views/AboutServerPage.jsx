@@ -1,0 +1,182 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { VERSION, API_URL, BASE_URL, PRIVACY_LEVELS } from '../config/constants.js';
+import { LoadingSpinner, Toast, Avatar, GlowText } from '../components/ui/SimpleComponents.jsx';
+
+const AboutServerPage = ({ onBack }) => {
+  const [info, setInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const { isMobile } = useWindowSize();
+
+  useEffect(() => {
+    fetch(`${API_URL}/server/info`)
+      .then(res => res.json())
+      .then(data => {
+        setInfo(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  const formatUptime = (seconds) => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+  };
+
+  const containerStyle = {
+    minHeight: '100vh',
+    background: 'linear-gradient(180deg, var(--bg-surface), var(--bg-base))',
+    padding: isMobile ? '20px' : '40px',
+  };
+
+  const cardStyle = {
+    maxWidth: '600px',
+    margin: '0 auto',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-primary)',
+  };
+
+  const sectionStyle = {
+    padding: isMobile ? '16px' : '20px',
+    borderBottom: '1px solid var(--border-subtle)',
+  };
+
+  if (loading) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>
+            Loading server info...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--status-error)' }}>
+            Error: {error}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={containerStyle}>
+      <div style={cardStyle}>
+        {/* Header */}
+        <div style={{
+          ...sectionStyle,
+          background: 'var(--bg-elevated)',
+          textAlign: 'center',
+        }}>
+          <div style={{
+            fontSize: isMobile ? '1.5rem' : '1.8rem',
+            color: 'var(--accent-teal)',
+            fontFamily: 'monospace',
+            marginBottom: '8px',
+          }}>
+            {info.federationEnabled && <span style={{ marginRight: '10px' }}>◇</span>}
+            {info.name || 'Farhold Server'}
+          </div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+            Farhold v{info.version}
+            {info.federationEnabled && (
+              <span style={{
+                marginLeft: '12px',
+                padding: '2px 8px',
+                background: 'var(--accent-purple)20',
+                color: 'var(--accent-purple)',
+                fontSize: '0.75rem',
+              }}>
+                FEDERATION ENABLED
+              </span>
+            )}
+          </div>
+          {onBack && (
+            <button
+              onClick={onBack}
+              style={{
+                marginTop: '16px',
+                padding: '8px 16px',
+                background: 'transparent',
+                border: '1px solid var(--border-primary)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.8rem',
+              }}
+            >
+              ← Back to Login
+            </button>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div style={sectionStyle}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
+            Statistics
+          </div>
+          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', color: 'var(--text-secondary)' }}>
+            <span>Users: <strong style={{ color: 'var(--text-primary)' }}>{info.stats?.users || 0}</strong></span>
+            <span>Waves: <strong style={{ color: 'var(--text-primary)' }}>{info.stats?.waves || 0}</strong></span>
+            <span>Uptime: <strong style={{ color: 'var(--accent-green)' }}>{formatUptime(info.stats?.uptime || 0)}</strong></span>
+          </div>
+        </div>
+
+        {/* Federation Partners */}
+        {info.federationEnabled && info.federation?.configured && (
+          <div style={sectionStyle}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
+              Federated Servers ({info.federation.partnerCount})
+            </div>
+            {info.federation.partners.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {info.federation.partners.map((partner, i) => (
+                  <div key={i} style={{
+                    padding: '8px 12px',
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--accent-purple)',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                  }}>
+                    ◇ {partner}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No federation partners yet
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{
+          padding: '16px',
+          textAlign: 'center',
+          color: 'var(--text-muted)',
+          fontSize: '0.75rem',
+          borderTop: '1px solid var(--border-subtle)',
+        }}>
+          Powered by <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-teal)' }}>Farhold</a>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ LOGIN SCREEN ============
+export default AboutServerPage;
