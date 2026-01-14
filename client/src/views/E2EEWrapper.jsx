@@ -1,4 +1,6 @@
 import React from 'react';
+import { API_URL } from '../config/constants.js';
+import { useAuth } from '../hooks/useAPI.js';
 import { E2EEProvider } from '../../e2ee-context.jsx';
 import AppContent from './AppContent.jsx';
 

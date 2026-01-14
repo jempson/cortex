@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { VERSION, API_URL, BASE_URL, PRIVACY_LEVELS } from '../config/constants.js';
+import { useAuth } from '../hooks/useAPI.js';
 import { LoadingSpinner, Toast, Avatar, GlowText } from '../components/ui/SimpleComponents.jsx';
 
 const LoginScreen = ({ onAbout }) => {

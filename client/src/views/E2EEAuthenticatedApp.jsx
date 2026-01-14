@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../hooks/useAPI.js';
 import { useE2EE } from '../../e2ee-context.jsx';
 import { E2EESetupModal, PassphraseUnlockModal } from '../../e2ee-components.jsx';
 import { LoadingSpinner } from '../components/ui/SimpleComponents.jsx';

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { storage } from '../utils/storage.js';
+import { useAuth } from '../hooks/useAPI.js';
 import LoginScreen from './LoginScreen.jsx';
 import AboutServerPage from './AboutServerPage.jsx';
 import ResetPasswordPage from './ResetPasswordPage.jsx';
