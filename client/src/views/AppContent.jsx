@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { VERSION } from '../config/constants.js';
 import { storage } from '../utils/storage.js';
 import { useAuth } from '../hooks/useAPI.js';
 import LoginScreen from './LoginScreen.jsx';
