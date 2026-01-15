@@ -128,6 +128,7 @@ const CallControls = ({ isMuted, isCameraOff, setParticipants, setAudioLevel, se
 const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
   const windowRef = useRef(null);
 
+  // All hooks must be called unconditionally before any early returns
   const handlePositionChange = useCallback((newPos) => {
     voiceCall.setDockPosition(newPos);
   }, [voiceCall]);
@@ -140,6 +141,22 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
 
   const handleClose = useCallback(() => {
     voiceCall.hideDock();
+  }, [voiceCall]);
+
+  const handleToggleSize = useCallback(() => {
+    voiceCall.toggleDockSize();
+  }, [voiceCall]);
+
+  const handleToggleMute = useCallback(() => {
+    voiceCall.toggleMute();
+  }, [voiceCall]);
+
+  const handleToggleCamera = useCallback(() => {
+    voiceCall.toggleCamera();
+  }, [voiceCall]);
+
+  const handleLeaveCall = useCallback(() => {
+    voiceCall.leaveCall();
   }, [voiceCall]);
 
   // If dock is hidden but call is still active, render LiveKitRoom invisibly to keep connection
@@ -159,22 +176,6 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
       </div>
     );
   }
-
-  const handleToggleSize = useCallback(() => {
-    voiceCall.toggleDockSize();
-  }, [voiceCall]);
-
-  const handleToggleMute = useCallback(() => {
-    voiceCall.toggleMute();
-  }, [voiceCall]);
-
-  const handleToggleCamera = useCallback(() => {
-    voiceCall.toggleCamera();
-  }, [voiceCall]);
-
-  const handleLeaveCall = useCallback(() => {
-    voiceCall.leaveCall();
-  }, [voiceCall]);
 
   // Mobile: fixed bottom position
   const containerStyle = isMobile ? {

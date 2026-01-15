@@ -88,6 +88,8 @@ LiveKitCallRoom (reused from CallModal)
 
 - **Hiding Dock Disconnects Call**: Fixed issue where clicking X to hide the dock would disconnect from the LiveKit room. Solution: MainApp now renders DockedCallWindow whenever a call is active (not just when docked), and DockedCallWindow renders a hidden LiveKitRoom when `!isDocked`. This keeps the connection alive when the dock UI is hidden, allowing users to hide/show the dock without reconnecting.
 
+- **React Hooks Violation (Error #310)**: Fixed "Rendered more hooks than during the previous render" error that caused app crash when starting voice/video calls. Issue was in DockedCallWindow where hooks were defined after a conditional return statement, violating React's Rules of Hooks. Moved all `useCallback` hooks before the conditional return to ensure consistent hook count across all renders.
+
 - **GroupInvitationsPanel**: Fixed null check for `invitedBy` field when displaying group invitations. Previously threw "can't access property 'displayName'" error when invitedBy was null/undefined. Now displays "Unknown" as fallback and conditionally renders Avatar.
 
 ## [2.6.0] - 2026-01-14
