@@ -71,6 +71,10 @@ LiveKitCallRoom (reused from CallModal)
 
 ### Fixed
 
+- **Docked Call Disconnect**: Fixed issue where docking a call would immediately disconnect from LiveKit room. Problem was dual LiveKitRoom components (one in CallModal, one in DockedCallWindow) both trying to connect simultaneously. Solution: close CallModal when docking, hide dock when opening modal, and prevent CallModal from rendering LiveKitRoom when docked. Ensures only ONE LiveKitRoom instance is active at a time.
+
+- **DockedCallWindow Rendering**: Fixed dock window not appearing after clicking "Dock Call" button. Previously required both `isDocked` and `connectionState === 'connected'`, but connection state could change rapidly. Now renders whenever `isDocked` is true, with the component handling disconnected/connecting states internally.
+
 - **GroupInvitationsPanel**: Fixed null check for `invitedBy` field when displaying group invitations. Previously threw "can't access property 'displayName'" error when invitedBy was null/undefined. Now displays "Unknown" as fallback and conditionally renders Avatar.
 
 ## [2.6.0] - 2026-01-14
