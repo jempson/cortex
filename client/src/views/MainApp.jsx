@@ -4,6 +4,7 @@ import { useE2EE } from '../../e2ee-context.jsx';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useWindowSize } from '../hooks/useWindowSize.js';
 import { VERSION, BASE_URL, canAccess } from '../config/constants.js';
+import { getRandomTagline } from '../../messages.js';
 import { updateAppBadge } from '../utils/pwa.js';
 import { updateDocumentTitle, startFaviconFlash, stopFaviconFlash } from '../utils/favicon.js';
 import BottomNav from '../components/ui/BottomNav.jsx';
