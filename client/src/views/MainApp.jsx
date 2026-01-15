@@ -3,7 +3,7 @@ import { useAuth, useAPI } from '../hooks/useAPI.js';
 import { useE2EE } from '../../e2ee-context.jsx';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useWindowSize } from '../hooks/useWindowSize.js';
-import { VERSION, BASE_URL, canAccess, FONT_SIZES } from '../config/constants.js';
+import { VERSION, API_URL, BASE_URL, canAccess, FONT_SIZES } from '../config/constants.js';
 import { getRandomTagline } from '../../messages.js';
 import { storage } from '../utils/storage.js';
 import { updateAppBadge } from '../utils/pwa.js';
