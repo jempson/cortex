@@ -1390,6 +1390,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                     onClick={() => {
                       setShowCallModal(true);
                       setShowWaveMenu(false);
+                      if (voiceCall.isDocked) {
+                        voiceCall.hideDock(); // Hide dock when opening modal
+                      }
                     }}
                     style={{
                       padding: '10px 14px',
@@ -1516,7 +1519,12 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           {/* Call indicator badge (when call is active) */}
           {voiceCall.callActive && voiceCall.serverParticipantCount > 0 && (
             <div
-              onClick={() => setShowCallModal(true)}
+              onClick={() => {
+                setShowCallModal(true);
+                if (voiceCall.isDocked) {
+                  voiceCall.hideDock(); // Hide dock when opening modal
+                }
+              }}
               style={{
                 padding: '4px 10px',
                 background: 'var(--accent-green-bg)',
@@ -1540,7 +1548,14 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           {/* Dock call button (v2.6.1) */}
           {voiceCall.connectionState === 'connected' && (
             <button
-              onClick={() => voiceCall.isDocked ? voiceCall.hideDock() : voiceCall.showDock()}
+              onClick={() => {
+                if (voiceCall.isDocked) {
+                  voiceCall.hideDock();
+                } else {
+                  voiceCall.showDock();
+                  setShowCallModal(false); // Close modal when docking to avoid dual LiveKitRoom
+                }
+              }}
               style={{
                 padding: '4px 10px',
                 background: voiceCall.isDocked ? 'var(--accent-teal-bg)' : 'transparent',

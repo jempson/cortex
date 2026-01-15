@@ -538,7 +538,7 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
           ) : (
             // In call - show video tiles and controls
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', minHeight: 0 }}>
-              {livekitToken && livekitUrl && (
+              {livekitToken && livekitUrl && !voiceCall.isDocked && (
                 <LiveKitCallRoom
                   token={livekitToken}
                   url={livekitUrl}
@@ -547,6 +547,19 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
                 >
                   <CallContent />
                 </LiveKitCallRoom>
+              )}
+              {voiceCall.isDocked && (
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '40px 20px',
+                  color: 'var(--text-dim)',
+                  fontSize: '1.1rem'
+                }}>
+                  Call is docked. Check the floating window.
+                </div>
               )}
             </div>
           )}
