@@ -185,6 +185,7 @@ class VoiceCallService {
 
       if (response.ok) {
         const data = await response.json();
+        console.log(`📊 [Service] Call status for ${waveId}:`, data);
         this.callActive = data.active;
         this.serverParticipantCount = data.participantCount || 0;
         this.activeCallWaveId = data.active ? waveId : null; // Track which wave has the call
@@ -225,14 +226,15 @@ class VoiceCallService {
       return;
     }
 
+    // Auto-dock call BEFORE setting token to prevent dual LiveKitRoom rendering
+    // (CallModal renders when !isDocked, DockedCallWindow renders when isDocked)
+    this.isDocked = true;
+
     this.livekitToken = tokenData.token;
     this.livekitUrl = tokenData.url;
     this.notifySubscribers();
 
     console.log(`🎤 [Service] Starting ${withVideo ? 'video' : 'voice'} call...`);
-
-    // Auto-dock call (v2.6.1) - calls start in docked mode by default
-    this.showDock();
 
     // Start polling call status
     this.startStatusPolling(waveId);
@@ -289,8 +291,11 @@ class VoiceCallService {
   }
 
   setAudioLevel(level) {
-    this.audioLevel = level;
-    this.notifySubscribers();
+    // Only notify if value actually changed (avoid spamming re-renders every 100ms)
+    if (this.audioLevel !== level) {
+      this.audioLevel = level;
+      this.notifySubscribers();
+    }
   }
 
   setRoom(room) {

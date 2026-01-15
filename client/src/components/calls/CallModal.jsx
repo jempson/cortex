@@ -1,32 +1,39 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { LiveKitRoom, useParticipants, useLocalParticipant, RoomAudioRenderer, ParticipantTile, useTracks } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 
 // Nested component: LiveKitCallRoom
+// Use refs to prevent callback recreation and avoid unnecessary LiveKit reconnection attempts
 const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children }) => {
+  // Store voiceCall in ref to avoid recreating callbacks
+  const voiceCallRef = useRef(voiceCall);
+  voiceCallRef.current = voiceCall;
+
+  // Stable callbacks that don't change on every render
   const handleConnected = useCallback(() => {
     console.log('🎤 Connected to LiveKit room:', roomName);
-    voiceCall.setConnectionState('connected');
+    voiceCallRef.current.setConnectionState('connected');
   }, [roomName]);
 
   const handleDisconnected = useCallback(() => {
     console.log('🎤 Disconnected from LiveKit room');
-    voiceCall.setConnectionState('disconnected');
+    voiceCallRef.current.setConnectionState('disconnected');
   }, []);
 
   const handleError = useCallback((error) => {
     console.error('🎤 LiveKit error:', error);
-    voiceCall.setConnectionState('disconnected');
+    voiceCallRef.current.setConnectionState('disconnected');
   }, []);
 
   if (!token || !url) return null;
 
-  // Build device constraints - memoize to prevent re-renders
+  // Build device constraints
   const audioDeviceId = voiceCall.selectedMic !== 'default' ? voiceCall.selectedMic : undefined;
   const videoDeviceId = voiceCall.selectedCamera !== 'default' ? voiceCall.selectedCamera : undefined;
 
   return (
     <LiveKitRoom
+      key={token} // Only remount when token changes, not on every voiceCall state update
       token={token}
       serverUrl={url}
       connect={true}
@@ -62,12 +69,6 @@ const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children 
       {children}
     </LiveKitRoom>
   );
-}, (prevProps, nextProps) => {
-  // Only skip re-render if token, url, AND voiceCall control states are unchanged
-  return prevProps.token === nextProps.token &&
-         prevProps.url === nextProps.url &&
-         prevProps.voiceCall.isMuted === nextProps.voiceCall.isMuted &&
-         prevProps.voiceCall.isCameraOff === nextProps.voiceCall.isCameraOff;
 });
 
 // Nested component: CallControls

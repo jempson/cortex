@@ -113,6 +113,14 @@ LiveKitCallRoom (reused from CallModal)
   2. **Multiple LiveKitRoom instances** - DockedCallWindow was rendering LiveKitRoom in multiple code paths (hidden, minimized, maximized), causing repeated "already connected to room" messages and connection churn. Consolidated to a single LiveKitRoom instance that wraps the entire component.
   3. **Conflicting LiveKitRoom in CallModal** - When dock was hidden but call was active, both DockedCallWindow and CallModal could render LiveKitRoom simultaneously. Fixed by having DockedCallWindow return null when `!isDocked`, ensuring CallModal handles the connection in that state.
 
+- **LiveKit "Already Connected" Spam**: Fixed repeated "already connected to room" console messages during calls. Issues were:
+  1. **Race condition on call start** - Token was set before `isDocked`, causing both CallModal and DockedCallWindow to briefly render LiveKitRoom. Fixed by setting `isDocked = true` before setting the token.
+  2. **Callback recreation causing reconnection** - LiveKitCallRoom callbacks had `voiceCall` in dependencies, causing them to recreate on every state update. Fixed by using refs for stable callbacks.
+  3. **Missing key prop** - CallModal's LiveKitRoom was missing `key={token}` prop, causing unnecessary remounting.
+  4. **AudioLevel re-render spam** - `setAudioLevel()` was called every 100ms even with same value, causing constant re-renders. Fixed by only notifying subscribers when value actually changes.
+
+- **Call Indicator Not Showing for Non-Participants**: Fixed issue where users not in a call couldn't see the call indicator badge (📞) when viewing a wave with an active call. Root cause was `activeCallWaveId` was missing from the `useVoiceCall` hook's return value, so `voiceCall.activeCallWaveId` was always `undefined`, causing the condition `voiceCall.activeCallWaveId === wave.id` to always fail.
+
 ## [2.6.0] - 2026-01-14
 
 ### Changed

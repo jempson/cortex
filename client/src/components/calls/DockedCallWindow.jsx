@@ -5,21 +5,27 @@ import { useDraggable } from '../../hooks/useDraggable.js';
 import { Avatar } from '../ui/SimpleComponents.jsx';
 
 // Reuse LiveKitCallRoom from CallModal
+// Use refs to prevent callback recreation and avoid unnecessary LiveKit reconnection attempts
 const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children }) => {
+  // Store voiceCall in ref to avoid recreating callbacks
+  const voiceCallRef = useRef(voiceCall);
+  voiceCallRef.current = voiceCall;
+
+  // Stable callbacks that don't change on every render
   const handleConnected = useCallback(() => {
     console.log('🎤 Connected to LiveKit room:', roomName);
-    voiceCall.setConnectionState('connected');
-  }, [roomName, voiceCall]);
+    voiceCallRef.current.setConnectionState('connected');
+  }, [roomName]);
 
   const handleDisconnected = useCallback(() => {
     console.log('🎤 Disconnected from LiveKit room');
-    voiceCall.setConnectionState('disconnected');
-  }, [voiceCall]);
+    voiceCallRef.current.setConnectionState('disconnected');
+  }, []);
 
   const handleError = useCallback((error) => {
     console.error('🎤 LiveKit error:', error);
-    voiceCall.setConnectionState('disconnected');
-  }, [voiceCall]);
+    voiceCallRef.current.setConnectionState('disconnected');
+  }, []);
 
   if (!token || !url) return null;
 

@@ -105,6 +105,7 @@ export function useVoiceCall(waveId) {
     roomName: state.roomName,
     callActive: state.callActive,
     serverParticipantCount: state.serverParticipantCount,
+    activeCallWaveId: state.activeCallWaveId,
     audioDevices: state.audioDevices,
     videoDevices: state.videoDevices,
     selectedMic: state.selectedMic,
