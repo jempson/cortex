@@ -6,10 +6,25 @@ import { useWindowSize } from '../hooks/useWindowSize.js';
 import { VERSION, API_URL, BASE_URL, canAccess, FONT_SIZES } from '../config/constants.js';
 import { getRandomTagline } from '../../messages.js';
 import { storage } from '../utils/storage.js';
-import { updateAppBadge } from '../utils/pwa.js';
+import { updateAppBadge, subscribeToPush } from '../utils/pwa.js';
 import { updateDocumentTitle, startFaviconFlash, stopFaviconFlash } from '../utils/favicon.js';
 import BottomNav from '../components/ui/BottomNav.jsx';
 import { Toast, OfflineIndicator, ScanLines, GlowText } from '../components/ui/SimpleComponents.jsx';
+import NotificationBell from '../components/notifications/NotificationBell.jsx';
+import CrawlBar from '../components/crawl/CrawlBar.jsx';
+import WaveList from '../components/waves/WaveList.jsx';
+import NewWaveModal from '../components/waves/NewWaveModal.jsx';
+import CategoryManagementModal from '../components/categories/CategoryManagementModal.jsx';
+import UserProfileModal from '../components/profile/UserProfileModal.jsx';
+import AlertDetailModal from '../components/modals/AlertDetailModal.jsx';
+import SearchModal from '../components/search/SearchModal.jsx';
+import ContactsView from '../components/contacts/ContactsView.jsx';
+import ErrorBoundary from '../components/ui/ErrorBoundary.jsx';
+import InstallPrompt from '../components/ui/InstallPrompt.jsx';
+import WaveView from '../components/waves/WaveView.jsx';
+import FocusView from '../components/focus/FocusView.jsx';
+import GroupsView from '../components/groups/GroupsView.jsx';
+import ProfileSettings from '../components/profile/ProfileSettings.jsx';
 
 function MainApp({ shareDropletId }) {
   const { user, token, logout, updateUser } = useAuth();
@@ -798,7 +813,7 @@ function MainApp({ shareDropletId }) {
     }
   };
 
-  const navItems = ['waves', 'groups', 'contacts', 'profile'];
+  const navItems = ['waves', 'contacts', 'groups', 'profile'];
   const navLabels = { waves: 'WAVES', groups: 'CREWS', contacts: 'CONTACTS', profile: 'PROFILE' };
 
   const scanLinesEnabled = user?.preferences?.scanLines !== false; // Default to true

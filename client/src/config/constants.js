@@ -46,3 +46,11 @@ export const FONT_SIZES = {
   large: { name: 'Large', multiplier: 1.15 },
   xlarge: { name: 'X-Large', multiplier: 1.3 },
 };
+
+// ============ NOTIFICATION BADGE COLORS ============
+export const NOTIFICATION_BADGE_COLORS = {
+  direct_mention: { bg: 'var(--accent-amber)', shadow: 'var(--glow-amber)', icon: '@' },  // Amber - someone mentioned you
+  reply: { bg: 'var(--accent-green)', shadow: 'var(--glow-green)', icon: '↩' },           // Green - reply to your ping
+  ripple: { bg: 'var(--accent-purple)', shadow: 'var(--glow-purple)', icon: '◈' },          // Purple - burst activity
+  wave_activity: { bg: 'var(--accent-orange)', shadow: 'var(--glow-orange)', icon: null },  // Orange - general activity
+};
