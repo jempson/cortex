@@ -323,7 +323,7 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
         padding: '8px',
         alignContent: 'flex-start',
       }}>
-        {voiceCall.connectionState === 'connected' && voiceCall.livekitToken && voiceCall.livekitUrl ? (
+        {voiceCall.livekitToken && voiceCall.livekitUrl ? (
           <LiveKitCallRoom
             token={voiceCall.livekitToken}
             url={voiceCall.livekitUrl}
