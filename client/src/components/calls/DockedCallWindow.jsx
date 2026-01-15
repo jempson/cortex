@@ -275,6 +275,19 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
             </button>
           </div>
         </div>
+        {/* Hidden LiveKitRoom to maintain connection when minimized */}
+        <div style={{ display: 'none' }}>
+          {voiceCall.livekitToken && voiceCall.livekitUrl && (
+            <LiveKitCallRoom
+              token={voiceCall.livekitToken}
+              url={voiceCall.livekitUrl}
+              roomName={voiceCall.roomName}
+              voiceCall={voiceCall}
+            >
+              <VideoTiles />
+            </LiveKitCallRoom>
+          )}
+        </div>
       </div>
     );
   }
