@@ -2440,7 +2440,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       <CallModal
         isOpen={showCallModal}
-        onClose={() => setShowCallModal(false)}
+        onClose={() => {
+          // Auto-dock if connected, otherwise just close
+          if (voiceCall.connectionState === 'connected') {
+            voiceCall.showDock();
+          }
+          setShowCallModal(false);
+        }}
         wave={wave}
         voiceCall={voiceCall}
         user={currentUser}
