@@ -1,32 +1,39 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { LiveKitRoom, useParticipants, useLocalParticipant, RoomAudioRenderer, ParticipantTile, useTracks } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 
 // Nested component: LiveKitCallRoom
+// Use refs to prevent callback recreation and avoid unnecessary LiveKit reconnection attempts
 const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children }) => {
+  // Store voiceCall in ref to avoid recreating callbacks
+  const voiceCallRef = useRef(voiceCall);
+  voiceCallRef.current = voiceCall;
+
+  // Stable callbacks that don't change on every render
   const handleConnected = useCallback(() => {
     console.log('🎤 Connected to LiveKit room:', roomName);
-    voiceCall.setConnectionState('connected');
+    voiceCallRef.current.setConnectionState('connected');
   }, [roomName]);
 
   const handleDisconnected = useCallback(() => {
     console.log('🎤 Disconnected from LiveKit room');
-    voiceCall.setConnectionState('disconnected');
+    voiceCallRef.current.setConnectionState('disconnected');
   }, []);
 
   const handleError = useCallback((error) => {
     console.error('🎤 LiveKit error:', error);
-    voiceCall.setConnectionState('disconnected');
+    voiceCallRef.current.setConnectionState('disconnected');
   }, []);
 
   if (!token || !url) return null;
 
-  // Build device constraints - memoize to prevent re-renders
+  // Build device constraints
   const audioDeviceId = voiceCall.selectedMic !== 'default' ? voiceCall.selectedMic : undefined;
   const videoDeviceId = voiceCall.selectedCamera !== 'default' ? voiceCall.selectedCamera : undefined;
 
   return (
     <LiveKitRoom
+      key={token} // Only remount when token changes, not on every voiceCall state update
       token={token}
       serverUrl={url}
       connect={true}
@@ -62,12 +69,6 @@ const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children 
       {children}
     </LiveKitRoom>
   );
-}, (prevProps, nextProps) => {
-  // Only skip re-render if token, url, AND voiceCall control states are unchanged
-  return prevProps.token === nextProps.token &&
-         prevProps.url === nextProps.url &&
-         prevProps.voiceCall.isMuted === nextProps.voiceCall.isMuted &&
-         prevProps.voiceCall.isCameraOff === nextProps.voiceCall.isCameraOff;
 });
 
 // Nested component: CallControls
@@ -442,7 +443,10 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
                       : 'Someone is connecting...'}
                   </div>
                   <button
-                    onClick={() => voiceCall.startCall(false)}
+                    onClick={() => {
+                      voiceCall.startCall(false);
+                      onClose(); // Close modal, call will auto-dock
+                    }}
                     disabled={!!error}
                     style={{
                       padding: '14px 32px',
@@ -475,7 +479,10 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
                   </div>
                   <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
                     <button
-                      onClick={() => voiceCall.startCall(false)}
+                      onClick={() => {
+                        voiceCall.startCall(false);
+                        onClose(); // Close modal, call will auto-dock
+                      }}
                       disabled={!!error}
                       style={{
                         padding: '14px 32px',
@@ -496,7 +503,10 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
                       🎤 Voice Call
                     </button>
                     <button
-                      onClick={() => voiceCall.startCall(true)}
+                      onClick={() => {
+                        voiceCall.startCall(true);
+                        onClose(); // Close modal, call will auto-dock
+                      }}
                       disabled={!!error}
                       style={{
                         padding: '14px 32px',
@@ -538,7 +548,7 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
           ) : (
             // In call - show video tiles and controls
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', minHeight: 0 }}>
-              {livekitToken && livekitUrl && (
+              {livekitToken && livekitUrl && !voiceCall.isDocked && (
                 <LiveKitCallRoom
                   token={livekitToken}
                   url={livekitUrl}
@@ -547,6 +557,19 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
                 >
                   <CallContent />
                 </LiveKitCallRoom>
+              )}
+              {voiceCall.isDocked && (
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '40px 20px',
+                  color: 'var(--text-dim)',
+                  fontSize: '1.1rem'
+                }}>
+                  Call is docked. Check the floating window.
+                </div>
               )}
             </div>
           )}

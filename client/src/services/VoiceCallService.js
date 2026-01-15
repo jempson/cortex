@@ -25,6 +25,7 @@ class VoiceCallService {
     // Server call status
     this.callActive = false;
     this.serverParticipantCount = 0;
+    this.activeCallWaveId = null; // Track which wave has an active call
 
     // Device management
     this.audioDevices = [];
@@ -42,6 +43,11 @@ class VoiceCallService {
 
     // Auth token (set by React component)
     this.authToken = null;
+
+    // Dock state (v2.6.1)
+    this.isDocked = false;
+    this.dockMinimized = true;
+    this.dockPosition = this.loadDockPosition();
 
     // Enumerate devices on initialization
     this.enumerateDevices();
@@ -79,11 +85,15 @@ class VoiceCallService {
       roomName: this.currentWaveId,
       callActive: this.callActive,
       serverParticipantCount: this.serverParticipantCount,
+      activeCallWaveId: this.activeCallWaveId,
       audioDevices: this.audioDevices,
       videoDevices: this.videoDevices,
       selectedMic: this.selectedMic,
       selectedCamera: this.selectedCamera,
       selectedSpeaker: this.selectedSpeaker,
+      isDocked: this.isDocked,
+      dockMinimized: this.dockMinimized,
+      dockPosition: this.dockPosition,
     };
   }
 
@@ -175,8 +185,10 @@ class VoiceCallService {
 
       if (response.ok) {
         const data = await response.json();
+        console.log(`📊 [Service] Call status for ${waveId}:`, data);
         this.callActive = data.active;
         this.serverParticipantCount = data.participantCount || 0;
+        this.activeCallWaveId = data.active ? waveId : null; // Track which wave has the call
         this.notifySubscribers();
       }
     } catch (err) {
@@ -186,9 +198,10 @@ class VoiceCallService {
 
   // ============ CALL MANAGEMENT ============
   async startCall(waveId, withVideo = false) {
+    // Disconnect from any existing call first
     if (this.connectionState !== 'disconnected') {
-      console.warn('🎤 [Service] Already in a call');
-      return;
+      console.warn('🎤 [Service] Already in a call, disconnecting first...');
+      await this.leaveCall();
     }
 
     this.connectionState = 'connecting';
@@ -213,6 +226,10 @@ class VoiceCallService {
       return;
     }
 
+    // Auto-dock call BEFORE setting token to prevent dual LiveKitRoom rendering
+    // (CallModal renders when !isDocked, DockedCallWindow renders when isDocked)
+    this.isDocked = true;
+
     this.livekitToken = tokenData.token;
     this.livekitUrl = tokenData.url;
     this.notifySubscribers();
@@ -236,6 +253,9 @@ class VoiceCallService {
     this.participants = [];
     this.audioLevel = 0;
     this.error = null;
+
+    // Hide dock when leaving call
+    this.hideDock();
 
     this.stopStatusPolling();
     this.notifySubscribers();
@@ -271,8 +291,11 @@ class VoiceCallService {
   }
 
   setAudioLevel(level) {
-    this.audioLevel = level;
-    this.notifySubscribers();
+    // Only notify if value actually changed (avoid spamming re-renders every 100ms)
+    if (this.audioLevel !== level) {
+      this.audioLevel = level;
+      this.notifySubscribers();
+    }
   }
 
   setRoom(room) {
@@ -297,6 +320,54 @@ class VoiceCallService {
       clearInterval(this.statusPollInterval);
       this.statusPollInterval = null;
     }
+  }
+
+  // ============ DOCK MANAGEMENT (v2.6.1) ============
+  showDock() {
+    this.isDocked = true;
+    this.notifySubscribers();
+    console.log('🪟 [Service] Dock shown');
+  }
+
+  hideDock() {
+    this.isDocked = false;
+    this.notifySubscribers();
+    console.log('🪟 [Service] Dock hidden');
+  }
+
+  toggleDockSize() {
+    this.dockMinimized = !this.dockMinimized;
+    this.notifySubscribers();
+    console.log(`🪟 [Service] Dock ${this.dockMinimized ? 'minimized' : 'maximized'}`);
+  }
+
+  setDockPosition(pos) {
+    this.dockPosition = pos;
+    localStorage.setItem('farhold_dock_position', JSON.stringify(pos));
+    this.notifySubscribers();
+  }
+
+  loadDockPosition() {
+    try {
+      const saved = localStorage.getItem('farhold_dock_position');
+      if (saved) {
+        const pos = JSON.parse(saved);
+        // Validate position is on-screen
+        if (pos.x >= 0 && pos.y >= 0 && pos.x < window.innerWidth && pos.y < window.innerHeight) {
+          return pos;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load dock position from localStorage:', e);
+    }
+
+    // Default: bottom-right corner
+    return {
+      x: Math.max(0, window.innerWidth - 420),
+      y: Math.max(0, window.innerHeight - 620),
+      width: 400,
+      height: 600
+    };
   }
 
   // ============ CLEANUP ============

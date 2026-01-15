@@ -91,6 +91,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   }, [wave?.id, showCallModal, voiceCall]);
 
+  // Note: Call status polling is handled by useVoiceCall hook when waveId is provided
+
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -1390,6 +1392,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                     onClick={() => {
                       setShowCallModal(true);
                       setShowWaveMenu(false);
+                      if (voiceCall.isDocked) {
+                        voiceCall.hideDock(); // Hide dock when opening modal
+                      }
                     }}
                     style={{
                       padding: '10px 14px',
@@ -1513,10 +1518,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               </div>
             )}
           </div>
-          {/* Call indicator badge (when call is active) */}
-          {voiceCall.callActive && voiceCall.serverParticipantCount > 0 && (
+          {/* Call indicator badge (when call is active in THIS wave) */}
+          {voiceCall.callActive && voiceCall.serverParticipantCount > 0 && voiceCall.activeCallWaveId === wave.id && (
             <div
-              onClick={() => setShowCallModal(true)}
+              onClick={() => {
+                setShowCallModal(true);
+                if (voiceCall.isDocked) {
+                  voiceCall.hideDock(); // Hide dock when opening modal
+                }
+              }}
               style={{
                 padding: '4px 10px',
                 background: 'var(--accent-green-bg)',
@@ -1536,6 +1546,33 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               <span>📞</span>
               <span>{voiceCall.serverParticipantCount}</span>
             </div>
+          )}
+          {/* Dock call button (v2.6.1) - only show in the wave where call is active */}
+          {voiceCall.connectionState === 'connected' && voiceCall.roomName === wave.id && (
+            <button
+              onClick={() => {
+                if (voiceCall.isDocked) {
+                  voiceCall.hideDock();
+                } else {
+                  voiceCall.showDock();
+                  setShowCallModal(false); // Close modal when docking to avoid dual LiveKitRoom
+                }
+              }}
+              style={{
+                padding: '4px 10px',
+                background: voiceCall.isDocked ? 'var(--accent-teal-bg)' : 'transparent',
+                border: '1px solid var(--accent-teal)',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                color: 'var(--accent-teal)',
+                fontFamily: 'monospace',
+                fontWeight: 'bold',
+              }}
+              title={voiceCall.isDocked ? 'Hide docked call' : 'Dock call window'}
+            >
+              {voiceCall.isDocked ? '📍 Docked' : '📌 Dock'}
+            </button>
           )}
           {/* Privacy badge (always visible, farthest right) */}
           <PrivacyBadge level={wave.privacy} compact={isMobile} />
@@ -2405,7 +2442,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       <CallModal
         isOpen={showCallModal}
-        onClose={() => setShowCallModal(false)}
+        onClose={() => {
+          // Auto-dock if connected, otherwise just close
+          if (voiceCall.connectionState === 'connected') {
+            voiceCall.showDock();
+          }
+          setShowCallModal(false);
+        }}
         wave={wave}
         voiceCall={voiceCall}
         user={currentUser}

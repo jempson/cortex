@@ -46,7 +46,7 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
       </div>
 
       <div style={{ marginTop: '12px' }}>
-        {(expanded ? requests : requests.slice(0, 3)).map((req) => (
+        {(expanded ? requests : requests.slice(0, 3)).filter(req => req && req.id && req.to_user && (req.to_user.displayName || req.to_user.handle)).map((req) => (
           <div key={req.id} style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: isMobile ? '10px' : '12px', background: 'var(--bg-hover)',

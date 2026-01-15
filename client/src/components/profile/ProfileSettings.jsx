@@ -11,19 +11,16 @@ import { E2EEStatusIndicator } from '../../../e2ee-components.jsx';
 import CollapsibleSection from '../ui/CollapsibleSection.jsx';
 import MyReportsPanel from '../reports/MyReportsPanel.jsx';
 
-// TODO: Import these components from FarholdApp.jsx (they still need to be extracted):
-// - AdminReportsPanel (lines 6107+)
-// - ActivityLogPanel (lines 11701+)
-// - CrawlBarAdminPanel (lines 11964+)
-// - AlertsAdminPanel (lines 12303+)
-// - AlertSubscriptionsPanel (lines 12782+)
-// - FederationAdminPanel (lines 13165+)
-// - HandleRequestsList (lines 13915+)
-// - BotsAdminPanel (lines 14057+)
-// - UserManagementPanel (lines 11341+)
-//
-// For now, these components must be passed as props or imported from the parent file.
-// When extracted, update these imports to point to the correct component files.
+// Admin panel imports
+import UserManagementPanel from '../admin/UserManagementPanel.jsx';
+import AdminReportsPanel from '../admin/AdminReportsPanel.jsx';
+import ActivityLogPanel from '../admin/ActivityLogPanel.jsx';
+import CrawlBarAdminPanel from '../admin/CrawlBarAdminPanel.jsx';
+import AlertsAdminPanel from '../admin/AlertsAdminPanel.jsx';
+import AlertSubscriptionsPanel from '../admin/AlertSubscriptionsPanel.jsx';
+import FederationAdminPanel from '../admin/FederationAdminPanel.jsx';
+import HandleRequestsList from '../admin/HandleRequestsList.jsx';
+import BotsAdminPanel from '../admin/BotsAdminPanel.jsx';
 
 const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, federationRequestsRefresh }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');

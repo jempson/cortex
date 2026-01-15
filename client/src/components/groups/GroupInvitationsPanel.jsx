@@ -56,13 +56,13 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
             border: '1px solid var(--border-subtle)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-              <Avatar user={inv.invitedBy} size="36px" />
+              {inv.invitedBy && <Avatar user={inv.invitedBy} size="36px" />}
               <div>
                 <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 500 }}>
                   {inv.group.name}
                 </div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '2px' }}>
-                  Invited by {inv.invitedBy.displayName || inv.invitedBy.handle}
+                  Invited by {inv.invitedBy ? (inv.invitedBy.displayName || inv.invitedBy.handle) : 'Unknown'}
                 </div>
               </div>
             </div>

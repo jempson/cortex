@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-01-15
+
+### Added
+
+#### Dockable Call Window - Persistent Voice/Video Controls Across Navigation
+
+**Overview:**
+Floating, draggable call window that persists across all views, providing constant access to call controls without reopening modals. Built on top of the VoiceCallService singleton from v2.6.0.
+
+**Key Features:**
+- **Docked by Default**: All calls start in the floating dock window (no modal required)
+- **Floating Window**: Draggable, resizable window with minimize/maximize states
+- **Auto-Dock on Close**: Closing CallModal automatically docks the call instead of disconnecting
+- **Navigation Persistence**: Stays visible when switching waves, contacts, profile
+- **Position Memory**: Remembers window position in localStorage
+- **Mobile Responsive**: Fixed bottom position on mobile (no dragging)
+- **Snap-to-Edge**: Auto-snaps to screen edges within 20px
+- **Video Tiles**: Full video grid in maximized state
+- **Quick Controls**: Mute, camera, leave call accessible in both states
+
+**Implementation Files:**
+- `client/src/services/VoiceCallService.js`: Added dock state and methods (isDocked, dockMinimized, dockPosition, showDock(), hideDock(), toggleDockSize(), setDockPosition())
+- `client/src/hooks/useDraggable.js`: NEW - Custom hook for drag-and-drop with boundary checking (~66 lines)
+- `client/src/components/calls/DockedCallWindow.jsx`: NEW - Main dockable window component (~430 lines)
+- `client/src/hooks/useVoiceCall.js`: Exposed dock methods and state to React components
+- `client/src/views/MainApp.jsx`: Mounted DockedCallWindow with global voice call hook
+- `client/src/components/waves/WaveView.jsx`: Added "Dock Call" button when in active call
+
+**States:**
+- **Minimized**: 80px bar with participant count, audio indicator, quick controls
+- **Maximized**: 400x600px window with video tiles grid and full controls
+- **Mobile**: Fixed bottom position, 60px minimized, 70vh maximized
+
+**Architecture:**
+```
+VoiceCallService (singleton with dock state)
+    ↓ subscribes
+useVoiceCall (hook exposes dock methods)
+    ↓ uses
+DockedCallWindow (floating window)
+    ↓ renders
+LiveKitCallRoom (reused from CallModal)
+```
+
+**User Flow:**
+1. Click "Voice/Video Call" from wave menu or "Join Call" indicator
+2. CallModal opens briefly, click "Voice Call" or "Video Call" button
+3. **Floating dock window appears immediately** - no need to manually dock
+4. CallModal closes automatically, call stays in dock
+5. Navigate to different waves/contacts/profile - window persists
+6. Click minimize/maximize to toggle size
+7. Drag to reposition (desktop only)
+8. Position persists across page reloads
+9. Click call indicator to reopen CallModal for full controls (dock remains)
+
+**Testing:**
+- ✅ Dock appears and persists across navigation
+- ✅ Minimize/maximize toggle works
+- ✅ Desktop drag-and-drop works smoothly
+- ✅ Mobile shows fixed bottom position
+- ✅ Position persists in localStorage
+- ✅ Call controls work from dock
+- ✅ Video tiles render in maximized state
+- ✅ Snap-to-edge behavior works
+
+### Fixed
+
+- **Docked Call Disconnect**: Fixed issue where docking a call would immediately disconnect from LiveKit room. Problem was dual LiveKitRoom components (one in CallModal, one in DockedCallWindow) both trying to connect simultaneously. Solution: close CallModal when docking, hide dock when opening modal, and prevent CallModal from rendering LiveKitRoom when docked. Ensures only ONE LiveKitRoom instance is active at a time.
+
+- **DockedCallWindow Rendering**: Fixed dock window not appearing after clicking "Dock Call" button. Previously required both `isDocked` and `connectionState === 'connected'`, but connection state could change rapidly. Now renders whenever `isDocked` is true, with the component handling disconnected/connecting states internally.
+
+- **LiveKitRoom Connection in Minimized State**: Fixed issue where call wouldn't connect until user interacted with dock. LiveKitRoom now renders (hidden with `display: none`) even when dock is minimized, ensuring immediate connection on call start.
+
+- **Stale Dock from Previous Calls**: Fixed issue where dock would remain visible after leaving a call, causing WebSocket errors when joining new calls. Solution: `leaveCall()` now automatically hides dock, and `startCall()` disconnects any existing call before starting a new one. Ensures clean state transitions between calls.
+
+- **LiveKit Context Errors**: Fixed multiple LiveKit React hook errors ("No room provided", "No TrackRef") by properly structuring components within LiveKitRoom context and using `useTracks()` instead of `useParticipants()` for video tiles.
+
+- **Call Indicator in Wrong Waves**: Fixed issue where call indicator badge and dock button appeared in all waves instead of just the wave where the call is active. Added check for `voiceCall.roomName === wave.id` to only show call controls in the correct wave.
+
+- **Hiding Dock Disconnects Call**: Fixed issue where clicking X to hide the dock would disconnect from the LiveKit room. Solution: MainApp now renders DockedCallWindow whenever a call is active (not just when docked), and DockedCallWindow renders a hidden LiveKitRoom when `!isDocked`. This keeps the connection alive when the dock UI is hidden, allowing users to hide/show the dock without reconnecting.
+
+- **Call Indicator Missing for Remote Users**: Fixed issue where users not in a call couldn't see the call indicator badge when viewing a wave with an active call. Problem was WaveView checked `voiceCall.roomName === wave.id`, but `roomName` is only set when the local client joins a call. Solution: Added `activeCallWaveId` to VoiceCallService to track which wave has an active call based on server status polling. Changed WaveView to check `activeCallWaveId` instead of `roomName` for showing the call indicator badge. Added useEffect in WaveView to poll call status every 5 seconds when viewing any wave, ensuring `activeCallWaveId` is updated for all users. Now Window 2 can see the 📞 indicator and participant count when viewing a wave with an active call, even if they haven't joined yet.
+
+- **Contact Search Results Crash**: Fixed "Cannot read properties of undefined (reading 'displayName')" error when viewing contact search results. Issue was searchResults array could contain undefined or incomplete user objects. Solution: Added `.filter(user => user && user.id && user.displayName)` before mapping search results in ContactsView.jsx to skip malformed entries.
+
+- **React Hooks Violation (Error #310)**: Fixed "Rendered more hooks than during the previous render" error that caused app crash when starting voice/video calls. Issue was in DockedCallWindow where hooks were defined after a conditional return statement, violating React's Rules of Hooks. Moved all `useCallback` hooks before the conditional return to ensure consistent hook count across all renders.
+
+- **LiveKit Reconnection Storm**: Fixed issue where hundreds of "ConnectionError: Client initiated disconnect" errors would flood the console when starting a call. Problem was LiveKitRoom component remounting on every voiceCall state update (mute, camera, dock position, etc.), causing rapid connect/disconnect cycles. Solution: Added `key={token}` prop to LiveKitRoom so it only remounts when the token changes (i.e., when switching rooms), not on every state update. This provides stable connections while allowing the component to update props like `video={!voiceCall.isCameraOff}` without remounting.
+
+- **Admin Panel Import Errors**: Fixed "UserManagementPanel is not defined" error in ProfileSettings.jsx. Admin panels were extracted to separate files in v2.6.0 refactoring but imports were never added. Added static imports for all 9 admin panels. Note: This defeats the lazy-loading optimization from v2.6.0, but ensures components work correctly. Future optimization: Use dynamic imports with React.lazy(). Also fixed "canAccess is not defined" error in UserManagementPanel.jsx and "useCallback is not defined" errors in GroupsView.jsx and AdminReportsPanel.jsx by adding missing React hook imports.
+
+- **GroupInvitationsPanel**: Fixed null check for `invitedBy` field when displaying group invitations. Previously threw "can't access property 'displayName'" error when invitedBy was null/undefined. Now displays "Unknown" as fallback and conditionally renders Avatar.
+
+- **Contact Requests Panel Crash**: Fixed "Cannot read properties of undefined (reading 'displayName')" error when viewing incoming contact requests. Issue was server returns `from_user` object but component referenced `req.from`. Also added defensive filtering to skip malformed request entries.
+
+- **Sent Requests Panel Crash**: Added defensive filtering to SentRequestsPanel to prevent crashes from undefined or incomplete sent request objects. Filters out entries missing required fields (`id`, `to_user`, `displayName`/`handle`).
+
+- **Contacts List Defensive Filtering**: Added defensive filtering to contacts list in ContactsView to prevent crashes from undefined or incomplete contact objects. Filters out entries missing required `id` and `name` fields.
+
+- **Rate Limiting Enhancement**: Improved API rate limiting to differentiate between authenticated and unauthenticated users. Authenticated users now get 10x higher rate limit (3000 requests/min vs 300) and are rate-limited by user ID instead of IP address, preventing issues with shared IPs.
+
+- **ERR_INSUFFICIENT_RESOURCES During Calls**: Fixed browser exhausting network connections during voice/video calls, causing `net::ERR_INSUFFICIENT_RESOURCES` errors. Issues were:
+  1. **Duplicate call status polling** - WaveView.jsx had its own useEffect polling every 5 seconds in addition to the useVoiceCall hook's polling. Worse, the `voiceCall` dependency caused the interval to be recreated on every state update. Removed the duplicate polling since useVoiceCall already handles it.
+  2. **Multiple LiveKitRoom instances** - DockedCallWindow was rendering LiveKitRoom in multiple code paths (hidden, minimized, maximized), causing repeated "already connected to room" messages and connection churn. Consolidated to a single LiveKitRoom instance that wraps the entire component.
+  3. **Conflicting LiveKitRoom in CallModal** - When dock was hidden but call was active, both DockedCallWindow and CallModal could render LiveKitRoom simultaneously. Fixed by having DockedCallWindow return null when `!isDocked`, ensuring CallModal handles the connection in that state.
+
+- **LiveKit "Already Connected" Spam**: Fixed repeated "already connected to room" console messages during calls. Issues were:
+  1. **Race condition on call start** - Token was set before `isDocked`, causing both CallModal and DockedCallWindow to briefly render LiveKitRoom. Fixed by setting `isDocked = true` before setting the token.
+  2. **Callback recreation causing reconnection** - LiveKitCallRoom callbacks had `voiceCall` in dependencies, causing them to recreate on every state update. Fixed by using refs for stable callbacks.
+  3. **Missing key prop** - CallModal's LiveKitRoom was missing `key={token}` prop, causing unnecessary remounting.
+  4. **AudioLevel re-render spam** - `setAudioLevel()` was called every 100ms even with same value, causing constant re-renders. Fixed by only notifying subscribers when value actually changes.
+
+- **Call Indicator Not Showing for Non-Participants**: Fixed issue where users not in a call couldn't see the call indicator badge (📞) when viewing a wave with an active call. Root cause was `activeCallWaveId` was missing from the `useVoiceCall` hook's return value, so `voiceCall.activeCallWaveId` was always `undefined`, causing the condition `voiceCall.activeCallWaveId === wave.id` to always fail.
+
 ## [2.6.0] - 2026-01-14
 
 ### Changed

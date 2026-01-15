@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
 
 const AdminReportsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {

@@ -90,7 +90,7 @@ const ContactsView = ({
           {!searching && searchQuery.length >= 2 && searchResults.length === 0 && (
             <div style={{ color: 'var(--text-muted)' }}>No users found</div>
           )}
-          {searchResults.map(user => {
+          {searchResults.filter(user => user && user.id && user.displayName).map(user => {
             const sentRequest = hasSentRequestTo(user.id);
             const receivedRequest = hasReceivedRequestFrom(user.id);
             return (
@@ -136,7 +136,7 @@ const ContactsView = ({
             YOUR CONTACTS ({contacts.length})
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? '100%' : '280px'}, 1fr))`, gap: '12px' }}>
-            {contacts.map(contact => (
+            {contacts.filter(contact => contact && contact.id && contact.name).map(contact => (
               <div key={contact.id} style={{
                 padding: '16px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
                 border: `1px solid ${contact.isRemote ? 'var(--accent-purple)30' : 'var(--border-subtle)'}`,
