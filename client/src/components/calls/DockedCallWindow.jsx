@@ -28,6 +28,7 @@ const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children 
 
   return (
     <LiveKitRoom
+      key={token} // Only remount when token changes, not on every voiceCall state update
       token={token}
       serverUrl={url}
       connect={true}
