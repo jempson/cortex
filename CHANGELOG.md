@@ -90,6 +90,10 @@ LiveKitCallRoom (reused from CallModal)
 
 - **React Hooks Violation (Error #310)**: Fixed "Rendered more hooks than during the previous render" error that caused app crash when starting voice/video calls. Issue was in DockedCallWindow where hooks were defined after a conditional return statement, violating React's Rules of Hooks. Moved all `useCallback` hooks before the conditional return to ensure consistent hook count across all renders.
 
+- **LiveKit Reconnection Storm**: Fixed issue where hundreds of "ConnectionError: Client initiated disconnect" errors would flood the console when starting a call. Problem was LiveKitRoom component remounting on every voiceCall state update (mute, camera, dock position, etc.), causing rapid connect/disconnect cycles. Solution: Added `key={token}` prop to LiveKitRoom so it only remounts when the token changes (i.e., when switching rooms), not on every state update. This provides stable connections while allowing the component to update props like `video={!voiceCall.isCameraOff}` without remounting.
+
+- **Admin Panel Import Errors**: Fixed "UserManagementPanel is not defined" error in ProfileSettings.jsx. Admin panels were extracted to separate files in v2.6.0 refactoring but imports were never added. Added static imports for all 9 admin panels. Note: This defeats the lazy-loading optimization from v2.6.0, but ensures components work correctly. Future optimization: Use dynamic imports with React.lazy().
+
 - **GroupInvitationsPanel**: Fixed null check for `invitedBy` field when displaying group invitations. Previously threw "can't access property 'displayName'" error when invitedBy was null/undefined. Now displays "Unknown" as fallback and conditionally renders Avatar.
 
 ## [2.6.0] - 2026-01-14
