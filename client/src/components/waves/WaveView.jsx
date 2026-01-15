@@ -1537,6 +1537,26 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               <span>{voiceCall.serverParticipantCount}</span>
             </div>
           )}
+          {/* Dock call button (v2.6.1) */}
+          {voiceCall.connectionState === 'connected' && (
+            <button
+              onClick={() => voiceCall.isDocked ? voiceCall.hideDock() : voiceCall.showDock()}
+              style={{
+                padding: '4px 10px',
+                background: voiceCall.isDocked ? 'var(--accent-teal-bg)' : 'transparent',
+                border: '1px solid var(--accent-teal)',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                color: 'var(--accent-teal)',
+                fontFamily: 'monospace',
+                fontWeight: 'bold',
+              }}
+              title={voiceCall.isDocked ? 'Hide docked call' : 'Dock call window'}
+            >
+              {voiceCall.isDocked ? '📍 Docked' : '📌 Dock'}
+            </button>
+          )}
           {/* Privacy badge (always visible, farthest right) */}
           <PrivacyBadge level={wave.privacy} compact={isMobile} />
         </div>

@@ -25,12 +25,17 @@ import WaveView from '../components/waves/WaveView.jsx';
 import FocusView from '../components/focus/FocusView.jsx';
 import GroupsView from '../components/groups/GroupsView.jsx';
 import ProfileSettings from '../components/profile/ProfileSettings.jsx';
+import { useVoiceCall } from '../hooks/useVoiceCall.js';
+import DockedCallWindow from '../components/calls/DockedCallWindow.jsx';
 
 function MainApp({ shareDropletId }) {
   const { user, token, logout, updateUser } = useAuth();
   const { fetchAPI } = useAPI();
   const e2ee = useE2EE();
   const [toast, setToast] = useState(null);
+
+  // Global voice call hook for docked call window (v2.6.1)
+  const globalVoiceCall = useVoiceCall(null);
 
   // Check if this is a pop-out call window
   const urlParams = new URLSearchParams(window.location.search);
@@ -1268,6 +1273,15 @@ function MainApp({ shareDropletId }) {
       {/* PWA Components */}
       <OfflineIndicator />
       <InstallPrompt isMobile={isMobile} />
+
+      {/* Docked Call Window - persists across navigation (v2.6.1) */}
+      {globalVoiceCall.isDocked && globalVoiceCall.connectionState === 'connected' && (
+        <DockedCallWindow
+          voiceCall={globalVoiceCall}
+          isMobile={isMobile}
+          user={user}
+        />
+      )}
     </div>
   );
 }
