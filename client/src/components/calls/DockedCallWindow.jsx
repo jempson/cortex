@@ -142,6 +142,24 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
     voiceCall.hideDock();
   }, [voiceCall]);
 
+  // If dock is hidden but call is still active, render LiveKitRoom invisibly to keep connection
+  if (!voiceCall.isDocked) {
+    return (
+      <div style={{ display: 'none' }}>
+        {voiceCall.livekitToken && voiceCall.livekitUrl && (
+          <LiveKitCallRoom
+            token={voiceCall.livekitToken}
+            url={voiceCall.livekitUrl}
+            roomName={voiceCall.roomName}
+            voiceCall={voiceCall}
+          >
+            <VideoTiles />
+          </LiveKitCallRoom>
+        )}
+      </div>
+    );
+  }
+
   const handleToggleSize = useCallback(() => {
     voiceCall.toggleDockSize();
   }, [voiceCall]);

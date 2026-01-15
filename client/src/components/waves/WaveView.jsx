@@ -1516,8 +1516,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               </div>
             )}
           </div>
-          {/* Call indicator badge (when call is active) */}
-          {voiceCall.callActive && voiceCall.serverParticipantCount > 0 && (
+          {/* Call indicator badge (when call is active in THIS wave) */}
+          {voiceCall.callActive && voiceCall.serverParticipantCount > 0 && voiceCall.roomName === wave.id && (
             <div
               onClick={() => {
                 setShowCallModal(true);
@@ -1545,8 +1545,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               <span>{voiceCall.serverParticipantCount}</span>
             </div>
           )}
-          {/* Dock call button (v2.6.1) */}
-          {voiceCall.connectionState === 'connected' && (
+          {/* Dock call button (v2.6.1) - only show in the wave where call is active */}
+          {voiceCall.connectionState === 'connected' && voiceCall.roomName === wave.id && (
             <button
               onClick={() => {
                 if (voiceCall.isDocked) {
