@@ -5,6 +5,7 @@ import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useWindowSize } from '../hooks/useWindowSize.js';
 import { VERSION, BASE_URL, canAccess, FONT_SIZES } from '../config/constants.js';
 import { getRandomTagline } from '../../messages.js';
+import { storage } from '../utils/storage.js';
 import { updateAppBadge } from '../utils/pwa.js';
 import { updateDocumentTitle, startFaviconFlash, stopFaviconFlash } from '../utils/favicon.js';
 import BottomNav from '../components/ui/BottomNav.jsx';
