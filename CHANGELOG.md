@@ -78,6 +78,12 @@ LiveKitCallRoom (reused from CallModal)
 
 - **DockedCallWindow Rendering**: Fixed dock window not appearing after clicking "Dock Call" button. Previously required both `isDocked` and `connectionState === 'connected'`, but connection state could change rapidly. Now renders whenever `isDocked` is true, with the component handling disconnected/connecting states internally.
 
+- **LiveKitRoom Connection in Minimized State**: Fixed issue where call wouldn't connect until user interacted with dock. LiveKitRoom now renders (hidden with `display: none`) even when dock is minimized, ensuring immediate connection on call start.
+
+- **Stale Dock from Previous Calls**: Fixed issue where dock would remain visible after leaving a call, causing WebSocket errors when joining new calls. Solution: `leaveCall()` now automatically hides dock, and `startCall()` disconnects any existing call before starting a new one. Ensures clean state transitions between calls.
+
+- **LiveKit Context Errors**: Fixed multiple LiveKit React hook errors ("No room provided", "No TrackRef") by properly structuring components within LiveKitRoom context and using `useTracks()` instead of `useParticipants()` for video tiles.
+
 - **GroupInvitationsPanel**: Fixed null check for `invitedBy` field when displaying group invitations. Previously threw "can't access property 'displayName'" error when invitedBy was null/undefined. Now displays "Unknown" as fallback and conditionally renders Avatar.
 
 ## [2.6.0] - 2026-01-14
