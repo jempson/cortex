@@ -1275,7 +1275,7 @@ function MainApp({ shareDropletId }) {
       <InstallPrompt isMobile={isMobile} />
 
       {/* Docked Call Window - persists across navigation (v2.6.1) */}
-      {globalVoiceCall.isDocked && globalVoiceCall.connectionState === 'connected' && (
+      {globalVoiceCall.isDocked && (
         <DockedCallWindow
           voiceCall={globalVoiceCall}
           isMobile={isMobile}
