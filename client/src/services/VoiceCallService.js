@@ -194,9 +194,10 @@ class VoiceCallService {
 
   // ============ CALL MANAGEMENT ============
   async startCall(waveId, withVideo = false) {
+    // Disconnect from any existing call first
     if (this.connectionState !== 'disconnected') {
-      console.warn('🎤 [Service] Already in a call');
-      return;
+      console.warn('🎤 [Service] Already in a call, disconnecting first...');
+      await this.leaveCall();
     }
 
     this.connectionState = 'connecting';
@@ -247,6 +248,9 @@ class VoiceCallService {
     this.participants = [];
     this.audioLevel = 0;
     this.error = null;
+
+    // Hide dock when leaving call
+    this.hideDock();
 
     this.stopStatusPolling();
     this.notifySubscribers();
