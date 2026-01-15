@@ -91,6 +91,21 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   }, [wave?.id, showCallModal, voiceCall]);
 
+  // Poll call status for this wave (to show call indicator for users not in call)
+  useEffect(() => {
+    if (!wave?.id) return;
+
+    // Initial check
+    voiceCall.checkCallStatus(wave.id);
+
+    // Poll every 5 seconds
+    const interval = setInterval(() => {
+      voiceCall.checkCallStatus(wave.id);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [wave?.id, voiceCall]);
+
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
 

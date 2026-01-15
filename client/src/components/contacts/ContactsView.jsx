@@ -90,7 +90,7 @@ const ContactsView = ({
           {!searching && searchQuery.length >= 2 && searchResults.length === 0 && (
             <div style={{ color: 'var(--text-muted)' }}>No users found</div>
           )}
-          {searchResults.map(user => {
+          {searchResults.filter(user => user && user.id && user.displayName).map(user => {
             const sentRequest = hasSentRequestTo(user.id);
             const receivedRequest = hasReceivedRequestFrom(user.id);
             return (
