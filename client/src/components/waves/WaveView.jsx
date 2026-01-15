@@ -1517,7 +1517,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             )}
           </div>
           {/* Call indicator badge (when call is active in THIS wave) */}
-          {voiceCall.callActive && voiceCall.serverParticipantCount > 0 && voiceCall.roomName === wave.id && (
+          {voiceCall.callActive && voiceCall.serverParticipantCount > 0 && voiceCall.activeCallWaveId === wave.id && (
             <div
               onClick={() => {
                 setShowCallModal(true);

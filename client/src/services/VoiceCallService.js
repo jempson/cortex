@@ -25,6 +25,7 @@ class VoiceCallService {
     // Server call status
     this.callActive = false;
     this.serverParticipantCount = 0;
+    this.activeCallWaveId = null; // Track which wave has an active call
 
     // Device management
     this.audioDevices = [];
@@ -84,6 +85,7 @@ class VoiceCallService {
       roomName: this.currentWaveId,
       callActive: this.callActive,
       serverParticipantCount: this.serverParticipantCount,
+      activeCallWaveId: this.activeCallWaveId,
       audioDevices: this.audioDevices,
       videoDevices: this.videoDevices,
       selectedMic: this.selectedMic,
@@ -185,6 +187,7 @@ class VoiceCallService {
         const data = await response.json();
         this.callActive = data.active;
         this.serverParticipantCount = data.participantCount || 0;
+        this.activeCallWaveId = data.active ? waveId : null; // Track which wave has the call
         this.notifySubscribers();
       }
     } catch (err) {
