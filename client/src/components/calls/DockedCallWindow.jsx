@@ -386,29 +386,38 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
 
 // Video tiles component
 const VideoTiles = () => {
-  const participants = useParticipants();
+  const tracks = useTracks([
+    { source: Track.Source.Camera, withPlaceholder: false },
+    { source: Track.Source.ScreenShare, withPlaceholder: false },
+  ]);
 
-  if (participants.length === 0) {
+  // Filter for tracks that are actually enabled and publishing
+  const activeTracks = tracks.filter(trackRef => {
+    const track = trackRef.publication?.track;
+    return track && !track.isMuted && trackRef.publication?.isSubscribed;
+  });
+
+  if (activeTracks.length === 0) {
     return (
       <div style={{ padding: '20px', color: 'var(--text-dim)', textAlign: 'center', width: '100%' }}>
-        No participants yet
+        No video tracks yet
       </div>
     );
   }
 
   return (
     <>
-      {participants.map((participant) => (
+      {activeTracks.map((trackRef) => (
         <div
-          key={participant.identity}
+          key={trackRef.publication.trackSid}
           style={{
-            width: participants.length === 1 ? '100%' : 'calc(50% - 4px)',
+            width: activeTracks.length === 1 ? '100%' : 'calc(50% - 4px)',
             minHeight: '150px',
             position: 'relative',
           }}
         >
           <ParticipantTile
-            participant={participant}
+            trackRef={trackRef}
             style={{
               width: '100%',
               height: '100%',
