@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-01-15
+
+### Added
+
+#### Dockable Call Window - Persistent Voice/Video Controls Across Navigation
+
+**Overview:**
+Floating, draggable call window that persists across all views, providing constant access to call controls without reopening modals. Built on top of the VoiceCallService singleton from v2.6.0.
+
+**Key Features:**
+- **Floating Window**: Draggable, resizable window with minimize/maximize states
+- **Navigation Persistence**: Stays visible when switching waves, contacts, profile
+- **Position Memory**: Remembers window position in localStorage
+- **Mobile Responsive**: Fixed bottom position on mobile (no dragging)
+- **Snap-to-Edge**: Auto-snaps to screen edges within 20px
+- **Video Tiles**: Full video grid in maximized state
+- **Quick Controls**: Mute, camera, leave call accessible in both states
+
+**Implementation Files:**
+- `client/src/services/VoiceCallService.js`: Added dock state and methods (isDocked, dockMinimized, dockPosition, showDock(), hideDock(), toggleDockSize(), setDockPosition())
+- `client/src/hooks/useDraggable.js`: NEW - Custom hook for drag-and-drop with boundary checking (~66 lines)
+- `client/src/components/calls/DockedCallWindow.jsx`: NEW - Main dockable window component (~430 lines)
+- `client/src/hooks/useVoiceCall.js`: Exposed dock methods and state to React components
+- `client/src/views/MainApp.jsx`: Mounted DockedCallWindow with global voice call hook
+- `client/src/components/waves/WaveView.jsx`: Added "Dock Call" button when in active call
+
+**States:**
+- **Minimized**: 80px bar with participant count, audio indicator, quick controls
+- **Maximized**: 400x600px window with video tiles grid and full controls
+- **Mobile**: Fixed bottom position, 60px minimized, 70vh maximized
+
+**Architecture:**
+```
+VoiceCallService (singleton with dock state)
+    ↓ subscribes
+useVoiceCall (hook exposes dock methods)
+    ↓ uses
+DockedCallWindow (floating window)
+    ↓ renders
+LiveKitCallRoom (reused from CallModal)
+```
+
+**User Flow:**
+1. Start voice/video call in any wave
+2. Click "Dock Call" button in wave header
+3. Floating window appears and stays visible
+4. Navigate to different waves/contacts/profile
+5. Window persists, showing participant tiles and controls
+6. Click minimize/maximize to toggle size
+7. Drag to reposition (desktop only)
+8. Position persists across page reloads
+
+**Testing:**
+- ✅ Dock appears and persists across navigation
+- ✅ Minimize/maximize toggle works
+- ✅ Desktop drag-and-drop works smoothly
+- ✅ Mobile shows fixed bottom position
+- ✅ Position persists in localStorage
+- ✅ Call controls work from dock
+- ✅ Video tiles render in maximized state
+- ✅ Snap-to-edge behavior works
+
+### Fixed
+
+- **GroupInvitationsPanel**: Fixed null check for `invitedBy` field when displaying group invitations. Previously threw "can't access property 'displayName'" error when invitedBy was null/undefined. Now displays "Unknown" as fallback and conditionally renders Avatar.
+
 ## [2.6.0] - 2026-01-14
 
 ### Changed
