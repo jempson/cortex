@@ -100,6 +100,14 @@ LiveKitCallRoom (reused from CallModal)
 
 - **GroupInvitationsPanel**: Fixed null check for `invitedBy` field when displaying group invitations. Previously threw "can't access property 'displayName'" error when invitedBy was null/undefined. Now displays "Unknown" as fallback and conditionally renders Avatar.
 
+- **Contact Requests Panel Crash**: Fixed "Cannot read properties of undefined (reading 'displayName')" error when viewing incoming contact requests. Issue was server returns `from_user` object but component referenced `req.from`. Also added defensive filtering to skip malformed request entries.
+
+- **Sent Requests Panel Crash**: Added defensive filtering to SentRequestsPanel to prevent crashes from undefined or incomplete sent request objects. Filters out entries missing required fields (`id`, `to_user`, `displayName`/`handle`).
+
+- **Contacts List Defensive Filtering**: Added defensive filtering to contacts list in ContactsView to prevent crashes from undefined or incomplete contact objects. Filters out entries missing required `id` and `name` fields.
+
+- **Rate Limiting Enhancement**: Improved API rate limiting to differentiate between authenticated and unauthenticated users. Authenticated users now get 10x higher rate limit (3000 requests/min vs 300) and are rate-limited by user ID instead of IP address, preventing issues with shared IPs.
+
 ## [2.6.0] - 2026-01-14
 
 ### Changed

@@ -250,7 +250,32 @@ const registerLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: RATE_LIMIT_API_MAX,
+  max: async (req, res) => {
+    // Give authenticated users 10x higher rate limit
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      try {
+        jwt.verify(token, JWT_SECRET);
+        return RATE_LIMIT_API_MAX * 10; // 3000 requests/min for authenticated users
+      } catch (e) {
+        // Invalid token, use default limit
+      }
+    }
+    return RATE_LIMIT_API_MAX; // 300 requests/min for unauthenticated
+  },
+  keyGenerator: (req) => {
+    // Rate limit by user ID if authenticated, otherwise by IP
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        return `user:${decoded.userId}`;
+      } catch (e) {
+        // Invalid token, fall back to IP
+      }
+    }
+    return req.ip;
+  },
   message: { error: 'Too many requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
