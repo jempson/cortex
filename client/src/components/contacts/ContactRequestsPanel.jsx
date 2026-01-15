@@ -41,17 +41,17 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
       <div style={{ color: 'var(--accent-green)', marginBottom: '16px', fontSize: '0.8rem', fontWeight: 500 }}>
         CONTACT REQUESTS ({requests.length})
       </div>
-      {requests.map((req) => (
+      {requests.filter(req => req && req.id && req.from_user && (req.from_user.displayName || req.from_user.handle)).map((req) => (
         <div key={req.id} style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           padding: isMobile ? '12px' : '16px', background: 'var(--bg-hover)',
           marginBottom: '8px', border: '1px solid var(--border-subtle)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-            <Avatar user={req.from} size={isMobile ? '36px' : '40px'} />
+            <Avatar user={req.from_user} size={isMobile ? '36px' : '40px'} />
             <div>
               <div style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.9rem' }}>
-                {req.from.displayName || req.from.handle}
+                {req.from_user.displayName || req.from_user.handle}
               </div>
               {req.message && (
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '4px' }}>

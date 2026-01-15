@@ -75,6 +75,23 @@ export function useVoiceCall(waveId) {
     return voiceCallService.checkCallStatus(waveIdRef.current);
   }, []);
 
+  // Dock methods (v2.6.1)
+  const showDock = useCallback(() => {
+    voiceCallService.showDock();
+  }, []);
+
+  const hideDock = useCallback(() => {
+    voiceCallService.hideDock();
+  }, []);
+
+  const toggleDockSize = useCallback(() => {
+    voiceCallService.toggleDockSize();
+  }, []);
+
+  const setDockPosition = useCallback((pos) => {
+    voiceCallService.setDockPosition(pos);
+  }, []);
+
   return {
     // State from service
     connectionState: state.connectionState,
@@ -88,11 +105,16 @@ export function useVoiceCall(waveId) {
     roomName: state.roomName,
     callActive: state.callActive,
     serverParticipantCount: state.serverParticipantCount,
+    activeCallWaveId: state.activeCallWaveId,
     audioDevices: state.audioDevices,
     videoDevices: state.videoDevices,
     selectedMic: state.selectedMic,
     selectedCamera: state.selectedCamera,
     selectedSpeaker: state.selectedSpeaker,
+    // Dock state (v2.6.1)
+    isDocked: state.isDocked,
+    dockMinimized: state.dockMinimized,
+    dockPosition: state.dockPosition,
 
     // Actions
     startCall,
@@ -104,11 +126,17 @@ export function useVoiceCall(waveId) {
     changeSpeaker,
     enumerateDevices,
     checkCallStatus,
+    // Dock actions (v2.6.1)
+    showDock,
+    hideDock,
+    toggleDockSize,
+    setDockPosition,
 
     // Service methods for LiveKitCallRoom component
     setConnectionState: voiceCallService.setConnectionState.bind(voiceCallService),
     setParticipants: voiceCallService.setParticipants.bind(voiceCallService),
     setAudioLevel: voiceCallService.setAudioLevel.bind(voiceCallService),
+    setRoom: voiceCallService.setRoom.bind(voiceCallService),
     roomRef: { current: voiceCallService.room },
   };
 }
