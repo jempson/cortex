@@ -1,6 +1,6 @@
 # FARHOLD - Secure Wave Communications
 
-**Version 2.0.0** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 2.6.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
 > *"Can't stop the signal."* — Farhold (formerly Cortex)
 
@@ -665,10 +665,10 @@ npm install -g pm2
 cd server
 
 # Start with PM2
-pm2 start server.js --name farhold
+pm2 start server.js --name farhold-api
 
 # Or with environment variables
-pm2 start server.js --name farhold --env production
+pm2 start server.js --name farhold-api --env production
 ```
 
 #### PM2 Ecosystem File (Recommended)
@@ -677,32 +677,43 @@ Create `ecosystem.config.js` in the project root:
 
 ```javascript
 module.exports = {
-  apps: [{
-    name: 'farhold',
-    script: './server/server.js',
-    instances: 1,              // Use 1 for WebSocket compatibility
-    exec_mode: 'fork',         // Fork mode required for WebSocket
-    env: {
-      NODE_ENV: 'development',
-      PORT: 3001
+  apps: [
+    {
+      name: 'farhold-api',
+      script: './server/server.js',
+      instances: 1,              // Use 1 for WebSocket compatibility
+      exec_mode: 'fork',         // Fork mode required for WebSocket
+      env: {
+        NODE_ENV: 'development',
+        PORT: 3001
+      },
+      env_production: {
+        NODE_ENV: 'production',
+        PORT: 3001,
+        USE_SQLITE: 'true'
+      },
+      // Restart settings
+      max_memory_restart: '500M',
+      restart_delay: 1000,
+      // Logging
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      error_file: './logs/farhold-api-error.log',
+      out_file: './logs/farhold-api-out.log',
+      merge_logs: true,
+      // Watch (optional, for development)
+      watch: false,
+      ignore_watch: ['node_modules', 'data', 'logs', 'uploads']
     },
-    env_production: {
-      NODE_ENV: 'production',
-      PORT: 3001,
-      USE_SQLITE: 'true'
-    },
-    // Restart settings
-    max_memory_restart: '500M',
-    restart_delay: 1000,
-    // Logging
-    log_date_format: 'YYYY-MM-DD HH:mm:ss',
-    error_file: './logs/farhold-error.log',
-    out_file: './logs/farhold-out.log',
-    merge_logs: true,
-    // Watch (optional, for development)
-    watch: false,
-    ignore_watch: ['node_modules', 'data', 'logs', 'uploads']
-  }]
+    {
+      name: 'farhold-web',
+      script: 'serve',
+      env: {
+        PM2_SERVE_PATH: './client/dist',
+        PM2_SERVE_PORT: 3000,
+        PM2_SERVE_SPA: 'true'
+      }
+    }
+  ]
 };
 ```
 
@@ -719,15 +730,18 @@ pm2 start ecosystem.config.js --env production
 #### Common PM2 Commands
 
 ```bash
-pm2 list                    # List all processes
-pm2 logs farhold             # View logs (real-time)
-pm2 logs farhold --lines 100 # View last 100 lines
-pm2 monit                   # Terminal-based monitoring
-pm2 restart farhold          # Restart the server
-pm2 stop farhold             # Stop the server
-pm2 delete farhold           # Remove from PM2
-pm2 save                    # Save process list for startup
-pm2 startup                 # Generate startup script
+pm2 list                        # List all processes
+pm2 logs farhold-api             # View API logs (real-time)
+pm2 logs farhold-api --lines 100 # View last 100 lines
+pm2 logs farhold-web             # View web server logs
+pm2 monit                       # Terminal-based monitoring
+pm2 restart farhold-api          # Restart API server
+pm2 restart farhold-web          # Restart web server
+pm2 restart all                 # Restart all processes
+pm2 stop farhold-api             # Stop API server
+pm2 delete farhold-api           # Remove API from PM2
+pm2 save                        # Save process list for startup
+pm2 startup                     # Generate startup script
 ```
 
 #### Auto-Start on Boot
@@ -753,7 +767,7 @@ npm run build
 
 Then either:
 1. **Nginx**: Serve `client/dist/` directly (recommended)
-2. **PM2 + serve**: `pm2 serve client/dist 3000 --name farhold-client --spa`
+2. **PM2 + serve**: `pm2 serve client/dist 3000 --name farhold-web --spa`
 
 ---
 
