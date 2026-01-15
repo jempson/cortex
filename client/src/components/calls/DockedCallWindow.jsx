@@ -280,8 +280,6 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
   }
 
   // Maximized state
-  const participants = useParticipants();
-
   return (
     <div ref={windowRef} style={containerStyle}>
       {/* Header */}
