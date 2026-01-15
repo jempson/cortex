@@ -1,0 +1,722 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useE2EE } from '../../../e2ee-context.jsx';
+import { useSwipeGesture } from '../../hooks/useSwipeGesture.js';
+import { SUCCESS, EMPTY } from '../../../messages.js';
+import { PRIVACY_LEVELS } from '../../config/constants.js';
+import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
+
+// TODO: Import these components from FarholdApp.jsx (they still need to be extracted):
+// - Droplet (lines 4379+)
+// - EmojiPicker (lines 634+)
+//
+// For now, these components must be passed as props or imported from the parent file.
+// When extracted, update these imports to point to the correct component files.
+
+const FocusView = ({
+  wave,
+  focusStack, // Array of { dropletId, droplet } entries
+  onBack, // Go back one level
+  onClose, // Return to wave list
+  onFocusDeeper, // Focus on a child droplet
+  fetchAPI,
+  showToast,
+  currentUser,
+  isMobile,
+  sendWSMessage,
+  typingUsers,
+  reloadTrigger,
+  onShowProfile,
+  blockedUsers,
+  mutedUsers,
+  contacts = [],
+  onWaveUpdate
+}) => {
+  const e2ee = useE2EE();
+  const currentFocus = focusStack[focusStack.length - 1];
+  const initialDroplet = currentFocus?.droplet;
+
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [collapsed, setCollapsed] = useState({});
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editContent, setEditContent] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [liveDroplet, setLiveDroplet] = useState(initialDroplet); // Live data that updates
+  const containerRef = useRef(null);
+  const messagesRef = useRef(null);
+  const textareaRef = useRef(null);
+  const lastTypingSentRef = useRef(null);
+
+  // Swipe-back gesture for mobile navigation
+  useSwipeGesture(containerRef, {
+    onSwipeRight: isMobile ? () => {
+      // Swipe right to go back
+      if (focusStack.length > 1) {
+        onBack();
+      } else {
+        onClose();
+      }
+    } : undefined,
+    threshold: 80 // Slightly lower threshold for easier back navigation
+  });
+
+  // Update liveDroplet when focus changes
+  useEffect(() => {
+    setLiveDroplet(initialDroplet);
+  }, [initialDroplet?.id]);
+
+  // E2EE: Helper to decrypt a single droplet and its children recursively
+  const decryptDropletTree = useCallback(async (node, waveId) => {
+    if (!e2ee.isUnlocked) return node;
+
+    // Decrypt this node if needed
+    let decryptedNode = node;
+    if (node.encrypted && node.nonce) {
+      try {
+        const plaintext = await e2ee.decryptDroplet(
+          node.content,
+          node.nonce,
+          waveId,
+          node.keyVersion
+        );
+        decryptedNode = { ...node, content: plaintext, _decrypted: true };
+      } catch (err) {
+        console.error('Failed to decrypt droplet in focus view:', node.id, err);
+        decryptedNode = { ...node, content: '[Unable to decrypt]', _decryptError: true };
+      }
+    }
+
+    // Decrypt children recursively
+    if (decryptedNode.children && decryptedNode.children.length > 0) {
+      decryptedNode.children = await Promise.all(
+        decryptedNode.children.map(child => decryptDropletTree(child, waveId))
+      );
+    }
+
+    return decryptedNode;
+  }, [e2ee]);
+
+  // Function to fetch fresh droplet data
+  const fetchFreshData = useCallback(async () => {
+    if (!wave?.id || !initialDroplet?.id) return;
+    try {
+      // Fetch all messages for the wave and find our focused droplet with updated children
+      const data = await fetchAPI(`/waves/${wave.id}`);
+      if (data.messages) {
+        // Build tree and find our droplet
+        const findDroplet = (messages, targetId) => {
+          for (const msg of messages) {
+            if (msg.id === targetId) return msg;
+            if (msg.children) {
+              const found = findDroplet(msg.children, targetId);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        let updated = findDroplet(data.messages, initialDroplet.id);
+
+        // E2EE: Decrypt the focused droplet and its children if wave is encrypted
+        if (updated && data.encrypted && e2ee.isUnlocked) {
+          updated = await decryptDropletTree(updated, wave.id);
+        }
+
+        if (updated) {
+          setLiveDroplet(updated);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to refresh focus view:', err);
+    }
+  }, [wave?.id, initialDroplet?.id, fetchAPI, e2ee, decryptDropletTree]);
+
+  // Fetch fresh droplet data when reloadTrigger changes
+  useEffect(() => {
+    if (reloadTrigger > 0) {
+      fetchFreshData();
+    }
+  }, [reloadTrigger, fetchFreshData]);
+
+  // Use liveDroplet for display (falls back to initialDroplet)
+  const focusedDroplet = liveDroplet || initialDroplet;
+
+  // Build droplets array from focused droplet and its children
+  const focusDroplets = focusedDroplet ? [focusedDroplet] : [];
+  const participants = wave?.participants || [];
+
+  // Filter out droplets from blocked/muted users
+  const isBlocked = (userId) => blockedUsers?.some(u => u.blockedUserId === userId) || false;
+  const isMuted = (userId) => mutedUsers?.some(u => u.mutedUserId === userId) || false;
+
+  const filterDroplets = (msgs) => {
+    return msgs.filter(msg => {
+      if (isBlocked(msg.author_id) || isMuted(msg.author_id)) return false;
+      if (msg.children) {
+        msg.children = filterDroplets(msg.children);
+      }
+      return true;
+    });
+  };
+
+  const filteredDroplets = filterDroplets([...focusDroplets]);
+
+  const config = PRIVACY_LEVELS[wave?.privacy] || PRIVACY_LEVELS.private;
+
+  // Typing indicator
+  const sendTypingIndicator = () => {
+    const now = Date.now();
+    if (!lastTypingSentRef.current || now - lastTypingSentRef.current > 3000) {
+      sendWSMessage?.({
+        type: 'typing',
+        waveId: wave?.id,
+        userId: currentUser?.id,
+        userName: currentUser?.displayName || currentUser?.handle
+      });
+      lastTypingSentRef.current = now;
+    }
+  };
+
+  // Handle reply - set the target and focus the textarea
+  const handleReply = (message) => {
+    setReplyingTo(message);
+    // Focus the textarea after state updates
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
+  };
+
+  const handleSend = async () => {
+    if (!newMessage.trim() || !wave?.id) return;
+
+    try {
+      const parentId = replyingTo?.id || focusedDroplet?.id;
+      await fetchAPI('/pings', {
+        method: 'POST',
+        body: { wave_id: wave.id, parent_id: parentId, content: newMessage }
+      });
+      setNewMessage('');
+      setReplyingTo(null);
+      showToast(SUCCESS.pingSent, 'success');
+      // Immediately refresh to show the new droplet
+      fetchFreshData();
+    } catch (err) {
+      showToast(err.message || 'Failed to send', 'error');
+    }
+  };
+
+  const handleReaction = async (messageId, emoji) => {
+    // Save scroll position before updating
+    const scrollTop = messagesRef.current?.scrollTop;
+    try {
+      await fetchAPI(`/pings/${messageId}/react`, {
+        method: 'POST',
+        body: { emoji }
+      });
+      // Refresh data to show reaction
+      await fetchFreshData();
+      // Restore scroll position
+      if (messagesRef.current && scrollTop !== undefined) {
+        messagesRef.current.scrollTop = scrollTop;
+      }
+    } catch (err) {
+      showToast('Failed to react', 'error');
+    }
+  };
+
+  // Mark droplet as read when clicked
+  const handleMessageClick = async (messageId) => {
+    try {
+      await fetchAPI(`/pings/${messageId}/read`, { method: 'POST' });
+      // Refresh to update UI
+      await fetchFreshData();
+      // Also refresh wave list to update unread counts
+      onWaveUpdate?.();
+    } catch (err) {
+      console.error('Failed to mark droplet as read:', err);
+    }
+  };
+
+  const handleDeleteMessage = async (message) => {
+    if (!confirm('Delete this ping?')) return;
+    try {
+      await fetchAPI(`/pings/${message.id}`, { method: 'DELETE' });
+      showToast('Ping deleted', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to delete', 'error');
+    }
+  };
+
+  const handleStartEdit = (message) => {
+    setEditingMessageId(message.id);
+    setEditContent(message.content?.replace(/<[^>]*>/g, '') || '');
+  };
+
+  const handleSaveEdit = async (messageId) => {
+    try {
+      await fetchAPI(`/pings/${messageId}`, {
+        method: 'PUT',
+        body: { content: editContent }
+      });
+      setEditingMessageId(null);
+      setEditContent('');
+      showToast('Ping updated', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to update', 'error');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditContent('');
+  };
+
+  const toggleThreadCollapse = (messageId) => {
+    setCollapsed(prev => ({ ...prev, [messageId]: !prev[messageId] }));
+  };
+
+  // Share droplet to external platforms
+  const handleShareDroplet = async (droplet) => {
+    const shareUrl = `${window.location.origin}/share/${droplet.id}`;
+    const shareTitle = wave?.title || wave?.name || 'Farhold';
+    const shareText = `Check out this conversation on Farhold`;
+
+    // Try native Web Share API first
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
+        showToast(SUCCESS.shared, 'success');
+        return;
+      } catch (err) {
+        if (err.name !== 'AbortError') console.error('Share failed:', err);
+      }
+    }
+
+    // Fallback: Copy to clipboard
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast(SUCCESS.copied, 'success');
+    } catch (err) {
+      const textArea = document.createElement('textarea');
+      textArea.value = shareUrl;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      showToast(SUCCESS.copied, 'success');
+    }
+  };
+
+  // Build breadcrumb from focus stack
+  const buildBreadcrumb = () => {
+    // On mobile, show more compact breadcrumb
+    const maxLabelLength = isMobile ? 15 : 30;
+    const truncateThreshold = isMobile ? 3 : 4;
+
+    const waveName = wave?.name || wave?.title || 'Wave';
+    const items = [
+      { label: isMobile ? (waveName.substring(0, 12) + (waveName.length > 12 ? '…' : '')) : waveName, onClick: onClose, isWave: true }
+    ];
+
+    focusStack.forEach((item, index) => {
+      const rawContent = item.droplet?.content?.replace(/<[^>]*>/g, '') || '';
+      const truncatedContent = rawContent.substring(0, maxLabelLength) +
+        (rawContent.length > maxLabelLength ? '…' : '');
+
+      if (index < focusStack.length - 1) {
+        // Previous items are clickable
+        items.push({
+          label: truncatedContent || 'Ping',
+          onClick: () => {
+            // Pop stack back to this level
+            for (let i = focusStack.length - 1; i > index; i--) {
+              onBack();
+            }
+          }
+        });
+      } else {
+        // Current item is not clickable
+        items.push({ label: truncatedContent || 'Ping', current: true });
+      }
+    });
+
+    // Truncate middle items based on screen size
+    if (items.length > truncateThreshold) {
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (isMobile) {
+        // On mobile, just show wave and current
+        return [first, { label: '…', ellipsis: true }, last];
+      } else {
+        const secondLast = items[items.length - 2];
+        return [first, { label: '...', ellipsis: true }, secondLast, last];
+      }
+    }
+
+    return items;
+  };
+
+  const breadcrumb = buildBreadcrumb();
+
+  if (!focusedDroplet) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
+        No ping focused
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Mobile swipe hint - shown briefly on first focus */}
+      {isMobile && (
+        <div style={{
+          padding: '4px 12px',
+          background: 'var(--accent-teal)10',
+          borderBottom: '1px solid var(--accent-teal)20',
+          fontSize: '0.65rem',
+          color: 'var(--text-muted)',
+          textAlign: 'center',
+          fontFamily: 'monospace'
+        }}>
+          ← Swipe right to go back
+        </div>
+      )}
+      {/* Breadcrumb Header */}
+      <div style={{
+        padding: isMobile ? '8px 12px' : '12px 16px',
+        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+        borderBottom: `2px solid ${config.color}40`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: isMobile ? '6px' : '8px',
+        flexWrap: isMobile ? 'nowrap' : 'wrap',
+        overflow: isMobile ? 'hidden' : 'visible'
+      }}>
+        {/* Back button */}
+        <button
+          onClick={focusStack.length > 1 ? onBack : onClose}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent',
+            border: '1px solid var(--border-primary)',
+            color: 'var(--text-dim)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.85rem' : '0.75rem',
+          }}
+        >
+          ← {focusStack.length > 1 ? 'BACK' : 'WAVE'}
+        </button>
+
+        {/* Breadcrumb trail */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          flexWrap: 'wrap',
+          overflow: 'hidden'
+        }}>
+          {breadcrumb.map((item, index) => (
+            <React.Fragment key={index}>
+              {index > 0 && <span style={{ color: 'var(--border-primary)' }}>›</span>}
+              {item.ellipsis ? (
+                <span style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.8rem' : '0.75rem' }}>...</span>
+              ) : item.current ? (
+                <span style={{
+                  color: 'var(--accent-teal)',
+                  fontSize: isMobile ? '0.85rem' : '0.8rem',
+                  fontWeight: 600,
+                  maxWidth: '150px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {item.label}
+                </span>
+              ) : (
+                <button
+                  onClick={item.onClick}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: item.isWave ? config.color : 'var(--text-dim)',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: isMobile ? '0.85rem' : '0.8rem',
+                    padding: '2px 4px',
+                    maxWidth: '120px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title={item.label}
+                >
+                  {item.label}
+                </button>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          style={{
+            padding: isMobile ? '8px 12px' : '6px 10px',
+            minHeight: isMobile ? '44px' : 'auto',
+            background: 'transparent',
+            border: '1px solid var(--accent-orange)40',
+            color: 'var(--accent-orange)',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: isMobile ? '0.85rem' : '0.75rem',
+          }}
+          title="Return to wave"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Focus indicator */}
+      <div style={{
+        padding: '6px 16px',
+        background: 'var(--accent-teal)10',
+        borderBottom: '1px solid var(--accent-teal)30',
+        fontSize: isMobile ? '0.75rem' : '0.7rem',
+        color: 'var(--accent-teal)',
+        fontFamily: 'monospace',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+      }}>
+        <span>⤢</span>
+        <span>FOCUS VIEW</span>
+        <span style={{ color: 'var(--text-muted)' }}>•</span>
+        <span style={{ color: 'var(--text-dim)' }}>
+          {focusedDroplet.children?.length || 0} {focusedDroplet.children?.length === 1 ? 'reply' : 'replies'}
+        </span>
+      </div>
+
+      {/* Messages area */}
+      <div
+        ref={messagesRef}
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: isMobile ? '12px' : '16px',
+        }}
+      >
+        {filteredDroplets.map((msg) => (
+          <Droplet
+            key={msg.id}
+            message={msg}
+            onReply={handleReply}
+            onDelete={handleDeleteMessage}
+            onEdit={handleStartEdit}
+            onSaveEdit={handleSaveEdit}
+            onCancelEdit={handleCancelEdit}
+            editingMessageId={editingMessageId}
+            editContent={editContent}
+            setEditContent={setEditContent}
+            currentUserId={currentUser?.id}
+            highlightId={replyingTo?.id}
+            playbackIndex={null}
+            collapsed={collapsed}
+            onToggleCollapse={toggleThreadCollapse}
+            isMobile={isMobile}
+            onReact={handleReaction}
+            onMessageClick={handleMessageClick}
+            participants={participants}
+            contacts={contacts}
+            onShowProfile={onShowProfile}
+            onFocus={onFocusDeeper ? (droplet) => onFocusDeeper(droplet) : undefined}
+            onShare={handleShareDroplet}
+            wave={wave}
+            currentWaveId={wave?.id}
+            fetchAPI={fetchAPI}
+          />
+        ))}
+      </div>
+
+      {/* Typing Indicator */}
+      {typingUsers && Object.keys(typingUsers).length > 0 && (
+        <div style={{
+          padding: isMobile ? '8px 12px' : '6px 20px',
+          color: 'var(--text-dim)',
+          fontSize: isMobile ? '0.85rem' : '0.75rem',
+          fontStyle: 'italic',
+          borderTop: '1px solid var(--bg-hover)',
+          background: 'var(--bg-elevated)',
+        }}>
+          {Object.values(typingUsers).map(u => u.name).join(', ')} {Object.keys(typingUsers).length === 1 ? 'is' : 'are'} typing...
+        </div>
+      )}
+
+      {/* Compose area */}
+      <div style={{
+        borderTop: '1px solid var(--border-subtle)',
+        background: 'var(--bg-elevated)',
+        padding: isMobile ? '12px' : '16px',
+      }}>
+        {replyingTo && (
+          <div style={{
+            marginBottom: '8px',
+            padding: '8px 12px',
+            background: 'var(--bg-hover)',
+            border: '1px solid var(--border-primary)',
+            borderLeft: `3px solid ${config.color}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '8px',
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '2px' }}>
+                Replying to {replyingTo.sender_name}
+              </div>
+              <div style={{
+                color: 'var(--text-muted)',
+                fontSize: '0.75rem',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}>
+                {replyingTo.content?.replace(/<[^>]*>/g, '').substring(0, 50)}...
+              </div>
+            </div>
+            <button
+              onClick={() => setReplyingTo(null)}
+              style={{
+                padding: '4px 8px',
+                background: 'transparent',
+                border: '1px solid var(--text-dim)',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.7rem',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <textarea
+              ref={textareaRef}
+              value={newMessage}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                sendTypingIndicator();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}...` : 'Type a ping... (Shift+Enter for new line)'}
+              style={{
+                width: '100%',
+                minHeight: isMobile ? '50px' : '40px',
+                maxHeight: '150px',
+                padding: '10px 12px',
+                background: 'var(--bg-surface)',
+                border: `1px solid ${replyingTo ? config.color : 'var(--border-subtle)'}`,
+                color: 'var(--text-secondary)',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.95rem' : '0.85rem',
+                resize: 'vertical',
+              }}
+            />
+          </div>
+
+          {/* Emoji button */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              style={{
+                padding: isMobile ? '12px' : '10px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: showEmojiPicker ? 'var(--accent-amber)20' : 'transparent',
+                border: `1px solid ${showEmojiPicker ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
+                color: showEmojiPicker ? 'var(--accent-amber)' : 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: isMobile ? '1.1rem' : '1rem',
+              }}
+            >
+              {showEmojiPicker ? '✕' : '😀'}
+            </button>
+
+            {showEmojiPicker && (
+              <div style={{
+                position: 'absolute',
+                bottom: '100%',
+                right: 0,
+                marginBottom: '4px',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
+                padding: '8px',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(8, 1fr)',
+                gap: '4px',
+                zIndex: 10,
+              }}>
+                {['😀', '😂', '❤️', '👍', '👎', '🎉', '🤔', '😢', '😮', '🔥', '💯', '👏', '🙏', '💪', '✨', '🚀'].map(emoji => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      setNewMessage(prev => prev + emoji);
+                      setShowEmojiPicker(false);
+                      textareaRef.current?.focus();
+                    }}
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      background: 'transparent',
+                      border: '1px solid var(--border-subtle)',
+                      cursor: 'pointer',
+                      fontSize: '1.1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Send button */}
+          <button
+            onClick={handleSend}
+            disabled={!newMessage.trim()}
+            style={{
+              padding: isMobile ? '12px 20px' : '10px 16px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: newMessage.trim() ? 'var(--accent-green)20' : 'transparent',
+              border: `1px solid ${newMessage.trim() ? 'var(--accent-green)' : 'var(--border-primary)'}`,
+              color: newMessage.trim() ? 'var(--accent-green)' : 'var(--text-muted)',
+              cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.85rem' : '0.75rem',
+              fontWeight: 600,
+            }}
+          >
+            SEND
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+export default FocusView;

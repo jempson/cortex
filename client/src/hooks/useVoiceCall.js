@@ -1,0 +1,114 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAuth } from './useAPI.js';
+import { voiceCallService } from '../services/VoiceCallService.js';
+
+// ============ LIVEKIT VOICE CALL HOOK (v2.6.0 - Service-based) ============
+// Thin wrapper around VoiceCallService that enables persistent calls across navigation
+export function useVoiceCall(waveId) {
+  const { token } = useAuth();
+  const [state, setState] = useState(voiceCallService.getState());
+  const waveIdRef = useRef(waveId);
+
+  // Update waveId ref when it changes
+  useEffect(() => {
+    waveIdRef.current = waveId;
+  }, [waveId]);
+
+  // Set auth token in service when it changes
+  useEffect(() => {
+    if (token) {
+      voiceCallService.setAuthToken(token);
+    }
+  }, [token]);
+
+  // Subscribe to service state changes
+  useEffect(() => {
+    const unsubscribe = voiceCallService.subscribe(setState);
+    return unsubscribe;
+  }, []);
+
+  // Start status polling for this wave
+  useEffect(() => {
+    if (waveId && token) {
+      voiceCallService.checkCallStatus(waveId);
+      const interval = setInterval(() => {
+        voiceCallService.checkCallStatus(waveId);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [waveId, token]);
+
+  // Wrapper functions that call service methods
+  const startCall = useCallback((withVideo = false) => {
+    return voiceCallService.startCall(waveIdRef.current, withVideo);
+  }, []);
+
+  const leaveCall = useCallback(() => {
+    return voiceCallService.leaveCall();
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    voiceCallService.toggleMute();
+  }, []);
+
+  const toggleCamera = useCallback(() => {
+    voiceCallService.toggleCamera();
+  }, []);
+
+  const changeMic = useCallback((deviceId) => {
+    voiceCallService.changeMic(deviceId);
+  }, []);
+
+  const changeCamera = useCallback((deviceId) => {
+    voiceCallService.changeCamera(deviceId);
+  }, []);
+
+  const changeSpeaker = useCallback((deviceId) => {
+    voiceCallService.changeSpeaker(deviceId);
+  }, []);
+
+  const enumerateDevices = useCallback(() => {
+    return voiceCallService.enumerateDevices();
+  }, []);
+
+  const checkCallStatus = useCallback(() => {
+    return voiceCallService.checkCallStatus(waveIdRef.current);
+  }, []);
+
+  return {
+    // State from service
+    connectionState: state.connectionState,
+    participants: state.participants,
+    isMuted: state.isMuted,
+    isCameraOff: state.isCameraOff,
+    audioLevel: state.audioLevel,
+    error: state.error,
+    livekitToken: state.livekitToken,
+    livekitUrl: state.livekitUrl,
+    roomName: state.roomName,
+    callActive: state.callActive,
+    serverParticipantCount: state.serverParticipantCount,
+    audioDevices: state.audioDevices,
+    videoDevices: state.videoDevices,
+    selectedMic: state.selectedMic,
+    selectedCamera: state.selectedCamera,
+    selectedSpeaker: state.selectedSpeaker,
+
+    // Actions
+    startCall,
+    leaveCall,
+    toggleMute,
+    toggleCamera,
+    changeMic,
+    changeCamera,
+    changeSpeaker,
+    enumerateDevices,
+    checkCallStatus,
+
+    // Service methods for LiveKitCallRoom component
+    setConnectionState: voiceCallService.setConnectionState.bind(voiceCallService),
+    setParticipants: voiceCallService.setParticipants.bind(voiceCallService),
+    setAudioLevel: voiceCallService.setAudioLevel.bind(voiceCallService),
+    roomRef: { current: voiceCallService.room },
+  };
+}
