@@ -18,6 +18,7 @@ Floating, draggable call window that persists across all views, providing consta
 
 **Key Features:**
 - **Floating Window**: Draggable, resizable window with minimize/maximize states
+- **Auto-Dock on Close**: Closing CallModal automatically docks the call instead of disconnecting
 - **Navigation Persistence**: Stays visible when switching waves, contacts, profile
 - **Position Memory**: Remembers window position in localStorage
 - **Mobile Responsive**: Fixed bottom position on mobile (no dragging)
@@ -51,10 +52,10 @@ LiveKitCallRoom (reused from CallModal)
 
 **User Flow:**
 1. Start voice/video call in any wave
-2. Click "Dock Call" button in wave header
-3. Floating window appears and stays visible
-4. Navigate to different waves/contacts/profile
-5. Window persists, showing participant tiles and controls
+2. Close CallModal (X button or click outside) - **call auto-docks instead of disconnecting**
+3. Floating window appears and stays visible (or manually click "Dock Call" button)
+4. Navigate to different waves/contacts/profile - window persists
+5. Window shows participant tiles and controls
 6. Click minimize/maximize to toggle size
 7. Drag to reposition (desktop only)
 8. Position persists across page reloads
