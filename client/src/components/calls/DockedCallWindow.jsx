@@ -160,22 +160,10 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
     voiceCall.leaveCall();
   }, [voiceCall]);
 
-  // If dock is hidden but call is still active, render LiveKitRoom invisibly to keep connection
-  if (!voiceCall.isDocked) {
-    return (
-      <div style={{ display: 'none' }}>
-        {voiceCall.livekitToken && voiceCall.livekitUrl && (
-          <LiveKitCallRoom
-            token={voiceCall.livekitToken}
-            url={voiceCall.livekitUrl}
-            roomName={voiceCall.roomName}
-            voiceCall={voiceCall}
-          >
-            <VideoTiles />
-          </LiveKitCallRoom>
-        )}
-      </div>
-    );
+  // No token means no active call - don't render anything
+  // Also don't render if dock is hidden - CallModal will handle the LiveKitRoom when !isDocked
+  if (!voiceCall.livekitToken || !voiceCall.livekitUrl || !voiceCall.isDocked) {
+    return null;
   }
 
   // Mobile: fixed bottom position
@@ -212,7 +200,7 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
   const headerStyle = {
     padding: isMobile ? '8px 12px' : '10px 14px',
     background: 'var(--bg-hover)',
-    borderBottom: '1px solid var(--accent-teal)',
+    borderBottom: voiceCall.dockMinimized ? 'none' : '1px solid var(--accent-teal)',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -236,54 +224,66 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
     padding: isMobile ? '8px 12px' : '6px 12px',
   };
 
-  // Minimized state
-  if (voiceCall.dockMinimized) {
-    return (
+  // Single LiveKitRoom instance that persists across minimize/maximize/hide states
+  // Wrap everything in LiveKitRoom so we have ONE connection only
+  return (
+    <LiveKitCallRoom
+      token={voiceCall.livekitToken}
+      url={voiceCall.livekitUrl}
+      roomName={voiceCall.roomName}
+      voiceCall={voiceCall}
+    >
+      {/* Dock window UI */}
       <div ref={windowRef} style={containerStyle}>
+        {/* Header */}
         <div
           style={headerStyle}
           onMouseDown={isMobile ? undefined : handleMouseDown}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
             <span style={{ color: 'var(--accent-teal)', fontSize: isMobile ? '0.9rem' : '0.85rem' }}>
-              🎤 In Call • {voiceCall.participants.length || 0} participant{voiceCall.participants.length !== 1 ? 's' : ''}
+              {voiceCall.dockMinimized ? '🎤 In Call' : '📞 Call'} • {voiceCall.participants.length || 0} participant{voiceCall.participants.length !== 1 ? 's' : ''}
             </span>
             {voiceCall.audioLevel > 0.3 && (
               <span style={{ color: 'var(--accent-green)', fontSize: '0.7rem' }}>●</span>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <button
-              style={controlButtonStyle}
-              onClick={handleToggleMute}
-              data-draggable="false"
-              title={voiceCall.isMuted ? 'Unmute' : 'Mute'}
-            >
-              {voiceCall.isMuted ? '🔇' : '🎤'}
-            </button>
-            <button
-              style={controlButtonStyle}
-              onClick={handleToggleCamera}
-              data-draggable="false"
-              title={voiceCall.isCameraOff ? 'Turn camera on' : 'Turn camera off'}
-            >
-              {voiceCall.isCameraOff ? '📹' : '📷'}
-            </button>
-            <button
-              style={controlButtonStyle}
-              onClick={handleLeaveCall}
-              data-draggable="false"
-              title="Leave call"
-            >
-              📞
-            </button>
+          <div style={{ display: 'flex', gap: voiceCall.dockMinimized ? '6px' : '4px', alignItems: 'center' }}>
+            {voiceCall.dockMinimized && (
+              <>
+                <button
+                  style={controlButtonStyle}
+                  onClick={handleToggleMute}
+                  data-draggable="false"
+                  title={voiceCall.isMuted ? 'Unmute' : 'Mute'}
+                >
+                  {voiceCall.isMuted ? '🔇' : '🎤'}
+                </button>
+                <button
+                  style={controlButtonStyle}
+                  onClick={handleToggleCamera}
+                  data-draggable="false"
+                  title={voiceCall.isCameraOff ? 'Turn camera on' : 'Turn camera off'}
+                >
+                  {voiceCall.isCameraOff ? '📹' : '📷'}
+                </button>
+                <button
+                  style={controlButtonStyle}
+                  onClick={handleLeaveCall}
+                  data-draggable="false"
+                  title="Leave call"
+                >
+                  📞
+                </button>
+              </>
+            )}
             <button
               style={buttonStyle}
               onClick={handleToggleSize}
               data-draggable="false"
-              title="Maximize"
+              title={voiceCall.dockMinimized ? 'Maximize' : 'Minimize'}
             >
-              □
+              {voiceCall.dockMinimized ? '□' : '_'}
             </button>
             <button
               style={buttonStyle}
@@ -295,125 +295,70 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
             </button>
           </div>
         </div>
-        {/* Hidden LiveKitRoom to maintain connection when minimized */}
-        <div style={{ display: 'none' }}>
-          {voiceCall.livekitToken && voiceCall.livekitUrl && (
-            <LiveKitCallRoom
-              token={voiceCall.livekitToken}
-              url={voiceCall.livekitUrl}
-              roomName={voiceCall.roomName}
-              voiceCall={voiceCall}
-            >
+
+        {/* Video tiles area - only shown when maximized */}
+        {!voiceCall.dockMinimized && (
+          <>
+            <div style={{
+              flex: 1,
+              overflow: 'auto',
+              background: 'var(--bg-primary)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px',
+              padding: '8px',
+              alignContent: 'flex-start',
+            }}>
               <VideoTiles />
-            </LiveKitCallRoom>
-          )}
-        </div>
-      </div>
-    );
-  }
+            </div>
 
-  // Maximized state
-  return (
-    <div ref={windowRef} style={containerStyle}>
-      {/* Header */}
-      <div
-        style={headerStyle}
-        onMouseDown={isMobile ? undefined : handleMouseDown}
-      >
-        <div style={{ color: 'var(--accent-teal)', fontSize: isMobile ? '0.9rem' : '0.85rem', fontWeight: 500 }}>
-          📞 Call • {voiceCall.participants.length || 0} participant{voiceCall.participants.length !== 1 ? 's' : ''}
-        </div>
-        <div style={{ display: 'flex', gap: '4px' }}>
-          <button
-            style={buttonStyle}
-            onClick={handleToggleSize}
-            data-draggable="false"
-            title="Minimize"
-          >
-            _
-          </button>
-          <button
-            style={buttonStyle}
-            onClick={handleClose}
-            data-draggable="false"
-            title="Close dock"
-          >
-            ×
-          </button>
-        </div>
-      </div>
-
-      {/* Video tiles area */}
-      <div style={{
-        flex: 1,
-        overflow: 'auto',
-        background: 'var(--bg-primary)',
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '8px',
-        padding: '8px',
-        alignContent: 'flex-start',
-      }}>
-        {voiceCall.livekitToken && voiceCall.livekitUrl ? (
-          <LiveKitCallRoom
-            token={voiceCall.livekitToken}
-            url={voiceCall.livekitUrl}
-            roomName={voiceCall.roomName}
-            voiceCall={voiceCall}
-          >
-            <VideoTiles />
-          </LiveKitCallRoom>
-        ) : (
-          <div style={{ padding: '20px', color: 'var(--text-dim)', textAlign: 'center', width: '100%' }}>
-            {voiceCall.connectionState === 'connecting' ? 'Connecting...' : 'No active call'}
-          </div>
+            {/* Controls footer */}
+            <div style={{
+              padding: isMobile ? '12px' : '10px',
+              background: 'var(--bg-hover)',
+              borderTop: '1px solid var(--accent-teal)',
+              display: 'flex',
+              justifyContent: 'center',
+              gap: '8px',
+            }}>
+              <button
+                style={{
+                  ...controlButtonStyle,
+                  background: voiceCall.isMuted ? 'var(--accent-red)' : 'transparent',
+                  borderColor: voiceCall.isMuted ? 'var(--accent-red)' : 'var(--accent-teal)',
+                  color: voiceCall.isMuted ? 'var(--text-primary)' : 'var(--accent-teal)',
+                }}
+                onClick={handleToggleMute}
+              >
+                {voiceCall.isMuted ? '🔇 Muted' : '🎤 Mute'}
+              </button>
+              <button
+                style={{
+                  ...controlButtonStyle,
+                  background: voiceCall.isCameraOff ? 'var(--accent-amber)' : 'transparent',
+                  borderColor: voiceCall.isCameraOff ? 'var(--accent-amber)' : 'var(--accent-teal)',
+                  color: voiceCall.isCameraOff ? 'var(--text-primary)' : 'var(--accent-teal)',
+                }}
+                onClick={handleToggleCamera}
+              >
+                {voiceCall.isCameraOff ? '📹 Camera Off' : '📷 Camera On'}
+              </button>
+              <button
+                style={{
+                  ...controlButtonStyle,
+                  background: 'var(--accent-red)',
+                  borderColor: 'var(--accent-red)',
+                  color: 'var(--text-primary)',
+                }}
+                onClick={handleLeaveCall}
+              >
+                📞 Leave
+              </button>
+            </div>
+          </>
         )}
       </div>
-
-      {/* Controls footer */}
-      <div style={{
-        padding: isMobile ? '12px' : '10px',
-        background: 'var(--bg-hover)',
-        borderTop: '1px solid var(--accent-teal)',
-        display: 'flex',
-        justifyContent: 'center',
-        gap: '8px',
-      }}>
-        <button
-          style={{
-            ...controlButtonStyle,
-            background: voiceCall.isMuted ? 'var(--accent-red)' : 'transparent',
-            borderColor: voiceCall.isMuted ? 'var(--accent-red)' : 'var(--accent-teal)',
-            color: voiceCall.isMuted ? 'var(--text-primary)' : 'var(--accent-teal)',
-          }}
-          onClick={handleToggleMute}
-        >
-          {voiceCall.isMuted ? '🔇 Muted' : '🎤 Mute'}
-        </button>
-        <button
-          style={{
-            ...controlButtonStyle,
-            background: voiceCall.isCameraOff ? 'var(--accent-amber)' : 'transparent',
-            borderColor: voiceCall.isCameraOff ? 'var(--accent-amber)' : 'var(--accent-teal)',
-            color: voiceCall.isCameraOff ? 'var(--text-primary)' : 'var(--accent-teal)',
-          }}
-          onClick={handleToggleCamera}
-        >
-          {voiceCall.isCameraOff ? '📹 Camera Off' : '📷 Camera On'}
-        </button>
-        <button
-          style={{
-            ...controlButtonStyle,
-            background: 'var(--accent-red)',
-            borderColor: 'var(--accent-red)',
-            color: 'var(--text-primary)',
-          }}
-          onClick={handleLeaveCall}
-        >
-          📞 Leave
-        </button>
-      </div>
-    </div>
+    </LiveKitCallRoom>
   );
 };
 

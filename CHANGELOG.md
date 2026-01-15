@@ -108,6 +108,11 @@ LiveKitCallRoom (reused from CallModal)
 
 - **Rate Limiting Enhancement**: Improved API rate limiting to differentiate between authenticated and unauthenticated users. Authenticated users now get 10x higher rate limit (3000 requests/min vs 300) and are rate-limited by user ID instead of IP address, preventing issues with shared IPs.
 
+- **ERR_INSUFFICIENT_RESOURCES During Calls**: Fixed browser exhausting network connections during voice/video calls, causing `net::ERR_INSUFFICIENT_RESOURCES` errors. Issues were:
+  1. **Duplicate call status polling** - WaveView.jsx had its own useEffect polling every 5 seconds in addition to the useVoiceCall hook's polling. Worse, the `voiceCall` dependency caused the interval to be recreated on every state update. Removed the duplicate polling since useVoiceCall already handles it.
+  2. **Multiple LiveKitRoom instances** - DockedCallWindow was rendering LiveKitRoom in multiple code paths (hidden, minimized, maximized), causing repeated "already connected to room" messages and connection churn. Consolidated to a single LiveKitRoom instance that wraps the entire component.
+  3. **Conflicting LiveKitRoom in CallModal** - When dock was hidden but call was active, both DockedCallWindow and CallModal could render LiveKitRoom simultaneously. Fixed by having DockedCallWindow return null when `!isDocked`, ensuring CallModal handles the connection in that state.
+
 ## [2.6.0] - 2026-01-14
 
 ### Changed
