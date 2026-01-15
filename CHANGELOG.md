@@ -84,6 +84,10 @@ LiveKitCallRoom (reused from CallModal)
 
 - **LiveKit Context Errors**: Fixed multiple LiveKit React hook errors ("No room provided", "No TrackRef") by properly structuring components within LiveKitRoom context and using `useTracks()` instead of `useParticipants()` for video tiles.
 
+- **Call Indicator in Wrong Waves**: Fixed issue where call indicator badge and dock button appeared in all waves instead of just the wave where the call is active. Added check for `voiceCall.roomName === wave.id` to only show call controls in the correct wave.
+
+- **Hiding Dock Disconnects Call**: Fixed issue where clicking X to hide the dock would disconnect from the LiveKit room. Solution: MainApp now renders DockedCallWindow whenever a call is active (not just when docked), and DockedCallWindow renders a hidden LiveKitRoom when `!isDocked`. This keeps the connection alive when the dock UI is hidden, allowing users to hide/show the dock without reconnecting.
+
 - **GroupInvitationsPanel**: Fixed null check for `invitedBy` field when displaying group invitations. Previously threw "can't access property 'displayName'" error when invitedBy was null/undefined. Now displays "Unknown" as fallback and conditionally renders Avatar.
 
 ## [2.6.0] - 2026-01-14
