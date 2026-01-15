@@ -442,7 +442,10 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
                       : 'Someone is connecting...'}
                   </div>
                   <button
-                    onClick={() => voiceCall.startCall(false)}
+                    onClick={() => {
+                      voiceCall.startCall(false);
+                      onClose(); // Close modal, call will auto-dock
+                    }}
                     disabled={!!error}
                     style={{
                       padding: '14px 32px',
@@ -475,7 +478,10 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
                   </div>
                   <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
                     <button
-                      onClick={() => voiceCall.startCall(false)}
+                      onClick={() => {
+                        voiceCall.startCall(false);
+                        onClose(); // Close modal, call will auto-dock
+                      }}
                       disabled={!!error}
                       style={{
                         padding: '14px 32px',
@@ -496,7 +502,10 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
                       🎤 Voice Call
                     </button>
                     <button
-                      onClick={() => voiceCall.startCall(true)}
+                      onClick={() => {
+                        voiceCall.startCall(true);
+                        onClose(); // Close modal, call will auto-dock
+                      }}
                       disabled={!!error}
                       style={{
                         padding: '14px 32px',

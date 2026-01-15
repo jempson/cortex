@@ -227,6 +227,9 @@ class VoiceCallService {
 
     console.log(`🎤 [Service] Starting ${withVideo ? 'video' : 'voice'} call...`);
 
+    // Auto-dock call (v2.6.1) - calls start in docked mode by default
+    this.showDock();
+
     // Start polling call status
     this.startStatusPolling(waveId);
   }
