@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Floating, draggable call window that persists across all views, providing constant access to call controls without reopening modals. Built on top of the VoiceCallService singleton from v2.6.0.
 
 **Key Features:**
+- **Docked by Default**: All calls start in the floating dock window (no modal required)
 - **Floating Window**: Draggable, resizable window with minimize/maximize states
 - **Auto-Dock on Close**: Closing CallModal automatically docks the call instead of disconnecting
 - **Navigation Persistence**: Stays visible when switching waves, contacts, profile
@@ -51,14 +52,15 @@ LiveKitCallRoom (reused from CallModal)
 ```
 
 **User Flow:**
-1. Start voice/video call in any wave
-2. Close CallModal (X button or click outside) - **call auto-docks instead of disconnecting**
-3. Floating window appears and stays visible (or manually click "Dock Call" button)
-4. Navigate to different waves/contacts/profile - window persists
-5. Window shows participant tiles and controls
+1. Click "Voice/Video Call" from wave menu or "Join Call" indicator
+2. CallModal opens briefly, click "Voice Call" or "Video Call" button
+3. **Floating dock window appears immediately** - no need to manually dock
+4. CallModal closes automatically, call stays in dock
+5. Navigate to different waves/contacts/profile - window persists
 6. Click minimize/maximize to toggle size
 7. Drag to reposition (desktop only)
 8. Position persists across page reloads
+9. Click call indicator to reopen CallModal for full controls (dock remains)
 
 **Testing:**
 - ✅ Dock appears and persists across navigation
