@@ -7,7 +7,6 @@ import { Avatar, GlowText, PrivacyBadge, LoadingSpinner } from '../ui/SimpleComp
 import { LegacyWaveNotice, PartialEncryptionBanner } from '../../../e2ee-components.jsx';
 import ImageLightbox from '../ui/ImageLightbox.jsx';
 import Droplet from '../droplets/Droplet.jsx';
-import EmojiPicker from '../ui/EmojiPicker.jsx';
 import GifSearchModal from '../search/GifSearchModal.jsx';
 import PlaybackControls from './PlaybackControls.jsx';
 import DeleteConfirmModal from './DeleteConfirmModal.jsx';
@@ -47,7 +46,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [showSettings, setShowSettings] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGifSearch, setShowGifSearch] = useState(false);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
@@ -2431,23 +2429,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           {/* Left side: media buttons */}
           <div style={{ display: 'flex', gap: '6px' }}>
             <button
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              style={{
-                padding: isMobile ? '8px 10px' : '8px 10px',
-                minHeight: isMobile ? '38px' : '32px',
-                background: showEmojiPicker ? 'var(--accent-amber)20' : 'transparent',
-                border: `1px solid ${showEmojiPicker ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
-                color: 'var(--accent-amber)',
-                cursor: 'pointer',
-                fontFamily: 'monospace',
-                fontSize: isMobile ? '0.7rem' : '0.65rem',
-                fontWeight: 700,
-              }}
-              title="Insert Emoji"
-            >
-              EMO
-            </button>
-            <button
               onClick={() => setShowGifSearch(true)}
               style={{
                 padding: isMobile ? '8px 10px' : '8px 10px',
@@ -2573,15 +2554,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           >
             SEND
           </button>
-          {showEmojiPicker && (
-            <EmojiPicker
-              onSelect={(emoji) => {
-                setNewMessage(prev => prev + emoji);
-                setShowEmojiPicker(false);
-              }}
-              isMobile={isMobile}
-            />
-          )}
         </div>
       </div>
 

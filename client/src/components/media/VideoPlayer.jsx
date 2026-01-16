@@ -183,6 +183,7 @@ const VideoPlayer = ({ src, duration: providedDuration, isMobile }) => {
     justifyContent: 'center',
     cursor: 'pointer',
     opacity: showControls && !isPlaying ? 1 : 0,
+    pointerEvents: showControls && !isPlaying ? 'auto' : 'none',
     transition: 'opacity 0.3s',
     color: 'white',
     fontSize: isMobile ? '1.5rem' : '1.2rem',
@@ -273,11 +274,6 @@ const VideoPlayer = ({ src, duration: providedDuration, isMobile }) => {
         </div>
       )}
 
-      {/* Play button overlay */}
-      <div style={playOverlayStyle} onClick={togglePlay}>
-        {'\u25B6'}
-      </div>
-
       {/* Controls overlay */}
       <div style={overlayStyle}>
         <div style={controlsStyle}>
@@ -301,6 +297,11 @@ const VideoPlayer = ({ src, duration: providedDuration, isMobile }) => {
             {isFullscreen ? '\u2716' : '\u26F6'}
           </button>
         </div>
+      </div>
+
+      {/* Play button overlay - rendered last to be on top */}
+      <div style={playOverlayStyle} onClick={togglePlay}>
+        {'\u25B6'}
       </div>
     </div>
   );

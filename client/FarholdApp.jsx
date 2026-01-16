@@ -648,7 +648,7 @@ const CollapsibleSection = ({ title, children, defaultOpen = true, isOpen: contr
 
 // ============ EMOJI PICKER COMPONENT ============
 const EmojiPicker = ({ onSelect, isMobile }) => {
-  const emojis = ['😀', '😂', '😍', '🤔', '👍', '👎', '🎉', '🔥', '💯', '❤️', '😎', '🚀', '✨', '💪', '👏', '🙌'];
+  const emojis = ['😀', '😂', '😍', '🤔', '👍', '☝️', '👎', '🎉', '🔥', '💯', '❤️', '😎', '🚀', '✨', '💪', '👏', '🙌'];
   return (
     <div style={{
       position: 'absolute', bottom: '100%', left: 0, marginBottom: '8px',

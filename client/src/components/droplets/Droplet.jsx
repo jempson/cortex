@@ -48,7 +48,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   };
   const unreadChildCount = isCollapsed && hasChildren ? countUnreadChildren(message.children) : 0;
 
-  const quickReactions = ['👍', '❤️', '😂', '🎉', '🤔', '👏', '😢', '😭'];
+  const quickReactions = ['👍', '☝️', '❤️', '😂', '🎉', '🤔', '👏', '😢'];
 
   if (!isVisible) return null;
 

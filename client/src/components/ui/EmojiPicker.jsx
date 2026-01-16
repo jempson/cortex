@@ -1,7 +1,7 @@
 import React from 'react';
 
 const EmojiPicker = ({ onSelect, isMobile }) => {
-  const emojis = ['😀', '😂', '😍', '🤔', '👍', '👎', '🎉', '🔥', '💯', '❤️', '😎', '🚀', '✨', '💪', '👏', '🙌'];
+  const emojis = ['😀', '😂', '😍', '🤔', '👍', '☝️', '👎', '🎉', '🔥', '💯', '❤️', '😎', '🚀', '✨', '💪', '👏', '🙌'];
   return (
     <div style={{
       position: 'absolute', bottom: '100%', left: 0, marginBottom: '8px',
