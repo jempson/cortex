@@ -107,6 +107,32 @@ Automatically apply festive themes and visual effects on holidays.
 - `client/src/components/profile/ProfileSettings.jsx` - Add holiday opt-out toggle
 - `client/index.html` - Add holiday theme CSS variables
 
+#### Collapsible Pings
+Minimize long pings and media to improve scrolling on mobile.
+
+**Key Features:**
+- Tap to collapse any ping to a compact preview:
+  - Shows sender avatar + name
+  - First line/sentence of content (truncated with "...")
+  - Media indicator icon for audio/video (not full player)
+- Tap collapsed ping to expand back to full view
+- Collapse button on long pings (threshold: 4+ lines or contains media)
+- "Collapse All" / "Expand All" option in wave menu
+- Remember collapse state during session
+- Auto-collapse option in settings (always collapse media, collapse long pings)
+
+**UI Behavior:**
+- Collapsed ping shows subtle "collapsed" styling (slightly dimmed, compact height)
+- Smooth expand/collapse animation
+- Collapsed media shows thumbnail + duration badge instead of full player
+- Thread replies remain expandable separately from parent collapse
+
+**Files to create/modify:**
+- `client/src/components/droplets/Droplet.jsx` - Add collapse state and compact render mode
+- `client/src/components/droplets/CollapsedDroplet.jsx` - NEW - Compact ping display
+- `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
+- `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
+
 ## [2.7.1] - 2026-01-16
 
 ### Fixed
