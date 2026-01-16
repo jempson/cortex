@@ -320,6 +320,8 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
   const previewStyle = {
     width: '100%',
     maxWidth: type === 'video' ? '400px' : '100%',
+    maxHeight: isMobile ? '40vh' : '300px', // Limit height to keep controls visible
+    objectFit: 'contain',
     borderRadius: '4px',
     background: 'var(--bg-primary)',
     marginBottom: '12px',
