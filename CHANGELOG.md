@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-01-16
+
+### Fixed
+- Video player center play button not responding to clicks (overlay rendering order)
+- Missing Droplet import in FocusView causing crash when opening focus mode
+- Vertical video recording on mobile hiding control buttons (limited preview height to 40vh)
+- Media streaming endpoint using wrong JWT_SECRET variable causing 403 errors
+
+### Changed
+- Removed EMO button from WaveView (reactions on pings are sufficient)
+- Added ☝️ pointing finger reaction to quick reactions list
+
 ## [2.7.0] - 2026-01-16
 
 ### Added
