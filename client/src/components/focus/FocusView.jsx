@@ -4,13 +4,7 @@ import { useSwipeGesture } from '../../hooks/useSwipeGesture.js';
 import { SUCCESS, EMPTY } from '../../../messages.js';
 import { PRIVACY_LEVELS } from '../../config/constants.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
-
-// TODO: Import these components from FarholdApp.jsx (they still need to be extracted):
-// - Droplet (lines 4379+)
-// - EmojiPicker (lines 634+)
-//
-// For now, these components must be passed as props or imported from the parent file.
-// When extracted, update these imports to point to the correct component files.
+import Droplet from '../droplets/Droplet.jsx';
 
 const FocusView = ({
   wave,
