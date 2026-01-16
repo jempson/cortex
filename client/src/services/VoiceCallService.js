@@ -185,7 +185,6 @@ class VoiceCallService {
 
       if (response.ok) {
         const data = await response.json();
-        console.log(`📊 [Service] Call status for ${waveId}:`, data);
         this.callActive = data.active;
         this.serverParticipantCount = data.participantCount || 0;
         this.activeCallWaveId = data.active ? waveId : null; // Track which wave has the call
