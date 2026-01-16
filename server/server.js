@@ -5812,7 +5812,7 @@ app.get('/api/media/:filename', (req, res) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      decoded = jwt.verify(token, JWT_SECRET);
     } catch (err) {
       return res.status(403).json({ error: 'Invalid token' });
     }
