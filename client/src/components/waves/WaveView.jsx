@@ -17,6 +17,9 @@ import RippleModal from './RippleModal.jsx';
 import CallModal from '../calls/CallModal.jsx';
 import InviteToWaveModal from './InviteToWaveModal.jsx';
 import InviteFederatedModal from './InviteFederatedModal.jsx';
+import MediaRecorder from '../media/MediaRecorder.jsx';
+import CameraCapture from '../media/CameraCapture.jsx';
+import { storage } from '../../utils/storage.js';
 
 const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave, scrollToDropletId, onScrollToDropletComplete, federationEnabled }) => {
   // E2EE context
@@ -68,6 +71,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [decryptingWave, setDecryptingWave] = useState(false); // Wave decryption in progress
   const [showWaveMenu, setShowWaveMenu] = useState(false); // Wave header actions menu
   const [showCallModal, setShowCallModal] = useState(false); // Voice/Video call modal
+  const [showMediaRecorder, setShowMediaRecorder] = useState(null); // 'audio' | 'video' | null (v2.7.0)
+  const [uploadingMedia, setUploadingMedia] = useState(false); // Media upload in progress
+  const [mediaUploadStatus, setMediaUploadStatus] = useState(''); // Status message during upload
+  const [showCameraCapture, setShowCameraCapture] = useState(false); // Camera capture for image upload (v2.7.0)
 
   // E2EE Migration state
   const [encryptionStatus, setEncryptionStatus] = useState(null); // { state, progress, participantsWithE2EE, totalParticipants }
@@ -1031,6 +1038,105 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+
+  // Handle media recording completion (v2.7.0)
+  const handleMediaRecordingComplete = async (blob, duration) => {
+    if (!blob) return;
+
+    const mediaType = showMediaRecorder; // 'audio' or 'video'
+    setUploadingMedia(true);
+    setShowMediaRecorder(null); // Close recorder immediately
+
+    try {
+      // Show upload status - video files are transcoded server-side
+      if (mediaType === 'video') {
+        setMediaUploadStatus('Uploading and transcoding video...');
+      } else {
+        setMediaUploadStatus('Uploading audio...');
+      }
+
+      // Upload the media file - explicitly set MIME type based on recording type
+      // Don't rely on blob.type as it may be empty or incorrect in some browsers
+      const mimeType = mediaType === 'video' ? 'video/webm' : 'audio/webm';
+      const file = new File([blob], `recording.webm`, { type: mimeType });
+      console.log(`Uploading media: blob.type=${blob.type}, file.type=${file.type}, size=${file.size}`);
+
+      const formData = new FormData();
+      formData.append('media', file);
+      formData.append('duration', Math.round(duration * 1000).toString()); // Convert to ms
+
+      const token = storage.getToken();
+      const uploadResponse = await fetch(`${API_URL}/uploads/media`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        const data = await uploadResponse.json();
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      setMediaUploadStatus('Sending message...');
+      const uploadData = await uploadResponse.json();
+
+      // Create ping with media
+      let messageBody = {
+        wave_id: wave.id,
+        parent_id: replyingTo?.id || null,
+        content: '', // Empty content for media pings
+        mediaType: uploadData.type,
+        mediaUrl: uploadData.url,
+        mediaDuration: uploadData.duration,
+      };
+
+      // Handle E2EE - for now, just mark media as not encrypted
+      // TODO: Implement media encryption in Phase 5
+      if (waveData?.encrypted && e2ee.isUnlocked) {
+        try {
+          // For encrypted waves, we'll encrypt the content (empty for media pings)
+          // The media file itself is stored unencrypted for now
+          const { ciphertext, nonce } = await e2ee.encryptDroplet('', wave.id);
+          const waveKeyVersion = await fetchAPI(`/waves/${wave.id}/key`).then(r => r.keyVersion).catch(() => 1);
+          messageBody = {
+            ...messageBody,
+            content: ciphertext,
+            encrypted: true,
+            nonce,
+            keyVersion: waveKeyVersion || 1,
+            mediaEncrypted: false, // Media not encrypted yet
+          };
+        } catch (encryptErr) {
+          console.error('Failed to encrypt message:', encryptErr);
+          showToast('Failed to encrypt message', 'error');
+          setUploadingMedia(false);
+          setMediaUploadStatus('');
+          return;
+        }
+      }
+
+      await fetchAPI('/pings', {
+        method: 'POST',
+        body: messageBody,
+      });
+
+      showToast(`${mediaType === 'video' ? 'Video' : 'Voice'} message sent`, 'success');
+      setReplyingTo(null);
+      await loadWave(true);
+
+      // Scroll to bottom
+      setTimeout(() => {
+        if (messagesRef.current) {
+          messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+        }
+      }, 150);
+    } catch (err) {
+      showToast(err.message || 'Failed to send media', 'error');
+    } finally {
+      setUploadingMedia(false);
+      setMediaUploadStatus('');
     }
   };
 
@@ -2093,6 +2199,58 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             Drop image to upload
           </div>
         )}
+        {/* Media Recorder (v2.7.0) */}
+        {showMediaRecorder && (
+          <MediaRecorder
+            type={showMediaRecorder}
+            onRecordingComplete={handleMediaRecordingComplete}
+            onCancel={() => setShowMediaRecorder(null)}
+            isMobile={isMobile}
+          />
+        )}
+        {/* Media Upload Status Indicator */}
+        {uploadingMedia && mediaUploadStatus && (
+          <div style={{
+            padding: '12px 16px',
+            marginBottom: '10px',
+            background: 'var(--accent-amber)15',
+            border: '1px solid var(--accent-amber)',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            color: 'var(--accent-amber)',
+            fontSize: '0.85rem',
+            fontFamily: 'monospace',
+          }}>
+            <span style={{
+              display: 'inline-block',
+              width: '16px',
+              height: '16px',
+              border: '2px solid var(--accent-amber)',
+              borderTopColor: 'transparent',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+            }} />
+            {mediaUploadStatus}
+            <style>{`
+              @keyframes spin {
+                to { transform: rotate(360deg); }
+              }
+            `}</style>
+          </div>
+        )}
+        {/* Camera Capture (v2.7.0) */}
+        {showCameraCapture && (
+          <CameraCapture
+            onCapture={(file) => {
+              setShowCameraCapture(false);
+              handleImageUpload(file);
+            }}
+            onCancel={() => setShowCameraCapture(false)}
+            isMobile={isMobile}
+          />
+        )}
         {/* Textarea - full width with mention picker */}
         <div style={{ position: 'relative' }}>
           <textarea
@@ -2334,6 +2492,66 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               title="Upload Image"
             >
               {uploading ? '...' : 'IMG'}
+            </button>
+            {/* Camera capture button (v2.7.0) */}
+            <button
+              onClick={() => setShowCameraCapture(!showCameraCapture)}
+              disabled={uploading}
+              style={{
+                padding: isMobile ? '8px 10px' : '8px 10px',
+                minHeight: isMobile ? '38px' : '32px',
+                background: showCameraCapture ? 'var(--accent-purple)20' : 'transparent',
+                border: `1px solid ${showCameraCapture ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
+                color: 'var(--accent-purple)',
+                cursor: uploading ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                fontWeight: 700,
+                opacity: uploading ? 0.7 : 1,
+              }}
+              title="Take Photo"
+            >
+              CAM
+            </button>
+            {/* Audio recording button */}
+            <button
+              onClick={() => setShowMediaRecorder(showMediaRecorder === 'audio' ? null : 'audio')}
+              disabled={uploadingMedia}
+              style={{
+                padding: isMobile ? '8px 10px' : '8px 10px',
+                minHeight: isMobile ? '38px' : '32px',
+                background: showMediaRecorder === 'audio' ? 'var(--accent-green)20' : 'transparent',
+                border: `1px solid ${showMediaRecorder === 'audio' ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                color: 'var(--accent-green)',
+                cursor: uploadingMedia ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                fontWeight: 700,
+                opacity: uploadingMedia ? 0.7 : 1,
+              }}
+              title="Record Audio"
+            >
+              AUD
+            </button>
+            {/* Video recording button */}
+            <button
+              onClick={() => setShowMediaRecorder(showMediaRecorder === 'video' ? null : 'video')}
+              disabled={uploadingMedia}
+              style={{
+                padding: isMobile ? '8px 10px' : '8px 10px',
+                minHeight: isMobile ? '38px' : '32px',
+                background: showMediaRecorder === 'video' ? 'var(--accent-teal)20' : 'transparent',
+                border: `1px solid ${showMediaRecorder === 'video' ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+                color: 'var(--accent-teal)',
+                cursor: uploadingMedia ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                fontWeight: 700,
+                opacity: uploadingMedia ? 0.7 : 1,
+              }}
+              title="Record Video"
+            >
+              VID
             </button>
           </div>
           {/* Spacer */}

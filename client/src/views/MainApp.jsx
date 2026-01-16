@@ -87,10 +87,10 @@ function MainApp({ shareDropletId }) {
 
   // Apply theme to document root and persist to localStorage
   useEffect(() => {
-    const theme = user?.preferences?.theme || 'firefly';
+    const theme = user?.preferences?.theme || 'serenity';
     document.documentElement.setAttribute('data-theme', theme);
     // Only save to dedicated storage when we have actual user data
-    // This prevents overwriting saved theme with 'firefly' on initial load
+    // This prevents overwriting saved theme with 'serenity' on initial load
     if (user?.preferences?.theme) {
       storage.setTheme(theme);
     }

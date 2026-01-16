@@ -63,8 +63,10 @@ const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children 
       <CallControls
         isMuted={voiceCall.isMuted}
         isCameraOff={voiceCall.isCameraOff}
+        isScreenSharing={voiceCall.isScreenSharing}
         setParticipants={voiceCall.setParticipants}
         setAudioLevel={voiceCall.setAudioLevel}
+        setScreenSharing={voiceCall.setScreenSharing}
       />
       {children}
     </LiveKitRoom>
@@ -72,7 +74,7 @@ const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children 
 });
 
 // Nested component: CallControls
-const CallControls = ({ isMuted, isCameraOff, setParticipants, setAudioLevel }) => {
+const CallControls = ({ isMuted, isCameraOff, isScreenSharing, setParticipants, setAudioLevel, setScreenSharing }) => {
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
 
@@ -149,6 +151,36 @@ const CallControls = ({ isMuted, isCameraOff, setParticipants, setAudioLevel }) 
     updateCamera();
   }, [isCameraOff, localParticipant]);
 
+  // Sync screen share state with LiveKit
+  useEffect(() => {
+    if (!localParticipant) return;
+
+    const updateScreenShare = async () => {
+      try {
+        const screenPub = localParticipant.getTrackPublication(Track.Source.ScreenShare);
+        const isCurrentlySharing = screenPub && !screenPub.isMuted;
+
+        if (isScreenSharing && !isCurrentlySharing) {
+          console.log('🖥️ Enabling screen share...');
+          await localParticipant.setScreenShareEnabled(true);
+          console.log('🖥️ Screen share enabled');
+        } else if (!isScreenSharing && isCurrentlySharing) {
+          console.log('🖥️ Disabling screen share...');
+          await localParticipant.setScreenShareEnabled(false);
+          console.log('🖥️ Screen share disabled');
+        }
+      } catch (err) {
+        console.error('🖥️ Failed to change screen share state:', err);
+        // If user cancelled or error occurred, reset the state
+        if (setScreenSharing) {
+          setScreenSharing(false);
+        }
+      }
+    };
+
+    updateScreenShare();
+  }, [isScreenSharing, localParticipant, setScreenSharing]);
+
   return null;
 };
 
@@ -156,7 +188,7 @@ const CallControls = ({ isMuted, isCameraOff, setParticipants, setAudioLevel }) 
 const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
   if (!isOpen || !wave || !user) return null;
 
-  const { connectionState, participants, isMuted, isCameraOff, audioLevel, error, livekitToken, livekitUrl, callActive, serverParticipantCount, checkCallStatus } = voiceCall;
+  const { connectionState, participants, isMuted, isCameraOff, isScreenSharing, audioLevel, error, livekitToken, livekitUrl, callActive, serverParticipantCount, checkCallStatus, setScreenSharing } = voiceCall;
   const isConnected = connectionState === 'connected';
   const isConnecting = connectionState === 'connecting';
   const participantCount = participants.length;
@@ -760,6 +792,25 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
               }}
             >
               {isCameraOff ? '📹' : '🎥'} {isCameraOff ? 'Start Video' : 'Stop Video'}
+            </button>
+            <button
+              onClick={() => setScreenSharing(!isScreenSharing)}
+              style={{
+                padding: '12px 24px',
+                background: isScreenSharing ? 'var(--accent-amber)20' : 'var(--bg-secondary)',
+                color: isScreenSharing ? 'var(--accent-amber)' : 'var(--text-primary)',
+                border: `1px solid ${isScreenSharing ? 'var(--accent-amber)' : 'var(--border)'}`,
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              {isScreenSharing ? '🖥️' : '🖥️'} {isScreenSharing ? 'Stop Share' : 'Share Screen'}
             </button>
             <button
               onClick={() => {
