@@ -1352,7 +1352,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>THEME</label>
           <select
-            value={user?.preferences?.theme || 'firefly'}
+            value={user?.preferences?.theme || 'serenity'}
             onChange={(e) => handleUpdatePreferences({ theme: e.target.value })}
             style={{
               ...inputStyle,
@@ -1364,7 +1364,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
             ))}
           </select>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
-            {THEMES[user?.preferences?.theme || 'firefly']?.description}
+            {THEMES[user?.preferences?.theme || 'serenity']?.description}
           </div>
         </div>
 

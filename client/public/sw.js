@@ -75,6 +75,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Media files: Skip caching (206 Partial Content can't be cached)
+  if (url.pathname.startsWith('/uploads/media/')) {
+    return;
+  }
+
   // Navigation requests (HTML): Network-first, fall back to cache
   // This ensures users always get the latest app version
   if (request.mode === 'navigate') {

@@ -4,6 +4,8 @@ import { Avatar, PrivacyBadge } from '../ui/SimpleComponents.jsx';
 import ImageLightbox from '../ui/ImageLightbox.jsx';
 import RippledLinkCard from './RippledLinkCard.jsx';
 import DropletWithEmbeds from './DropletWithEmbeds.jsx';
+import AudioPlayer from '../media/AudioPlayer.jsx';
+import VideoPlayer from '../media/VideoPlayer.jsx';
 
 const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], contacts = [], onShowProfile, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false, fetchAPI }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
@@ -470,13 +472,35 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               overflow: 'hidden',
             }}
           >
-            <DropletWithEmbeds
-              content={message.content}
-              participants={participants}
-              contacts={contacts}
-              onMentionClick={onShowProfile}
-              fetchAPI={fetchAPI}
-            />
+            {/* Text content (if any) */}
+            {message.content && (
+              <DropletWithEmbeds
+                content={message.content}
+                participants={participants}
+                contacts={contacts}
+                onMentionClick={onShowProfile}
+                fetchAPI={fetchAPI}
+              />
+            )}
+            {/* Media content (v2.7.0) */}
+            {message.media_type === 'audio' && message.media_url && (
+              <div style={{ marginTop: message.content ? '8px' : 0 }}>
+                <AudioPlayer
+                  src={message.media_url}
+                  duration={message.media_duration}
+                  isMobile={isMobile}
+                />
+              </div>
+            )}
+            {message.media_type === 'video' && message.media_url && (
+              <div style={{ marginTop: message.content ? '8px' : 0 }}>
+                <VideoPlayer
+                  src={message.media_url}
+                  duration={message.media_duration}
+                  isMobile={isMobile}
+                />
+              </div>
+            )}
           </div>
         )}
         {/* Reactions and Read Receipts Row */}
