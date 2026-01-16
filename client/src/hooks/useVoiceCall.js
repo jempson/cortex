@@ -55,6 +55,10 @@ export function useVoiceCall(waveId) {
     voiceCallService.toggleCamera();
   }, []);
 
+  const setScreenSharing = useCallback((isSharing) => {
+    voiceCallService.setScreenSharing(isSharing);
+  }, []);
+
   const changeMic = useCallback((deviceId) => {
     voiceCallService.changeMic(deviceId);
   }, []);
@@ -98,6 +102,7 @@ export function useVoiceCall(waveId) {
     participants: state.participants,
     isMuted: state.isMuted,
     isCameraOff: state.isCameraOff,
+    isScreenSharing: state.isScreenSharing,
     audioLevel: state.audioLevel,
     error: state.error,
     livekitToken: state.livekitToken,
@@ -121,6 +126,7 @@ export function useVoiceCall(waveId) {
     leaveCall,
     toggleMute,
     toggleCamera,
+    setScreenSharing,
     changeMic,
     changeCamera,
     changeSpeaker,

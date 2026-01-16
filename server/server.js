@@ -19,6 +19,7 @@ import webpush from 'web-push';
 import crypto from 'crypto';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
+import ffmpeg from 'fluent-ffmpeg';
 import { DatabaseSQLite } from './database-sqlite.js';
 import { getEmailService } from './email-service.js';
 
@@ -143,12 +144,14 @@ const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const AVATARS_DIR = path.join(UPLOADS_DIR, 'avatars');
 const DROPLETS_DIR = path.join(UPLOADS_DIR, 'droplets');
 const MESSAGES_DIR = path.join(UPLOADS_DIR, 'messages'); // Legacy alias
+const MEDIA_DIR = path.join(UPLOADS_DIR, 'media'); // Audio/Video recordings (v2.7.0)
 
 // Ensure uploads directories exist
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!fs.existsSync(AVATARS_DIR)) fs.mkdirSync(AVATARS_DIR, { recursive: true });
 if (!fs.existsSync(DROPLETS_DIR)) fs.mkdirSync(DROPLETS_DIR, { recursive: true });
 if (!fs.existsSync(MESSAGES_DIR)) fs.mkdirSync(MESSAGES_DIR, { recursive: true }); // Legacy support
+if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
 // Multer configuration for avatar uploads
 const avatarStorage = multer.memoryStorage();
@@ -176,6 +179,28 @@ const messageUpload = multer({
       cb(null, true);
     } else {
       cb(new Error('Invalid file type. Allowed: jpg, png, gif, webp'), false);
+    }
+  },
+});
+
+// Multer configuration for media uploads (audio/video recordings) - v2.7.0
+const mediaStorage = multer.memoryStorage();
+const mediaUpload = multer({
+  storage: mediaStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max (video can be larger)
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'audio/webm', 'audio/mp4', 'audio/ogg', 'audio/mpeg', 'audio/wav',
+      'video/webm', 'video/mp4', 'video/ogg'
+    ];
+    // Check if MIME type matches (handle codec specifications like "video/webm;codecs=vp8,opus")
+    const baseMimeType = file.mimetype.split(';')[0].trim();
+    console.log(`📹 Media upload: original=${file.mimetype}, base=${baseMimeType}, allowed=${allowedTypes.includes(baseMimeType)}`);
+    if (allowedTypes.includes(baseMimeType)) {
+      cb(null, true);
+    } else {
+      console.log(`❌ Media upload rejected: ${file.mimetype}`);
+      cb(new Error('Invalid file type. Allowed: webm, mp4, ogg, mpeg, wav (audio/video)'), false);
     }
   },
 });
@@ -1493,7 +1518,7 @@ class Database {
       handleHistory: [],
       lastHandleChange: null,
       isAdmin: this.users.users.length === 0, // First user is admin
-      preferences: { theme: 'firefly', fontSize: 'medium' },
+      preferences: { theme: 'serenity', fontSize: 'medium' },
       bio: null, // About me section (max 500 chars)
       avatarUrl: null, // Profile image URL
     };
@@ -1524,7 +1549,7 @@ class Database {
     if (!user) return null;
 
     if (!user.preferences) {
-      user.preferences = { theme: 'firefly', fontSize: 'medium' };
+      user.preferences = { theme: 'serenity', fontSize: 'medium' };
     }
     user.preferences = { ...user.preferences, ...preferences };
     this.saveUsers();
@@ -4146,7 +4171,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
 
     res.status(201).json({
       token,
-      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, role: user.role || (user.isAdmin ? 'admin' : 'user'), preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
+      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, role: user.role || (user.isAdmin ? 'admin' : 'user'), preferences: user.preferences || { theme: 'serenity', fontSize: 'medium' } },
     });
   } catch (err) {
     console.error('Registration error:', err);
@@ -4224,7 +4249,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     res.json({
       token,
       requirePasswordChange,
-      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: 'online', isAdmin: user.isAdmin, role: user.role || (user.isAdmin ? 'admin' : 'user'), preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } },
+      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: 'online', isAdmin: user.isAdmin, role: user.role || (user.isAdmin ? 'admin' : 'user'), preferences: user.preferences || { theme: 'serenity', fontSize: 'medium' } },
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -4235,7 +4260,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json({ id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, role: user.role || (user.isAdmin ? 'admin' : 'user'), preferences: user.preferences || { theme: 'firefly', fontSize: 'medium' } });
+  res.json({ id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, role: user.role || (user.isAdmin ? 'admin' : 'user'), preferences: user.preferences || { theme: 'serenity', fontSize: 'medium' } });
 });
 
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
@@ -5646,6 +5671,222 @@ app.post('/api/uploads', authenticateToken, (req, res, next) => {
   }
 });
 
+// ============ Media Upload (Audio/Video) - v2.7.0 ============
+// Upload audio/video recording for use in pings
+app.post('/api/uploads/media', authenticateToken, (req, res, next) => {
+  mediaUpload.single('media')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large. Maximum size is 50MB' });
+      }
+      return res.status(400).json({ error: err.message || 'File upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Determine media type from mimetype
+    const isVideo = req.file.mimetype.startsWith('video/');
+    const isAudio = req.file.mimetype.startsWith('audio/');
+
+    if (!isVideo && !isAudio) {
+      return res.status(400).json({ error: 'Invalid media type' });
+    }
+
+    // Enforce size limits: audio 10MB, video 50MB
+    if (isAudio && req.file.size > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Audio file too large. Maximum size is 10MB' });
+    }
+
+    // Get duration from request body (client-side calculated)
+    const duration = parseInt(req.body.duration) || null;
+    const timestamp = Date.now();
+
+    // For video files, transcode to MP4 for cross-browser compatibility
+    if (isVideo) {
+      const tempFilename = `temp-${user.id}-${timestamp}.webm`;
+      const tempFilepath = path.join(MEDIA_DIR, tempFilename);
+      const outputFilename = `${user.id}-${timestamp}.mp4`;
+      const outputFilepath = path.join(MEDIA_DIR, outputFilename);
+
+      // Write the uploaded file temporarily
+      fs.writeFileSync(tempFilepath, req.file.buffer);
+
+      console.log(`🎬 Transcoding video for ${user.handle}...`);
+
+      // Transcode to MP4 using FFmpeg
+      await new Promise((resolve, reject) => {
+        ffmpeg(tempFilepath)
+          .outputOptions([
+            '-c:v libx264',     // H.264 video codec (most compatible)
+            '-preset fast',     // Fast encoding preset
+            '-crf 23',          // Constant rate factor (quality)
+            '-c:a aac',         // AAC audio codec
+            '-b:a 128k',        // Audio bitrate
+            '-movflags +faststart', // Enable fast start for web streaming
+            '-y'                // Overwrite output file
+          ])
+          .output(outputFilepath)
+          .on('start', (cmd) => {
+            console.log(`🎬 FFmpeg command: ${cmd}`);
+          })
+          .on('end', () => {
+            // Clean up temp file
+            try { fs.unlinkSync(tempFilepath); } catch (e) {}
+            resolve();
+          })
+          .on('error', (err) => {
+            // Clean up temp file on error
+            try { fs.unlinkSync(tempFilepath); } catch (e) {}
+            reject(err);
+          })
+          .run();
+      });
+
+      const outputStats = fs.statSync(outputFilepath);
+      const mediaUrl = `/api/media/${outputFilename}`;
+
+      console.log(`🎬 Video transcoded by ${user.handle}: ${mediaUrl} (${Math.round(outputStats.size / 1024)}KB)`);
+
+      return res.json({
+        success: true,
+        url: mediaUrl,
+        type: 'video',
+        duration: duration,
+        size: outputStats.size
+      });
+    }
+
+    // For audio files, save directly (no transcoding needed)
+    const mimeToExt = {
+      'audio/webm': 'webm',
+      'audio/mp4': 'm4a',
+      'audio/ogg': 'ogg',
+      'audio/mpeg': 'mp3',
+      'audio/wav': 'wav',
+    };
+    const ext = mimeToExt[req.file.mimetype] || 'webm';
+    const filename = `${user.id}-${timestamp}.${ext}`;
+    const filepath = path.join(MEDIA_DIR, filename);
+
+    fs.writeFileSync(filepath, req.file.buffer);
+
+    const mediaUrl = `/api/media/${filename}`;
+
+    console.log(`🎬 Audio uploaded by ${user.handle}: ${mediaUrl} (${Math.round(req.file.size / 1024)}KB)`);
+
+    res.json({
+      success: true,
+      url: mediaUrl,
+      type: 'audio',
+      duration: duration,
+      size: req.file.size
+    });
+  } catch (err) {
+    console.error('Media upload error:', err);
+    res.status(500).json({ error: err.message || 'Failed to upload media' });
+  }
+});
+
+// ============ Media Streaming - v2.7.0 ============
+// Stream media file with HTTP Range support for seeking
+// Note: Uses custom auth that accepts token via query param (for <video>/<audio> elements)
+app.get('/api/media/:filename', (req, res) => {
+  try {
+    // Custom auth: Accept token from header OR query param
+    const authHeader = req.headers['authorization'];
+    const headerToken = authHeader && authHeader.split(' ')[1];
+    const queryToken = req.query.token;
+    const token = headerToken || queryToken;
+
+    if (!token) {
+      return res.status(401).json({ error: 'Access denied' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(403).json({ error: 'Invalid token' });
+    }
+
+    const filename = req.params.filename;
+
+    // Validate filename (prevent path traversal)
+    if (!/^[a-zA-Z0-9_-]+-\d+\.(webm|m4a|ogg|mp3|wav|mp4|ogv)$/.test(filename)) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    const filepath = path.join(MEDIA_DIR, filename);
+
+    if (!fs.existsSync(filepath)) {
+      return res.status(404).json({ error: 'Media not found' });
+    }
+
+    const stat = fs.statSync(filepath);
+    const fileSize = stat.size;
+
+    // Determine content type from extension
+    const extToMime = {
+      'webm': 'audio/webm',
+      'm4a': 'audio/mp4',
+      'ogg': 'audio/ogg',
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      'mp4': 'video/mp4',
+      'ogv': 'video/ogg',
+    };
+    const ext = filename.split('.').pop();
+    let contentType = extToMime[ext] || 'application/octet-stream';
+
+    // Handle video webm files
+    if (ext === 'webm') {
+      // Check if it's video by looking at the file or using the filename pattern
+      // For simplicity, webm could be either - browser will handle it
+      contentType = 'video/webm';
+    }
+
+    const range = req.headers.range;
+
+    if (range) {
+      // HTTP Range request for seeking
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = (end - start) + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+      });
+
+      const stream = fs.createReadStream(filepath, { start, end });
+      stream.pipe(res);
+    } else {
+      // Full file request
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+      });
+
+      fs.createReadStream(filepath).pipe(res);
+    }
+  } catch (err) {
+    console.error('Media streaming error:', err);
+    res.status(500).json({ error: 'Failed to stream media' });
+  }
+});
+
 app.post('/api/profile/password', authenticateToken, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const result = await db.changePassword(req.user.userId, currentPassword, newPassword);
@@ -5678,6 +5919,8 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
     'serenity', 'malsBrowncoat', 'zoesWarrior', 'washSky', 'kayleeFloweredDress',
     'jaynesKnitCap', 'inaraSilk', 'simonsClinic', 'riversMind', 'booksWisdom',
     'reaverRed', 'allianceWhite',
+    // Crossover Themes
+    'pipBoy',
     // Accessibility Themes
     'highContrast', 'amoled', 'blackAndWhite'
   ];
@@ -12543,8 +12786,15 @@ app.all('/api/pings/:id/burst', (req, res, next) => {
 // Create droplet
 app.post('/api/droplets', authenticateToken, (req, res) => {
   const waveId = sanitizeInput(req.body.wave_id || req.body.thread_id);
-  const content = req.body.content;
-  if (!waveId || !content) return res.status(400).json({ error: 'Wave ID and content required' });
+  const content = req.body.content || '';
+  const mediaUrl = req.body.mediaUrl;
+  const mediaType = req.body.mediaType;
+  const mediaDuration = req.body.mediaDuration;
+
+  // Require wave ID and either content or media (v2.7.0)
+  if (!waveId || (!content && !mediaUrl)) {
+    return res.status(400).json({ error: 'Wave ID and content or media required' });
+  }
 
   const wave = db.getWave(waveId);
   if (!wave) return res.status(404).json({ error: 'Wave not found' });
@@ -12560,7 +12810,7 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
 
   // E2EE: encrypted content is base64 and may be longer than plaintext
   const maxLength = req.body.encrypted ? 20000 : 10000;
-  if (content.length > maxLength) return res.status(400).json({ error: 'Droplet too long' });
+  if (content && content.length > maxLength) return res.status(400).json({ error: 'Droplet too long' });
 
   // For burst waves, default parent to root ping if no parent specified
   let parentId = req.body.parent_id ? sanitizeInput(req.body.parent_id) : null;
@@ -12578,6 +12828,10 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
     encrypted: !!req.body.encrypted,
     nonce: req.body.nonce || null,
     keyVersion: req.body.keyVersion || null,
+    // Media fields (v2.7.0)
+    mediaType: mediaType || null,
+    mediaUrl: mediaUrl || null,
+    mediaDuration: mediaDuration || null,
   });
 
   // Create in-app notifications for mentions, replies, and wave activity

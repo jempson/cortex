@@ -464,6 +464,71 @@
         --overlay-green: rgba(136, 200, 168, 0.15);
       }
 
+      /* Pip-Boy - Vault-Tec (Classic Green Phosphor Terminal) */
+      [data-theme="pipBoy"] {
+        --bg-base: #0a0f0a;
+        --bg-elevated: #0f150f;
+        --bg-surface: #141c14;
+        --bg-hover: #1a241a;
+        --bg-active: #202c20;
+        --bg-primary: #050805;
+        --bg-secondary: #0a0f0a;
+        --text-primary: #20ff20;
+        --text-secondary: #18d818;
+        --text-dim: #10a010;
+        --text-muted: #087808;
+        --border-primary: #185018;
+        --border-secondary: #206020;
+        --border-subtle: #104010;
+        --accent-amber: #ffa500;
+        --accent-teal: #30ff30;
+        --accent-green: #20ff20;
+        --accent-orange: #ff6600;
+        --accent-purple: #40c040;
+        --status-success: #20ff20;
+        --status-warning: #ffa500;
+        --status-error: #ff6600;
+        --status-info: #30ff30;
+        --glow-amber: rgba(255, 165, 0, 0.7);
+        --glow-teal: rgba(48, 255, 48, 0.7);
+        --glow-green: rgba(32, 255, 32, 0.8);
+        --glow-orange: rgba(255, 102, 0, 0.7);
+        --glow-purple: rgba(64, 192, 64, 0.7);
+        --overlay-amber: rgba(255, 165, 0, 0.18);
+        --overlay-teal: rgba(48, 255, 48, 0.18);
+        --overlay-green: rgba(32, 255, 32, 0.18);
+        --overlay-orange: rgba(255, 102, 0, 0.18);
+        --overlay-purple: rgba(64, 192, 64, 0.18);
+      }
+
+      /* ============ LiveKit Video Overrides ============ */
+      /* Prevent video cropping - target all possible LiveKit selectors */
+      .lk-participant-tile,
+      .lk-video-track,
+      [data-lk-participant-tile],
+      [data-lk-video-track] {
+        background: var(--bg-base) !important;
+      }
+
+      .lk-participant-tile video,
+      .lk-video-track video,
+      [data-lk-participant-tile] video,
+      [data-lk-video-track] video,
+      .lk-participant-media-video,
+      video[data-lk-facing-mode] {
+        object-fit: contain !important;
+        width: 100% !important;
+        height: 100% !important;
+        background: var(--bg-base) !important;
+      }
+
+      /* Override any inline styles LiveKit might apply */
+      .lk-participant-tile > div,
+      [data-lk-participant-tile] > div {
+        width: 100% !important;
+        height: 100% !important;
+      }
+
       /* ============ BASE STYLES ============ */
       * {
         margin: 0;
@@ -569,7 +634,7 @@
               theme = parsed && parsed.preferences && parsed.preferences.theme;
             }
           }
-          if (theme && ['firefly', 'highContrast', 'amoled', 'light', 'ocean', 'blackAndWhite', 'red', 'gray', 'burntUmber', 'sage'].indexOf(theme) !== -1) {
+          if (theme && ['serenity', 'malsBrowncoat', 'zoesWarrior', 'washSky', 'kayleeFloweredDress', 'jaynesKnitCap', 'inaraSilk', 'simonsClinic', 'riversMind', 'booksWisdom', 'reaverRed', 'allianceWhite', 'pipBoy', 'highContrast', 'amoled', 'blackAndWhite'].indexOf(theme) !== -1) {
             document.documentElement.setAttribute('data-theme', theme);
           }
         } catch (e) {

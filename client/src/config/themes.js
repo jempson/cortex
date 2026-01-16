@@ -54,6 +54,12 @@ export const THEMES = {
     description: 'The Empire - clinical bright, cold and oppressive',
   },
 
+  // Crossover Themes
+  pipBoy: {
+    name: 'Pip-Boy',
+    description: 'Vault-Tec approved - classic green phosphor terminal',
+  },
+
   // Accessibility Themes
   highContrast: {
     name: 'High Contrast',

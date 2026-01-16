@@ -20,6 +20,7 @@ class VoiceCallService {
     // Audio/Video state
     this.isMuted = false;
     this.isCameraOff = true; // Camera off by default
+    this.isScreenSharing = false;
     this.audioLevel = 0;
 
     // Server call status
@@ -78,6 +79,7 @@ class VoiceCallService {
       participants: this.participants,
       isMuted: this.isMuted,
       isCameraOff: this.isCameraOff,
+      isScreenSharing: this.isScreenSharing,
       audioLevel: this.audioLevel,
       error: this.error,
       livekitToken: this.livekitToken,
@@ -251,6 +253,7 @@ class VoiceCallService {
     this.currentWaveId = null;
     this.participants = [];
     this.audioLevel = 0;
+    this.isScreenSharing = false;
     this.error = null;
 
     // Hide dock when leaving call
@@ -275,6 +278,12 @@ class VoiceCallService {
     this.notifySubscribers();
     console.log(`🎥 [Service] Camera toggled: ${this.isCameraOff ? 'OFF' : 'ON'}`);
     // Note: Actual camera on/off happens in LiveKitCallRoom component via LiveKit API
+  }
+
+  setScreenSharing(isSharing) {
+    this.isScreenSharing = isSharing;
+    this.notifySubscribers();
+    console.log(`🖥️ [Service] Screen sharing: ${isSharing ? 'ON' : 'OFF'}`);
   }
 
   // ============ LIVEKIT ROOM CALLBACKS ============

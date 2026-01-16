@@ -7,6 +7,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-01-16
+
+### Added
+
+#### Media Pings - Voice and Video Messages
+
+**Overview:**
+Users can now record and send audio and video messages directly within waves. This adds a new dimension to conversations beyond text and images.
+
+**Key Features:**
+- **Voice Messages**: Record up to 5 minutes of audio with a single click
+- **Video Messages**: Record up to 2 minutes of video with selfie camera
+- **Recording Controls**: Start/stop, pause/resume, preview before sending
+- **Custom Playback**: Styled audio/video players matching Farhold aesthetic
+- **Playback Speed**: Audio player supports 0.75x, 1x, 1.25x, 1.5x, 2x speeds
+- **Video Fullscreen**: Full-screen playback with auto-hiding controls
+- **Seek Support**: HTTP Range requests for scrubbing through media
+- **Duration Display**: Shows recording length during capture and playback
+- **Device Selection**: Choose microphone and camera before recording via settings gear icon
+- **Server-side Transcoding**: Videos are transcoded to MP4 (H.264) for cross-browser compatibility
+- **Upload Status Indicator**: Shows "Uploading and transcoding video..." with spinner during processing
+
+**Implementation Files:**
+- `client/src/components/media/MediaRecorder.jsx`: NEW - Recording UI with preview and device selection (~450 lines)
+- `client/src/components/media/AudioPlayer.jsx`: NEW - Custom audio player (~250 lines)
+- `client/src/components/media/VideoPlayer.jsx`: NEW - Custom video player (~310 lines)
+- `client/src/components/media/CameraCapture.jsx`: NEW - Camera capture for image upload (~400 lines)
+- `client/src/components/droplets/Droplet.jsx`: Integrated media players into ping rendering
+- `client/src/components/waves/WaveView.jsx`: Added AUD/VID/CAM buttons and upload handling with status indicator
+- `server/server.js`: Added `/api/uploads/media` and `/api/media/:filename` endpoints with FFmpeg transcoding
+
+**Server Dependencies:**
+- `fluent-ffmpeg`: Node.js wrapper for FFmpeg
+- FFmpeg must be installed on server (`sudo apt install ffmpeg`)
+
+**Database Schema:**
+```sql
+ALTER TABLE pings ADD COLUMN media_type TEXT;       -- 'audio' or 'video'
+ALTER TABLE pings ADD COLUMN media_url TEXT;        -- Server path to file
+ALTER TABLE pings ADD COLUMN media_duration INTEGER; -- Duration in milliseconds
+ALTER TABLE pings ADD COLUMN media_encrypted INTEGER DEFAULT 0;
+```
+
+**API Endpoints:**
+- `POST /api/uploads/media`: Upload audio/video recording (auth required)
+  - Accepts: audio/webm, audio/mp4, audio/ogg, audio/mpeg, audio/wav, video/webm, video/mp4, video/ogg
+  - Size limits: 10MB audio, 50MB video
+  - Video files are transcoded to MP4 (H.264 + AAC) for cross-browser compatibility
+  - Returns: { url, type, duration, size }
+- `GET /api/media/:filename`: Stream media file with Range support (auth required)
+
+**User Flow:**
+1. Click AUD or VID button in wave compose area
+2. Optionally click gear icon to select microphone/camera
+3. Grant microphone/camera permissions when prompted
+4. Click "Start Recording" to begin
+5. Use Pause/Resume as needed
+6. Click "Stop" when finished
+7. Preview the recording
+8. Click "Send" to post or "Discard" to re-record
+9. Status indicator shows progress during upload/transcoding
+
+#### Camera Capture for Image Upload
+
+**Overview:**
+Take photos directly with your camera and upload them as images, in addition to selecting files from your device.
+
+**Key Features:**
+- **CAM Button**: New purple CAM button next to IMG button
+- **Live Viewfinder**: See camera preview before capturing
+- **Device Selection**: Choose which camera to use via settings
+- **Preview & Retake**: Review photo before uploading, option to retake
+- **Mobile Support**: Defaults to back camera on mobile devices
+
+**Implementation Files:**
+- `client/src/components/media/CameraCapture.jsx`: NEW - Camera capture UI component
+- `client/src/components/waves/WaveView.jsx`: Added CAM button and integration
+
+#### Screen Sharing in Voice/Video Calls
+
+**Overview:**
+Share your screen during LiveKit voice/video calls for presentations, demos, or collaboration.
+
+**Key Features:**
+- **Share Screen Button**: New button in both CallModal and DockedCallWindow
+- **Browser Picker**: Uses native browser screen/window picker
+- **Stop Sharing**: Toggle button to stop screen share
+- **Error Handling**: Gracefully handles user cancellation or permission denial
+
+**Implementation Files:**
+- `client/src/services/VoiceCallService.js`: Added isScreenSharing state and setScreenSharing method
+- `client/src/hooks/useVoiceCall.js`: Exposed setScreenSharing to React components
+- `client/src/components/calls/CallModal.jsx`: Added screen share button and LiveKit sync
+- `client/src/components/calls/DockedCallWindow.jsx`: Added screen share button and LiveKit sync
+
+#### Pip-Boy Theme (Crossover)
+
+**Overview:**
+New "Pip-Boy" theme inspired by Vault-Tec terminals from Fallout. Classic green phosphor CRT aesthetic.
+
+**Color Palette:**
+- Background: Deep black-green (#0a0f0a)
+- Primary text: Bright green (#20ff20)
+- Accent: Orange (#ffa500, #ff6600)
+- Glow effects: Green phosphor glow
+
+**Implementation Files:**
+- `client/index.html`: Added [data-theme="pipBoy"] CSS variables
+- `client/src/config/themes.js`: Added pipBoy theme entry
+
 ## [2.6.1] - 2026-01-15
 
 ### Added

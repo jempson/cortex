@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useState } from 'react';
 import { LiveKitRoom, useParticipants, useLocalParticipant, RoomAudioRenderer, ParticipantTile, useTracks } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 import { useDraggable } from '../../hooks/useDraggable.js';
@@ -60,9 +60,11 @@ const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children 
       <CallControls
         isMuted={voiceCall.isMuted}
         isCameraOff={voiceCall.isCameraOff}
+        isScreenSharing={voiceCall.isScreenSharing}
         setParticipants={voiceCall.setParticipants}
         setAudioLevel={voiceCall.setAudioLevel}
         setRoom={voiceCall.setRoom}
+        setScreenSharing={voiceCall.setScreenSharing}
       />
       {children}
     </LiveKitRoom>
@@ -70,7 +72,7 @@ const LiveKitCallRoom = React.memo(({ token, url, roomName, voiceCall, children 
 });
 
 // Call controls that sync with LiveKit
-const CallControls = ({ isMuted, isCameraOff, setParticipants, setAudioLevel, setRoom }) => {
+const CallControls = ({ isMuted, isCameraOff, isScreenSharing, setParticipants, setAudioLevel, setRoom, setScreenSharing }) => {
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
 
@@ -128,12 +130,43 @@ const CallControls = ({ isMuted, isCameraOff, setParticipants, setAudioLevel, se
     updateCamera();
   }, [isCameraOff, localParticipant]);
 
+  // Sync screen share state with LiveKit
+  React.useEffect(() => {
+    if (!localParticipant) return;
+
+    const updateScreenShare = async () => {
+      try {
+        const screenPub = localParticipant.getTrackPublication(Track.Source.ScreenShare);
+        const isCurrentlySharing = screenPub && !screenPub.isMuted;
+
+        if (isScreenSharing && !isCurrentlySharing) {
+          console.log('🖥️ Enabling screen share...');
+          await localParticipant.setScreenShareEnabled(true);
+          console.log('🖥️ Screen share enabled');
+        } else if (!isScreenSharing && isCurrentlySharing) {
+          console.log('🖥️ Disabling screen share...');
+          await localParticipant.setScreenShareEnabled(false);
+          console.log('🖥️ Screen share disabled');
+        }
+      } catch (err) {
+        console.error('🖥️ Failed to change screen share state:', err);
+        // If user cancelled or error occurred, reset the state
+        if (setScreenSharing) {
+          setScreenSharing(false);
+        }
+      }
+    };
+
+    updateScreenShare();
+  }, [isScreenSharing, localParticipant, setScreenSharing]);
+
   return null;
 };
 
 // Main DockedCallWindow component
 const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
   const windowRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // All hooks must be called unconditionally before any early returns
   const handlePositionChange = useCallback((newPos) => {
@@ -143,7 +176,7 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
   const { position, isDragging, handleMouseDown } = useDraggable(windowRef, {
     onPositionChange: handlePositionChange,
     initialPosition: voiceCall.dockPosition,
-    disabled: isMobile
+    disabled: isMobile || isFullscreen
   });
 
   const handleClose = useCallback(() => {
@@ -154,12 +187,20 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
     voiceCall.toggleDockSize();
   }, [voiceCall]);
 
+  const handleToggleFullscreen = useCallback(() => {
+    setIsFullscreen(prev => !prev);
+  }, []);
+
   const handleToggleMute = useCallback(() => {
     voiceCall.toggleMute();
   }, [voiceCall]);
 
   const handleToggleCamera = useCallback(() => {
     voiceCall.toggleCamera();
+  }, [voiceCall]);
+
+  const handleToggleScreenShare = useCallback(() => {
+    voiceCall.setScreenSharing(!voiceCall.isScreenSharing);
   }, [voiceCall]);
 
   const handleLeaveCall = useCallback(() => {
@@ -172,8 +213,25 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
     return null;
   }
 
+  // Fullscreen style
+  const fullscreenStyle = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100vw',
+    height: '100vh',
+    zIndex: 2000,
+    background: 'var(--bg-base)',
+    border: 'none',
+    boxShadow: 'none',
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
   // Mobile: fixed bottom position
-  const containerStyle = isMobile ? {
+  const containerStyle = isFullscreen ? fullscreenStyle : (isMobile ? {
     position: 'fixed',
     bottom: 0,
     left: 0,
@@ -201,7 +259,7 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
     cursor: isDragging ? 'grabbing' : 'default',
     display: 'flex',
     flexDirection: 'column',
-  };
+  });
 
   const headerStyle = {
     padding: isMobile ? '8px 12px' : '10px 14px',
@@ -283,27 +341,39 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
                 </button>
               </>
             )}
+            {!voiceCall.dockMinimized && (
+              <button
+                style={buttonStyle}
+                onClick={handleToggleFullscreen}
+                data-draggable="false"
+                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              >
+                {isFullscreen ? '⊡' : '⛶'}
+              </button>
+            )}
+            {!isFullscreen && (
+              <button
+                style={buttonStyle}
+                onClick={handleToggleSize}
+                data-draggable="false"
+                title={voiceCall.dockMinimized ? 'Maximize' : 'Minimize'}
+              >
+                {voiceCall.dockMinimized ? '□' : '_'}
+              </button>
+            )}
             <button
               style={buttonStyle}
-              onClick={handleToggleSize}
+              onClick={isFullscreen ? handleToggleFullscreen : handleClose}
               data-draggable="false"
-              title={voiceCall.dockMinimized ? 'Maximize' : 'Minimize'}
-            >
-              {voiceCall.dockMinimized ? '□' : '_'}
-            </button>
-            <button
-              style={buttonStyle}
-              onClick={handleClose}
-              data-draggable="false"
-              title="Close dock"
+              title={isFullscreen ? 'Exit fullscreen' : 'Close dock'}
             >
               ×
             </button>
           </div>
         </div>
 
-        {/* Video tiles area - only shown when maximized */}
-        {!voiceCall.dockMinimized && (
+        {/* Video tiles area - only shown when maximized or fullscreen */}
+        {(isFullscreen || !voiceCall.dockMinimized) && (
           <>
             <div style={{
               flex: 1,
@@ -352,6 +422,17 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
               <button
                 style={{
                   ...controlButtonStyle,
+                  background: voiceCall.isScreenSharing ? 'var(--accent-green)' : 'transparent',
+                  borderColor: voiceCall.isScreenSharing ? 'var(--accent-green)' : 'var(--accent-teal)',
+                  color: voiceCall.isScreenSharing ? 'var(--text-primary)' : 'var(--accent-teal)',
+                }}
+                onClick={handleToggleScreenShare}
+              >
+                {voiceCall.isScreenSharing ? '🖥️ Stop Share' : '🖥️ Share'}
+              </button>
+              <button
+                style={{
+                  ...controlButtonStyle,
                   background: 'var(--accent-red)',
                   borderColor: 'var(--accent-red)',
                   color: 'var(--text-primary)',
@@ -368,8 +449,10 @@ const DockedCallWindow = ({ voiceCall, isMobile, user }) => {
   );
 };
 
-// Video tiles component
+// Video tiles component with focus capability
 const VideoTiles = () => {
+  const [focusedTrackId, setFocusedTrackId] = useState(null);
+
   const tracks = useTracks([
     { source: Track.Source.Camera, withPlaceholder: false },
     { source: Track.Source.ScreenShare, withPlaceholder: false },
@@ -381,6 +464,11 @@ const VideoTiles = () => {
     return track && !track.isMuted && trackRef.publication?.isSubscribed;
   });
 
+  // Handle click to focus/unfocus
+  const handleTrackClick = (trackId) => {
+    setFocusedTrackId(prev => prev === trackId ? null : trackId);
+  };
+
   if (activeTracks.length === 0) {
     return (
       <div style={{ padding: '20px', color: 'var(--text-dim)', textAlign: 'center', width: '100%' }}>
@@ -389,29 +477,166 @@ const VideoTiles = () => {
     );
   }
 
-  return (
-    <>
-      {activeTracks.map((trackRef) => (
+  // Find focused track
+  const focusedTrack = focusedTrackId
+    ? activeTracks.find(t => t.publication.trackSid === focusedTrackId)
+    : null;
+  const otherTracks = focusedTrack
+    ? activeTracks.filter(t => t.publication.trackSid !== focusedTrackId)
+    : activeTracks;
+
+  // If there's a focused track, show it large with thumbnails
+  if (focusedTrack) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '8px' }}>
+        {/* Focused video - main area */}
         <div
-          key={trackRef.publication.trackSid}
           style={{
-            width: activeTracks.length === 1 ? '100%' : 'calc(50% - 4px)',
-            minHeight: '150px',
+            flex: 1,
             position: 'relative',
+            background: 'var(--bg-base)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            border: '2px solid var(--accent-teal)',
+            borderRadius: '4px',
+            overflow: 'hidden',
           }}
+          onClick={() => handleTrackClick(focusedTrackId)}
+          title="Click to unfocus"
         >
           <ParticipantTile
-            trackRef={trackRef}
+            trackRef={focusedTrack}
             style={{
               width: '100%',
               height: '100%',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-subtle)',
+              background: 'transparent',
             }}
           />
+          {/* Unfocus hint */}
+          <div style={{
+            position: 'absolute',
+            top: '8px',
+            right: '8px',
+            background: 'rgba(0,0,0,0.6)',
+            color: 'var(--accent-teal)',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '0.7rem',
+            fontFamily: 'monospace',
+          }}>
+            Click to unfocus
+          </div>
         </div>
-      ))}
-    </>
+
+        {/* Thumbnail strip */}
+        {otherTracks.length > 0 && (
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            height: '100px',
+            flexShrink: 0,
+          }}>
+            {otherTracks.map((trackRef) => (
+              <div
+                key={trackRef.publication.trackSid}
+                style={{
+                  width: '140px',
+                  height: '100%',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '4px',
+                  overflow: 'hidden',
+                  background: 'var(--bg-surface)',
+                }}
+                onClick={() => handleTrackClick(trackRef.publication.trackSid)}
+                title="Click to focus"
+              >
+                <ParticipantTile
+                  trackRef={trackRef}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    background: 'transparent',
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // No focused track - show grid layout
+  // Calculate grid based on number of tracks
+  const getGridStyle = (count) => {
+    if (count === 1) {
+      return { gridTemplateColumns: '1fr' };
+    } else if (count === 2) {
+      return { gridTemplateColumns: '1fr 1fr' };
+    } else if (count <= 4) {
+      return { gridTemplateColumns: '1fr 1fr' };
+    } else {
+      return { gridTemplateColumns: 'repeat(3, 1fr)' };
+    }
+  };
+
+  return (
+    <div style={{
+      display: 'grid',
+      ...getGridStyle(activeTracks.length),
+      gap: '8px',
+      height: '100%',
+      alignContent: 'center',
+    }}>
+      {activeTracks.map((trackRef) => {
+        const isScreenShare = trackRef.source === Track.Source.ScreenShare;
+        return (
+          <div
+            key={trackRef.publication.trackSid}
+            style={{
+              position: 'relative',
+              aspectRatio: isScreenShare ? '16/9' : '4/3',
+              minHeight: '120px',
+              maxHeight: activeTracks.length === 1 ? '100%' : '300px',
+              cursor: 'pointer',
+              border: '1px solid var(--border-primary)',
+              borderRadius: '4px',
+              overflow: 'hidden',
+              background: 'var(--bg-surface)',
+            }}
+            onClick={() => handleTrackClick(trackRef.publication.trackSid)}
+            title="Click to focus"
+          >
+            <ParticipantTile
+              trackRef={trackRef}
+              style={{
+                width: '100%',
+                height: '100%',
+                background: 'transparent',
+              }}
+            />
+            {/* Source label */}
+            <div style={{
+              position: 'absolute',
+              bottom: '4px',
+              left: '4px',
+              background: 'rgba(0,0,0,0.6)',
+              color: 'var(--text-secondary)',
+              padding: '2px 6px',
+              borderRadius: '3px',
+              fontSize: '0.65rem',
+              fontFamily: 'monospace',
+            }}>
+              {isScreenShare ? '🖥️ Screen' : '📷 Camera'} • {trackRef.participant?.name || trackRef.participant?.identity || 'Unknown'}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 };
 

@@ -1309,6 +1309,21 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Audio encryption toggle added to waves table');
     }
+
+    // v2.7.0 - Media Pings: Add media fields to pings table
+    const pingsColumnsV270 = this.db.prepare(`PRAGMA table_info(pings)`).all();
+    const hasMediaTypeColumn = pingsColumnsV270.some(c => c.name === 'media_type');
+
+    if (!hasMediaTypeColumn) {
+      console.log('📝 Adding media fields to pings table (v2.7.0)...');
+      this.db.exec(`
+        ALTER TABLE pings ADD COLUMN media_type TEXT;
+        ALTER TABLE pings ADD COLUMN media_url TEXT;
+        ALTER TABLE pings ADD COLUMN media_duration INTEGER;
+        ALTER TABLE pings ADD COLUMN media_encrypted INTEGER DEFAULT 0;
+      `);
+      console.log('✅ Media fields added to pings table');
+    }
   }
 
   prepareStatements() {
@@ -4209,6 +4224,11 @@ export class DatabaseSQLite {
         keyVersion: d.key_version,
         isBot: isBot,
         botId: d.bot_id || undefined,
+        // Media fields (v2.7.0)
+        media_type: d.media_type,
+        media_url: d.media_url,
+        media_duration: d.media_duration,
+        media_encrypted: d.media_encrypted === 1,
       };
     });
 
@@ -4287,6 +4307,11 @@ export class DatabaseSQLite {
       encrypted: data.encrypted ? 1 : 0,
       nonce: data.nonce || null,
       keyVersion: data.keyVersion || null,
+      // Media fields (v2.7.0)
+      mediaType: data.mediaType || null,       // 'audio', 'video', or null
+      mediaUrl: data.mediaUrl || null,
+      mediaDuration: data.mediaDuration || null,
+      mediaEncrypted: data.mediaEncrypted ? 1 : 0,
     };
 
     // Check if parent is a remote droplet (exists in remote_pings but not in droplets)
@@ -4305,17 +4330,17 @@ export class DatabaseSQLite {
       this.db.exec('PRAGMA foreign_keys = OFF');
       try {
         this.db.prepare(`
-          INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version, bot_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
-        `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion, data.botId || null);
+          INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version, bot_id, media_type, media_url, media_duration, media_encrypted)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion, data.botId || null, droplet.mediaType, droplet.mediaUrl, droplet.mediaDuration, droplet.mediaEncrypted);
       } finally {
         this.db.exec('PRAGMA foreign_keys = ON');
       }
     } else {
       this.db.prepare(`
-        INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version, bot_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?)
-      `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion, data.botId || null);
+        INSERT INTO pings (id, wave_id, parent_id, author_id, content, privacy, version, created_at, reactions, encrypted, nonce, key_version, bot_id, media_type, media_url, media_duration, media_encrypted)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(droplet.id, droplet.waveId, droplet.parentId, droplet.authorId, droplet.content, droplet.privacy, droplet.version, droplet.createdAt, droplet.encrypted, droplet.nonce, droplet.keyVersion, data.botId || null, droplet.mediaType, droplet.mediaUrl, droplet.mediaDuration, droplet.mediaEncrypted);
     }
 
     // Author has read their own ping (skip for bot pings)
@@ -4343,6 +4368,11 @@ export class DatabaseSQLite {
         edited_at: droplet.editedAt,
         isBot: true,
         botId: data.botId,
+        // Media fields (v2.7.0)
+        media_type: droplet.mediaType,
+        media_url: droplet.mediaUrl,
+        media_duration: droplet.mediaDuration,
+        media_encrypted: droplet.mediaEncrypted,
       };
     }
 
@@ -4358,6 +4388,11 @@ export class DatabaseSQLite {
       wave_id: droplet.waveId,
       created_at: droplet.createdAt,
       edited_at: droplet.editedAt,
+      // Media fields (v2.7.0)
+      media_type: droplet.mediaType,
+      media_url: droplet.mediaUrl,
+      media_duration: droplet.mediaDuration,
+      media_encrypted: droplet.mediaEncrypted,
     };
   }
 
@@ -4403,6 +4438,11 @@ export class DatabaseSQLite {
       encrypted: d.encrypted === 1,
       nonce: d.nonce,
       keyVersion: d.key_version,
+      // Media fields (v2.7.0)
+      media_type: d.media_type,
+      media_url: d.media_url,
+      media_duration: d.media_duration,
+      media_encrypted: d.media_encrypted === 1,
     };
   }
 
