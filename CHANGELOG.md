@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned Features
+
+#### Offline Media Drafts
+Save media recordings locally when offline and automatically upload when back online.
+
+**Proposed Implementation:**
+- Use IndexedDB to persist recorded blobs and draft metadata (waveId, content, timestamp)
+- Detect offline state via `navigator.onLine` or failed upload attempts
+- Save to drafts with "Saved to Drafts" user feedback
+- Add Drafts indicator/panel in UI to view, manage, and delete pending uploads
+- Use Service Worker with Background Sync API for automatic upload on reconnect
+- Show upload progress for queued drafts
+- Handle E2EE waves with cached session keys
+- Graceful handling of partial failures
+
+**Files to create/modify:**
+- `client/src/components/waves/WaveView.jsx` - Draft save logic, drafts UI
+- `client/public/sw.js` - Background sync registration
+- `client/src/utils/drafts.js` - NEW - IndexedDB storage layer for drafts
+- `client/src/components/ui/DraftsPanel.jsx` - NEW - Draft management UI
+
 ## [2.7.1] - 2026-01-16
 
 ### Fixed
