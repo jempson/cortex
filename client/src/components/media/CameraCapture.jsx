@@ -19,10 +19,12 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [capturedBlob, setCapturedBlob] = useState(null);
   const [isStreamActive, setIsStreamActive] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  const containerRef = useRef(null);
 
   // Enumerate available video devices
   const enumerateDevices = useCallback(async () => {
@@ -170,13 +172,48 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
     };
   }, []);
 
+  // Toggle fullscreen
+  const toggleFullscreen = useCallback(() => {
+    if (!containerRef.current) return;
+
+    if (!isFullscreen) {
+      if (containerRef.current.requestFullscreen) {
+        containerRef.current.requestFullscreen();
+      } else if (containerRef.current.webkitRequestFullscreen) {
+        containerRef.current.webkitRequestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+    }
+  }, [isFullscreen]);
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement || !!document.webkitFullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   // Styles
   const containerStyle = {
-    background: 'var(--bg-elevated)',
-    border: '1px solid var(--border-primary)',
-    borderRadius: '8px',
-    padding: isMobile ? '16px' : '12px',
-    marginBottom: '12px',
+    background: isFullscreen ? '#000' : 'var(--bg-elevated)',
+    border: isFullscreen ? 'none' : '1px solid var(--border-primary)',
+    borderRadius: isFullscreen ? 0 : '8px',
+    padding: isFullscreen ? '0' : (isMobile ? '16px' : '12px'),
+    marginBottom: isFullscreen ? 0 : '12px',
+    height: isFullscreen ? '100vh' : 'auto',
+    display: isFullscreen ? 'flex' : 'block',
+    flexDirection: 'column',
   };
 
   const headerStyle = {
@@ -184,17 +221,20 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '12px',
+    padding: isFullscreen ? '12px' : 0,
+    background: isFullscreen ? 'rgba(0,0,0,0.7)' : 'transparent',
   };
 
   const viewfinderStyle = {
     width: '100%',
-    maxWidth: '400px',
-    aspectRatio: '4/3',
-    borderRadius: '8px',
+    maxWidth: isFullscreen ? '100%' : '400px',
+    maxHeight: isFullscreen ? 'calc(100vh - 140px)' : (isMobile ? '50vh' : '400px'),
+    borderRadius: isFullscreen ? 0 : '8px',
     background: '#000',
-    objectFit: 'cover',
+    objectFit: 'contain', // Show full image without cropping
     display: 'block',
-    margin: '0 auto 12px',
+    margin: '0 auto',
+    cursor: 'pointer',
   };
 
   const controlsStyle = {
@@ -202,6 +242,9 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
     justifyContent: 'center',
     gap: '12px',
     flexWrap: 'wrap',
+    padding: isFullscreen ? '12px' : 0,
+    marginTop: isFullscreen ? 'auto' : 0,
+    background: isFullscreen ? 'rgba(0,0,0,0.7)' : 'transparent',
   };
 
   const buttonStyle = {
@@ -238,45 +281,62 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
   };
 
   return (
-    <div style={containerStyle}>
+    <div ref={containerRef} style={containerStyle}>
       {/* Header */}
       <div style={headerStyle}>
-        <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+        <span style={{ color: isFullscreen ? '#fff' : 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
           Take Photo
         </span>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
-            onClick={() => setShowSettings(!showSettings)}
+            onClick={toggleFullscreen}
             style={{
-              background: showSettings ? 'var(--bg-secondary)' : 'transparent',
+              background: 'transparent',
               border: 'none',
-              color: 'var(--text-dim)',
+              color: isFullscreen ? '#fff' : 'var(--text-dim)',
               cursor: 'pointer',
               fontSize: '1rem',
               padding: '4px 6px',
               borderRadius: '4px',
             }}
-            title="Camera Settings"
+            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
           >
-            ⚙️
+            {isFullscreen ? '⛶' : '⛶'}
           </button>
+          {!isFullscreen && (
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              style={{
+                background: showSettings ? 'var(--bg-secondary)' : 'transparent',
+                border: 'none',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                padding: '4px 6px',
+                borderRadius: '4px',
+              }}
+              title="Camera Settings"
+            >
+              ⚙️
+            </button>
+          )}
           <button
-            onClick={handleCancel}
+            onClick={isFullscreen ? toggleFullscreen : handleCancel}
             style={{
               background: 'transparent',
               border: 'none',
-              color: 'var(--text-dim)',
+              color: isFullscreen ? '#fff' : 'var(--text-dim)',
               cursor: 'pointer',
               fontSize: '1.2rem',
             }}
           >
-            X
+            ✕
           </button>
         </div>
       </div>
 
       {/* Device Settings Panel */}
-      {showSettings && (
+      {showSettings && !isFullscreen && (
         <div style={{
           padding: '12px',
           background: 'var(--bg-secondary)',
@@ -333,7 +393,7 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
       )}
 
       {/* Error message */}
-      {error && (
+      {error && !isFullscreen && (
         <div style={{
           padding: '8px 12px',
           background: 'var(--error-bg)',
@@ -353,11 +413,18 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
       )}
 
       {/* Viewfinder / Preview */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: isFullscreen ? 0 : '12px',
+        flex: isFullscreen ? 1 : 'none',
+      }}>
         {!previewUrl ? (
           <video
             ref={videoRef}
             style={viewfinderStyle}
+            onClick={toggleFullscreen}
             muted
             playsInline
             autoPlay
@@ -366,6 +433,7 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
           <img
             src={previewUrl}
             style={viewfinderStyle}
+            onClick={toggleFullscreen}
             alt="Captured photo"
           />
         )}

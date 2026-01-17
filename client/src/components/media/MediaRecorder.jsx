@@ -25,6 +25,7 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedMic, setSelectedMic] = useState('default');
   const [selectedCamera, setSelectedCamera] = useState('default');
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -33,6 +34,7 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
   const videoPreviewRef = useRef(null);
   const startTimeRef = useRef(null);
   const mimeTypeRef = useRef(null);
+  const containerRef = useRef(null);
 
   // Enumerate available media devices
   const enumerateDevices = useCallback(async () => {
@@ -253,13 +255,48 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
     if (onCancel) onCancel();
   }, [stopRecording, stopMediaStream, discardRecording, onCancel]);
 
+  // Toggle fullscreen (for video only)
+  const toggleFullscreen = useCallback(() => {
+    if (type !== 'video' || !containerRef.current) return;
+
+    if (!isFullscreen) {
+      if (containerRef.current.requestFullscreen) {
+        containerRef.current.requestFullscreen();
+      } else if (containerRef.current.webkitRequestFullscreen) {
+        containerRef.current.webkitRequestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+    }
+  }, [type, isFullscreen]);
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement || !!document.webkitFullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   // Styles
   const containerStyle = {
-    background: 'var(--bg-elevated)',
-    border: '1px solid var(--border-primary)',
-    borderRadius: '8px',
-    padding: isMobile ? '16px' : '12px',
-    marginBottom: '12px',
+    background: isFullscreen ? '#000' : 'var(--bg-elevated)',
+    border: isFullscreen ? 'none' : '1px solid var(--border-primary)',
+    borderRadius: isFullscreen ? 0 : '8px',
+    padding: isFullscreen ? '0' : (isMobile ? '16px' : '12px'),
+    marginBottom: isFullscreen ? 0 : '12px',
+    height: isFullscreen ? '100vh' : 'auto',
+    display: isFullscreen ? 'flex' : 'block',
+    flexDirection: 'column',
   };
 
   const headerStyle = {
@@ -267,6 +304,8 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '12px',
+    padding: isFullscreen ? '12px' : 0,
+    background: isFullscreen ? 'rgba(0,0,0,0.7)' : 'transparent',
   };
 
   const timerStyle = {
@@ -282,6 +321,9 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
     justifyContent: 'center',
     gap: '12px',
     flexWrap: 'wrap',
+    padding: isFullscreen ? '12px' : 0,
+    marginTop: isFullscreen ? 'auto' : 0,
+    background: isFullscreen ? 'rgba(0,0,0,0.7)' : 'transparent',
   };
 
   const buttonStyle = {
@@ -319,54 +361,74 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
 
   const previewStyle = {
     width: '100%',
-    maxWidth: type === 'video' ? '400px' : '100%',
-    maxHeight: isMobile ? '40vh' : '300px', // Limit height to keep controls visible
+    maxWidth: isFullscreen ? '100%' : (type === 'video' ? '400px' : '100%'),
+    maxHeight: isFullscreen ? 'calc(100vh - 180px)' : (isMobile ? '40vh' : '300px'),
     objectFit: 'contain',
-    borderRadius: '4px',
+    borderRadius: isFullscreen ? 0 : '4px',
     background: 'var(--bg-primary)',
-    marginBottom: '12px',
+    marginBottom: isFullscreen ? 0 : '12px',
+    cursor: type === 'video' ? 'pointer' : 'default',
   };
 
   return (
-    <div style={containerStyle}>
+    <div ref={containerRef} style={containerStyle}>
       {/* Header */}
       <div style={headerStyle}>
-        <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+        <span style={{ color: isFullscreen ? '#fff' : 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
           {type === 'video' ? 'Record Video' : 'Record Audio'}
         </span>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {type === 'video' && (
+            <button
+              onClick={toggleFullscreen}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: isFullscreen ? '#fff' : 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                padding: '4px 6px',
+                borderRadius: '4px',
+              }}
+              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+            >
+              ⛶
+            </button>
+          )}
+          {!isFullscreen && (
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              style={{
+                background: showSettings ? 'var(--bg-secondary)' : 'transparent',
+                border: 'none',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                padding: '4px 6px',
+                borderRadius: '4px',
+              }}
+              title="Device Settings"
+            >
+              ⚙️
+            </button>
+          )}
           <button
-            onClick={() => setShowSettings(!showSettings)}
-            style={{
-              background: showSettings ? 'var(--bg-secondary)' : 'transparent',
-              border: 'none',
-              color: 'var(--text-dim)',
-              cursor: 'pointer',
-              fontSize: '1rem',
-              padding: '4px 6px',
-              borderRadius: '4px',
-            }}
-            title="Device Settings"
-          >
-            ⚙️
-          </button>
-          <button
-            onClick={handleCancel}
+            onClick={isFullscreen ? toggleFullscreen : handleCancel}
             style={{
               background: 'transparent',
               border: 'none',
-              color: 'var(--text-dim)',
+              color: isFullscreen ? '#fff' : 'var(--text-dim)',
               cursor: 'pointer',
               fontSize: '1.2rem',
             }}
           >
-            X
+            ✕
           </button>
         </div>
       </div>
 
       {/* Device Settings Panel */}
-      {showSettings && (
+      {showSettings && !isFullscreen && (
         <div style={{
           padding: '12px',
           background: 'var(--bg-secondary)',
@@ -474,7 +536,7 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
       )}
 
       {/* Error message */}
-      {error && (
+      {error && !isFullscreen && (
         <div style={{
           padding: '8px 12px',
           background: 'var(--error-bg)',
@@ -495,11 +557,18 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
 
       {/* Video preview (live during recording or playback) */}
       {type === 'video' && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          marginBottom: isFullscreen ? 0 : '12px',
+          flex: isFullscreen ? 1 : 'none',
+        }}>
           {!previewUrl ? (
             <video
               ref={videoPreviewRef}
               style={previewStyle}
+              onClick={toggleFullscreen}
               muted
               playsInline
             />
@@ -507,6 +576,7 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
             <video
               src={previewUrl}
               style={previewStyle}
+              onClick={toggleFullscreen}
               controls
               playsInline
             />
