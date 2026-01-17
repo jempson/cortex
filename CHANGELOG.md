@@ -133,6 +133,16 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.7.2] - 2026-01-17
+
+### Fixed
+- Camera capture cropping vertical/portrait photos to horizontal (removed fixed 4:3 aspect ratio)
+- Changed camera preview from `objectFit: cover` to `contain` to show full uncropped image
+
+### Added
+- Fullscreen mode for camera capture (tap viewfinder or ⛶ button)
+- Fullscreen mode for video recording (tap preview or ⛶ button)
+
 ## [2.7.1] - 2026-01-16
 
 ### Fixed
