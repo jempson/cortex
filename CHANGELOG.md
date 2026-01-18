@@ -133,6 +133,20 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.7.3] - 2026-01-17
+
+### Fixed
+- Camera/video recording controls hidden on low resolution screens requiring zoom to see buttons
+- Replaced browser Fullscreen API with fixed overlay approach for expanded mode
+- Controls now use flex layout with `flexShrink: 0` to ensure they always remain visible
+- Preview area uses `flex: 1` with `minHeight: 0` to shrink when needed on small screens
+- Video timer now overlays on video preview instead of pushing controls off screen
+- Video pings not displaying in breakout/burst waves (missing media fields in `getDropletsForBreakoutWave`)
+
+### Changed
+- Expand button icon now shows ⊡ when expanded (collapse) vs ⛶ when normal (expand)
+- Video recording timer displays as overlay on video in both normal and expanded modes
+
 ## [2.7.2] - 2026-01-17
 
 ### Fixed

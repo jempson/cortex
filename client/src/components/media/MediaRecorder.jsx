@@ -1,9 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 /**
- * MediaRecorder Component (v2.7.0)
+ * MediaRecorder Component (v2.7.3)
  *
  * Records audio or video messages for pings.
+ * Uses fixed overlay for expanded mode to ensure controls visibility on all screens.
  *
  * Props:
  * - type: 'audio' | 'video' - Recording type
@@ -25,7 +26,7 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedMic, setSelectedMic] = useState('default');
   const [selectedCamera, setSelectedCamera] = useState('default');
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -34,7 +35,6 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
   const videoPreviewRef = useRef(null);
   const startTimeRef = useRef(null);
   const mimeTypeRef = useRef(null);
-  const containerRef = useRef(null);
 
   // Enumerate available media devices
   const enumerateDevices = useCallback(async () => {
@@ -255,60 +255,64 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
     if (onCancel) onCancel();
   }, [stopRecording, stopMediaStream, discardRecording, onCancel]);
 
-  // Toggle fullscreen (for video only)
-  const toggleFullscreen = useCallback(() => {
-    if (type !== 'video' || !containerRef.current) return;
+  // Toggle expanded mode (for video only - fixed overlay instead of browser fullscreen)
+  const toggleExpanded = useCallback(() => {
+    if (type !== 'video') return;
+    setIsExpanded(prev => !prev);
+  }, [type]);
 
-    if (!isFullscreen) {
-      if (containerRef.current.requestFullscreen) {
-        containerRef.current.requestFullscreen();
-      } else if (containerRef.current.webkitRequestFullscreen) {
-        containerRef.current.webkitRequestFullscreen();
-      }
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      }
-    }
-  }, [type, isFullscreen]);
-
-  // Listen for fullscreen changes
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement || !!document.webkitFullscreenElement);
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-    };
-  }, []);
-
-  // Styles
-  const containerStyle = {
-    background: isFullscreen ? '#000' : 'var(--bg-elevated)',
-    border: isFullscreen ? 'none' : '1px solid var(--border-primary)',
-    borderRadius: isFullscreen ? 0 : '8px',
-    padding: isFullscreen ? '0' : (isMobile ? '16px' : '12px'),
-    marginBottom: isFullscreen ? 0 : '12px',
-    height: isFullscreen ? '100vh' : 'auto',
-    display: isFullscreen ? 'flex' : 'block',
+  // Styles - using fixed overlay for expanded mode to ensure controls visibility
+  const expandedContainerStyle = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100vw',
+    height: '100vh',
+    zIndex: 2000,
+    background: '#000',
+    display: 'flex',
     flexDirection: 'column',
   };
+
+  const normalContainerStyle = {
+    background: 'var(--bg-elevated)',
+    border: '1px solid var(--border-primary)',
+    borderRadius: '8px',
+    padding: isMobile ? '16px' : '12px',
+    marginBottom: '12px',
+  };
+
+  const containerStyle = isExpanded ? expandedContainerStyle : normalContainerStyle;
 
   const headerStyle = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '12px',
-    padding: isFullscreen ? '12px' : 0,
-    background: isFullscreen ? 'rgba(0,0,0,0.7)' : 'transparent',
+    marginBottom: isExpanded ? 0 : '12px',
+    padding: isExpanded ? '12px 16px' : 0,
+    background: isExpanded ? 'rgba(0,0,0,0.8)' : 'transparent',
+    flexShrink: 0,
   };
 
-  const timerStyle = {
+  // Timer style - for video, always overlay on video; for audio, show below
+  const videoTimerStyle = {
+    position: 'absolute',
+    top: '12px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    fontSize: isMobile ? '1.5rem' : '1.25rem',
+    fontFamily: 'monospace',
+    color: isRecording ? (isPaused ? 'var(--accent-amber)' : 'var(--accent-red)') : '#fff',
+    textAlign: 'center',
+    background: 'rgba(0,0,0,0.6)',
+    padding: '6px 16px',
+    borderRadius: '4px',
+    zIndex: 10,
+  };
+
+  const audioTimerStyle = {
     fontSize: isMobile ? '2rem' : '1.5rem',
     fontFamily: 'monospace',
     color: isRecording ? (isPaused ? 'var(--accent-amber)' : 'var(--accent-red)') : 'var(--text-primary)',
@@ -321,9 +325,9 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
     justifyContent: 'center',
     gap: '12px',
     flexWrap: 'wrap',
-    padding: isFullscreen ? '12px' : 0,
-    marginTop: isFullscreen ? 'auto' : 0,
-    background: isFullscreen ? 'rgba(0,0,0,0.7)' : 'transparent',
+    padding: isExpanded ? '16px' : 0,
+    background: isExpanded ? 'rgba(0,0,0,0.8)' : 'transparent',
+    flexShrink: 0,
   };
 
   const buttonStyle = {
@@ -359,43 +363,55 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
     border: '1px solid var(--accent-amber)',
   };
 
+  const videoPreviewContainerStyle = {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flex: isExpanded ? 1 : 'none',
+    minHeight: isExpanded ? 0 : 'auto', // Allow shrinking in flex
+    overflow: 'hidden',
+    marginBottom: isExpanded ? 0 : '12px',
+    padding: isExpanded ? '8px' : 0,
+    position: 'relative', // For timer overlay positioning
+  };
+
   const previewStyle = {
     width: '100%',
-    maxWidth: isFullscreen ? '100%' : (type === 'video' ? '400px' : '100%'),
-    maxHeight: isFullscreen ? 'calc(100vh - 180px)' : (isMobile ? '40vh' : '300px'),
+    height: isExpanded ? '100%' : 'auto',
+    maxWidth: isExpanded ? '100%' : (type === 'video' ? '400px' : '100%'),
+    maxHeight: isExpanded ? '100%' : (isMobile ? '40vh' : '300px'),
     objectFit: 'contain',
-    borderRadius: isFullscreen ? 0 : '4px',
+    borderRadius: isExpanded ? '4px' : '4px',
     background: 'var(--bg-primary)',
-    marginBottom: isFullscreen ? 0 : '12px',
     cursor: type === 'video' ? 'pointer' : 'default',
   };
 
   return (
-    <div ref={containerRef} style={containerStyle}>
+    <div style={containerStyle}>
       {/* Header */}
       <div style={headerStyle}>
-        <span style={{ color: isFullscreen ? '#fff' : 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+        <span style={{ color: isExpanded ? '#fff' : 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
           {type === 'video' ? 'Record Video' : 'Record Audio'}
         </span>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {type === 'video' && (
             <button
-              onClick={toggleFullscreen}
+              onClick={toggleExpanded}
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: isFullscreen ? '#fff' : 'var(--text-dim)',
+                color: isExpanded ? '#fff' : 'var(--text-dim)',
                 cursor: 'pointer',
                 fontSize: '1rem',
                 padding: '4px 6px',
                 borderRadius: '4px',
               }}
-              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              title={isExpanded ? 'Collapse' : 'Expand'}
             >
-              ⛶
+              {isExpanded ? '⊡' : '⛶'}
             </button>
           )}
-          {!isFullscreen && (
+          {!isExpanded && (
             <button
               onClick={() => setShowSettings(!showSettings)}
               style={{
@@ -413,11 +429,11 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
             </button>
           )}
           <button
-            onClick={isFullscreen ? toggleFullscreen : handleCancel}
+            onClick={isExpanded ? toggleExpanded : handleCancel}
             style={{
               background: 'transparent',
               border: 'none',
-              color: isFullscreen ? '#fff' : 'var(--text-dim)',
+              color: isExpanded ? '#fff' : 'var(--text-dim)',
               cursor: 'pointer',
               fontSize: '1.2rem',
             }}
@@ -428,7 +444,7 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
       </div>
 
       {/* Device Settings Panel */}
-      {showSettings && !isFullscreen && (
+      {showSettings && !isExpanded && (
         <div style={{
           padding: '12px',
           background: 'var(--bg-secondary)',
@@ -536,7 +552,7 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
       )}
 
       {/* Error message */}
-      {error && !isFullscreen && (
+      {error && !isExpanded && (
         <div style={{
           padding: '8px 12px',
           background: 'var(--error-bg)',
@@ -557,18 +573,12 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
 
       {/* Video preview (live during recording or playback) */}
       {type === 'video' && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          marginBottom: isFullscreen ? 0 : '12px',
-          flex: isFullscreen ? 1 : 'none',
-        }}>
+        <div style={videoPreviewContainerStyle}>
           {!previewUrl ? (
             <video
               ref={videoPreviewRef}
               style={previewStyle}
-              onClick={toggleFullscreen}
+              onClick={toggleExpanded}
               muted
               playsInline
             />
@@ -576,11 +586,18 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
             <video
               src={previewUrl}
               style={previewStyle}
-              onClick={toggleFullscreen}
+              onClick={toggleExpanded}
               controls
               playsInline
             />
           )}
+          {/* Timer overlay - always positioned inside video container for video */}
+          <div style={videoTimerStyle}>
+            {isRecording && (
+              <span style={{ display: 'inline-block', width: '12px', height: '12px', background: isPaused ? 'var(--accent-amber)' : 'var(--accent-red)', borderRadius: '50%', marginRight: '8px', animation: isPaused ? 'none' : 'pulse 1s infinite' }} />
+            )}
+            {formatDuration(duration)} / {formatDuration(maxDur)}
+          </div>
         </div>
       )}
 
@@ -591,13 +608,15 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
         </div>
       )}
 
-      {/* Timer */}
-      <div style={timerStyle}>
-        {isRecording && (
-          <span style={{ display: 'inline-block', width: '12px', height: '12px', background: isPaused ? 'var(--accent-amber)' : 'var(--accent-red)', borderRadius: '50%', marginRight: '8px', animation: isPaused ? 'none' : 'pulse 1s infinite' }} />
-        )}
-        {formatDuration(duration)} / {formatDuration(maxDur)}
-      </div>
+      {/* Timer - only shown for audio recordings */}
+      {type === 'audio' && (
+        <div style={audioTimerStyle}>
+          {isRecording && (
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', background: isPaused ? 'var(--accent-amber)' : 'var(--accent-red)', borderRadius: '50%', marginRight: '8px', animation: isPaused ? 'none' : 'pulse 1s infinite' }} />
+          )}
+          {formatDuration(duration)} / {formatDuration(maxDur)}
+        </div>
+      )}
 
       {/* Controls */}
       <div style={controlsStyle}>

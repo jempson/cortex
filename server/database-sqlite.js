@@ -3891,6 +3891,11 @@ export class DatabaseSQLite {
         encrypted: d.encrypted === 1,
         nonce: d.nonce,
         keyVersion: d.key_version,
+        // Media fields (v2.7.0)
+        media_type: d.media_type,
+        media_url: d.media_url,
+        media_duration: d.media_duration,
+        media_encrypted: d.media_encrypted === 1,
       };
     });
   }
