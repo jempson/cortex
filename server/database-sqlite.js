@@ -1324,6 +1324,18 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Media fields added to pings table');
     }
+
+    // v2.8.0 - Video Feed: Add index for efficient video feed queries
+    const existingIndexes = this.db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_pings_video_feed'`).get();
+    if (!existingIndexes) {
+      console.log('📝 Adding video feed index (v2.8.0)...');
+      this.db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_pings_video_feed
+        ON pings(media_type, created_at DESC)
+        WHERE media_type = 'video' AND deleted = 0;
+      `);
+      console.log('✅ Video feed index created');
+    }
   }
 
   prepareStatements() {
@@ -7083,6 +7095,133 @@ export class DatabaseSQLite {
       SELECT * FROM bot_wave_keys WHERE bot_id = ? AND wave_id = ?
       ORDER BY key_version DESC LIMIT 1
     `).get(botId, waveId);
+  }
+
+  // ============ Video Feed Methods (v2.8.0) ============
+
+  /**
+   * Get video feed for a user
+   * Returns videos from public waves and waves the user participates in
+   * Excludes encrypted videos and videos from blocked users
+   * @param {string} userId - The user ID
+   * @param {number} limit - Max videos to return (default 10, max 50)
+   * @param {string} cursor - Cursor for pagination (ping ID)
+   * @param {number} seed - Random seed for consistent shuffle within session
+   * @returns {Object} { videos: [], hasMore: boolean, nextCursor: string }
+   */
+  getVideoFeedForUser(userId, limit = 10, cursor = null, seed = null) {
+    limit = Math.min(Math.max(1, limit), 50);
+
+    // Get blocked users for this user
+    const blockedUsers = this.db.prepare(`
+      SELECT blocked_user_id FROM blocks WHERE user_id = ?
+    `).all(userId).map(r => r.blocked_user_id);
+
+    // Get users who have opted out of video feed (showInFeed: false)
+    const optedOutUsers = this.db.prepare(`
+      SELECT id FROM users WHERE json_extract(preferences, '$.videoFeed.showInFeed') = false
+    `).all().map(r => r.id);
+
+    const excludedUsers = [...new Set([...blockedUsers, ...optedOutUsers])];
+
+    // Build query for video pings
+    // Include: public waves OR waves user participates in
+    // Exclude: encrypted videos, deleted pings, blocked users, opted-out users
+    let query = `
+      SELECT
+        p.id,
+        p.wave_id,
+        p.author_id,
+        p.content,
+        p.media_url,
+        p.media_duration,
+        p.media_type,
+        p.created_at,
+        p.reactions,
+        p.encrypted,
+        w.title as wave_title,
+        w.privacy as wave_privacy,
+        u.display_name as author_name,
+        u.handle as author_handle,
+        u.avatar as author_avatar,
+        u.avatar_url as author_avatar_url
+      FROM pings p
+      JOIN waves w ON p.wave_id = w.id
+      JOIN users u ON p.author_id = u.id
+      WHERE p.media_type = 'video'
+        AND p.deleted = 0
+        AND p.encrypted = 0
+        AND (
+          w.privacy = 'public'
+          OR EXISTS (
+            SELECT 1 FROM wave_participants wp
+            WHERE wp.wave_id = w.id AND wp.user_id = ?
+          )
+        )
+    `;
+
+    const params = [userId];
+
+    // Exclude blocked and opted-out users
+    if (excludedUsers.length > 0) {
+      query += ` AND p.author_id NOT IN (${excludedUsers.map(() => '?').join(',')})`;
+      params.push(...excludedUsers);
+    }
+
+    // Cursor pagination
+    if (cursor) {
+      const cursorPing = this.db.prepare('SELECT created_at FROM pings WHERE id = ?').get(cursor);
+      if (cursorPing) {
+        query += ` AND (p.created_at < ? OR (p.created_at = ? AND p.id < ?))`;
+        params.push(cursorPing.created_at, cursorPing.created_at, cursor);
+      }
+    }
+
+    // Order by created_at for now (random shuffle done in application layer for session consistency)
+    query += ` ORDER BY p.created_at DESC LIMIT ?`;
+    params.push(limit + 1); // Fetch one extra to check if there are more
+
+    const rows = this.db.prepare(query).all(...params);
+
+    const hasMore = rows.length > limit;
+    const videos = rows.slice(0, limit).map(row => ({
+      id: row.id,
+      wave_id: row.wave_id,
+      wave_title: row.wave_title,
+      wave_privacy: row.wave_privacy,
+      author_id: row.author_id,
+      author_name: row.author_name,
+      author_handle: row.author_handle,
+      author_avatar: row.author_avatar,
+      author_avatar_url: row.author_avatar_url,
+      media_url: row.media_url,
+      media_duration: row.media_duration,
+      content: row.content,
+      created_at: row.created_at,
+      reactions: row.reactions ? JSON.parse(row.reactions) : {},
+      is_encrypted: row.encrypted === 1,
+    }));
+
+    // If seed is provided, shuffle deterministically
+    if (seed !== null && videos.length > 1) {
+      // Simple seeded shuffle using Fisher-Yates
+      const seededRandom = (s) => {
+        const x = Math.sin(s) * 10000;
+        return x - Math.floor(x);
+      };
+      let seedValue = seed;
+      for (let i = videos.length - 1; i > 0; i--) {
+        seedValue = (seedValue * 9301 + 49297) % 233280;
+        const j = Math.floor(seededRandom(seedValue) * (i + 1));
+        [videos[i], videos[j]] = [videos[j], videos[i]];
+      }
+    }
+
+    return {
+      videos,
+      hasMore,
+      nextCursor: hasMore && videos.length > 0 ? videos[videos.length - 1].id : null,
+    };
   }
 
   // Placeholder for JSON compatibility - not needed with SQLite

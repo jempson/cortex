@@ -5725,13 +5725,16 @@ app.post('/api/uploads/media', authenticateToken, (req, res, next) => {
       await new Promise((resolve, reject) => {
         ffmpeg(tempFilepath)
           .outputOptions([
-            '-c:v libx264',     // H.264 video codec (most compatible)
-            '-preset fast',     // Fast encoding preset
-            '-crf 23',          // Constant rate factor (quality)
-            '-c:a aac',         // AAC audio codec
-            '-b:a 128k',        // Audio bitrate
-            '-movflags +faststart', // Enable fast start for web streaming
-            '-y'                // Overwrite output file
+            '-c:v libx264',           // H.264 video codec (most compatible)
+            '-preset veryfast',       // Faster encoding (better for server load)
+            '-crf 28',                // Slightly lower quality for faster encode
+            '-vf scale=\'min(1280,iw)\':\'min(720,ih)\':force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2', // Max 720p, ensure even dimensions
+            '-r 30',                  // Force 30fps (fixes variable framerate issues)
+            '-c:a aac',               // AAC audio codec
+            '-b:a 96k',               // Lower audio bitrate (sufficient for mobile)
+            '-ac 2',                  // Stereo audio
+            '-movflags +faststart',   // Enable fast start for web streaming
+            '-y'                      // Overwrite output file
           ])
           .output(outputFilepath)
           .on('start', (cmd) => {
@@ -11044,6 +11047,39 @@ app.put('/api/groups/:id/members/:userId', authenticateToken, (req, res) => {
     return res.status(404).json({ error: 'Member not found' });
   }
   res.json({ success: true });
+});
+
+// ============ Video Feed Routes (v2.8.0) ============
+
+/**
+ * Rate limiter for feed endpoints
+ */
+const feedLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute
+  message: { error: 'Too many feed requests, please try again later' },
+});
+
+/**
+ * GET /api/feed/videos
+ * Get video feed for the authenticated user
+ * Returns videos from public waves and waves the user participates in
+ * Excludes encrypted videos and videos from blocked users
+ */
+app.get('/api/feed/videos', authenticateToken, feedLimiter, (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const cursor = req.query.cursor ? sanitizeInput(req.query.cursor) : null;
+    const seed = req.query.seed ? parseInt(req.query.seed) : null;
+
+    const result = db.getVideoFeedForUser(userId, limit, cursor, seed);
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching video feed:', error);
+    res.status(500).json({ error: 'Failed to fetch video feed' });
+  }
 });
 
 // ============ Wave Routes (renamed from Thread) ============

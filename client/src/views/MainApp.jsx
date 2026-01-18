@@ -25,6 +25,7 @@ import WaveView from '../components/waves/WaveView.jsx';
 import FocusView from '../components/focus/FocusView.jsx';
 import GroupsView from '../components/groups/GroupsView.jsx';
 import ProfileSettings from '../components/profile/ProfileSettings.jsx';
+import VideoFeedView from '../components/feed/VideoFeedView.jsx';
 import { useVoiceCall } from '../hooks/useVoiceCall.js';
 import DockedCallWindow from '../components/calls/DockedCallWindow.jsx';
 
@@ -818,8 +819,8 @@ function MainApp({ shareDropletId }) {
     }
   };
 
-  const navItems = ['waves', 'contacts', 'groups', 'profile'];
-  const navLabels = { waves: 'WAVES', groups: 'CREWS', contacts: 'CONTACTS', profile: 'PROFILE' };
+  const navItems = ['waves', 'feed', 'contacts', 'groups', 'profile'];
+  const navLabels = { waves: 'WAVES', feed: 'FEED', groups: 'CREWS', contacts: 'CONTACTS', profile: 'PROFILE' };
 
   const scanLinesEnabled = user?.preferences?.scanLines !== false; // Default to true
 
@@ -1119,6 +1120,20 @@ function MainApp({ shareDropletId }) {
               )}
             </div>
           </>
+        )}
+
+        {activeView === 'feed' && (
+          <VideoFeedView
+            fetchAPI={fetchAPI}
+            showToast={showToastMsg}
+            onNavigateToWave={(wave) => {
+              setSelectedWave(wave);
+              setActiveView('waves');
+            }}
+            onShowProfile={setProfileUserId}
+            isMobile={isMobile}
+            currentUser={user}
+          />
         )}
 
         {activeView === 'groups' && (
