@@ -4,6 +4,7 @@ import React from 'react';
 const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendingGroups }) => {
   const items = [
     { id: 'waves', icon: '◈', label: 'Waves', badge: unreadCount },
+    { id: 'feed', icon: '▶', label: 'Feed' },
     { id: 'contacts', icon: '●', label: 'Contacts', badge: pendingContacts },
     { id: 'groups', icon: '◆', label: 'Crews', badge: pendingGroups },
     { id: 'profile', icon: '⚙', label: 'Profile' },
