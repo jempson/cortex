@@ -133,6 +133,86 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.8.0] - 2026-01-17
+
+### Added
+
+#### Random Video Feed (Discover Tab)
+
+**Overview:**
+TikTok/Instagram Reels-style vertical video feed allowing users to discover and browse video content from public waves and waves they participate in.
+
+**Key Features:**
+- **Discover Feed Tab**: New 5th tab in mobile BottomNav and desktop navigation
+- **Vertical Video Scroll**: Full-screen vertical video display with CSS scroll-snap
+- **Auto-Play/Pause**: Automatically plays current video, pauses others
+- **Swipe Navigation**: Swipe up for next, swipe down for previous video
+- **Keyboard Navigation**: Arrow keys and j/k for desktop
+- **Random Shuffle**: Session-based random ordering refreshes each visit
+- **Cursor Pagination**: Efficient loading with cursor-based pagination
+- **Video Counter**: Shows current position in feed
+- **Navigation Indicators**: Visual dots showing position in feed
+
+**UI Elements:**
+- Author info overlay (bottom-left): Avatar, name, handle
+- Wave badge with title and privacy indicator
+- Caption display
+- Action buttons (right side): React, View Wave, Mute/Unmute
+- Progress bar at bottom
+- Duration badge (top-right)
+
+**User Preferences:**
+- "Show my videos in Discover feed" toggle (opt-out of appearing in others' feeds)
+- "Autoplay videos" toggle
+- Settings accessible in Profile > Video Feed section
+
+**Security/Privacy:**
+- Respects wave privacy levels (public + participant access only)
+- Excludes encrypted videos (cannot play without wave context)
+- Excludes videos from blocked users
+- Respects user opt-out preference
+- Rate limited: 60 requests/minute for feed browsing
+
+**Implementation Files:**
+- `client/src/hooks/useVerticalSwipe.js`: NEW - Vertical swipe gesture detection (~75 lines)
+- `client/src/components/feed/VideoFeedItem.jsx`: NEW - Individual video display (~380 lines)
+- `client/src/components/feed/VideoFeedView.jsx`: NEW - Feed container with pagination (~340 lines)
+- `client/src/components/ui/BottomNav.jsx`: Added Feed tab
+- `client/src/views/MainApp.jsx`: Integrated feed view
+- `client/src/components/profile/ProfileSettings.jsx`: Added video feed preferences
+- `server/server.js`: Added `/api/feed/videos` endpoint
+- `server/database-sqlite.js`: Added `getVideoFeedForUser()` method and video feed index
+
+**Database Changes:**
+```sql
+CREATE INDEX IF NOT EXISTS idx_pings_video_feed
+ON pings(media_type, created_at DESC)
+WHERE media_type = 'video' AND deleted = 0;
+```
+
+**API Endpoint:**
+```
+GET /api/feed/videos
+Query params:
+- limit (default: 10, max: 50)
+- cursor (ping ID for pagination)
+- seed (optional session seed for consistent random ordering)
+```
+
+## [2.7.3] - 2026-01-17
+
+### Fixed
+- Camera/video recording controls hidden on low resolution screens requiring zoom to see buttons
+- Replaced browser Fullscreen API with fixed overlay approach for expanded mode
+- Controls now use flex layout with `flexShrink: 0` to ensure they always remain visible
+- Preview area uses `flex: 1` with `minHeight: 0` to shrink when needed on small screens
+- Video timer now overlays on video preview instead of pushing controls off screen
+- Video pings not displaying in breakout/burst waves (missing media fields in `getDropletsForBreakoutWave`)
+
+### Changed
+- Expand button icon now shows ⊡ when expanded (collapse) vs ⛶ when normal (expand)
+- Video recording timer displays as overlay on video in both normal and expanded modes
+
 ## [2.7.2] - 2026-01-17
 
 ### Fixed

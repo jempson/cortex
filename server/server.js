@@ -11046,6 +11046,39 @@ app.put('/api/groups/:id/members/:userId', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
+// ============ Video Feed Routes (v2.8.0) ============
+
+/**
+ * Rate limiter for feed endpoints
+ */
+const feedLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute
+  message: { error: 'Too many feed requests, please try again later' },
+});
+
+/**
+ * GET /api/feed/videos
+ * Get video feed for the authenticated user
+ * Returns videos from public waves and waves the user participates in
+ * Excludes encrypted videos and videos from blocked users
+ */
+app.get('/api/feed/videos', authenticateToken, feedLimiter, (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const cursor = req.query.cursor ? sanitizeInput(req.query.cursor) : null;
+    const seed = req.query.seed ? parseInt(req.query.seed) : null;
+
+    const result = db.getVideoFeedForUser(userId, limit, cursor, seed);
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching video feed:', error);
+    res.status(500).json({ error: 'Failed to fetch video feed' });
+  }
+});
+
 // ============ Wave Routes (renamed from Thread) ============
 /**
  * Get all active calls across all waves the user has access to
