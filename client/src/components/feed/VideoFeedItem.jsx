@@ -23,6 +23,8 @@ const VideoFeedItem = ({
   onNavigateToWave,
   onShowProfile,
   onReact,
+  onReply,
+  fetchAPI,
   isMobile,
   showToast,
   currentUserId,
@@ -34,9 +36,13 @@ const VideoFeedItem = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isMuted, setIsMuted] = useState(true);
+  const [showReplyInput, setShowReplyInput] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [submittingReply, setSubmittingReply] = useState(false);
 
   const videoRef = useRef(null);
   const controlsTimeoutRef = useRef(null);
+  const replyInputRef = useRef(null);
 
   // Construct authenticated URL with token for media streaming
   const authenticatedSrc = useMemo(() => {
@@ -163,6 +169,50 @@ const VideoFeedItem = ({
     e.stopPropagation();
     onReact?.(video.id, video.wave_id);
   }, [onReact, video.id, video.wave_id]);
+
+  // Show reply input
+  const handleShowReply = useCallback((e) => {
+    e.stopPropagation();
+    setShowReplyInput(true);
+    // Focus input after a short delay for animation
+    setTimeout(() => replyInputRef.current?.focus(), 100);
+  }, []);
+
+  // Submit reply - creates burst wave
+  const handleSubmitReply = useCallback(async (e) => {
+    e?.stopPropagation();
+    if (!replyText.trim() || submittingReply) return;
+
+    setSubmittingReply(true);
+    try {
+      const result = await fetchAPI(`/profile/videos/${video.id}/reply`, {
+        method: 'POST',
+        body: { content: replyText.trim() },
+      });
+
+      if (result.success) {
+        showToast?.('Conversation started!', 'success');
+        setReplyText('');
+        setShowReplyInput(false);
+        // Navigate to the new conversation wave
+        if (result.wave && onReply) {
+          onReply(result.wave.id, result.wave.title, result.existing_wave);
+        }
+      }
+    } catch (err) {
+      showToast?.(err.message || 'Failed to create reply', 'error');
+    } finally {
+      setSubmittingReply(false);
+    }
+  }, [replyText, submittingReply, fetchAPI, video.id, showToast, onReply]);
+
+  // Handle view conversation (when video already has replies)
+  const handleViewConversation = useCallback((e) => {
+    e.stopPropagation();
+    if (video.conversation_wave_id) {
+      onReply?.(video.conversation_wave_id, `Re: ${video.content?.slice(0, 30) || 'Video'}`, true);
+    }
+  }, [video.conversation_wave_id, video.content, onReply]);
 
   // Calculate progress percentage
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -405,6 +455,34 @@ const VideoFeedItem = ({
           )}
         </button>
 
+        {/* Comment/Reply button (v2.9.0) */}
+        <button
+          onClick={video.conversation_wave_id ? handleViewConversation : handleShowReply}
+          style={{
+            background: video.conversation_count > 0 ? 'rgba(14,173,105,0.3)' : 'rgba(255,255,255,0.2)',
+            border: video.conversation_count > 0 ? '1px solid var(--accent-green)' : '1px solid rgba(255,255,255,0.4)',
+            borderRadius: '50%',
+            width: '44px',
+            height: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexDirection: 'column',
+            backdropFilter: 'blur(4px)',
+          }}
+          title={video.conversation_count > 0 ? 'View Conversation' : 'Reply'}
+        >
+          <span style={{ fontSize: '1.1rem', color: 'white', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+            💬
+          </span>
+          {video.conversation_count > 0 && (
+            <span style={{ fontSize: '0.6rem', color: 'white', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+              {video.conversation_count}
+            </span>
+          )}
+        </button>
+
         {/* View wave button */}
         <button
           onClick={handleViewWave}
@@ -485,6 +563,101 @@ const VideoFeedItem = ({
           {formatTime(currentTime)} / {formatTime(duration)}
         </div>
       )}
+
+      {/* Reply Input Panel (v2.9.0) */}
+      {showReplyInput && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: isMobile ? '60px' : 0,
+            left: 0,
+            right: 0,
+            background: 'rgba(0,0,0,0.9)',
+            padding: '16px',
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'flex-end',
+            animation: 'slideUp 0.2s ease-out',
+            zIndex: 100,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <textarea
+            ref={replyInputRef}
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value.slice(0, 500))}
+            placeholder="Start a conversation..."
+            rows={2}
+            style={{
+              flex: 1,
+              padding: '12px',
+              background: 'var(--bg-input)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              fontFamily: 'inherit',
+              fontSize: '0.9rem',
+              resize: 'none',
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmitReply();
+              } else if (e.key === 'Escape') {
+                setShowReplyInput(false);
+                setReplyText('');
+              }
+            }}
+            disabled={submittingReply}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <button
+              onClick={handleSubmitReply}
+              disabled={!replyText.trim() || submittingReply}
+              style={{
+                padding: '10px 16px',
+                background: replyText.trim() ? 'var(--accent-amber)' : 'var(--bg-secondary)',
+                color: replyText.trim() ? '#000' : 'var(--text-muted)',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: replyText.trim() && !submittingReply ? 'pointer' : 'not-allowed',
+                fontFamily: 'monospace',
+                fontSize: '0.8rem',
+                fontWeight: 'bold',
+                opacity: submittingReply ? 0.6 : 1,
+              }}
+            >
+              {submittingReply ? '...' : 'Send'}
+            </button>
+            <button
+              onClick={() => {
+                setShowReplyInput(false);
+                setReplyText('');
+              }}
+              style={{
+                padding: '8px 12px',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '0.75rem',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Slide up animation */}
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 };

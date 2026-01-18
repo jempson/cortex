@@ -1336,6 +1336,21 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Video feed index created');
     }
+
+    // v2.9.0 - Profile Waves: Add columns for profile wave identification
+    const wavesColumnsV290 = this.db.prepare(`PRAGMA table_info(waves)`).all();
+    const hasProfileWaveColumn = wavesColumnsV290.some(c => c.name === 'is_profile_wave');
+
+    if (!hasProfileWaveColumn) {
+      console.log('📝 Adding profile wave columns to waves table (v2.9.0)...');
+      this.db.exec(`
+        ALTER TABLE waves ADD COLUMN is_profile_wave INTEGER DEFAULT 0;
+        ALTER TABLE waves ADD COLUMN profile_owner_id TEXT REFERENCES users(id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_waves_profile_owner
+        ON waves(profile_owner_id) WHERE is_profile_wave = 1;
+      `);
+      console.log('✅ Profile wave columns added to waves table');
+    }
   }
 
   prepareStatements() {
@@ -3459,6 +3474,9 @@ export class DatabaseSQLite {
       originWaveId: row.origin_wave_id || null,
       // E2EE fields
       encrypted: row.encrypted === 1,
+      // Profile wave fields (v2.9.0)
+      isProfileWave: row.is_profile_wave === 1,
+      profileOwnerId: row.profile_owner_id || null,
     };
   }
 
@@ -3640,6 +3658,252 @@ export class DatabaseSQLite {
     this.db.prepare('DELETE FROM waves WHERE id = ?').run(waveId);
 
     return { success: true, wave, participants };
+  }
+
+  // ============ Profile Wave Methods (v2.9.0) ============
+
+  /**
+   * Get or create a user's profile wave
+   * Each user has exactly one profile wave for standalone video posts
+   * @param {string} userId - The user ID
+   * @returns {Object} The profile wave
+   */
+  getOrCreateProfileWave(userId) {
+    // Check if user already has a profile wave
+    const existingWave = this.db.prepare(`
+      SELECT * FROM waves WHERE is_profile_wave = 1 AND profile_owner_id = ?
+    `).get(userId);
+
+    if (existingWave) {
+      return this.rowToWave(existingWave);
+    }
+
+    // Get user info for wave title
+    const user = this.findUserById(userId);
+    if (!user) {
+      return null;
+    }
+
+    // Create the profile wave
+    const now = new Date().toISOString();
+    const waveId = `wave-profile-${uuidv4()}`;
+    const title = `@${user.handle}'s Videos`;
+
+    this.db.prepare(`
+      INSERT INTO waves (id, title, privacy, created_by, created_at, updated_at, is_profile_wave, profile_owner_id, encrypted)
+      VALUES (?, ?, 'public', ?, ?, ?, 1, ?, 0)
+    `).run(waveId, title, userId, now, now, userId);
+
+    // Add creator as participant
+    this.db.prepare(`
+      INSERT INTO wave_participants (wave_id, user_id, joined_at, archived)
+      VALUES (?, ?, ?, 0)
+    `).run(waveId, userId, now);
+
+    console.log(`📹 Created profile wave ${waveId} for user @${user.handle}`);
+
+    return this.getWave(waveId);
+  }
+
+  /**
+   * Get the profile wave for a user by handle
+   * @param {string} handle - The user handle
+   * @returns {Object|null} The profile wave or null
+   */
+  getProfileWaveByHandle(handle) {
+    const user = this.findUserByHandle(handle);
+    if (!user) return null;
+
+    const wave = this.db.prepare(`
+      SELECT * FROM waves WHERE is_profile_wave = 1 AND profile_owner_id = ?
+    `).get(user.id);
+
+    return wave ? this.rowToWave(wave) : null;
+  }
+
+  /**
+   * Get videos from a user's profile wave
+   * @param {string} profileOwnerId - The profile owner's user ID
+   * @param {number} limit - Max videos to return
+   * @param {string} cursor - Cursor for pagination (ping ID)
+   * @returns {Object} { videos: [], hasMore: boolean, nextCursor: string }
+   */
+  getUserProfileVideos(profileOwnerId, limit = 20, cursor = null) {
+    limit = Math.min(Math.max(1, limit), 50);
+
+    // Get the profile wave
+    const profileWave = this.db.prepare(`
+      SELECT id FROM waves WHERE is_profile_wave = 1 AND profile_owner_id = ?
+    `).get(profileOwnerId);
+
+    if (!profileWave) {
+      return { videos: [], hasMore: false, nextCursor: null };
+    }
+
+    // Build query for video pings in profile wave
+    let query = `
+      SELECT
+        p.id,
+        p.wave_id,
+        p.author_id,
+        p.content,
+        p.media_url,
+        p.media_duration,
+        p.media_type,
+        p.created_at,
+        p.reactions,
+        p.broken_out_to,
+        u.display_name as author_name,
+        u.handle as author_handle,
+        u.avatar as author_avatar,
+        u.avatar_url as author_avatar_url,
+        w.title as wave_title,
+        bw.id as conversation_wave_id,
+        (SELECT COUNT(*) FROM pings WHERE wave_id = bw.id AND deleted = 0) as conversation_count
+      FROM pings p
+      JOIN users u ON p.author_id = u.id
+      JOIN waves w ON p.wave_id = w.id
+      LEFT JOIN waves bw ON p.broken_out_to = bw.id
+      WHERE p.wave_id = ?
+        AND p.media_type = 'video'
+        AND p.deleted = 0
+    `;
+
+    const params = [profileWave.id];
+
+    // Cursor pagination
+    if (cursor) {
+      const cursorPing = this.db.prepare('SELECT created_at FROM pings WHERE id = ?').get(cursor);
+      if (cursorPing) {
+        query += ` AND (p.created_at < ? OR (p.created_at = ? AND p.id < ?))`;
+        params.push(cursorPing.created_at, cursorPing.created_at, cursor);
+      }
+    }
+
+    query += ` ORDER BY p.created_at DESC LIMIT ?`;
+    params.push(limit + 1);
+
+    const rows = this.db.prepare(query).all(...params);
+
+    const hasMore = rows.length > limit;
+    const videos = rows.slice(0, limit).map(row => ({
+      id: row.id,
+      wave_id: row.wave_id,
+      wave_title: row.wave_title,
+      author_id: row.author_id,
+      author_name: row.author_name,
+      author_handle: row.author_handle,
+      author_avatar: row.author_avatar,
+      author_avatar_url: row.author_avatar_url,
+      media_url: row.media_url,
+      media_duration: row.media_duration,
+      content: row.content,
+      created_at: row.created_at,
+      reactions: row.reactions ? JSON.parse(row.reactions) : {},
+      conversation_wave_id: row.conversation_wave_id || null,
+      conversation_count: row.conversation_count || 0,
+    }));
+
+    return {
+      videos,
+      hasMore,
+      nextCursor: hasMore && videos.length > 0 ? videos[videos.length - 1].id : null,
+    };
+  }
+
+  /**
+   * Create a burst wave from a profile video reply
+   * Auto-creates a conversation wave when someone replies to a profile video
+   * @param {string} originalPingId - The video ping being replied to
+   * @param {string} replyUserId - The user creating the reply
+   * @param {string} replyContent - The reply content
+   * @returns {Object} Result with new wave and ping info
+   */
+  createProfileVideoBurst(originalPingId, replyUserId, replyContent) {
+    const now = new Date().toISOString();
+
+    // Get the original video ping and wave
+    const originalPing = this.db.prepare(`
+      SELECT p.*, w.is_profile_wave, w.profile_owner_id,
+             u.handle as author_handle, u.display_name as author_name
+      FROM pings p
+      JOIN waves w ON p.wave_id = w.id
+      JOIN users u ON p.author_id = u.id
+      WHERE p.id = ?
+    `).get(originalPingId);
+
+    if (!originalPing) {
+      return { success: false, error: 'Original ping not found' };
+    }
+
+    if (!originalPing.is_profile_wave) {
+      return { success: false, error: 'Not a profile wave video' };
+    }
+
+    // Check if there's already a burst wave for this video
+    if (originalPing.broken_out_to) {
+      // Return existing wave - user should reply there
+      const existingWave = this.getWave(originalPing.broken_out_to);
+      return {
+        success: true,
+        existingWave: true,
+        wave: existingWave,
+        originalPingId,
+      };
+    }
+
+    // Create the burst conversation wave
+    const newWaveId = `wave-${uuidv4()}`;
+    const caption = originalPing.content
+      ? originalPing.content.replace(/<[^>]*>/g, '').slice(0, 50)
+      : `@${originalPing.author_handle}'s video`;
+    const title = `Re: ${caption}`;
+
+    this.db.prepare(`
+      INSERT INTO waves (id, title, privacy, created_by, created_at, updated_at, root_ping_id, broken_out_from, encrypted)
+      VALUES (?, ?, 'public', ?, ?, ?, ?, ?, 0)
+    `).run(newWaveId, title, replyUserId, now, now, originalPingId, originalPing.wave_id);
+
+    // Add video author and replier as participants
+    const participants = new Set([originalPing.author_id, replyUserId]);
+    for (const participantId of participants) {
+      this.db.prepare(`
+        INSERT OR IGNORE INTO wave_participants (wave_id, user_id, joined_at, archived)
+        VALUES (?, ?, ?, 0)
+      `).run(newWaveId, participantId, now);
+    }
+
+    // Mark original ping as broken out
+    this.db.prepare(`
+      UPDATE pings SET broken_out_to = ? WHERE id = ?
+    `).run(newWaveId, originalPingId);
+
+    // Create the reply ping in the new wave (parent_id links to root ping for tree traversal)
+    const replyPingId = `ping-${uuidv4()}`;
+    this.db.prepare(`
+      INSERT INTO pings (id, wave_id, author_id, content, parent_id, created_at, deleted)
+      VALUES (?, ?, ?, ?, ?, ?, 0)
+    `).run(replyPingId, newWaveId, replyUserId, replyContent, originalPingId, now);
+
+    // Update wave timestamp
+    this.updateWaveTimestamp(newWaveId);
+
+    console.log(`📹 Created profile video burst wave ${newWaveId} from ping ${originalPingId}`);
+
+    return {
+      success: true,
+      existingWave: false,
+      wave: this.getWave(newWaveId),
+      ping: {
+        id: replyPingId,
+        wave_id: newWaveId,
+        author_id: replyUserId,
+        content: replyContent,
+        created_at: now,
+      },
+      originalPingId,
+      videoAuthorId: originalPing.author_id,
+    };
   }
 
   // Break out a droplet and its replies into a new wave
@@ -7127,6 +7391,7 @@ export class DatabaseSQLite {
     // Build query for video pings
     // Include: public waves OR waves user participates in
     // Exclude: encrypted videos, deleted pings, blocked users, opted-out users
+    // v2.9.0: Include conversation_wave_id and conversation_count for profile video replies
     let query = `
       SELECT
         p.id,
@@ -7139,12 +7404,15 @@ export class DatabaseSQLite {
         p.created_at,
         p.reactions,
         p.encrypted,
+        p.broken_out_to,
         w.title as wave_title,
         w.privacy as wave_privacy,
+        w.is_profile_wave,
         u.display_name as author_name,
         u.handle as author_handle,
         u.avatar as author_avatar,
-        u.avatar_url as author_avatar_url
+        u.avatar_url as author_avatar_url,
+        (SELECT COUNT(*) FROM pings WHERE wave_id = p.broken_out_to AND deleted = 0) as conversation_count
       FROM pings p
       JOIN waves w ON p.wave_id = w.id
       JOIN users u ON p.author_id = u.id
@@ -7189,6 +7457,7 @@ export class DatabaseSQLite {
       wave_id: row.wave_id,
       wave_title: row.wave_title,
       wave_privacy: row.wave_privacy,
+      is_profile_wave: row.is_profile_wave === 1,
       author_id: row.author_id,
       author_name: row.author_name,
       author_handle: row.author_handle,
@@ -7200,6 +7469,8 @@ export class DatabaseSQLite {
       created_at: row.created_at,
       reactions: row.reactions ? JSON.parse(row.reactions) : {},
       is_encrypted: row.encrypted === 1,
+      conversation_wave_id: row.broken_out_to || null,
+      conversation_count: row.conversation_count || 0,
     }));
 
     // If seed is provided, shuffle deterministically
