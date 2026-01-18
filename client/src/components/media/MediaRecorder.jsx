@@ -1,9 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 /**
- * MediaRecorder Component (v2.7.0)
+ * MediaRecorder Component (v2.7.3)
  *
  * Records audio or video messages for pings.
+ * Uses fixed overlay for expanded mode to ensure controls visibility on all screens.
  *
  * Props:
  * - type: 'audio' | 'video' - Recording type
@@ -25,6 +26,7 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedMic, setSelectedMic] = useState('default');
   const [selectedCamera, setSelectedCamera] = useState('default');
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -253,8 +255,28 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
     if (onCancel) onCancel();
   }, [stopRecording, stopMediaStream, discardRecording, onCancel]);
 
-  // Styles
-  const containerStyle = {
+  // Toggle expanded mode (for video only - fixed overlay instead of browser fullscreen)
+  const toggleExpanded = useCallback(() => {
+    if (type !== 'video') return;
+    setIsExpanded(prev => !prev);
+  }, [type]);
+
+  // Styles - using fixed overlay for expanded mode to ensure controls visibility
+  const expandedContainerStyle = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100vw',
+    height: '100vh',
+    zIndex: 2000,
+    background: '#000',
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
+  const normalContainerStyle = {
     background: 'var(--bg-elevated)',
     border: '1px solid var(--border-primary)',
     borderRadius: '8px',
@@ -262,14 +284,35 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
     marginBottom: '12px',
   };
 
+  const containerStyle = isExpanded ? expandedContainerStyle : normalContainerStyle;
+
   const headerStyle = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '12px',
+    marginBottom: isExpanded ? 0 : '12px',
+    padding: isExpanded ? '12px 16px' : 0,
+    background: isExpanded ? 'rgba(0,0,0,0.8)' : 'transparent',
+    flexShrink: 0,
   };
 
-  const timerStyle = {
+  // Timer style - for video, always overlay on video; for audio, show below
+  const videoTimerStyle = {
+    position: 'absolute',
+    top: '12px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    fontSize: isMobile ? '1.5rem' : '1.25rem',
+    fontFamily: 'monospace',
+    color: isRecording ? (isPaused ? 'var(--accent-amber)' : 'var(--accent-red)') : '#fff',
+    textAlign: 'center',
+    background: 'rgba(0,0,0,0.6)',
+    padding: '6px 16px',
+    borderRadius: '4px',
+    zIndex: 10,
+  };
+
+  const audioTimerStyle = {
     fontSize: isMobile ? '2rem' : '1.5rem',
     fontFamily: 'monospace',
     color: isRecording ? (isPaused ? 'var(--accent-amber)' : 'var(--accent-red)') : 'var(--text-primary)',
@@ -282,6 +325,9 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
     justifyContent: 'center',
     gap: '12px',
     flexWrap: 'wrap',
+    padding: isExpanded ? '16px' : 0,
+    background: isExpanded ? 'rgba(0,0,0,0.8)' : 'transparent',
+    flexShrink: 0,
   };
 
   const buttonStyle = {
@@ -317,56 +363,88 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
     border: '1px solid var(--accent-amber)',
   };
 
+  const videoPreviewContainerStyle = {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flex: isExpanded ? 1 : 'none',
+    minHeight: isExpanded ? 0 : 'auto', // Allow shrinking in flex
+    overflow: 'hidden',
+    marginBottom: isExpanded ? 0 : '12px',
+    padding: isExpanded ? '8px' : 0,
+    position: 'relative', // For timer overlay positioning
+  };
+
   const previewStyle = {
     width: '100%',
-    maxWidth: type === 'video' ? '400px' : '100%',
-    maxHeight: isMobile ? '40vh' : '300px', // Limit height to keep controls visible
+    height: isExpanded ? '100%' : 'auto',
+    maxWidth: isExpanded ? '100%' : (type === 'video' ? '400px' : '100%'),
+    maxHeight: isExpanded ? '100%' : (isMobile ? '40vh' : '300px'),
     objectFit: 'contain',
-    borderRadius: '4px',
+    borderRadius: isExpanded ? '4px' : '4px',
     background: 'var(--bg-primary)',
-    marginBottom: '12px',
+    cursor: type === 'video' ? 'pointer' : 'default',
   };
 
   return (
     <div style={containerStyle}>
       {/* Header */}
       <div style={headerStyle}>
-        <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+        <span style={{ color: isExpanded ? '#fff' : 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
           {type === 'video' ? 'Record Video' : 'Record Audio'}
         </span>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {type === 'video' && (
+            <button
+              onClick={toggleExpanded}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: isExpanded ? '#fff' : 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                padding: '4px 6px',
+                borderRadius: '4px',
+              }}
+              title={isExpanded ? 'Collapse' : 'Expand'}
+            >
+              {isExpanded ? '⊡' : '⛶'}
+            </button>
+          )}
+          {!isExpanded && (
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              style={{
+                background: showSettings ? 'var(--bg-secondary)' : 'transparent',
+                border: 'none',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                padding: '4px 6px',
+                borderRadius: '4px',
+              }}
+              title="Device Settings"
+            >
+              ⚙️
+            </button>
+          )}
           <button
-            onClick={() => setShowSettings(!showSettings)}
-            style={{
-              background: showSettings ? 'var(--bg-secondary)' : 'transparent',
-              border: 'none',
-              color: 'var(--text-dim)',
-              cursor: 'pointer',
-              fontSize: '1rem',
-              padding: '4px 6px',
-              borderRadius: '4px',
-            }}
-            title="Device Settings"
-          >
-            ⚙️
-          </button>
-          <button
-            onClick={handleCancel}
+            onClick={isExpanded ? toggleExpanded : handleCancel}
             style={{
               background: 'transparent',
               border: 'none',
-              color: 'var(--text-dim)',
+              color: isExpanded ? '#fff' : 'var(--text-dim)',
               cursor: 'pointer',
               fontSize: '1.2rem',
             }}
           >
-            X
+            ✕
           </button>
         </div>
       </div>
 
       {/* Device Settings Panel */}
-      {showSettings && (
+      {showSettings && !isExpanded && (
         <div style={{
           padding: '12px',
           background: 'var(--bg-secondary)',
@@ -474,7 +552,7 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
       )}
 
       {/* Error message */}
-      {error && (
+      {error && !isExpanded && (
         <div style={{
           padding: '8px 12px',
           background: 'var(--error-bg)',
@@ -495,11 +573,12 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
 
       {/* Video preview (live during recording or playback) */}
       {type === 'video' && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+        <div style={videoPreviewContainerStyle}>
           {!previewUrl ? (
             <video
               ref={videoPreviewRef}
               style={previewStyle}
+              onClick={toggleExpanded}
               muted
               playsInline
             />
@@ -507,10 +586,18 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
             <video
               src={previewUrl}
               style={previewStyle}
+              onClick={toggleExpanded}
               controls
               playsInline
             />
           )}
+          {/* Timer overlay - always positioned inside video container for video */}
+          <div style={videoTimerStyle}>
+            {isRecording && (
+              <span style={{ display: 'inline-block', width: '12px', height: '12px', background: isPaused ? 'var(--accent-amber)' : 'var(--accent-red)', borderRadius: '50%', marginRight: '8px', animation: isPaused ? 'none' : 'pulse 1s infinite' }} />
+            )}
+            {formatDuration(duration)} / {formatDuration(maxDur)}
+          </div>
         </div>
       )}
 
@@ -521,13 +608,15 @@ const MediaRecorder = ({ type = 'audio', onRecordingComplete, onCancel, maxDurat
         </div>
       )}
 
-      {/* Timer */}
-      <div style={timerStyle}>
-        {isRecording && (
-          <span style={{ display: 'inline-block', width: '12px', height: '12px', background: isPaused ? 'var(--accent-amber)' : 'var(--accent-red)', borderRadius: '50%', marginRight: '8px', animation: isPaused ? 'none' : 'pulse 1s infinite' }} />
-        )}
-        {formatDuration(duration)} / {formatDuration(maxDur)}
-      </div>
+      {/* Timer - only shown for audio recordings */}
+      {type === 'audio' && (
+        <div style={audioTimerStyle}>
+          {isRecording && (
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', background: isPaused ? 'var(--accent-amber)' : 'var(--accent-red)', borderRadius: '50%', marginRight: '8px', animation: isPaused ? 'none' : 'pulse 1s infinite' }} />
+          )}
+          {formatDuration(duration)} / {formatDuration(maxDur)}
+        </div>
+      )}
 
       {/* Controls */}
       <div style={controlsStyle}>

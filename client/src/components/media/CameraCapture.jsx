@@ -1,9 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 /**
- * CameraCapture Component (v2.7.0)
+ * CameraCapture Component (v2.7.3)
  *
  * Captures photos from the camera for image upload.
+ * Uses fixed overlay for expanded mode to ensure controls visibility on all screens.
  *
  * Props:
  * - onCapture: (file) => void - Callback with captured image file
@@ -19,6 +20,7 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [capturedBlob, setCapturedBlob] = useState(null);
   const [isStreamActive, setIsStreamActive] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -170,8 +172,27 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
     };
   }, []);
 
-  // Styles
-  const containerStyle = {
+  // Toggle expanded mode (fixed overlay instead of browser fullscreen)
+  const toggleExpanded = useCallback(() => {
+    setIsExpanded(prev => !prev);
+  }, []);
+
+  // Styles - using fixed overlay for expanded mode to ensure controls visibility
+  const expandedContainerStyle = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100vw',
+    height: '100vh',
+    zIndex: 2000,
+    background: '#000',
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
+  const normalContainerStyle = {
     background: 'var(--bg-elevated)',
     border: '1px solid var(--border-primary)',
     borderRadius: '8px',
@@ -179,22 +200,39 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
     marginBottom: '12px',
   };
 
+  const containerStyle = isExpanded ? expandedContainerStyle : normalContainerStyle;
+
   const headerStyle = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '12px',
+    marginBottom: isExpanded ? 0 : '12px',
+    padding: isExpanded ? '12px 16px' : 0,
+    background: isExpanded ? 'rgba(0,0,0,0.8)' : 'transparent',
+    flexShrink: 0,
+  };
+
+  const viewfinderContainerStyle = {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flex: isExpanded ? 1 : 'none',
+    minHeight: isExpanded ? 0 : 'auto', // Allow shrinking in flex
+    overflow: 'hidden',
+    marginBottom: isExpanded ? 0 : '12px',
+    padding: isExpanded ? '8px' : 0,
   };
 
   const viewfinderStyle = {
     width: '100%',
-    maxWidth: '400px',
-    aspectRatio: '4/3',
-    borderRadius: '8px',
+    height: isExpanded ? '100%' : 'auto',
+    maxWidth: isExpanded ? '100%' : '400px',
+    maxHeight: isExpanded ? '100%' : (isMobile ? '50vh' : '400px'),
+    borderRadius: isExpanded ? '4px' : '8px',
     background: '#000',
-    objectFit: 'cover',
+    objectFit: 'contain', // Show full image without cropping
     display: 'block',
-    margin: '0 auto 12px',
+    cursor: 'pointer',
   };
 
   const controlsStyle = {
@@ -202,6 +240,9 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
     justifyContent: 'center',
     gap: '12px',
     flexWrap: 'wrap',
+    padding: isExpanded ? '16px' : 0,
+    background: isExpanded ? 'rgba(0,0,0,0.8)' : 'transparent',
+    flexShrink: 0,
   };
 
   const buttonStyle = {
@@ -241,42 +282,59 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
     <div style={containerStyle}>
       {/* Header */}
       <div style={headerStyle}>
-        <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+        <span style={{ color: isExpanded ? '#fff' : 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
           Take Photo
         </span>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
-            onClick={() => setShowSettings(!showSettings)}
+            onClick={toggleExpanded}
             style={{
-              background: showSettings ? 'var(--bg-secondary)' : 'transparent',
+              background: 'transparent',
               border: 'none',
-              color: 'var(--text-dim)',
+              color: isExpanded ? '#fff' : 'var(--text-dim)',
               cursor: 'pointer',
               fontSize: '1rem',
               padding: '4px 6px',
               borderRadius: '4px',
             }}
-            title="Camera Settings"
+            title={isExpanded ? 'Collapse' : 'Expand'}
           >
-            ⚙️
+            {isExpanded ? '⊡' : '⛶'}
           </button>
+          {!isExpanded && (
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              style={{
+                background: showSettings ? 'var(--bg-secondary)' : 'transparent',
+                border: 'none',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                padding: '4px 6px',
+                borderRadius: '4px',
+              }}
+              title="Camera Settings"
+            >
+              ⚙️
+            </button>
+          )}
           <button
-            onClick={handleCancel}
+            onClick={isExpanded ? toggleExpanded : handleCancel}
             style={{
               background: 'transparent',
               border: 'none',
-              color: 'var(--text-dim)',
+              color: isExpanded ? '#fff' : 'var(--text-dim)',
               cursor: 'pointer',
               fontSize: '1.2rem',
             }}
           >
-            X
+            ✕
           </button>
         </div>
       </div>
 
       {/* Device Settings Panel */}
-      {showSettings && (
+      {showSettings && !isExpanded && (
         <div style={{
           padding: '12px',
           background: 'var(--bg-secondary)',
@@ -333,7 +391,7 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
       )}
 
       {/* Error message */}
-      {error && (
+      {error && !isExpanded && (
         <div style={{
           padding: '8px 12px',
           background: 'var(--error-bg)',
@@ -353,11 +411,12 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
       )}
 
       {/* Viewfinder / Preview */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+      <div style={viewfinderContainerStyle}>
         {!previewUrl ? (
           <video
             ref={videoRef}
             style={viewfinderStyle}
+            onClick={toggleExpanded}
             muted
             playsInline
             autoPlay
@@ -366,6 +425,7 @@ const CameraCapture = ({ onCapture, onCancel, isMobile }) => {
           <img
             src={previewUrl}
             style={viewfinderStyle}
+            onClick={toggleExpanded}
             alt="Captured photo"
           />
         )}

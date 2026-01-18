@@ -7,6 +7,156 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned Features
+
+#### Offline Media Drafts
+Save media recordings locally when offline and automatically upload when back online.
+
+**Proposed Implementation:**
+- Use IndexedDB to persist recorded blobs and draft metadata (waveId, content, timestamp)
+- Detect offline state via `navigator.onLine` or failed upload attempts
+- Save to drafts with "Saved to Drafts" user feedback
+- Add Drafts indicator/panel in UI to view, manage, and delete pending uploads
+- Use Service Worker with Background Sync API for automatic upload on reconnect
+- Show upload progress for queued drafts
+- Handle E2EE waves with cached session keys
+- Graceful handling of partial failures
+
+**Files to create/modify:**
+- `client/src/components/waves/WaveView.jsx` - Draft save logic, drafts UI
+- `client/public/sw.js` - Background sync registration
+- `client/src/utils/drafts.js` - NEW - IndexedDB storage layer for drafts
+- `client/src/components/ui/DraftsPanel.jsx` - NEW - Draft management UI
+
+#### Custom Themes
+Allow users to create, save, and share custom color themes.
+
+**Key Features:**
+- Fork any default theme as a starting point (defaults are immutable)
+- Simplified preset editor with grouped color controls:
+  - Background colors (base, elevated, surface, hover, active)
+  - Text colors (primary, secondary, dim, muted)
+  - Accent colors (amber, teal, green, orange, purple)
+  - Border colors (primary, secondary, subtle)
+- Live preview while editing
+- Themes sync across devices via user preferences (server storage)
+- Submit themes to public "Theme Gallery" for other users to browse/use
+- Bad word filtering on custom theme names
+- Import/export themes as JSON
+
+**Database Schema:**
+```sql
+CREATE TABLE custom_themes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  base_theme TEXT,           -- Which default theme it was forked from
+  variables TEXT NOT NULL,   -- JSON object of CSS variable overrides
+  is_public INTEGER DEFAULT 0,
+  downloads INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Files to create/modify:**
+- `client/src/components/profile/ThemeEditor.jsx` - NEW - Theme creation/editing UI
+- `client/src/components/profile/ThemeGallery.jsx` - NEW - Browse public themes
+- `client/src/components/profile/ProfileSettings.jsx` - Add theme editor access
+- `client/src/config/themes.js` - Add theme application logic
+- `server/server.js` - Theme CRUD endpoints, bad word filtering
+- `server/database-sqlite.js` - Custom themes table
+
+#### Holiday Calendar System
+Automatically apply festive themes and visual effects on holidays.
+
+**Supported Holidays:**
+- New Year's Day (Jan 1) - Fireworks effect, celebration theme
+- Valentine's Day (Feb 14) - Floating hearts effect, pink/red theme
+- St. Patrick's Day (Mar 17) - Shamrock effect, green theme
+- Easter (variable) - Pastel theme
+- Independence Day (Jul 4) - Red/white/blue theme, fireworks
+- Halloween (Oct 31) - Spooky orange/purple theme, bat/ghost effects
+- Thanksgiving (4th Thu Nov) - Autumn colors theme
+- Christmas (Dec 25) - Snow effect, red/green theme
+- Hanukkah (variable) - Blue/silver theme, candle glow effect
+
+**Key Features:**
+- Auto-detect holidays based on user's timezone
+- Theme changes: Override current theme with holiday colors
+- Visual effects: CSS/Canvas animations (snow falling, hearts floating, etc.)
+- Holiday-specific reactions temporarily added to picker
+- User preference: "Enable holiday themes" toggle (opt-out)
+- Effects respect reduced-motion preference
+
+**Proposed Implementation:**
+- Client-side date detection with timezone awareness
+- Holiday definitions in `client/src/config/holidays.js`
+- Effect components in `client/src/components/effects/`
+- User preference stored in profile settings
+- Graceful degradation (effects disabled on low-power mode)
+
+**Files to create/modify:**
+- `client/src/config/holidays.js` - NEW - Holiday definitions and date calculations
+- `client/src/components/effects/SnowEffect.jsx` - NEW - Falling snow animation
+- `client/src/components/effects/HeartsEffect.jsx` - NEW - Floating hearts animation
+- `client/src/components/effects/FireworksEffect.jsx` - NEW - Fireworks animation
+- `client/src/components/effects/HolidayEffectWrapper.jsx` - NEW - Effect orchestrator
+- `client/src/views/MainApp.jsx` - Integrate holiday effect wrapper
+- `client/src/components/profile/ProfileSettings.jsx` - Add holiday opt-out toggle
+- `client/index.html` - Add holiday theme CSS variables
+
+#### Collapsible Pings
+Minimize long pings and media to improve scrolling on mobile.
+
+**Key Features:**
+- Tap to collapse any ping to a compact preview:
+  - Shows sender avatar + name
+  - First line/sentence of content (truncated with "...")
+  - Media indicator icon for audio/video (not full player)
+- Tap collapsed ping to expand back to full view
+- Collapse button on long pings (threshold: 4+ lines or contains media)
+- "Collapse All" / "Expand All" option in wave menu
+- Remember collapse state during session
+- Auto-collapse option in settings (always collapse media, collapse long pings)
+
+**UI Behavior:**
+- Collapsed ping shows subtle "collapsed" styling (slightly dimmed, compact height)
+- Smooth expand/collapse animation
+- Collapsed media shows thumbnail + duration badge instead of full player
+- Thread replies remain expandable separately from parent collapse
+
+**Files to create/modify:**
+- `client/src/components/droplets/Droplet.jsx` - Add collapse state and compact render mode
+- `client/src/components/droplets/CollapsedDroplet.jsx` - NEW - Compact ping display
+- `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
+- `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
+
+## [2.7.3] - 2026-01-17
+
+### Fixed
+- Camera/video recording controls hidden on low resolution screens requiring zoom to see buttons
+- Replaced browser Fullscreen API with fixed overlay approach for expanded mode
+- Controls now use flex layout with `flexShrink: 0` to ensure they always remain visible
+- Preview area uses `flex: 1` with `minHeight: 0` to shrink when needed on small screens
+- Video timer now overlays on video preview instead of pushing controls off screen
+- Video pings not displaying in breakout/burst waves (missing media fields in `getDropletsForBreakoutWave`)
+
+### Changed
+- Expand button icon now shows ⊡ when expanded (collapse) vs ⛶ when normal (expand)
+- Video recording timer displays as overlay on video in both normal and expanded modes
+
+## [2.7.2] - 2026-01-17
+
+### Fixed
+- Camera capture cropping vertical/portrait photos to horizontal (removed fixed 4:3 aspect ratio)
+- Changed camera preview from `objectFit: cover` to `contain` to show full uncropped image
+
+### Added
+- Fullscreen mode for camera capture (tap viewfinder or ⛶ button)
+- Fullscreen mode for video recording (tap preview or ⛶ button)
+
 ## [2.7.1] - 2026-01-16
 
 ### Fixed
