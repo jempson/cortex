@@ -5725,13 +5725,16 @@ app.post('/api/uploads/media', authenticateToken, (req, res, next) => {
       await new Promise((resolve, reject) => {
         ffmpeg(tempFilepath)
           .outputOptions([
-            '-c:v libx264',     // H.264 video codec (most compatible)
-            '-preset fast',     // Fast encoding preset
-            '-crf 23',          // Constant rate factor (quality)
-            '-c:a aac',         // AAC audio codec
-            '-b:a 128k',        // Audio bitrate
-            '-movflags +faststart', // Enable fast start for web streaming
-            '-y'                // Overwrite output file
+            '-c:v libx264',           // H.264 video codec (most compatible)
+            '-preset veryfast',       // Faster encoding (better for server load)
+            '-crf 28',                // Slightly lower quality for faster encode
+            '-vf scale=\'min(1280,iw)\':\'min(720,ih)\':force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2', // Max 720p, ensure even dimensions
+            '-r 30',                  // Force 30fps (fixes variable framerate issues)
+            '-c:a aac',               // AAC audio codec
+            '-b:a 96k',               // Lower audio bitrate (sufficient for mobile)
+            '-ac 2',                  // Stereo audio
+            '-movflags +faststart',   // Enable fast start for web streaming
+            '-y'                      // Overwrite output file
           ])
           .output(outputFilepath)
           .on('start', (cmd) => {
