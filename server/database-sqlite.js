@@ -3878,12 +3878,12 @@ export class DatabaseSQLite {
       UPDATE pings SET broken_out_to = ? WHERE id = ?
     `).run(newWaveId, originalPingId);
 
-    // Create the reply ping in the new wave
+    // Create the reply ping in the new wave (parent_id links to root ping for tree traversal)
     const replyPingId = `ping-${uuidv4()}`;
     this.db.prepare(`
-      INSERT INTO pings (id, wave_id, author_id, content, created_at, deleted)
-      VALUES (?, ?, ?, ?, ?, 0)
-    `).run(replyPingId, newWaveId, replyUserId, replyContent, now);
+      INSERT INTO pings (id, wave_id, author_id, content, parent_id, created_at, deleted)
+      VALUES (?, ?, ?, ?, ?, ?, 0)
+    `).run(replyPingId, newWaveId, replyUserId, replyContent, originalPingId, now);
 
     // Update wave timestamp
     this.updateWaveTimestamp(newWaveId);
