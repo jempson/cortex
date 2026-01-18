@@ -65,7 +65,10 @@ CREATE TABLE IF NOT EXISTS waves (
     origin_node TEXT,                        -- node name if participant wave
     origin_wave_id TEXT,                     -- original wave id on origin server
     -- E2EE field (v1.19.0)
-    encrypted INTEGER DEFAULT 0             -- 1 if wave uses E2EE (all new waves)
+    encrypted INTEGER DEFAULT 0,            -- 1 if wave uses E2EE (all new waves)
+    -- Profile Wave fields (v2.9.0)
+    is_profile_wave INTEGER DEFAULT 0,      -- 1 if this is a user's profile video wave
+    profile_owner_id TEXT REFERENCES users(id) -- Owner of the profile wave
 );
 
 -- Wave participants
@@ -424,6 +427,7 @@ CREATE INDEX IF NOT EXISTS idx_waves_crew ON waves(crew_id);
 CREATE INDEX IF NOT EXISTS idx_waves_updated ON waves(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_waves_root_ping ON waves(root_ping_id);
 CREATE INDEX IF NOT EXISTS idx_waves_broken_out_from ON waves(broken_out_from);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_waves_profile_owner ON waves(profile_owner_id) WHERE is_profile_wave = 1;
 
 -- Wave participant lookups
 CREATE INDEX IF NOT EXISTS idx_wave_participants_user ON wave_participants(user_id);

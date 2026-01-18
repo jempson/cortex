@@ -133,6 +133,55 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.9.0] - 2026-01-17
+
+### Added
+
+#### Profile Waves for Video Posting
+
+**Overview:**
+Hidden "Profile Wave" for each user where standalone videos can be posted without belonging to a traditional wave. Replies to these videos automatically create burst waves for conversation, keeping the profile wave clean as a video gallery.
+
+**Key Features:**
+- **Auto-Created Profile Wave**: Each user has exactly one profile wave (auto-created on first video post)
+- **Public Privacy**: Profile waves are visible to all users in the feed
+- **Hidden from Wave List**: Users never see their profile wave as a traditional wave
+- **Video-Only Content**: Profile waves only accept video pings (no text-only messages)
+- **Auto-Burst Replies**: Replies to profile videos create new conversation waves automatically
+
+**User Experience:**
+1. User opens video feed, taps floating "+" button
+2. Records/uploads video with optional caption
+3. Video appears in their profile wave and the public feed
+4. Other users can react or reply
+5. Reply creates a burst wave linking back to original video
+
+**API Endpoints:**
+- `GET /api/profile/wave` - Get or create current user's profile wave
+- `POST /api/profile/wave/videos` - Post a video to profile wave
+- `GET /api/users/:handle/videos` - Get videos from a user's profile wave
+- `POST /api/profile/videos/:id/reply` - Reply to a profile video (auto-burst)
+
+**Client Components:**
+- `ProfileVideoUpload.jsx` - Modal for recording/uploading profile videos
+- Floating "+" button in VideoFeedView for quick video posting
+- Comment/Reply button on video feed items
+- Conversation badge showing reply count on videos with replies
+- Slide-up reply input panel
+
+**Database Changes:**
+- Added `is_profile_wave` column to waves table
+- Added `profile_owner_id` column to waves table
+- Added unique index on profile_owner_id for fast lookup
+
+**Files Modified:**
+- `server/database-sqlite.js` - Migration, profile wave queries
+- `server/server.js` - New API endpoints, auto-burst logic
+- `server/schema.sql` - Updated schema for fresh installs
+- `client/src/components/feed/VideoFeedView.jsx` - Post button, reply handling
+- `client/src/components/feed/VideoFeedItem.jsx` - Reply button, conversation badge
+- `client/src/components/feed/ProfileVideoUpload.jsx` - NEW - Video upload modal
+
 ## [2.8.0] - 2026-01-17
 
 ### Added

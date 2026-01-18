@@ -4,6 +4,7 @@ import { useVerticalSwipe } from '../../hooks/useVerticalSwipe.js';
 import { GlowText } from '../ui/SimpleComponents.jsx';
 import VideoFeedItem from './VideoFeedItem.jsx';
 import EmojiPicker from '../ui/EmojiPicker.jsx';
+import ProfileVideoUpload from './ProfileVideoUpload.jsx';
 
 /**
  * VideoFeedView Component (v2.8.0)
@@ -36,6 +37,7 @@ const VideoFeedView = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactingToVideo, setReactingToVideo] = useState(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   const containerRef = useRef(null);
   const videoRefs = useRef([]);
@@ -152,6 +154,11 @@ const VideoFeedView = ({
     setReactingToVideo({ id: videoId, waveId });
     setShowEmojiPicker(true);
   }, []);
+
+  // Handle reply - navigate to burst wave (v2.9.0)
+  const handleReply = useCallback((waveId, waveTitle, isExisting) => {
+    onNavigateToWave?.({ id: waveId, title: waveTitle });
+  }, [onNavigateToWave]);
 
   // Add reaction to video
   const addReaction = useCallback(async (emoji) => {
@@ -340,6 +347,8 @@ const VideoFeedView = ({
               onNavigateToWave={handleNavigateToWave}
               onShowProfile={onShowProfile}
               onReact={handleReact}
+              onReply={handleReply}
+              fetchAPI={fetchAPI}
               isMobile={isMobile}
               showToast={showToast}
               currentUserId={currentUser?.id}
@@ -433,6 +442,72 @@ const VideoFeedView = ({
             }}
           />
         </div>
+      )}
+
+      {/* Floating post button (v2.9.0) - positioned bottom-center */}
+      <button
+        onClick={() => setShowUploadModal(true)}
+        style={{
+          position: 'absolute',
+          bottom: isMobile ? '90px' : '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '56px',
+          height: '56px',
+          borderRadius: '50%',
+          background: 'var(--accent-amber)',
+          border: 'none',
+          color: '#000',
+          fontSize: '1.8rem',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 4px 12px rgba(255, 210, 63, 0.4)',
+          transition: 'transform 0.2s, box-shadow 0.2s',
+          zIndex: 50,
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.transform = 'translateX(-50%) scale(1.1)';
+          e.target.style.boxShadow = '0 6px 16px rgba(255, 210, 63, 0.5)';
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.transform = 'translateX(-50%) scale(1)';
+          e.target.style.boxShadow = '0 4px 12px rgba(255, 210, 63, 0.4)';
+        }}
+        title="Post Video"
+      >
+        +
+      </button>
+
+      {/* Profile Video Upload Modal (v2.9.0) */}
+      {showUploadModal && (
+        <ProfileVideoUpload
+          fetchAPI={fetchAPI}
+          showToast={showToast}
+          isMobile={isMobile}
+          onClose={() => setShowUploadModal(false)}
+          onVideoPosted={(video) => {
+            // Add the new video to the beginning of the feed
+            setVideos(prev => [{
+              id: video.id,
+              wave_id: video.wave_id,
+              author_id: currentUser?.id,
+              author_name: currentUser?.displayName || currentUser?.display_name,
+              author_handle: currentUser?.handle,
+              author_avatar: currentUser?.avatar,
+              author_avatar_url: currentUser?.avatarUrl || currentUser?.avatar_url,
+              media_url: video.media_url,
+              content: video.content,
+              created_at: video.created_at,
+              reactions: {},
+              wave_title: `@${currentUser?.handle}'s Videos`,
+              wave_privacy: 'public',
+            }, ...prev]);
+            setCurrentIndex(0);
+          }}
+        />
       )}
     </div>
   );

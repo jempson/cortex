@@ -187,7 +187,7 @@ const messageUpload = multer({
 const mediaStorage = multer.memoryStorage();
 const mediaUpload = multer({
   storage: mediaStorage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max (video can be larger)
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB max for high-resolution video
   fileFilter: (req, file, cb) => {
     const allowedTypes = [
       'audio/webm', 'audio/mp4', 'audio/ogg', 'audio/mpeg', 'audio/wav',
@@ -5677,7 +5677,7 @@ app.post('/api/uploads/media', authenticateToken, (req, res, next) => {
   mediaUpload.single('media')(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'File too large. Maximum size is 50MB' });
+        return res.status(400).json({ error: 'File too large. Maximum size is 500MB' });
       }
       return res.status(400).json({ error: err.message || 'File upload failed' });
     }
@@ -11079,6 +11079,185 @@ app.get('/api/feed/videos', authenticateToken, feedLimiter, (req, res) => {
   } catch (error) {
     console.error('Error fetching video feed:', error);
     res.status(500).json({ error: 'Failed to fetch video feed' });
+  }
+});
+
+// ============ Profile Wave Routes (v2.9.0) ============
+
+/**
+ * GET /api/profile/wave
+ * Get or create the current user's profile wave
+ * Returns the profile wave details with video count
+ */
+app.get('/api/profile/wave', authenticateToken, (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const wave = db.getOrCreateProfileWave(userId);
+
+    if (!wave) {
+      return res.status(500).json({ error: 'Failed to create profile wave' });
+    }
+
+    // Get video count for this profile wave
+    const videoCount = db.db.prepare(`
+      SELECT COUNT(*) as count FROM pings
+      WHERE wave_id = ? AND media_type = 'video' AND deleted = 0
+    `).get(wave.id)?.count || 0;
+
+    res.json({
+      id: wave.id,
+      title: wave.title,
+      is_profile_wave: true,
+      video_count: videoCount,
+    });
+  } catch (error) {
+    console.error('Error getting profile wave:', error);
+    res.status(500).json({ error: 'Failed to get profile wave' });
+  }
+});
+
+/**
+ * POST /api/profile/wave/videos
+ * Post a video directly to the user's profile wave
+ * Requires media_url from a prior upload to /api/uploads/media
+ */
+app.post('/api/profile/wave/videos', authenticateToken, (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { media_url, content, media_duration } = req.body;
+
+    if (!media_url) {
+      return res.status(400).json({ error: 'media_url is required' });
+    }
+
+    // Validate that it's a video URL
+    if (!media_url.includes('/api/media/') || !media_url.match(/\.(mp4|webm|mov)$/i)) {
+      return res.status(400).json({ error: 'Invalid video URL' });
+    }
+
+    // Get or create the profile wave
+    const wave = db.getOrCreateProfileWave(userId);
+    if (!wave) {
+      return res.status(500).json({ error: 'Failed to get profile wave' });
+    }
+
+    // Create the video ping in the profile wave
+    const ping = db.createDroplet({
+      waveId: wave.id,
+      authorId: userId,
+      content: content ? sanitizeInput(content).slice(0, 500) : '',
+      mediaType: 'video',
+      mediaUrl: media_url,
+      mediaDuration: parseInt(media_duration) || null,
+    });
+
+    console.log(`📹 Profile video posted by user ${userId}: ${ping.id}`);
+
+    res.json({
+      id: ping.id,
+      wave_id: wave.id,
+      media_url: ping.media_url,
+      content: ping.content,
+      created_at: ping.created_at,
+    });
+  } catch (error) {
+    console.error('Error posting profile video:', error);
+    res.status(500).json({ error: 'Failed to post video' });
+  }
+});
+
+/**
+ * GET /api/users/:handle/videos
+ * Get public videos from a user's profile wave
+ */
+app.get('/api/users/:handle/videos', authenticateToken, (req, res) => {
+  try {
+    const handle = sanitizeInput(req.params.handle);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const cursor = req.query.cursor ? sanitizeInput(req.query.cursor) : null;
+
+    // Find the user by handle
+    const user = db.findUserByHandle(handle);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get videos from their profile wave
+    const result = db.getUserProfileVideos(user.id, limit, cursor);
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error getting user videos:', error);
+    res.status(500).json({ error: 'Failed to get videos' });
+  }
+});
+
+/**
+ * POST /api/profile/videos/:id/reply
+ * Reply to a profile video - auto-creates a burst wave for the conversation
+ */
+app.post('/api/profile/videos/:id/reply', authenticateToken, (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const pingId = sanitizeInput(req.params.id);
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Reply content is required' });
+    }
+
+    const sanitizedContent = sanitizeInput(content.trim()).slice(0, 5000);
+
+    // Create the burst wave and reply
+    const result = db.createProfileVideoBurst(pingId, userId, sanitizedContent);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Notify video author if it's a new conversation
+    if (!result.existingWave && result.videoAuthorId !== userId) {
+      // Create notification for video author
+      try {
+        const replyUser = db.findUserById(userId);
+        db.createNotification({
+          userId: result.videoAuthorId,
+          type: 'burst',
+          waveId: result.wave.id,
+          pingId: result.ping?.id,
+          actorId: userId,
+          title: 'New conversation on your video',
+          body: `@${replyUser?.handle || 'Someone'} started a conversation`,
+          preview: sanitizedContent.slice(0, 100),
+        });
+      } catch (notifErr) {
+        console.error('Failed to create notification:', notifErr);
+      }
+
+      // Broadcast WebSocket event
+      broadcastToWaveParticipants(result.wave.id, {
+        type: 'wave_created',
+        wave: result.wave,
+      });
+    }
+
+    res.json({
+      success: true,
+      existing_wave: result.existingWave,
+      wave: {
+        id: result.wave.id,
+        title: result.wave.title,
+      },
+      ping: result.ping ? {
+        id: result.ping.id,
+        content: result.ping.content,
+        created_at: result.ping.created_at,
+      } : null,
+      original_ping_id: result.originalPingId,
+    });
+  } catch (error) {
+    console.error('Error replying to profile video:', error);
+    res.status(500).json({ error: 'Failed to create reply' });
   }
 });
 
