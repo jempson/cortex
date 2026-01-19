@@ -1,5 +1,6 @@
-import { useCallback, useContext, createContext } from 'react';
+import { useCallback, useContext, createContext, useMemo } from 'react';
 import { API_URL } from '../config/constants.js';
+import { useNetworkStatus } from './useNetworkStatus.js';
 
 // Temporary: Import AuthContext (will remain in FarholdApp until Phase 5)
 // For now, we'll re-export these to avoid circular imports
@@ -7,14 +8,44 @@ export const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
 
 // ============ API HOOK ============
+// v2.10.0: Added low-bandwidth mode support
 export function useAPI() {
   const { token, logout } = useAuth();
+  const { isSlowConnection } = useNetworkStatus();
 
+  // Memoized fetch function with bandwidth-aware mode
   const fetchAPI = useCallback(async (endpoint, options = {}) => {
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`${API_URL}${endpoint}`, {
+    // Low-bandwidth mode (v2.10.0):
+    // Auto-add minimal flag on slow connections unless skipMinimal is set
+    let finalEndpoint = endpoint;
+    if (isSlowConnection && !options.skipMinimal) {
+      // Check if endpoint supports minimal mode (waves endpoints)
+      const supportsMinimal = endpoint.startsWith('/waves') && !endpoint.includes('minimal=');
+      if (supportsMinimal) {
+        const separator = endpoint.includes('?') ? '&' : '?';
+
+        // Determine which minimal param to use based on endpoint
+        if (endpoint.match(/^\/waves\/[^/]+\/droplets/)) {
+          // /waves/:id/droplets uses fields=minimal
+          finalEndpoint = `${endpoint}${separator}fields=minimal`;
+        } else if (endpoint.match(/^\/waves\/[^/]+$/)) {
+          // /waves/:id uses minimal=true
+          finalEndpoint = `${endpoint}${separator}minimal=true`;
+        } else if (endpoint.match(/^\/waves(\?|$)/)) {
+          // /waves (list) uses minimal=true
+          finalEndpoint = `${endpoint}${separator}minimal=true`;
+        }
+
+        if (finalEndpoint !== endpoint) {
+          console.log(`[useAPI] Low-bandwidth mode: ${endpoint} → ${finalEndpoint}`);
+        }
+      }
+    }
+
+    const res = await fetch(`${API_URL}${finalEndpoint}`, {
       ...options,
       headers: { ...headers, ...options.headers },
       body: options.body ? JSON.stringify(options.body) : undefined,
@@ -27,7 +58,11 @@ export function useAPI() {
       throw new Error(data.error || `API error: ${res.status}`);
     }
     return data;
-  }, [token, logout]);
+  }, [token, logout, isSlowConnection]);
 
-  return { fetchAPI };
+  // Return both fetchAPI and connection status for components that need it
+  return useMemo(() => ({
+    fetchAPI,
+    isSlowConnection,
+  }), [fetchAPI, isSlowConnection]);
 }
