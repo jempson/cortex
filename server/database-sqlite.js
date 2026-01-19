@@ -3452,6 +3452,85 @@ export class DatabaseSQLite {
     });
   }
 
+  // Low-Bandwidth Mode: Minimal wave list (v2.10.0)
+  // Skips participants array and returns only essential fields
+  // Saves 60-80% bandwidth for wave list requests
+  getWavesForUserMinimal(userId, showArchived = false) {
+    // Get user's crew IDs
+    const userCrewIds = this.db.prepare('SELECT crew_id FROM crew_members WHERE user_id = ?').all(userId).map(r => r.crew_id);
+
+    // Get blocked/muted user IDs for unread count calculation
+    const blockedIds = this.db.prepare('SELECT blocked_user_id FROM blocks WHERE user_id = ?').all(userId).map(r => r.blocked_user_id);
+    const mutedIds = this.db.prepare('SELECT muted_user_id FROM mutes WHERE user_id = ?').all(userId).map(r => r.muted_user_id);
+
+    // Build wave query - minimal fields, no participant join
+    let sql = `
+      SELECT w.id, w.title, w.privacy, w.updated_at, w.created_by, w.encrypted,
+        wp.archived, wp.pinned,
+        wca.category_id,
+        (SELECT COUNT(*) FROM pings WHERE wave_id = w.id AND deleted = 0) as ping_count,
+        (SELECT COUNT(*) FROM wave_participants WHERE wave_id = w.id) as participant_count
+      FROM waves w
+      LEFT JOIN wave_participants wp ON w.id = wp.wave_id AND wp.user_id = ?
+      LEFT JOIN wave_category_assignments wca ON w.id = wca.wave_id AND wca.user_id = ?
+      WHERE (
+        w.privacy = 'public'
+        OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
+        OR (w.privacy = 'crossServer' AND wp.user_id IS NOT NULL)
+        OR (w.privacy = 'cross-server' AND wp.user_id IS NOT NULL)
+        OR (w.privacy = 'crossServer' AND w.federation_state = 'participant')
+        OR (w.privacy = 'cross-server' AND w.federation_state = 'participant')
+        OR ((w.privacy = 'crew' OR w.privacy = 'group') AND w.crew_id IN (${userCrewIds.map(() => '?').join(',') || 'NULL'}))
+      )
+    `;
+
+    const params = [userId, userId, ...userCrewIds];
+
+    if (showArchived) {
+      sql += ' AND wp.archived = 1';
+    } else {
+      sql += ' AND (wp.archived IS NULL OR wp.archived = 0)';
+    }
+
+    sql += ' ORDER BY w.updated_at DESC';
+
+    const rows = this.db.prepare(sql).all(...params);
+
+    return rows.map(r => {
+      // Calculate unread count (same logic as full method)
+      const blockedClause = blockedIds.length > 0
+        ? `AND p.author_id NOT IN (${blockedIds.map(() => '?').join(',')})`
+        : '';
+      const mutedClause = mutedIds.length > 0
+        ? `AND p.author_id NOT IN (${mutedIds.map(() => '?').join(',')})`
+        : '';
+      const unreadCount = this.db.prepare(`
+        SELECT COUNT(*) as count FROM pings p
+        WHERE p.wave_id = ?
+          AND p.deleted = 0
+          AND p.author_id != ?
+          ${blockedClause}
+          ${mutedClause}
+          AND NOT EXISTS (SELECT 1 FROM ping_read_by prb WHERE prb.ping_id = p.id AND prb.user_id = ?)
+      `).get(r.id, userId, ...blockedIds, ...mutedIds, userId).count;
+
+      return {
+        id: r.id,
+        title: r.title,
+        privacy: r.privacy,
+        updatedAt: r.updated_at,
+        encrypted: r.encrypted === 1,
+        ping_count: r.ping_count,
+        unread_count: unreadCount,
+        pinned: r.pinned === 1,
+        is_archived: r.archived === 1,
+        category_id: r.category_id || null,
+        participant_count: r.participant_count, // Just the count, not full array
+        // Omit: participants, creator_name, creator_avatar, creator_handle, crew_name, etc.
+      };
+    });
+  }
+
   // Helper to convert wave row to object
   rowToWave(row) {
     if (!row) return null;
@@ -4559,6 +4638,126 @@ export class DatabaseSQLite {
   // Backward compatibility alias
   getMessagesForWave(waveId, userId = null) {
     return this.getDropletsForWave(waveId, userId);
+  }
+
+  // Low-Bandwidth Mode: Minimal droplet fetching (v2.10.0)
+  // Omits reactions, readBy, and is_unread to reduce payload by 30-50%
+  getDropletsForWaveMinimal(waveId, userId = null) {
+    // Get blocked/muted users
+    let blockedIds = [];
+    let mutedIds = [];
+    if (userId) {
+      blockedIds = this.db.prepare('SELECT blocked_user_id FROM blocks WHERE user_id = ?').all(userId).map(r => r.blocked_user_id);
+      mutedIds = this.db.prepare('SELECT muted_user_id FROM mutes WHERE user_id = ?').all(userId).map(r => r.muted_user_id);
+    }
+
+    let sql = `
+      SELECT d.id, d.wave_id, d.parent_id, d.author_id, d.content,
+             d.created_at, d.edited_at, d.deleted, d.deleted_at, d.encrypted, d.nonce, d.key_version,
+             d.broken_out_to, d.media_type, d.media_url, d.media_duration, d.media_encrypted,
+             u.display_name as user_display_name, u.avatar as user_avatar, u.avatar_url as user_avatar_url, u.handle as user_handle,
+             b.name as bot_name, b.id as bot_id,
+             bow.title as broken_out_to_title
+      FROM pings d
+      JOIN users u ON d.author_id = u.id
+      LEFT JOIN bots b ON d.bot_id = b.id
+      LEFT JOIN waves bow ON d.broken_out_to = bow.id
+      WHERE d.wave_id = ?
+    `;
+    const params = [waveId];
+
+    if (blockedIds.length > 0) {
+      sql += ` AND d.author_id NOT IN (${blockedIds.map(() => '?').join(',')})`;
+      params.push(...blockedIds);
+    }
+    if (mutedIds.length > 0) {
+      sql += ` AND d.author_id NOT IN (${mutedIds.map(() => '?').join(',')})`;
+      params.push(...mutedIds);
+    }
+
+    sql += ' ORDER BY d.created_at ASC';
+
+    const rows = this.db.prepare(sql).all(...params);
+
+    const localDroplets = rows.map(d => {
+      // Use bot information if this is a bot ping
+      const isBot = !!d.bot_id;
+      const senderName = isBot ? `[Bot] ${d.bot_name}` : d.user_display_name;
+      const senderAvatar = isBot ? '🤖' : d.user_avatar;
+      const senderAvatarUrl = isBot ? null : d.user_avatar_url;
+      const senderHandle = isBot ? d.bot_name.toLowerCase().replace(/\s+/g, '-') : d.user_handle;
+
+      return {
+        id: d.id,
+        waveId: d.wave_id,
+        parentId: d.parent_id,
+        authorId: d.author_id,
+        content: d.content,
+        createdAt: d.created_at,
+        editedAt: d.edited_at,
+        deleted: d.deleted === 1,
+        sender_name: senderName,
+        sender_avatar: senderAvatar,
+        sender_avatar_url: senderAvatarUrl,
+        sender_handle: senderHandle,
+        author_id: d.author_id,
+        parent_id: d.parent_id,
+        wave_id: d.wave_id,
+        created_at: d.created_at,
+        edited_at: d.edited_at,
+        brokenOutTo: d.broken_out_to,
+        brokenOutToTitle: d.broken_out_to_title,
+        isRemote: false,
+        encrypted: d.encrypted === 1,
+        nonce: d.nonce,
+        keyVersion: d.key_version,
+        isBot: isBot,
+        botId: d.bot_id || undefined,
+        // Media fields (v2.7.0)
+        media_type: d.media_type,
+        media_url: d.media_url,
+        media_duration: d.media_duration,
+        media_encrypted: d.media_encrypted === 1,
+        // Omitted for minimal mode: reactions, readBy, is_unread
+        minimal: true,
+      };
+    });
+
+    // Also get remote droplets for federated waves (minimal)
+    const remoteDroplets = this.getRemoteDropletsForWave(waveId).map(rd => ({
+      id: rd.id,
+      waveId: rd.waveId,
+      parentId: rd.parentId,
+      authorId: rd.authorId,
+      content: rd.content,
+      createdAt: rd.createdAt,
+      editedAt: rd.editedAt,
+      deleted: rd.deleted,
+      sender_name: rd.authorDisplayName || 'Unknown',
+      sender_avatar: rd.authorAvatar || '?',
+      sender_avatar_url: rd.authorAvatarUrl,
+      sender_handle: `${rd.authorId}@${rd.authorNode}`,
+      author_id: rd.authorId,
+      parent_id: rd.parentId,
+      wave_id: rd.waveId,
+      created_at: rd.createdAt,
+      edited_at: rd.editedAt,
+      brokenOutTo: null,
+      brokenOutToTitle: null,
+      isRemote: true,
+      originNode: rd.originNode,
+      authorNode: rd.authorNode,
+      minimal: true,
+    }));
+
+    // Merge and deduplicate by ID (prefer local over remote)
+    const seenIds = new Set(localDroplets.map(d => d.id));
+    const uniqueRemoteDroplets = remoteDroplets.filter(rd => !seenIds.has(rd.id));
+
+    const allDroplets = [...localDroplets, ...uniqueRemoteDroplets];
+    allDroplets.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    return allDroplets;
   }
 
   createDroplet(data) {

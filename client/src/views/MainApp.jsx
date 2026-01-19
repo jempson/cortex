@@ -8,6 +8,7 @@ import { getRandomTagline } from '../../messages.js';
 import { storage } from '../utils/storage.js';
 import { updateAppBadge, subscribeToPush } from '../utils/pwa.js';
 import { updateDocumentTitle, startFaviconFlash, stopFaviconFlash } from '../utils/favicon.js';
+import { getCachedWaveList, cacheWaveList } from '../utils/waveCache.js';
 import BottomNav from '../components/ui/BottomNav.jsx';
 import { Toast, OfflineIndicator, ScanLines, GlowText } from '../components/ui/SimpleComponents.jsx';
 import NotificationBell from '../components/notifications/NotificationBell.jsx';
@@ -31,7 +32,7 @@ import DockedCallWindow from '../components/calls/DockedCallWindow.jsx';
 
 function MainApp({ shareDropletId }) {
   const { user, token, logout, updateUser } = useAuth();
-  const { fetchAPI } = useAPI();
+  const { fetchAPI, isSlowConnection } = useAPI();
   const e2ee = useE2EE();
   const [toast, setToast] = useState(null);
 
@@ -208,6 +209,20 @@ function MainApp({ shareDropletId }) {
     console.log('🔄 loadWaves called, fetching waves...');
     loadWavesInProgressRef.current = true;
 
+    // Low-bandwidth mode (v2.10.0): Show cached data immediately for faster perceived load
+    if (isSlowConnection) {
+      try {
+        const cachedWaves = await getCachedWaveList(showArchived);
+        if (cachedWaves && cachedWaves.length > 0) {
+          console.log('🔄 [Cache] Showing cached waves while fetching fresh data...');
+          setWaves(cachedWaves);
+          setApiConnected(true);
+        }
+      } catch (cacheError) {
+        console.warn('🔄 [Cache] Failed to load cached waves:', cacheError);
+      }
+    }
+
     try {
       const data = await fetchAPI(`/waves?archived=${showArchived}`);
       console.log('🔄 loadWaves received', data.length, 'waves');
@@ -218,13 +233,20 @@ function MainApp({ shareDropletId }) {
       }
       setWaves(data);
       setApiConnected(true);
+
+      // Cache the fresh data for next time (v2.10.0)
+      try {
+        cacheWaveList(data, showArchived);
+      } catch (cacheError) {
+        console.warn('🔄 [Cache] Failed to cache waves:', cacheError);
+      }
     } catch (err) {
       console.error('loadWaves failed:', err);
       setApiConnected(false);
     } finally {
       loadWavesInProgressRef.current = false;
     }
-  }, [fetchAPI, showArchived]);
+  }, [fetchAPI, showArchived, isSlowConnection]);
 
   // Load wave categories (v2.2.0)
   const loadCategories = useCallback(async () => {

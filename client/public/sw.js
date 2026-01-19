@@ -1,16 +1,72 @@
-// Farhold Service Worker v2.0.0
-// Includes: Push notifications, offline caching
+// Farhold Service Worker v2.10.0
+// Includes: Push notifications, offline caching, low-bandwidth API caching
 // v2.0.0: Farhold nomenclature overhaul (formerly Cortex)
-const CACHE_NAME = 'farhold-v2.0.0';
+// v2.10.0: Added stale-while-revalidate for wave list API
+const CACHE_NAME = 'farhold-v2.10.0';
+const API_CACHE_NAME = 'farhold-api-v2.10.0';
+const API_CACHE_MAX_AGE = 30000; // 30 seconds for API cache
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json'
 ];
 
+// Stale-while-revalidate helper for API requests (v2.10.0)
+// Returns cached response immediately, then updates cache in background
+async function staleWhileRevalidate(request, cacheName, maxAge) {
+  const cache = await caches.open(cacheName);
+  const cachedResponse = await cache.match(request);
+
+  // Always fetch fresh data in background
+  const fetchPromise = fetch(request)
+    .then((networkResponse) => {
+      if (networkResponse.ok) {
+        // Store response with timestamp
+        const responseToCache = networkResponse.clone();
+        const headers = new Headers(responseToCache.headers);
+        headers.set('x-sw-cached-at', Date.now().toString());
+
+        // We can't modify response headers directly, so store the timestamp separately
+        cache.put(request, networkResponse.clone());
+        cache.put(request.url + '__timestamp', new Response(Date.now().toString()));
+      }
+      return networkResponse;
+    })
+    .catch((error) => {
+      console.warn('[SW] Network fetch failed for:', request.url, error);
+      return cachedResponse || new Response(JSON.stringify({ error: 'Offline' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+
+  // If we have a cached response, check if it's still valid
+  if (cachedResponse) {
+    try {
+      const timestampResponse = await cache.match(request.url + '__timestamp');
+      if (timestampResponse) {
+        const timestamp = parseInt(await timestampResponse.text());
+        const age = Date.now() - timestamp;
+
+        if (age < maxAge) {
+          console.log('[SW] Serving from cache (age:', Math.round(age/1000), 's):', request.url);
+          // Return cached response, but still update in background
+          fetchPromise; // Don't await, let it update in background
+          return cachedResponse;
+        }
+      }
+    } catch (e) {
+      // Timestamp check failed, fall through to network
+    }
+  }
+
+  // No valid cache, wait for network
+  return fetchPromise;
+}
+
 // Install: Cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v2.0.0...');
+  console.log('[SW] Installing service worker v2.10.0...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching static assets');
@@ -44,7 +100,12 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => (name.startsWith('farhold-') || name.startsWith('cortex-')) && name !== CACHE_NAME)
+          .filter((name) => {
+            // Keep current caches
+            if (name === CACHE_NAME || name === API_CACHE_NAME) return false;
+            // Delete old farhold/cortex caches
+            return name.startsWith('farhold-') || name.startsWith('cortex-');
+          })
           .map((name) => {
             console.log('[SW] Deleting old cache:', name);
             return caches.delete(name);
@@ -70,8 +131,17 @@ self.addEventListener('fetch', (event) => {
   // Skip chrome-extension and other non-http(s) requests
   if (!url.protocol.startsWith('http')) return;
 
-  // API requests: Network only (real-time data needs to be fresh)
+  // API requests: Low-bandwidth mode caching (v2.10.0)
+  // Use stale-while-revalidate for wave list to enable faster loads
   if (url.pathname.startsWith('/api/')) {
+    // Wave list endpoint: Use stale-while-revalidate for faster perceived load
+    // This returns cached data immediately while fetching fresh data in background
+    if (url.pathname === '/api/waves' || url.pathname.match(/^\/api\/waves\?/)) {
+      event.respondWith(staleWhileRevalidate(request, API_CACHE_NAME, API_CACHE_MAX_AGE));
+      return;
+    }
+
+    // All other API requests: Network only (real-time data needs to be fresh)
     return;
   }
 
