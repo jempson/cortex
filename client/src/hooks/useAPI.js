@@ -20,6 +20,8 @@ export function useAPI() {
 
     // Low-bandwidth mode (v2.10.0):
     // Auto-add minimal flag on slow connections unless skipMinimal is set
+    // Note: Only apply to wave list and droplets endpoints, NOT individual wave details
+    // because WaveView needs droplets to render content
     let finalEndpoint = endpoint;
     if (isSlowConnection && !options.skipMinimal) {
       // Check if endpoint supports minimal mode (waves endpoints)
@@ -31,13 +33,11 @@ export function useAPI() {
         if (endpoint.match(/^\/waves\/[^/]+\/droplets/)) {
           // /waves/:id/droplets uses fields=minimal
           finalEndpoint = `${endpoint}${separator}fields=minimal`;
-        } else if (endpoint.match(/^\/waves\/[^/]+$/)) {
-          // /waves/:id uses minimal=true
-          finalEndpoint = `${endpoint}${separator}minimal=true`;
         } else if (endpoint.match(/^\/waves(\?|$)/)) {
           // /waves (list) uses minimal=true
           finalEndpoint = `${endpoint}${separator}minimal=true`;
         }
+        // Note: /waves/:id is NOT given minimal mode - WaveView needs droplets
 
         if (finalEndpoint !== endpoint) {
           console.log(`[useAPI] Low-bandwidth mode: ${endpoint} → ${finalEndpoint}`);
