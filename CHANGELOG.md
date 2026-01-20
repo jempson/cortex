@@ -133,6 +133,71 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.10.0] - 2026-01-19
+
+### Added
+
+#### Low-Bandwidth Mode
+
+Automatically detects slow network connections and adapts data fetching to improve load times on poor connections.
+
+**Network Detection:**
+- Uses Network Information API when available (effectiveType, downlink, rtt)
+- Falls back to latency measurement for browsers without API support
+- Detects 2G, slow-2G, or high latency (>500ms) as "slow connection"
+
+**Minimal API Mode:**
+- `GET /api/waves?minimal=true` - Returns wave list without participant arrays (60-80% reduction)
+- `GET /api/waves/:id/droplets?fields=minimal` - Returns droplets without reactions/readBy (30-50% reduction)
+
+**Caching Layer:**
+- IndexedDB cache for wave list with 7-day expiration
+- Shows cached data immediately while fetching fresh data in background
+- Service worker stale-while-revalidate for wave list API (30-second cache)
+
+**Files Added:**
+- `client/src/hooks/useNetworkStatus.js` - Network detection hook
+- `client/src/utils/waveCache.js` - IndexedDB caching utilities
+- `client/src/components/ui/Skeletons.jsx` - Loading placeholder components
+
+**Files Modified:**
+- `server/database-sqlite.js` - Added `getWavesForUserMinimal()`, `getDropletsForWaveMinimal()`
+- `server/server.js` - Added minimal mode support to waves endpoints
+- `client/src/hooks/useAPI.js` - Auto-adds minimal flags on slow connections
+- `client/src/views/MainApp.jsx` - Cache-first loading strategy
+- `client/public/sw.js` - API caching with stale-while-revalidate
+
+#### Video Feed Recommendation Algorithm
+
+Replaces pure random video ordering with interest-based scoring to show more relevant content.
+
+**Scoring System:**
+| Factor | Score |
+|--------|-------|
+| Own video | -100 (effectively excluded) |
+| Unseen video | +100 |
+| Already watched | -80 |
+| Creator you've reacted to | +50 |
+| Video from contact/friend | +30 |
+| Video has conversations | +5 to +20 |
+| Random discovery factor | +0 to +30 |
+
+**View Tracking:**
+- New endpoint: `POST /api/feed/videos/:id/view`
+- Client marks videos as viewed after 2 seconds of watching
+- Uses existing `ping_read_by` table (no schema changes needed)
+
+**How It Works:**
+1. Fetches 5x the requested videos as candidates
+2. Scores each video based on user's engagement history
+3. Sorts by score descending and returns top N
+4. Random factor ensures discovery of new content/creators
+
+**Files Modified:**
+- `server/database-sqlite.js` - `getVideoFeedForUser()` rewritten with scoring algorithm
+- `server/server.js` - Added `POST /api/feed/videos/:id/view` endpoint
+- `client/src/components/feed/VideoFeedView.jsx` - Tracks views after 2 seconds
+
 ## [2.9.0] - 2026-01-17
 
 ### Added
