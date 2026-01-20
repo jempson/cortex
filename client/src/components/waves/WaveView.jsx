@@ -261,8 +261,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Share ping to external platforms
   const handleSharePing = async (ping) => {
     const shareUrl = `${window.location.origin}/share/${ping.id}`;
-    const shareTitle = wave?.title || waveData?.title || 'Farhold';
-    const shareText = `Check out this conversation on Farhold`;
+    const shareTitle = wave?.title || waveData?.title || 'Cortex';
+    const shareText = `Check out this conversation on Cortex`;
 
     // Try native Web Share API first (mobile-friendly)
     if (navigator.share) {

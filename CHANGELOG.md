@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Farhold (formerly Cortex) will be documented in this file.
+All notable changes to Cortex will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -92,6 +92,39 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/droplets/CollapsedDroplet.jsx` - NEW - Compact ping display
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
+
+## [2.12.0] - 2026-01-20
+
+### Changed
+
+#### Application Rename: Farhold → Cortex
+
+Restored the application name from "Farhold" back to "Cortex" - the canonical communication network name from the Firefly universe.
+
+**Rationale:**
+- "Cortex" is the authentic Firefly terminology for the communication network
+- As a federated application, instances will run on subdomains (e.g., `cortex.example.com`)
+- Better alignment with the show's lore and aesthetic
+- Production instance will be hosted at `cortex.farhold.com`
+
+**File Renames:**
+- `FarholdApp.jsx` → `CortexApp.jsx`
+
+**Package Name Updates:**
+- `farhold-client` → `cortex-client`
+- `farhold-server` → `cortex-server`
+
+**Branding Updates:**
+- All user-facing "Farhold" text updated to "Cortex"
+- PWA manifest and service worker updated
+- Login screen, headers, and share prompts updated
+- OG meta tags and Twitter cards updated
+- Push notification titles updated
+
+**Backwards Compatibility:**
+- All `localStorage` keys remain prefixed with `farhold_` for seamless upgrades
+- API endpoints unchanged (`/api/droplets`, `/api/pings`, etc.)
+- Federation placeholder examples kept as documentation aids
 
 ## [2.11.2] - 2026-01-20
 

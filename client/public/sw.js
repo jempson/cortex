@@ -1,9 +1,8 @@
-// Farhold Service Worker v2.10.0
+// Cortex Service Worker v2.12.0
 // Includes: Push notifications, offline caching, low-bandwidth API caching
-// v2.0.0: Farhold nomenclature overhaul (formerly Cortex)
 // v2.10.0: Added stale-while-revalidate for wave list API
-const CACHE_NAME = 'farhold-v2.10.0';
-const API_CACHE_NAME = 'farhold-api-v2.10.0';
+const CACHE_NAME = 'cortex-v2.12.0';
+const API_CACHE_NAME = 'cortex-api-v2.12.0';
 const API_CACHE_MAX_AGE = 30000; // 30 seconds for API cache
 const STATIC_ASSETS = [
   '/',
@@ -222,7 +221,7 @@ self.addEventListener('push', (event) => {
     data = event.data.json();
   } catch (e) {
     data = {
-      title: 'Farhold',
+      title: 'Cortex',
       body: event.data.text()
     };
   }
@@ -265,7 +264,7 @@ self.addEventListener('push', (event) => {
 
         // Only show notification if app is not visible (backgrounded or closed)
         if (!hasVisibleClient) {
-          return self.registration.showNotification(data.title || 'Farhold', options);
+          return self.registration.showNotification(data.title || 'Cortex', options);
         }
         // If app is visible, WebSocket message will show the message directly
         return Promise.resolve();

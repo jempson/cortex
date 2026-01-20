@@ -1,7 +1,7 @@
 // Low-Bandwidth Mode: IndexedDB Wave Caching (v2.10.0)
 // Provides persistent caching for wave list and wave data for instant load
 
-const DB_NAME = 'farhold-cache';
+const DB_NAME = 'cortex-cache';
 const DB_VERSION = 1;
 const CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 

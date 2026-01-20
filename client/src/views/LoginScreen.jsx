@@ -149,7 +149,7 @@ const LoginScreen = ({ onAbout }) => {
         border: '2px solid var(--accent-amber)40',
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>FARHOLD</GlowText>
+          <GlowText color="var(--accent-amber)" size={isMobile ? '2rem' : '2.5rem'} weight={700}>CORTEX</GlowText>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '8px' }}>SECURE COMMUNICATIONS</div>
         </div>
 

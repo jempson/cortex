@@ -33,7 +33,7 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
         body: JSON.stringify({ type, targetId, reason, details: details.trim() }),
       });
       if (res.ok) {
-        showToast('Report submitted successfully. Thank you for helping keep Farhold safe.', 'success');
+        showToast('Report submitted successfully. Thank you for helping keep Cortex safe.', 'success');
         onClose();
       } else {
         const data = await res.json();

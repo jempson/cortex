@@ -71,7 +71,7 @@ const PublicMessageView = ({ messageId, onLogin, onRegister }) => {
               fontSize: '1rem',
             }}
           >
-            LOGIN TO FARHOLD
+            LOGIN TO CORTEX
           </button>
         </div>
       </div>
@@ -141,7 +141,7 @@ const PublicMessageView = ({ messageId, onLogin, onRegister }) => {
           gap: '6px',
         }}>
           <span>○</span>
-          <span>{data.wave?.title || 'Farhold Wave'}</span>
+          <span>{data.wave?.title || 'Cortex Wave'}</span>
         </div>
 
         {/* Author and content */}
@@ -223,7 +223,7 @@ const PublicMessageView = ({ messageId, onLogin, onRegister }) => {
           paddingTop: '20px',
         }}>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
-            Join the conversation on Farhold
+            Join the conversation on Cortex
           </p>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button

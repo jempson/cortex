@@ -1095,7 +1095,7 @@ const InstallPrompt = ({ isMobile }) => {
         marginBottom: '12px'
       }}>
         <div style={{ color: 'var(--accent-green)', fontWeight: 'bold', fontSize: '1rem', fontFamily: 'monospace' }}>
-          Install Farhold
+          Install Cortex
         </div>
         <button
           onClick={handleDismiss}
@@ -1120,7 +1120,7 @@ const InstallPrompt = ({ isMobile }) => {
         lineHeight: 1.4,
         fontFamily: 'monospace'
       }}>
-        Install Farhold on your device for quick access and offline support.
+        Install Cortex on your device for quick access and offline support.
       </p>
 
       <div style={{ display: 'flex', gap: '8px' }}>
@@ -1347,7 +1347,7 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
 
     const popoutWindow = window.open(
       callUrl,
-      'FarholdCall_' + wave.id,
+      'CortexCall_' + wave.id,
       `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`
     );
 
@@ -3089,7 +3089,7 @@ class ErrorBoundary extends React.Component {
 }
 
 // ============ MAIN APP ENTRY POINT ============
-export default function FarholdApp() {
+export default function CortexApp() {
   return (
     <AuthProvider>
       <E2EEWrapper />

@@ -1,5 +1,5 @@
 /**
- * Farhold SQLite Database Module
+ * Cortex SQLite Database Module
  *
  * This module provides the Database class that uses SQLite for persistence.
  * It's a drop-in replacement for the JSON file-based database.

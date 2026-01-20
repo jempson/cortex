@@ -222,7 +222,7 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
 
     const popoutWindow = window.open(
       callUrl,
-      'FarholdCall_' + wave.id,
+      'CortexCall_' + wave.id,
       `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`
     );
 

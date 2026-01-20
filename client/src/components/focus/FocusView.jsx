@@ -271,8 +271,8 @@ const FocusView = ({
   // Share ping to external platforms
   const handleSharePing = async (ping) => {
     const shareUrl = `${window.location.origin}/share/${ping.id}`;
-    const shareTitle = wave?.title || wave?.name || 'Farhold';
-    const shareText = `Check out this conversation on Farhold`;
+    const shareTitle = wave?.title || wave?.name || 'Cortex';
+    const shareText = `Check out this conversation on Cortex`;
 
     // Try native Web Share API first
     if (navigator.share) {

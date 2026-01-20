@@ -1070,7 +1070,7 @@ async function fetchNewsFromRSS() {
     try {
       const response = await fetch(feedUrl, {
         signal: AbortSignal.timeout(5000),
-        headers: { 'User-Agent': 'Farhold/2.0.0' },
+        headers: { 'User-Agent': 'Cortex/2.12.0' },
       });
 
       if (!response.ok) continue;
@@ -1467,7 +1467,7 @@ class Database {
 
     // Demo waves with different privacy levels
     this.waves.waves = [
-      { id: 'wave-1', title: 'Welcome to Farhold', privacy: 'public', createdBy: 'user-mal', createdAt: now, updatedAt: now },
+      { id: 'wave-1', title: 'Welcome to Cortex', privacy: 'public', createdBy: 'user-mal', createdAt: now, updatedAt: now },
       { id: 'wave-2', title: 'Private Chat Test', privacy: 'private', createdBy: 'user-mal', createdAt: now, updatedAt: now },
       { id: 'wave-3', title: 'Crew Discussion', privacy: 'group', groupId: 'group-crew', createdBy: 'user-mal', createdAt: now, updatedAt: now },
       { id: 'wave-4', title: 'Zoe Private Wave', privacy: 'private', createdBy: 'user-zoe', createdAt: now, updatedAt: now },
@@ -1486,7 +1486,7 @@ class Database {
     ];
 
     this.droplets.droplets = [
-      { id: 'droplet-1', waveId: 'wave-1', parentId: null, authorId: 'user-mal', content: 'Welcome to Farhold! This is a public wave visible to everyone.', privacy: 'public', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
+      { id: 'droplet-1', waveId: 'wave-1', parentId: null, authorId: 'user-mal', content: 'Welcome to Cortex! This is a public wave visible to everyone.', privacy: 'public', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
       { id: 'droplet-2', waveId: 'wave-2', parentId: null, authorId: 'user-mal', content: 'This is a private wave for testing.', privacy: 'private', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
       { id: 'droplet-3', waveId: 'wave-3', parentId: null, authorId: 'user-mal', content: 'This is a group wave for the crew.', privacy: 'group', version: 1, createdAt: now, editedAt: null, readBy: ['user-mal'] },
       { id: 'droplet-4', waveId: 'wave-4', parentId: null, authorId: 'user-zoe', content: 'Zoe\'s private wave.', privacy: 'private', version: 1, createdAt: now, editedAt: null, readBy: ['user-zoe'] },
@@ -4669,7 +4669,7 @@ app.post('/api/auth/mfa/totp/setup', authenticateToken, async (req, res) => {
     db.storePendingTotpSecret(req.user.userId, secret);
 
     // Generate otpauth URI for authenticator apps
-    const appName = 'Farhold';
+    const appName = 'Cortex';
     const otpauthUrl = authenticator.keyuri(user.handle, appName, secret);
 
     // Generate QR code as data URL
@@ -6201,7 +6201,7 @@ app.post('/api/push/test', authenticateToken, async (req, res) => {
   }
 
   const payload = JSON.stringify({
-    title: 'Farhold Test',
+    title: 'Cortex Test',
     body: 'Push notifications are working!',
     tag: 'test',
     url: '/'
@@ -8291,11 +8291,11 @@ app.get('/share/:dropletId', async (req, res) => {
     .replace(/<[^>]*>/g, '')
     .substring(0, 200);
 
-  const title = wave?.title || 'Farhold';
+  const title = wave?.title || 'Cortex';
   const authorName = author?.displayName || author?.display_name || 'Someone';
   const description = isPublic && plainContent
     ? `${authorName}: "${plainContent}${plainContent.length >= 200 ? '...' : ''}"`
-    : 'Join Farhold to view this ping';
+    : 'Join Cortex to view this message';
 
   // Server base URL for absolute paths
   const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
@@ -8309,19 +8309,19 @@ app.get('/share/:dropletId', async (req, res) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)} - Farhold</title>
+  <title>${escapeHtml(title)} - Cortex</title>
 
   <!-- Open Graph -->
   <meta property="og:type" content="article">
-  <meta property="og:title" content="${escapeHtml(title)} - Farhold">
+  <meta property="og:title" content="${escapeHtml(title)} - Cortex">
   <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:url" content="${shareUrl}">
   <meta property="og:image" content="${logoUrl}">
-  <meta property="og:site_name" content="Farhold">
+  <meta property="og:site_name" content="Cortex">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="${escapeHtml(title)} - Farhold">
+  <meta name="twitter:title" content="${escapeHtml(title)} - Cortex">
   <meta name="twitter:description" content="${escapeHtml(description)}">
   <meta name="twitter:image" content="${logoUrl}">
 
@@ -8351,7 +8351,7 @@ app.get('/share/:dropletId', async (req, res) => {
 </head>
 <body>
   <div class="container">
-    <p>Redirecting to Farhold...</p>
+    <p>Redirecting to Cortex...</p>
     <p><a href="/?share=${dropletId}">Click here if not redirected</a></p>
   </div>
 </body>
@@ -9631,7 +9631,7 @@ app.post('/api/admin/federation/nodes/:id/handshake', authenticateToken, async (
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
-        'User-Agent': `Farhold/${ourIdentity.nodeName}`
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
       }
     });
     clearTimeout(timeout);
@@ -9733,7 +9733,7 @@ app.post('/api/admin/federation/request', authenticateToken, async (req, res) =>
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
-        'User-Agent': `Farhold/${ourIdentity.nodeName}`
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
       }
     });
     clearTimeout(timeout);
@@ -10021,7 +10021,7 @@ app.post('/api/admin/federation/requests/:id/accept', authenticateToken, async (
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
-        'User-Agent': `Farhold/${ourIdentity.nodeName}`
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
       }
     });
     clearTimeout(timeout);
@@ -13957,7 +13957,7 @@ app.post('/api/server/federation-request', publicFederationRequestLimiter, async
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
-        'User-Agent': `Farhold/${ourIdentity.nodeName}`
+        'User-Agent': `Cortex/${ourIdentity.nodeName}`
       }
     });
     clearTimeout(timeout);
@@ -13971,7 +13971,7 @@ app.post('/api/server/federation-request', publicFederationRequestLimiter, async
 
     const remoteIdentity = await response.json();
     if (!remoteIdentity.nodeName || !remoteIdentity.publicKey) {
-      return res.status(400).json({ error: 'Invalid response from remote server - is it a Farhold server?' });
+      return res.status(400).json({ error: 'Invalid response from remote server - is it a Cortex server?' });
     }
 
     // Check if already federated
@@ -14010,8 +14010,8 @@ app.post('/api/server/federation-request', publicFederationRequestLimiter, async
   }
 });
 
-// ============ Farhold v2.0.0 API Aliases ============
-// These aliases allow clients to use the new Farhold terminology while maintaining backward compatibility
+// ============ Cortex v2.0.0 API Aliases ============
+// These aliases allow clients to use the new Cortex terminology while maintaining backward compatibility
 
 // /api/pings/* -> /api/droplets/* (pings = new name for droplets)
 app.use('/api/pings', (req, res, next) => {
@@ -14514,7 +14514,7 @@ function createRippleNotifications(originalWave, newWave, rippledDroplet, actor)
   return notificationsToSend.length;
 }
 
-// Farhold v2.0.0 event name mappings (old -> new)
+// Cortex v2.0.0 event name mappings (old -> new)
 const EVENT_ALIASES = {
   'new_droplet': 'new_ping',
   'droplet_edited': 'ping_edited',

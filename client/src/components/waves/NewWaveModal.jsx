@@ -180,7 +180,7 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups, federationE
               </div>
             )}
             <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
-              Format: @handle@server.com (user on another Farhold server)
+              Format: @handle@server.com (user on another Cortex server)
             </div>
           </div>
         )}
