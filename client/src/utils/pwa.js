@@ -104,9 +104,9 @@ export async function subscribeToPush(token) {
       } catch (subError) {
         console.error('[Push] Failed to create subscription:', subError.name, subError.message);
 
-        // If AbortError (push service error), try recovery strategies
+        // If AbortError (push service error), try aggressive recovery strategies
         if (subError.name === 'AbortError') {
-          console.log('[Push] AbortError detected - attempting recovery...');
+          console.log('[Push] AbortError detected - attempting aggressive recovery...');
 
           // Strategy 1: Try to get and unsubscribe any stale subscription
           try {
@@ -114,48 +114,85 @@ export async function subscribeToPush(token) {
             if (staleSubscription) {
               console.log('[Push] Found stale subscription, unsubscribing...');
               await staleSubscription.unsubscribe();
-              // Wait for push service to process unsubscription
               await new Promise(resolve => setTimeout(resolve, 1000));
             }
           } catch (e) {
             console.log('[Push] Could not clear stale subscription:', e.message);
           }
 
-          // Strategy 2: Unregister service worker completely and wait
+          // Strategy 2: Full service worker reset with cache clearing
+          let newReg = null;
           try {
-            console.log('[Push] Unregistering service worker...');
-            await registration.unregister();
-            // Clear any cached VAPID key that might be causing issues
+            console.log('[Push] Performing full service worker reset...');
+
+            // Unregister all service workers for this scope
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const reg of registrations) {
+              await reg.unregister();
+            }
+
+            // Clear all caches
+            if ('caches' in window) {
+              const cacheNames = await caches.keys();
+              await Promise.all(cacheNames.map(name => caches.delete(name)));
+              console.log('[Push] Cleared all caches');
+            }
+
+            // Clear VAPID key
             localStorage.removeItem('farhold_vapid_key');
-            // Wait for push service to clear state
-            await new Promise(resolve => setTimeout(resolve, 2000));
 
+            // Wait for push service to fully clear state
+            console.log('[Push] Waiting for push service to reset...');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
+            // Re-register service worker
             console.log('[Push] Re-registering service worker...');
-            const newReg = await navigator.serviceWorker.register('/sw.js');
+            newReg = await navigator.serviceWorker.register('/sw.js');
             await navigator.serviceWorker.ready;
-            // Additional wait for service worker to fully activate
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.log('[Push] Service worker re-registered');
+          } catch (e) {
+            console.log('[Push] Service worker reset error:', e.message);
+          }
 
-            console.log('[Push] Retrying subscription...');
-            subscription = await newReg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(publicKey)
-            });
-            console.log('[Push] Subscription succeeded after recovery');
-          } catch (recoveryError) {
-            console.error('[Push] Recovery failed:', recoveryError.name, recoveryError.message);
+          // Strategy 3: Multiple retry attempts with increasing delays
+          const retryDelays = [1000, 2000, 3000];
+          let lastError = null;
 
-            // Provide specific guidance based on browser
+          for (let i = 0; i < retryDelays.length; i++) {
+            try {
+              console.log(`[Push] Subscription attempt ${i + 1}/${retryDelays.length}...`);
+              const reg = newReg || await navigator.serviceWorker.ready;
+              subscription = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(publicKey)
+              });
+              console.log('[Push] Subscription succeeded on retry');
+              break;
+            } catch (retryError) {
+              lastError = retryError;
+              console.log(`[Push] Attempt ${i + 1} failed:`, retryError.message);
+              if (i < retryDelays.length - 1) {
+                console.log(`[Push] Waiting ${retryDelays[i]}ms before next attempt...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelays[i]));
+              }
+            }
+          }
+
+          // If all retries failed, provide guidance
+          if (!subscription) {
+            console.error('[Push] All recovery attempts failed');
+
             const isFirefox = navigator.userAgent.includes('Firefox');
             const isChrome = navigator.userAgent.includes('Chrome');
 
-            let guidance = 'Push service temporarily unavailable. ';
+            let guidance = 'Push service error. Please try: ';
             if (isFirefox) {
-              guidance += 'Try: Settings → Privacy & Security → Permissions → Notifications → Remove this site, then refresh.';
+              guidance += 'Click the lock icon → Connection secure → More Information → Permissions → Clear "Receive Notifications" permission, then refresh and try again.';
             } else if (isChrome) {
-              guidance += 'Try: Click the lock icon in address bar → Site settings → Notifications → Reset permission, then refresh.';
+              guidance += 'Click the lock icon → Site settings → Notifications → Reset, then refresh and try again.';
             } else {
-              guidance += 'Try resetting notification permissions for this site in browser settings, then refresh.';
+              guidance += 'Reset notification permissions for this site in browser settings, then refresh.';
             }
 
             return { success: false, reason: guidance };
