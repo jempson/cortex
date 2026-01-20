@@ -2,7 +2,7 @@
 
 ## Completed Extractions
 
-The following components have been successfully extracted from `/tmp/original_farhold.jsx` and created as standalone files:
+The following components have been successfully extracted from `/tmp/original_cortex.jsx` and created as standalone files:
 
 ### 1. UserProfileModal ✅
 - **Location:** `/home/jempson/development/cortex/client/src/components/profile/UserProfileModal.jsx`
@@ -42,7 +42,7 @@ These components are extremely large and complex, requiring careful extraction:
   - Constants: SUCCESS, EMPTY, LOADING, CONFIRM, PRIVACY_LEVELS, THREAD_DEPTH_LIMIT
   - UI Components: GlowText, Avatar, PrivacyBadge
   - Multiple child components (MessageItem, ComposeBox, ParticipantsPanel, etc.)
-- **Extraction Script:** `sed -n '7140,10106p' /tmp/original_farhold.jsx > WaveView.jsx`
+- **Extraction Script:** `sed -n '7140,10106p' /tmp/original_cortex.jsx > WaveView.jsx`
 
 ### 6. FocusView ⚠️
 - **Source Lines:** 10107-10813 (~707 lines)
@@ -50,7 +50,7 @@ These components are extremely large and complex, requiring careful extraction:
 - **Dependencies:**
   - Similar to WaveView but focused view
   - React hooks, E2EE, constants
-- **Extraction Script:** `sed -n '10107,10813p' /tmp/original_farhold.jsx > FocusView.jsx`
+- **Extraction Script:** `sed -n '10107,10813p' /tmp/original_cortex.jsx > FocusView.jsx`
 
 ### 7. GroupsView ⚠️
 - **Source Lines:** 11005-14981 (~3977 lines)
@@ -61,7 +61,7 @@ These components are extremely large and complex, requiring careful extraction:
   - SUCCESS, EMPTY, LOADING constants
   - GlowText, Avatar components
   - Multiple sub-components for group management
-- **Extraction Script:** `sed -n '11005,14981p' /tmp/original_farhold.jsx > GroupsView.jsx`
+- **Extraction Script:** `sed -n '11005,14981p' /tmp/original_cortex.jsx > GroupsView.jsx`
 
 ### 8. ProfileSettings ⚠️
 - **Source Lines:** 14982-16958 (~1977 lines)
@@ -72,7 +72,7 @@ These components are extremely large and complex, requiring careful extraction:
   - useWindowSize
   - Multiple sub-components for settings sections
   - CollapsibleSection component
-- **Extraction Script:** `sed -n '14982,16958p' /tmp/original_farhold.jsx > ProfileSettings.jsx`
+- **Extraction Script:** `sed -n '14982,16958p' /tmp/original_cortex.jsx > ProfileSettings.jsx`
 
 ## Extraction Commands
 
@@ -84,16 +84,16 @@ mkdir -p /home/jempson/development/cortex/client/src/views
 mkdir -p /home/jempson/development/cortex/client/src/components/settings
 
 # Extract WaveView
-cd /tmp && sed -n '7140,10106p' original_farhold.jsx > /home/jempson/development/cortex/client/src/views/WaveView.jsx
+cd /tmp && sed -n '7140,10106p' original_cortex.jsx > /home/jempson/development/cortex/client/src/views/WaveView.jsx
 
 # Extract FocusView
-cd /tmp && sed -n '10107,10813p' original_farhold.jsx > /home/jempson/development/cortex/client/src/views/FocusView.jsx
+cd /tmp && sed -n '10107,10813p' original_cortex.jsx > /home/jempson/development/cortex/client/src/views/FocusView.jsx
 
 # Extract GroupsView
-cd /tmp && sed -n '11005,14981p' original_farhold.jsx > /home/jempson/development/cortex/client/src/components/groups/GroupsView.jsx
+cd /tmp && sed -n '11005,14981p' original_cortex.jsx > /home/jempson/development/cortex/client/src/components/groups/GroupsView.jsx
 
 # Extract ProfileSettings
-cd /tmp && sed -n '14982,16958p' original_farhold.jsx > /home/jempson/development/cortex/client/src/components/settings/ProfileSettings.jsx
+cd /tmp && sed -n '14982,16958p' original_cortex.jsx > /home/jempson/development/cortex/client/src/components/settings/ProfileSettings.jsx
 ```
 
 ## Required Imports Template

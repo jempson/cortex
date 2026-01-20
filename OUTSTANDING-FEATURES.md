@@ -1,4 +1,4 @@
-# Farhold - Outstanding Features & Future Roadmap
+# Cortex - Outstanding Features & Future Roadmap
 
 **Last Updated:** January 7, 2026
 **Current Version:** v2.2.2
@@ -78,7 +78,7 @@ The following features have been implemented and are no longer outstanding:
 | **Lazy Loading Admin** | v1.17.3 | Admin panels load data only when expanded |
 | **Wave Rename Fix** | v1.17.3 | Wave title changes now persist in SQLite mode |
 | **PWA App Badge** | v1.17.4 | Unread count on installed app icon (Windows, macOS, iOS) |
-| **Tab Title Unread** | v1.17.4 | Document title shows unread count: "(3) Farhold" |
+| **Tab Title Unread** | v1.17.4 | Document title shows unread count: "(3) Cortex" |
 | **Favicon Flashing** | v1.17.4 | Favicon flashes with notification dot when tab inactive |
 | **Activity Log Filter Fix** | v1.17.5 | Filter dropdown now properly fetches filtered results |
 | **Server Version Fix** | v1.17.6 | Health/info endpoints now use VERSION constant from package.json |
@@ -90,7 +90,7 @@ The following features have been implemented and are no longer outstanding:
 | **HSTS Headers** | v1.18.0 | HTTP Strict Transport Security with 1-year max-age |
 | **HTTPS Enforcement** | v1.18.0 | Optional redirect HTTP to HTTPS in production |
 | **Restrictive CORS** | v1.18.0 | Strict CORS by default, requires ALLOWED_ORIGINS in production |
-| **Farhold Rebrand** | v2.0.0 | Complete nomenclature overhaul: Cortex→Farhold, Droplet→Ping, Ripple→Burst, Group→Crew |
+| **Cortex Rebrand** | v2.0.0 | Complete nomenclature overhaul: Cortex→Cortex, Droplet→Ping, Ripple→Burst, Group→Crew |
 | **API Aliases** | v2.0.0 | /api/pings/* and /api/crews/* endpoints with backward compatibility |
 | **End-to-End Encryption** | v2.1.0 | ECDH P-384 + AES-256-GCM for wave and ping encryption |
 | **Encryption Keys UI** | v2.1.0 | Key management interface with generation and rotation |

@@ -1,4 +1,4 @@
--- Farhold SQLite Database Schema
+-- Cortex SQLite Database Schema
 -- Version 2.0.0
 --
 -- Terminology:
