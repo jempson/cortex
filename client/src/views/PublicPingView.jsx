@@ -3,14 +3,14 @@ import { VERSION, API_URL, BASE_URL, PRIVACY_LEVELS } from '../config/constants.
 import { useWindowSize } from '../hooks/useWindowSize.js';
 import { LoadingSpinner, Toast, Avatar, GlowText } from '../components/ui/SimpleComponents.jsx';
 
-const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
+const PublicPingView = ({ pingId, onLogin, onRegister }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { isMobile } = useWindowSize();
 
   useEffect(() => {
-    fetch(`${API_URL}/share/${dropletId}`)
+    fetch(`${API_URL}/share/${pingId}`)
       .then(res => res.json())
       .then(result => {
         if (result.error) {
@@ -21,7 +21,7 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
       })
       .catch(() => setError('Failed to load shared content'))
       .finally(() => setLoading(false));
-  }, [dropletId]);
+  }, [pingId]);
 
   const containerStyle = {
     minHeight: '100vh',
@@ -84,7 +84,7 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
         <div style={cardStyle}>
           <h2 style={{ color: 'var(--accent-amber)', margin: '0 0 16px 0' }}>Private Content</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
-            This droplet is in a private wave.
+            This ping is in a private wave.
           </p>
           <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
             Log in or create an account to view it.
@@ -124,9 +124,9 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
     );
   }
 
-  // Public droplet - show preview
+  // Public ping - show preview
   // Content is already sanitized by the server, render as HTML
-  const dropletContent = data.droplet?.content || '';
+  const pingContent = data.ping?.content || '';
 
   return (
     <div style={containerStyle}>
@@ -202,16 +202,16 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
               lineHeight: '1.6',
               wordBreak: 'break-word',
             }}
-            dangerouslySetInnerHTML={{ __html: dropletContent || '<em>No content</em>' }}
-            className="public-droplet-content"
+            dangerouslySetInnerHTML={{ __html: pingContent || '<em>No content</em>' }}
+            className="public-ping-content"
           />
-          {data.droplet?.createdAt && (
+          {data.ping?.createdAt && (
             <div style={{
               color: 'var(--text-muted)',
               fontSize: '0.75rem',
               marginTop: '12px',
             }}>
-              {new Date(data.droplet.createdAt).toLocaleString()}
+              {new Date(data.ping.createdAt).toLocaleString()}
             </div>
           )}
         </div>
@@ -262,4 +262,4 @@ const PublicDropletView = ({ dropletId, onLogin, onRegister }) => {
 };
 
 // ============ AUTH PROVIDER ============
-export default PublicDropletView;
+export default PublicPingView;

@@ -4,14 +4,14 @@ import { useSwipeGesture } from '../../hooks/useSwipeGesture.js';
 import { SUCCESS, EMPTY } from '../../../messages.js';
 import { PRIVACY_LEVELS } from '../../config/constants.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
-import Droplet from '../droplets/Droplet.jsx';
+import Ping from '../pings/Ping.jsx';
 
 const FocusView = ({
   wave,
-  focusStack, // Array of { dropletId, droplet } entries
+  focusStack, // Array of { pingId, ping } entries
   onBack, // Go back one level
   onClose, // Return to wave list
-  onFocusDeeper, // Focus on a child droplet
+  onFocusDeeper, // Focus on a child ping
   fetchAPI,
   showToast,
   currentUser,
@@ -27,7 +27,7 @@ const FocusView = ({
 }) => {
   const e2ee = useE2EE();
   const currentFocus = focusStack[focusStack.length - 1];
-  const initialDroplet = currentFocus?.droplet;
+  const initialPing = currentFocus?.ping;
 
   const [replyingTo, setReplyingTo] = useState(null);
   const [newMessage, setNewMessage] = useState('');
@@ -35,7 +35,7 @@ const FocusView = ({
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editContent, setEditContent] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [liveDroplet, setLiveDroplet] = useState(initialDroplet); // Live data that updates
+  const [livePing, setLivePing] = useState(initialPing); // Live data that updates
   const containerRef = useRef(null);
   const messagesRef = useRef(null);
   const textareaRef = useRef(null);
@@ -54,20 +54,20 @@ const FocusView = ({
     threshold: 80 // Slightly lower threshold for easier back navigation
   });
 
-  // Update liveDroplet when focus changes
+  // Update livePing when focus changes
   useEffect(() => {
-    setLiveDroplet(initialDroplet);
-  }, [initialDroplet?.id]);
+    setLivePing(initialPing);
+  }, [initialPing?.id]);
 
-  // E2EE: Helper to decrypt a single droplet and its children recursively
-  const decryptDropletTree = useCallback(async (node, waveId) => {
+  // E2EE: Helper to decrypt a single ping and its children recursively
+  const decryptPingTree = useCallback(async (node, waveId) => {
     if (!e2ee.isUnlocked) return node;
 
     // Decrypt this node if needed
     let decryptedNode = node;
     if (node.encrypted && node.nonce) {
       try {
-        const plaintext = await e2ee.decryptDroplet(
+        const plaintext = await e2ee.decryptPing(
           node.content,
           node.nonce,
           waveId,
@@ -75,7 +75,7 @@ const FocusView = ({
         );
         decryptedNode = { ...node, content: plaintext, _decrypted: true };
       } catch (err) {
-        console.error('Failed to decrypt droplet in focus view:', node.id, err);
+        console.error('Failed to decrypt ping in focus view:', node.id, err);
         decryptedNode = { ...node, content: '[Unable to decrypt]', _decryptError: true };
       }
     }
@@ -83,76 +83,76 @@ const FocusView = ({
     // Decrypt children recursively
     if (decryptedNode.children && decryptedNode.children.length > 0) {
       decryptedNode.children = await Promise.all(
-        decryptedNode.children.map(child => decryptDropletTree(child, waveId))
+        decryptedNode.children.map(child => decryptPingTree(child, waveId))
       );
     }
 
     return decryptedNode;
   }, [e2ee]);
 
-  // Function to fetch fresh droplet data
+  // Function to fetch fresh ping data
   const fetchFreshData = useCallback(async () => {
-    if (!wave?.id || !initialDroplet?.id) return;
+    if (!wave?.id || !initialPing?.id) return;
     try {
-      // Fetch all messages for the wave and find our focused droplet with updated children
+      // Fetch all messages for the wave and find our focused ping with updated children
       const data = await fetchAPI(`/waves/${wave.id}`);
       if (data.messages) {
-        // Build tree and find our droplet
-        const findDroplet = (messages, targetId) => {
+        // Build tree and find our ping
+        const findPing = (messages, targetId) => {
           for (const msg of messages) {
             if (msg.id === targetId) return msg;
             if (msg.children) {
-              const found = findDroplet(msg.children, targetId);
+              const found = findPing(msg.children, targetId);
               if (found) return found;
             }
           }
           return null;
         };
-        let updated = findDroplet(data.messages, initialDroplet.id);
+        let updated = findPing(data.messages, initialPing.id);
 
-        // E2EE: Decrypt the focused droplet and its children if wave is encrypted
+        // E2EE: Decrypt the focused ping and its children if wave is encrypted
         if (updated && data.encrypted && e2ee.isUnlocked) {
-          updated = await decryptDropletTree(updated, wave.id);
+          updated = await decryptPingTree(updated, wave.id);
         }
 
         if (updated) {
-          setLiveDroplet(updated);
+          setLivePing(updated);
         }
       }
     } catch (err) {
       console.error('Failed to refresh focus view:', err);
     }
-  }, [wave?.id, initialDroplet?.id, fetchAPI, e2ee, decryptDropletTree]);
+  }, [wave?.id, initialPing?.id, fetchAPI, e2ee, decryptPingTree]);
 
-  // Fetch fresh droplet data when reloadTrigger changes
+  // Fetch fresh ping data when reloadTrigger changes
   useEffect(() => {
     if (reloadTrigger > 0) {
       fetchFreshData();
     }
   }, [reloadTrigger, fetchFreshData]);
 
-  // Use liveDroplet for display (falls back to initialDroplet)
-  const focusedDroplet = liveDroplet || initialDroplet;
+  // Use livePing for display (falls back to initialPing)
+  const focusedPing = livePing || initialPing;
 
-  // Build droplets array from focused droplet and its children
-  const focusDroplets = focusedDroplet ? [focusedDroplet] : [];
+  // Build pings array from focused ping and its children
+  const focusPings = focusedPing ? [focusedPing] : [];
   const participants = wave?.participants || [];
 
-  // Filter out droplets from blocked/muted users
+  // Filter out pings from blocked/muted users
   const isBlocked = (userId) => blockedUsers?.some(u => u.blockedUserId === userId) || false;
   const isMuted = (userId) => mutedUsers?.some(u => u.mutedUserId === userId) || false;
 
-  const filterDroplets = (msgs) => {
+  const filterPings = (msgs) => {
     return msgs.filter(msg => {
       if (isBlocked(msg.author_id) || isMuted(msg.author_id)) return false;
       if (msg.children) {
-        msg.children = filterDroplets(msg.children);
+        msg.children = filterPings(msg.children);
       }
       return true;
     });
   };
 
-  const filteredDroplets = filterDroplets([...focusDroplets]);
+  const filteredPings = filterPings([...focusPings]);
 
   const config = PRIVACY_LEVELS[wave?.privacy] || PRIVACY_LEVELS.private;
 
@@ -183,7 +183,7 @@ const FocusView = ({
     if (!newMessage.trim() || !wave?.id) return;
 
     try {
-      const parentId = replyingTo?.id || focusedDroplet?.id;
+      const parentId = replyingTo?.id || focusedPing?.id;
       await fetchAPI('/pings', {
         method: 'POST',
         body: { wave_id: wave.id, parent_id: parentId, content: newMessage }
@@ -191,7 +191,7 @@ const FocusView = ({
       setNewMessage('');
       setReplyingTo(null);
       showToast(SUCCESS.pingSent, 'success');
-      // Immediately refresh to show the new droplet
+      // Immediately refresh to show the new ping
       fetchFreshData();
     } catch (err) {
       showToast(err.message || 'Failed to send', 'error');
@@ -217,7 +217,7 @@ const FocusView = ({
     }
   };
 
-  // Mark droplet as read when clicked
+  // Mark ping as read when clicked
   const handleMessageClick = async (messageId) => {
     try {
       await fetchAPI(`/pings/${messageId}/read`, { method: 'POST' });
@@ -226,7 +226,7 @@ const FocusView = ({
       // Also refresh wave list to update unread counts
       onWaveUpdate?.();
     } catch (err) {
-      console.error('Failed to mark droplet as read:', err);
+      console.error('Failed to mark ping as read:', err);
     }
   };
 
@@ -268,9 +268,9 @@ const FocusView = ({
     setCollapsed(prev => ({ ...prev, [messageId]: !prev[messageId] }));
   };
 
-  // Share droplet to external platforms
-  const handleShareDroplet = async (droplet) => {
-    const shareUrl = `${window.location.origin}/share/${droplet.id}`;
+  // Share ping to external platforms
+  const handleSharePing = async (ping) => {
+    const shareUrl = `${window.location.origin}/share/${ping.id}`;
     const shareTitle = wave?.title || wave?.name || 'Farhold';
     const shareText = `Check out this conversation on Farhold`;
 
@@ -314,7 +314,7 @@ const FocusView = ({
     ];
 
     focusStack.forEach((item, index) => {
-      const rawContent = item.droplet?.content?.replace(/<[^>]*>/g, '') || '';
+      const rawContent = item.ping?.content?.replace(/<[^>]*>/g, '') || '';
       const truncatedContent = rawContent.substring(0, maxLabelLength) +
         (rawContent.length > maxLabelLength ? '…' : '');
 
@@ -353,7 +353,7 @@ const FocusView = ({
 
   const breadcrumb = buildBreadcrumb();
 
-  if (!focusedDroplet) {
+  if (!focusedPing) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
         No ping focused
@@ -491,7 +491,7 @@ const FocusView = ({
         <span>FOCUS VIEW</span>
         <span style={{ color: 'var(--text-muted)' }}>•</span>
         <span style={{ color: 'var(--text-dim)' }}>
-          {focusedDroplet.children?.length || 0} {focusedDroplet.children?.length === 1 ? 'reply' : 'replies'}
+          {focusedPing.children?.length || 0} {focusedPing.children?.length === 1 ? 'reply' : 'replies'}
         </span>
       </div>
 
@@ -504,8 +504,8 @@ const FocusView = ({
           padding: isMobile ? '12px' : '16px',
         }}
       >
-        {filteredDroplets.map((msg) => (
-          <Droplet
+        {filteredPings.map((msg) => (
+          <Ping
             key={msg.id}
             message={msg}
             onReply={handleReply}
@@ -527,8 +527,8 @@ const FocusView = ({
             participants={participants}
             contacts={contacts}
             onShowProfile={onShowProfile}
-            onFocus={onFocusDeeper ? (droplet) => onFocusDeeper(droplet) : undefined}
-            onShare={handleShareDroplet}
+            onFocus={onFocusDeeper ? (ping) => onFocusDeeper(ping) : undefined}
+            onShare={handleSharePing}
             wave={wave}
             currentWaveId={wave?.id}
             fetchAPI={fetchAPI}

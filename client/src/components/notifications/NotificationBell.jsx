@@ -5,7 +5,7 @@ const NOTIFICATION_TYPES = {
   direct_mention: { icon: '@', color: 'var(--accent-amber)', label: 'Mentioned you' },
   reply: { icon: '↩', color: 'var(--accent-teal)', label: 'Replied to you' },
   wave_activity: { icon: '◎', color: 'var(--accent-green)', label: 'Wave activity' },
-  ripple: { icon: '◈', color: 'var(--accent-purple)', label: 'Burst' },
+  burst: { icon: '◈', color: 'var(--accent-purple)', label: 'Burst' },
   system: { icon: '⚡', color: 'var(--accent-orange)', label: 'System' },
 };
 
@@ -306,7 +306,7 @@ const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger
 
     // Navigate to the relevant content
     if (notification.waveId) {
-      onNavigateToWave(notification.waveId, notification.dropletId);
+      onNavigateToWave(notification.waveId, notification.pingId);
     }
 
     setShowDropdown(false);

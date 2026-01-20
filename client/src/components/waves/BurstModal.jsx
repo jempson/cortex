@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlowText, Avatar } from '../ui/SimpleComponents.jsx';
 
-const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, showToast, isMobile, onSuccess }) => {
+const BurstModal = ({ isOpen, onClose, ping, wave, participants, fetchAPI, showToast, isMobile, onSuccess }) => {
   const [title, setTitle] = useState('');
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -13,14 +13,14 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
   };
 
   useEffect(() => {
-    if (isOpen && droplet) {
-      // Pre-fill title from droplet content (first 50 chars, strip HTML)
-      const cleanContent = (droplet.content || '').replace(/<[^>]*>/g, '').trim();
+    if (isOpen && ping) {
+      // Pre-fill title from ping content (first 50 chars, strip HTML)
+      const cleanContent = (ping.content || '').replace(/<[^>]*>/g, '').trim();
       setTitle(cleanContent.substring(0, 50) || 'Continued Discussion');
       // Pre-select all current wave participants
       setSelectedParticipants(participants.map(p => p.id));
     }
-  }, [isOpen, droplet, participants]);
+  }, [isOpen, ping, participants]);
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -29,7 +29,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
     }
     setSubmitting(true);
     try {
-      const result = await fetchAPI(`/pings/${droplet.id}/burst`, {
+      const result = await fetchAPI(`/pings/${ping.id}/burst`, {
         method: 'POST',
         body: { title: title.trim(), participants: selectedParticipants }
       });
@@ -53,10 +53,10 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
     );
   };
 
-  if (!isOpen || !droplet) return null;
+  if (!isOpen || !ping) return null;
 
-  const childCount = countChildren(droplet);
-  const contentPreview = (droplet.content || '').replace(/<[^>]*>/g, '').substring(0, 100);
+  const childCount = countChildren(ping);
+  const contentPreview = (ping.content || '').replace(/<[^>]*>/g, '').substring(0, 100);
 
   return (
     <div style={{
@@ -72,7 +72,7 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
           <GlowText color="var(--accent-teal)" size={isMobile ? '1rem' : '1.1rem'}>◈ Burst to New Wave</GlowText>
         </div>
 
-        {/* Preview of what's being rippled */}
+        {/* Preview of what's being bursted */}
         <div style={{
           background: 'var(--bg-surface)',
           border: '1px solid var(--border-subtle)',
@@ -208,4 +208,4 @@ const RippleModal = ({ isOpen, onClose, droplet, wave, participants, fetchAPI, s
   );
 };
 
-export default RippleModal;
+export default BurstModal;
