@@ -1351,6 +1351,51 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Profile wave columns added to waves table');
     }
+
+    // v2.11.0 - Custom Themes: Add tables for user-created themes
+    const customThemesExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='custom_themes'
+    `).get();
+
+    if (!customThemesExists) {
+      console.log('📝 Adding custom themes tables (v2.11.0)...');
+
+      // Create custom_themes table
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS custom_themes (
+          id TEXT PRIMARY KEY,
+          creator_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          description TEXT,
+          variables TEXT NOT NULL,
+          is_public INTEGER DEFAULT 0,
+          install_count INTEGER DEFAULT 0,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_theme_installs (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          theme_id TEXT NOT NULL REFERENCES custom_themes(id) ON DELETE CASCADE,
+          installed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (user_id, theme_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_custom_themes_creator
+        ON custom_themes(creator_id);
+
+        CREATE INDEX IF NOT EXISTS idx_custom_themes_public
+        ON custom_themes(is_public) WHERE is_public = 1;
+
+        CREATE INDEX IF NOT EXISTS idx_custom_theme_installs_user
+        ON custom_theme_installs(user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_custom_theme_installs_theme
+        ON custom_theme_installs(theme_id);
+      `);
+
+      console.log('✅ Custom themes tables created');
+    }
   }
 
   prepareStatements() {
@@ -4498,6 +4543,403 @@ export class DatabaseSQLite {
     `).run(pinned ? 1 : 0, waveId, userId);
 
     return { success: true };
+  }
+
+  // ============ Custom Theme Methods (v2.11.0) ============
+
+  // Allowed CSS variable names for custom themes (security allowlist)
+  static ALLOWED_THEME_VARIABLES = [
+    '--bg-base', '--bg-elevated', '--bg-surface', '--bg-hover', '--bg-active', '--bg-recessed',
+    '--text-primary', '--text-secondary', '--text-dim', '--text-muted', '--text-inverted',
+    '--border-primary', '--border-secondary', '--border-subtle', '--border-strong',
+    '--accent-amber', '--accent-teal', '--accent-green', '--accent-orange', '--accent-purple',
+    '--status-success', '--status-warning', '--status-error', '--status-info',
+    '--glow-amber', '--glow-teal', '--glow-green', '--glow-orange', '--glow-purple',
+    '--overlay-amber', '--overlay-teal', '--overlay-green', '--overlay-orange', '--overlay-purple',
+  ];
+
+  // Validate color value (hex, rgb, rgba, hsl, hsla, CSS variable)
+  static isValidColorValue(value) {
+    if (!value || typeof value !== 'string') return false;
+    // Allow hex colors (#fff, #ffffff, #ffffffff for alpha)
+    if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value)) return true;
+    // Allow rgb/rgba
+    if (/^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*[\d.]+)?\s*\)$/.test(value)) return true;
+    // Allow hsl/hsla
+    if (/^hsla?\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*(,\s*[\d.]+)?\s*\)$/.test(value)) return true;
+    // Allow CSS variables (for referencing other theme variables)
+    if (/^var\(--[a-zA-Z0-9-]+\)$/.test(value)) return true;
+    return false;
+  }
+
+  // Validate theme variables object
+  validateThemeVariables(variables) {
+    if (!variables || typeof variables !== 'object') {
+      return { valid: false, error: 'Variables must be an object' };
+    }
+
+    for (const [key, value] of Object.entries(variables)) {
+      if (!DatabaseSQLite.ALLOWED_THEME_VARIABLES.includes(key)) {
+        return { valid: false, error: `Invalid CSS variable: ${key}` };
+      }
+      if (!DatabaseSQLite.isValidColorValue(value)) {
+        return { valid: false, error: `Invalid color value for ${key}: ${value}` };
+      }
+    }
+
+    return { valid: true };
+  }
+
+  // Get all themes for a user (their own + installed)
+  getThemesForUser(userId) {
+    // Get user's own themes
+    const ownThemes = this.db.prepare(`
+      SELECT ct.*, u.handle as creator_handle, u.display_name as creator_display_name
+      FROM custom_themes ct
+      JOIN users u ON ct.creator_id = u.id
+      WHERE ct.creator_id = ?
+      ORDER BY ct.updated_at DESC
+    `).all(userId);
+
+    // Get installed themes
+    const installedThemes = this.db.prepare(`
+      SELECT ct.*, u.handle as creator_handle, u.display_name as creator_display_name,
+             cti.installed_at
+      FROM custom_theme_installs cti
+      JOIN custom_themes ct ON cti.theme_id = ct.id
+      JOIN users u ON ct.creator_id = u.id
+      WHERE cti.user_id = ? AND ct.creator_id != ?
+      ORDER BY cti.installed_at DESC
+    `).all(userId, userId);
+
+    const formatTheme = (t, isOwn = false, isInstalled = false) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      variables: JSON.parse(t.variables),
+      isPublic: t.is_public === 1,
+      installCount: t.install_count,
+      creatorId: t.creator_id,
+      creatorHandle: t.creator_handle,
+      creatorDisplayName: t.creator_display_name,
+      createdAt: t.created_at,
+      updatedAt: t.updated_at,
+      isOwn,
+      isInstalled,
+      installedAt: t.installed_at || null,
+    });
+
+    return {
+      ownThemes: ownThemes.map(t => formatTheme(t, true, false)),
+      installedThemes: installedThemes.map(t => formatTheme(t, false, true)),
+    };
+  }
+
+  // Get a single theme by ID
+  getThemeById(themeId, userId = null) {
+    const theme = this.db.prepare(`
+      SELECT ct.*, u.handle as creator_handle, u.display_name as creator_display_name
+      FROM custom_themes ct
+      JOIN users u ON ct.creator_id = u.id
+      WHERE ct.id = ?
+    `).get(themeId);
+
+    if (!theme) return null;
+
+    // Check if user has installed this theme
+    let isInstalled = false;
+    if (userId) {
+      const install = this.db.prepare(`
+        SELECT 1 FROM custom_theme_installs WHERE user_id = ? AND theme_id = ?
+      `).get(userId, themeId);
+      isInstalled = !!install;
+    }
+
+    return {
+      id: theme.id,
+      name: theme.name,
+      description: theme.description,
+      variables: JSON.parse(theme.variables),
+      isPublic: theme.is_public === 1,
+      installCount: theme.install_count,
+      creatorId: theme.creator_id,
+      creatorHandle: theme.creator_handle,
+      creatorDisplayName: theme.creator_display_name,
+      createdAt: theme.created_at,
+      updatedAt: theme.updated_at,
+      isOwn: userId && theme.creator_id === userId,
+      isInstalled,
+    };
+  }
+
+  // Create a new custom theme
+  createCustomTheme(userId, data) {
+    const now = new Date().toISOString();
+    const id = `theme-${uuidv4()}`;
+
+    // Validate variables
+    const validation = this.validateThemeVariables(data.variables);
+    if (!validation.valid) {
+      return { success: false, error: validation.error };
+    }
+
+    // Check user's theme count (max 20)
+    const themeCount = this.db.prepare(`
+      SELECT COUNT(*) as count FROM custom_themes WHERE creator_id = ?
+    `).get(userId).count;
+
+    if (themeCount >= 20) {
+      return { success: false, error: 'Maximum of 20 custom themes reached' };
+    }
+
+    // Check for duplicate name for this user
+    const existing = this.db.prepare(`
+      SELECT id FROM custom_themes WHERE creator_id = ? AND name = ?
+    `).get(userId, data.name);
+
+    if (existing) {
+      return { success: false, error: 'A theme with this name already exists' };
+    }
+
+    this.db.prepare(`
+      INSERT INTO custom_themes (id, creator_id, name, description, variables, is_public, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, data.name, data.description || '', JSON.stringify(data.variables), data.isPublic ? 1 : 0, now, now);
+
+    return {
+      success: true,
+      theme: {
+        id,
+        name: data.name,
+        description: data.description || '',
+        variables: data.variables,
+        isPublic: data.isPublic || false,
+        installCount: 0,
+        creatorId: userId,
+        createdAt: now,
+        updatedAt: now,
+        isOwn: true,
+        isInstalled: false,
+      },
+    };
+  }
+
+  // Update a custom theme
+  updateCustomTheme(themeId, userId, data) {
+    const now = new Date().toISOString();
+
+    // Verify ownership
+    const theme = this.db.prepare(`
+      SELECT * FROM custom_themes WHERE id = ? AND creator_id = ?
+    `).get(themeId, userId);
+
+    if (!theme) {
+      return { success: false, error: 'Theme not found or access denied' };
+    }
+
+    // Validate variables if provided
+    if (data.variables) {
+      const validation = this.validateThemeVariables(data.variables);
+      if (!validation.valid) {
+        return { success: false, error: validation.error };
+      }
+    }
+
+    // Check for duplicate name if name is being changed
+    if (data.name && data.name !== theme.name) {
+      const existing = this.db.prepare(`
+        SELECT id FROM custom_themes WHERE creator_id = ? AND name = ? AND id != ?
+      `).get(userId, data.name, themeId);
+
+      if (existing) {
+        return { success: false, error: 'A theme with this name already exists' };
+      }
+    }
+
+    // Build update query dynamically
+    const updates = [];
+    const params = [];
+
+    if (data.name !== undefined) {
+      updates.push('name = ?');
+      params.push(data.name);
+    }
+    if (data.description !== undefined) {
+      updates.push('description = ?');
+      params.push(data.description);
+    }
+    if (data.variables !== undefined) {
+      updates.push('variables = ?');
+      params.push(JSON.stringify(data.variables));
+    }
+    if (data.isPublic !== undefined) {
+      updates.push('is_public = ?');
+      params.push(data.isPublic ? 1 : 0);
+    }
+
+    updates.push('updated_at = ?');
+    params.push(now);
+    params.push(themeId, userId);
+
+    this.db.prepare(`
+      UPDATE custom_themes
+      SET ${updates.join(', ')}
+      WHERE id = ? AND creator_id = ?
+    `).run(...params);
+
+    return { success: true };
+  }
+
+  // Delete a custom theme
+  deleteCustomTheme(themeId, userId) {
+    // Verify ownership
+    const theme = this.db.prepare(`
+      SELECT * FROM custom_themes WHERE id = ? AND creator_id = ?
+    `).get(themeId, userId);
+
+    if (!theme) {
+      return { success: false, error: 'Theme not found or access denied' };
+    }
+
+    // Delete theme (CASCADE will delete installs)
+    this.db.prepare('DELETE FROM custom_themes WHERE id = ?').run(themeId);
+
+    return { success: true };
+  }
+
+  // Install a public theme
+  installTheme(themeId, userId) {
+    const now = new Date().toISOString();
+
+    // Verify theme exists and is public (or user is creator)
+    const theme = this.db.prepare(`
+      SELECT * FROM custom_themes WHERE id = ?
+    `).get(themeId);
+
+    if (!theme) {
+      return { success: false, error: 'Theme not found' };
+    }
+
+    if (!theme.is_public && theme.creator_id !== userId) {
+      return { success: false, error: 'Theme is not public' };
+    }
+
+    // Check if already installed
+    const existing = this.db.prepare(`
+      SELECT 1 FROM custom_theme_installs WHERE user_id = ? AND theme_id = ?
+    `).get(userId, themeId);
+
+    if (existing) {
+      return { success: false, error: 'Theme already installed' };
+    }
+
+    // Install theme
+    this.db.prepare(`
+      INSERT INTO custom_theme_installs (user_id, theme_id, installed_at)
+      VALUES (?, ?, ?)
+    `).run(userId, themeId, now);
+
+    // Increment install count (don't count creator's own install)
+    if (theme.creator_id !== userId) {
+      this.db.prepare(`
+        UPDATE custom_themes SET install_count = install_count + 1 WHERE id = ?
+      `).run(themeId);
+    }
+
+    return { success: true };
+  }
+
+  // Uninstall a theme
+  uninstallTheme(themeId, userId) {
+    // Verify theme exists
+    const theme = this.db.prepare(`
+      SELECT * FROM custom_themes WHERE id = ?
+    `).get(themeId);
+
+    if (!theme) {
+      return { success: false, error: 'Theme not found' };
+    }
+
+    // Can't uninstall your own theme
+    if (theme.creator_id === userId) {
+      return { success: false, error: 'Cannot uninstall your own theme' };
+    }
+
+    // Check if installed
+    const existing = this.db.prepare(`
+      SELECT 1 FROM custom_theme_installs WHERE user_id = ? AND theme_id = ?
+    `).get(userId, themeId);
+
+    if (!existing) {
+      return { success: false, error: 'Theme not installed' };
+    }
+
+    // Uninstall theme
+    this.db.prepare(`
+      DELETE FROM custom_theme_installs WHERE user_id = ? AND theme_id = ?
+    `).run(userId, themeId);
+
+    // Decrement install count
+    this.db.prepare(`
+      UPDATE custom_themes SET install_count = install_count - 1 WHERE id = ? AND install_count > 0
+    `).run(themeId);
+
+    return { success: true };
+  }
+
+  // Get public themes for gallery (paginated)
+  getPublicThemes(options = {}) {
+    const { limit = 20, offset = 0, sortBy = 'newest', search = null } = options;
+
+    let orderBy;
+    switch (sortBy) {
+      case 'popular':
+        orderBy = 'ct.install_count DESC, ct.created_at DESC';
+        break;
+      case 'newest':
+      default:
+        orderBy = 'ct.created_at DESC';
+        break;
+    }
+
+    let whereClause = 'WHERE ct.is_public = 1';
+    const params = [];
+
+    if (search) {
+      whereClause += ' AND (ct.name LIKE ? OR ct.description LIKE ? OR u.handle LIKE ? OR u.display_name LIKE ?)';
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+    }
+
+    const themes = this.db.prepare(`
+      SELECT ct.*, u.handle as creator_handle, u.display_name as creator_display_name
+      FROM custom_themes ct
+      JOIN users u ON ct.creator_id = u.id
+      ${whereClause}
+      ORDER BY ${orderBy}
+      LIMIT ? OFFSET ?
+    `).all(...params, limit + 1, offset);
+
+    const hasMore = themes.length > limit;
+    const results = themes.slice(0, limit);
+
+    return {
+      themes: results.map(t => ({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        variables: JSON.parse(t.variables),
+        isPublic: true,
+        installCount: t.install_count,
+        creatorId: t.creator_id,
+        creatorHandle: t.creator_handle,
+        creatorDisplayName: t.creator_display_name,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at,
+      })),
+      hasMore,
+      total: this.db.prepare(`SELECT COUNT(*) as count FROM custom_themes ct JOIN users u ON ct.creator_id = u.id ${whereClause}`).get(...params).count,
+    };
   }
 
   // === Droplet Methods (formerly Message Methods) ===

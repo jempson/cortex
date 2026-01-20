@@ -5,6 +5,7 @@ import { SUCCESS, CONFIRM, EMPTY } from '../../../messages.js';
 import { API_URL, canAccess, FONT_SIZES } from '../../config/constants.js';
 import { THEMES } from '../../config/themes.js';
 import { storage } from '../../utils/storage.js';
+import { applyCustomTheme, removeCustomTheme } from '../../hooks/useTheme.js';
 import { subscribeToPush, unsubscribeFromPush } from '../../utils/pwa.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { E2EEStatusIndicator } from '../../../e2ee-components.jsx';
@@ -21,6 +22,7 @@ import AlertSubscriptionsPanel from '../admin/AlertSubscriptionsPanel.jsx';
 import FederationAdminPanel from '../admin/FederationAdminPanel.jsx';
 import HandleRequestsList from '../admin/HandleRequestsList.jsx';
 import BotsAdminPanel from '../admin/BotsAdminPanel.jsx';
+import ThemeCustomizationModal from '../settings/ThemeCustomizationModal.jsx';
 
 const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, federationRequestsRefresh }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
@@ -71,6 +73,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  // Theme customization modal state (v2.11.0)
+  const [showThemeModal, setShowThemeModal] = useState(false);
+  const [availableThemes, setAvailableThemes] = useState([]); // User's custom + installed themes
   // E2EE Recovery Key state (v1.19.0)
   const [showE2EERecovery, setShowE2EERecovery] = useState(false);
   const [e2eeRecoveryKey, setE2eeRecoveryKey] = useState(null);
@@ -103,6 +108,20 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         .catch(err => console.error('Failed to load notification preferences:', err));
     }
   }, [openSection, notificationPrefs, fetchAPI]);
+
+  // Load user's available custom themes (v2.11.0)
+  useEffect(() => {
+    fetchAPI('/themes')
+      .then(data => {
+        // Combine own themes and installed themes
+        const allCustomThemes = [
+          ...(data.ownThemes || []),
+          ...(data.installedThemes || []),
+        ];
+        setAvailableThemes(allCustomThemes);
+      })
+      .catch(err => console.error('Failed to load custom themes:', err));
+  }, [fetchAPI, showThemeModal]); // Refetch when modal closes (in case themes changed)
 
   // Load MFA status when section is expanded
   useEffect(() => {
@@ -1351,20 +1370,64 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>THEME</label>
-          <select
-            value={user?.preferences?.theme || 'serenity'}
-            onChange={(e) => handleUpdatePreferences({ theme: e.target.value })}
-            style={{
-              ...inputStyle,
-              cursor: 'pointer',
-            }}
-          >
-            {Object.entries(THEMES).map(([key, config]) => (
-              <option key={key} value={key}>{config.name}</option>
-            ))}
-          </select>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              value={user?.preferences?.theme || 'serenity'}
+              onChange={(e) => {
+                const themeId = e.target.value;
+                // Check if it's a custom theme
+                const customTheme = availableThemes.find(t => t.id === themeId);
+                if (customTheme) {
+                  // Apply custom theme CSS immediately
+                  applyCustomTheme(customTheme);
+                } else {
+                  // Built-in theme - remove custom theme styles and set data-theme
+                  removeCustomTheme(themeId);
+                }
+                // Save preference to server
+                handleUpdatePreferences({ theme: themeId });
+              }}
+              style={{
+                ...inputStyle,
+                cursor: 'pointer',
+                flex: 1,
+                minWidth: '150px',
+              }}
+            >
+              <optgroup label="Built-in Themes">
+                {Object.entries(THEMES).map(([key, config]) => (
+                  <option key={key} value={key}>{config.name}</option>
+                ))}
+              </optgroup>
+              {availableThemes.length > 0 && (
+                <optgroup label="Custom Themes">
+                  {availableThemes.map(theme => (
+                    <option key={theme.id} value={theme.id}>{theme.name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <button
+              onClick={() => setShowThemeModal(true)}
+              style={{
+                padding: isMobile ? '10px 16px' : '8px 16px',
+                minHeight: isMobile ? '44px' : 'auto',
+                background: 'var(--accent-amber)20',
+                border: '1px solid var(--accent-amber)',
+                color: 'var(--accent-amber)',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.85rem' : '0.8rem',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              CUSTOMIZE
+            </button>
+          </div>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
-            {THEMES[user?.preferences?.theme || 'serenity']?.description}
+            {THEMES[user?.preferences?.theme]?.description ||
+             availableThemes.find(t => t.id === user?.preferences?.theme)?.description ||
+             'Custom theme'}
           </div>
         </div>
 
@@ -1437,7 +1500,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         </div>
 
         <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
-          ℹ️ Theme customization will change colors throughout the app (coming soon). Other changes take effect immediately.
+          Click "Customize" to create custom themes or install themes from the gallery. Changes take effect immediately.
         </div>
       </CollapsibleSection>
 
@@ -2044,6 +2107,17 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           </div>
         )}
       </div>
+
+      {/* Theme Customization Modal (v2.11.0) */}
+      <ThemeCustomizationModal
+        isOpen={showThemeModal}
+        onClose={() => setShowThemeModal(false)}
+        fetchAPI={fetchAPI}
+        showToast={showToast}
+        user={user}
+        isMobile={isMobile}
+        onUpdatePreferences={handleUpdatePreferences}
+      />
     </div>
   );
 };
