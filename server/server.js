@@ -11082,6 +11082,40 @@ app.get('/api/feed/videos', authenticateToken, feedLimiter, (req, res) => {
   }
 });
 
+// Mark video as viewed (v2.10.0 - for recommendation algorithm)
+app.post('/api/feed/videos/:id/view', authenticateToken, (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const videoId = sanitizeInput(req.params.id);
+
+    // Verify video exists and is actually a video
+    const video = db.db.prepare(`
+      SELECT id FROM pings WHERE id = ? AND media_type = 'video' AND deleted = 0
+    `).get(videoId);
+
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    // Mark as read using existing ping_read_by table
+    // This is used by the recommendation algorithm to penalize already-viewed videos
+    const existing = db.db.prepare(`
+      SELECT 1 FROM ping_read_by WHERE ping_id = ? AND user_id = ?
+    `).get(videoId, userId);
+
+    if (!existing) {
+      db.db.prepare(`
+        INSERT INTO ping_read_by (ping_id, user_id, read_at) VALUES (?, ?, ?)
+      `).run(videoId, userId, new Date().toISOString());
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error marking video as viewed:', error);
+    res.status(500).json({ error: 'Failed to mark video as viewed' });
+  }
+});
+
 // ============ Profile Wave Routes (v2.9.0) ============
 
 /**
