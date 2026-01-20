@@ -231,10 +231,10 @@ const FocusView = ({
   };
 
   const handleDeleteMessage = async (message) => {
-    if (!confirm('Delete this ping?')) return;
+    if (!confirm('Delete this message?')) return;
     try {
       await fetchAPI(`/pings/${message.id}`, { method: 'DELETE' });
-      showToast('Ping deleted', 'success');
+      showToast(SUCCESS.messageDeleted, 'success');
     } catch (err) {
       showToast(err.message || 'Failed to delete', 'error');
     }
@@ -253,7 +253,7 @@ const FocusView = ({
       });
       setEditingMessageId(null);
       setEditContent('');
-      showToast('Ping updated', 'success');
+      showToast(SUCCESS.messageUpdated, 'success');
     } catch (err) {
       showToast(err.message || 'Failed to update', 'error');
     }
