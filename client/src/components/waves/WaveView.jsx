@@ -753,7 +753,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }
 
       if (totalEncrypted > 0) {
-        showToast(`Encrypted ${totalEncrypted} pings`, 'success');
+        showToast(`Encrypted ${totalEncrypted} messages`, 'success');
       }
 
       // Refresh wave data to show encrypted content
@@ -761,7 +761,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       await loadEncryptionStatus();
     } catch (err) {
       console.error('Failed to encrypt batch:', err);
-      showToast(err.message || 'Failed to encrypt pings', 'error');
+      showToast(err.message || 'Failed to encrypt messages', 'error');
     } finally {
       setIsEncryptingBatch(false);
     }
@@ -842,7 +842,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         setHasMoreMessages(false);
       }
     } catch (err) {
-      showToast('Failed to load older pings', 'error');
+      showToast('Failed to load older messages', 'error');
     }
     setLoadingMore(false);
   };
@@ -857,7 +857,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
     // Starting playback - load all messages first if there are more
     if (hasMoreMessages) {
-      showToast('Loading all pings for playback...', 'info');
+      showToast('Loading all messages for playback...', 'info');
       try {
         // Keep loading until we have all messages
         let allMessages = [...(waveData?.all_messages || [])];
@@ -911,9 +911,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           all_messages: allMessages,
         }));
         setHasMoreMessages(false);
-        showToast(`Loaded ${allMessages.length} pings`, 'success');
+        showToast(`Loaded ${allMessages.length} messages`, 'success');
       } catch (err) {
-        showToast('Failed to load all pings for playback', 'error');
+        showToast('Failed to load all messages for playback', 'error');
         return;
       }
     }
@@ -964,7 +964,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       });
       setNewMessage('');
       setReplyingTo(null);
-      showToast(SUCCESS.pingSent, 'success');
+      showToast(SUCCESS.messageSent, 'success');
       await loadWave(true);
 
       // Only scroll to bottom if posting a root message (not a reply)
@@ -983,7 +983,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         }, 150);
       }
     } catch (err) {
-      showToast('Failed to send ping', 'error');
+      showToast('Failed to send message', 'error');
       scrollPositionToRestore.current = null; // Clear on error
       userActionInProgressRef.current = false;
     }
@@ -1265,7 +1265,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         method: 'PUT',
         body: { content: editContent },
       });
-      showToast('Ping updated', 'success');
+      showToast(SUCCESS.messageUpdated, 'success');
       setEditingMessageId(null);
       setEditContent('');
       await loadWave(true);
@@ -1274,7 +1274,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         userActionInProgressRef.current = false;
       }, 150);
     } catch (err) {
-      showToast(err.message || 'Failed to update ping', 'error');
+      showToast(err.message || 'Failed to update message', 'error');
       scrollPositionToRestore.current = null;
       userActionInProgressRef.current = false;
     }
@@ -1331,14 +1331,14 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
     try {
       await fetchAPI(`/pings/${messageToDelete.id}`, { method: 'DELETE' });
-      showToast('Ping deleted', 'success');
+      showToast(SUCCESS.messageDeleted, 'success');
       await loadWave(true);
       // Clear flag after scroll restoration has time to complete
       setTimeout(() => {
         userActionInProgressRef.current = false;
       }, 150);
     } catch (err) {
-      showToast(err.message || 'Failed to delete ping', 'error');
+      showToast(err.message || 'Failed to delete message', 'error');
       scrollPositionToRestore.current = null;
       userActionInProgressRef.current = false;
     }
