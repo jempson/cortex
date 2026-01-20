@@ -499,8 +499,8 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
   );
 };
 
-// Component to render droplet content with embeds (formerly MessageWithEmbeds)
-const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], contacts = [], onMentionClick, fetchAPI }) => {
+// Component to render ping content with embeds (formerly MessageWithEmbeds)
+const PingWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], contacts = [], onMentionClick, fetchAPI }) => {
   const embeds = useMemo(() => detectEmbedUrls(content), [content]);
 
   // Get the plain text URLs that have embeds (to potentially hide them)
@@ -2687,7 +2687,7 @@ const NOTIFICATION_TYPES = {
   direct_mention: { icon: '@', color: 'var(--accent-amber)', label: 'Mentioned you' },
   reply: { icon: '↩', color: 'var(--accent-teal)', label: 'Replied to you' },
   wave_activity: { icon: '◎', color: 'var(--accent-green)', label: 'Wave activity' },
-  ripple: { icon: '◈', color: 'var(--accent-purple)', label: 'Burst' },
+  burst: { icon: '◈', color: 'var(--accent-purple)', label: 'Burst' },
   system: { icon: '⚡', color: 'var(--accent-orange)', label: 'System' },
 };
 
@@ -2988,7 +2988,7 @@ const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger
 
     // Navigate to the relevant content
     if (notification.waveId) {
-      onNavigateToWave(notification.waveId, notification.dropletId);
+      onNavigateToWave(notification.waveId, notification.pingId);
     }
 
     setShowDropdown(false);

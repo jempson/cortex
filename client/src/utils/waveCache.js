@@ -9,7 +9,7 @@ const CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 const STORES = {
   WAVES: 'waves',
   WAVE_LIST: 'waveList',
-  DROPLETS: 'droplets',
+  DROPLETS: 'pings',
   METADATA: 'metadata',
 };
 
@@ -46,11 +46,11 @@ async function openDatabase() {
         waveStore.createIndex('timestamp', 'timestamp');
       }
 
-      // Droplets store - keyed by droplet ID
+      // Pings store - keyed by ping ID
       if (!db.objectStoreNames.contains(STORES.DROPLETS)) {
-        const dropletStore = db.createObjectStore(STORES.DROPLETS, { keyPath: 'id' });
-        dropletStore.createIndex('waveId', 'waveId');
-        dropletStore.createIndex('timestamp', 'timestamp');
+        const pingStore = db.createObjectStore(STORES.DROPLETS, { keyPath: 'id' });
+        pingStore.createIndex('waveId', 'waveId');
+        pingStore.createIndex('timestamp', 'timestamp');
       }
 
       // Metadata store - for cache version, last sync time, etc.
@@ -126,7 +126,7 @@ export async function getCachedWaveList(showArchived = false) {
 
 // ============ Individual Wave Cache ============
 
-// Cache a wave with its droplets
+// Cache a wave with its pings
 export async function cacheWave(waveId, waveData) {
   try {
     await withTransaction(STORES.WAVES, 'readwrite', (store, resolve) => {
@@ -178,39 +178,39 @@ export async function invalidateWave(waveId) {
   }
 }
 
-// ============ Droplets Cache ============
+// ============ Pings Cache ============
 
-// Cache droplets for a wave
-export async function cacheDroplets(waveId, droplets) {
+// Cache pings for a wave
+export async function cachePings(waveId, pings) {
   try {
     const db = await openDatabase();
     const transaction = db.transaction(STORES.DROPLETS, 'readwrite');
     const store = transaction.objectStore(STORES.DROPLETS);
     const timestamp = Date.now();
 
-    for (const droplet of droplets) {
+    for (const ping of pings) {
       store.put({
-        id: droplet.id,
+        id: ping.id,
         waveId,
-        data: droplet,
+        data: ping,
         timestamp,
       });
     }
 
     return new Promise((resolve) => {
       transaction.oncomplete = () => {
-        console.log(`[WaveCache] Cached ${droplets.length} droplets for wave ${waveId}`);
+        console.log(`[WaveCache] Cached ${pings.length} pings for wave ${waveId}`);
         resolve();
       };
       transaction.onerror = () => resolve();
     });
   } catch (error) {
-    console.warn('[WaveCache] Failed to cache droplets:', error);
+    console.warn('[WaveCache] Failed to cache pings:', error);
   }
 }
 
-// Get cached droplets for a wave
-export async function getCachedDroplets(waveId) {
+// Get cached pings for a wave
+export async function getCachedPings(waveId) {
   try {
     const db = await openDatabase();
     return new Promise((resolve) => {
@@ -223,7 +223,7 @@ export async function getCachedDroplets(waveId) {
         const results = request.result || [];
         const validResults = results.filter(r => Date.now() - r.timestamp < CACHE_MAX_AGE);
         if (validResults.length > 0) {
-          console.log(`[WaveCache] Cache hit: ${validResults.length} droplets for wave ${waveId}`);
+          console.log(`[WaveCache] Cache hit: ${validResults.length} pings for wave ${waveId}`);
           resolve(validResults.map(r => r.data));
         } else {
           resolve(null);
@@ -232,7 +232,7 @@ export async function getCachedDroplets(waveId) {
       request.onerror = () => resolve(null);
     });
   } catch (error) {
-    console.warn('[WaveCache] Failed to get cached droplets:', error);
+    console.warn('[WaveCache] Failed to get cached pings:', error);
     return null;
   }
 }
@@ -267,7 +267,7 @@ export async function clearOldCache() {
       transaction.onerror = () => resolve();
     });
 
-    // Clear droplets
+    // Clear pings
     await new Promise((resolve) => {
       const transaction = db.transaction(STORES.DROPLETS, 'readwrite');
       const store = transaction.objectStore(STORES.DROPLETS);
@@ -333,11 +333,11 @@ export async function getCacheStatus() {
     return {
       waveListCached: counts[STORES.WAVE_LIST] > 0,
       wavesCached: counts[STORES.WAVES],
-      dropletsCached: counts[STORES.DROPLETS],
+      pingsCached: counts[STORES.DROPLETS],
     };
   } catch (error) {
     console.warn('[WaveCache] Failed to get cache status:', error);
-    return { waveListCached: false, wavesCached: 0, dropletsCached: 0 };
+    return { waveListCached: false, wavesCached: 0, pingsCached: 0 };
   }
 }
 
@@ -353,8 +353,8 @@ export default {
   cacheWave,
   getCachedWave,
   invalidateWave,
-  cacheDroplets,
-  getCachedDroplets,
+  cachePings,
+  getCachedPings,
   clearOldCache,
   clearAllCache,
   getCacheStatus,

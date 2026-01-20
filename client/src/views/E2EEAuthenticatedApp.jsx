@@ -5,7 +5,7 @@ import { E2EESetupModal, PassphraseUnlockModal } from '../../e2ee-components.jsx
 import { LoadingSpinner } from '../components/ui/SimpleComponents.jsx';
 import MainApp from './MainApp.jsx';
 
-function E2EEAuthenticatedApp({ shareDropletId, logout }) {
+function E2EEAuthenticatedApp({ sharePingId, logout }) {
   const { getPendingPassword, clearPendingPassword } = useAuth();
   const {
     e2eeStatus,
@@ -152,6 +152,6 @@ function E2EEAuthenticatedApp({ shareDropletId, logout }) {
   }
 
   // E2EE is unlocked - render the main app
-  return <MainApp shareDropletId={shareDropletId} />;
+  return <MainApp sharePingId={sharePingId} />;
 }
 export default E2EEAuthenticatedApp;

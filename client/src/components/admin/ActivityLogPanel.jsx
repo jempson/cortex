@@ -26,9 +26,9 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
     admin_disable_mfa: { label: 'Admin MFA Disabled', color: 'var(--accent-purple)' },
     create_wave: { label: 'Wave Created', color: 'var(--accent-teal)' },
     delete_wave: { label: 'Wave Deleted', color: 'var(--accent-orange)' },
-    create_droplet: { label: 'Ping Created', color: 'var(--text-secondary)' },
-    edit_droplet: { label: 'Ping Edited', color: 'var(--text-secondary)' },
-    delete_droplet: { label: 'Ping Deleted', color: 'var(--accent-orange)' },
+    create_ping: { label: 'Ping Created', color: 'var(--text-secondary)' },
+    edit_ping: { label: 'Ping Edited', color: 'var(--text-secondary)' },
+    delete_ping: { label: 'Ping Deleted', color: 'var(--accent-orange)' },
   };
 
   const loadActivities = useCallback(async (newOffset = 0) => {

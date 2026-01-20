@@ -425,8 +425,8 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
   );
 };
 
-// Component to render droplet content with embeds (formerly MessageWithEmbeds)
-const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], contacts = [], onMentionClick, fetchAPI }) => {
+// Component to render ping content with embeds (formerly MessageWithEmbeds)
+const PingWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], contacts = [], onMentionClick, fetchAPI }) => {
   const embeds = useMemo(() => detectEmbedUrls(content), [content]);
 
   // Get the plain text URLs that have embeds (to potentially hide them)
@@ -514,4 +514,4 @@ const DropletWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [],
   );
 };
 
-export default DropletWithEmbeds;
+export default PingWithEmbeds;

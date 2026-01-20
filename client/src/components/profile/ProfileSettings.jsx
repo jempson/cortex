@@ -1482,19 +1482,19 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>AUTO-FOCUS PINGS</label>
           <button
-            onClick={() => handleUpdatePreferences({ autoFocusDroplets: !(user?.preferences?.autoFocusDroplets === true) })}
+            onClick={() => handleUpdatePreferences({ autoFocusPings: !(user?.preferences?.autoFocusPings === true) })}
             style={{
               padding: isMobile ? '10px 16px' : '8px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: (user?.preferences?.autoFocusDroplets === true) ? 'var(--accent-teal)20' : 'transparent',
-              border: `1px solid ${(user?.preferences?.autoFocusDroplets === true) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
-              color: (user?.preferences?.autoFocusDroplets === true) ? 'var(--accent-teal)' : 'var(--text-dim)',
+              background: (user?.preferences?.autoFocusPings === true) ? 'var(--accent-teal)20' : 'transparent',
+              border: `1px solid ${(user?.preferences?.autoFocusPings === true) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+              color: (user?.preferences?.autoFocusPings === true) ? 'var(--accent-teal)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.9rem' : '0.85rem',
             }}
           >
-            {(user?.preferences?.autoFocusDroplets === true) ? '⤢ ENABLED' : '⤢ DISABLED'}
+            {(user?.preferences?.autoFocusPings === true) ? '⤢ ENABLED' : '⤢ DISABLED'}
           </button>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
             Automatically enter Focus View when clicking pings with replies
@@ -1779,7 +1779,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   { key: 'directMentions', label: '@MENTIONS', icon: '@', desc: 'When someone @mentions you' },
                   { key: 'replies', label: 'REPLIES', icon: '↩', desc: 'When someone replies to your ping' },
                   { key: 'waveActivity', label: 'WAVE ACTIVITY', icon: '◎', desc: 'New pings in your waves' },
-                  { key: 'rippleEvents', label: 'BURST EVENTS', icon: '◈', desc: 'When pings are burst to new waves' },
+                  { key: 'burstEvents', label: 'BURST EVENTS', icon: '◈', desc: 'When pings are burst to new waves' },
                 ].map(({ key, label, icon, desc }) => (
                   <div key={key} style={{ marginBottom: '16px' }}>
                     <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>

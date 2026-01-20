@@ -6,13 +6,13 @@ import { PRIVACY_LEVELS, API_URL } from '../../config/constants.js';
 import { Avatar, GlowText, PrivacyBadge, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { LegacyWaveNotice, PartialEncryptionBanner } from '../../../e2ee-components.jsx';
 import ImageLightbox from '../ui/ImageLightbox.jsx';
-import Droplet from '../droplets/Droplet.jsx';
+import Ping from '../pings/Ping.jsx';
 import GifSearchModal from '../search/GifSearchModal.jsx';
 import PlaybackControls from './PlaybackControls.jsx';
 import DeleteConfirmModal from './DeleteConfirmModal.jsx';
 import WaveSettingsModal from './WaveSettingsModal.jsx';
 import ReportModal from '../reports/ReportModal.jsx';
-import RippleModal from './RippleModal.jsx';
+import BurstModal from './BurstModal.jsx';
 import CallModal from '../calls/CallModal.jsx';
 import InviteToWaveModal from './InviteToWaveModal.jsx';
 import InviteFederatedModal from './InviteFederatedModal.jsx';
@@ -20,7 +20,7 @@ import MediaRecorder from '../media/MediaRecorder.jsx';
 import CameraCapture from '../media/CameraCapture.jsx';
 import { storage } from '../../utils/storage.js';
 
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusDroplet, onNavigateToWave, scrollToDropletId, onScrollToDropletComplete, federationEnabled }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusPing, onNavigateToWave, scrollToPingId, onScrollToPingComplete, federationEnabled }) => {
   // E2EE context
   const e2ee = useE2EE();
 
@@ -61,11 +61,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [reportTarget, setReportTarget] = useState(null); // { type, targetId, targetPreview }
-  const [rippleTarget, setRippleTarget] = useState(null); // droplet to ripple
+  const [burstTarget, setBurstTarget] = useState(null); // ping to burst
   const [showFederateModal, setShowFederateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For ripple activity badges
-  const [decryptionErrors, setDecryptionErrors] = useState({}); // Track droplets that failed to decrypt
+  const [unreadCountsByWave, setUnreadCountsByWave] = useState({}); // For burst activity badges
+  const [decryptionErrors, setDecryptionErrors] = useState({}); // Track pings that failed to decrypt
   const [decryptingWave, setDecryptingWave] = useState(false); // Wave decryption in progress
   const [showWaveMenu, setShowWaveMenu] = useState(false); // Wave header actions menu
   const [showCallModal, setShowCallModal] = useState(false); // Voice/Video call modal
@@ -110,28 +110,28 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const isBlocked = (userId) => blockedUsers?.some(u => u.blockedUserId === userId) || false;
   const isMuted = (userId) => mutedUsers?.some(u => u.mutedUserId === userId) || false;
 
-  // E2EE: Helper to decrypt droplets
-  const decryptDroplets = useCallback(async (droplets, waveId) => {
-    if (!e2ee.isUnlocked) return droplets;
+  // E2EE: Helper to decrypt pings
+  const decryptPings = useCallback(async (pings, waveId) => {
+    if (!e2ee.isUnlocked) return pings;
 
     const errors = {};
     const decrypted = await Promise.all(
-      droplets.map(async (droplet) => {
-        if (!droplet.encrypted || !droplet.nonce) {
-          return droplet; // Not encrypted
+      pings.map(async (ping) => {
+        if (!ping.encrypted || !ping.nonce) {
+          return ping; // Not encrypted
         }
         try {
-          const plaintext = await e2ee.decryptDroplet(
-            droplet.content,
-            droplet.nonce,
+          const plaintext = await e2ee.decryptPing(
+            ping.content,
+            ping.nonce,
             waveId,
-            droplet.keyVersion
+            ping.keyVersion
           );
-          return { ...droplet, content: plaintext, _decrypted: true };
+          return { ...ping, content: plaintext, _decrypted: true };
         } catch (err) {
-          console.error(`❌ Failed to decrypt droplet ${droplet.id}:`, err.message);
-          errors[droplet.id] = err.message;
-          return { ...droplet, content: '[Unable to decrypt]', _decryptError: true };
+          console.error(`❌ Failed to decrypt ping ${ping.id}:`, err.message);
+          errors[ping.id] = err.message;
+          return { ...ping, content: '[Unable to decrypt]', _decryptError: true };
         }
       })
     );
@@ -139,10 +139,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     return decrypted;
   }, [e2ee]);
 
-  // E2EE: Helper to decrypt a tree of droplets recursively
-  const decryptDropletTree = useCallback(async (tree, waveId) => {
+  // E2EE: Helper to decrypt a tree of pings recursively
+  const decryptPingTree = useCallback(async (tree, waveId) => {
     const decryptNode = async (node) => {
-      const decrypted = await decryptDroplets([node], waveId);
+      const decrypted = await decryptPings([node], waveId);
       const result = decrypted[0];
       if (result.children && result.children.length > 0) {
         result.children = await Promise.all(result.children.map(child => decryptNode(child)));
@@ -150,7 +150,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       return result;
     };
     return Promise.all(tree.map(node => decryptNode(node)));
-  }, [decryptDroplets]);
+  }, [decryptPings]);
 
   // State for showing moderation menu
   const [showModMenu, setShowModMenu] = useState(null); // participant.id or null
@@ -163,7 +163,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     if (success) {
       showToast(wasBlocked ? `Unblocked ${participant.name}` : `Blocked ${participant.name}`, 'success');
       onBlockedMutedChange?.();
-      // Reload wave to show/hide blocked user's droplets
+      // Reload wave to show/hide blocked user's pings
       loadWave(true);
     } else {
       showToast(`Failed to ${wasBlocked ? 'unblock' : 'block'} user`, 'error');
@@ -179,7 +179,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     if (success) {
       showToast(wasMuted ? `Unmuted ${participant.name}` : `Muted ${participant.name}`, 'success');
       onBlockedMutedChange?.();
-      // Reload wave to show/hide muted user's droplets
+      // Reload wave to show/hide muted user's pings
       loadWave(true);
     } else {
       showToast(`Failed to ${wasMuted ? 'unmute' : 'mute'} user`, 'error');
@@ -228,7 +228,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   };
 
   const collapseAllThreads = () => {
-    // Get all droplets with children and collapse them
+    // Get all pings with children and collapse them
     const newCollapsed = {};
     const countThreads = (msgs) => {
       msgs.forEach(msg => {
@@ -258,9 +258,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     showToast('All threads expanded', 'success');
   };
 
-  // Share droplet to external platforms
-  const handleShareDroplet = async (droplet) => {
-    const shareUrl = `${window.location.origin}/share/${droplet.id}`;
+  // Share ping to external platforms
+  const handleSharePing = async (ping) => {
+    const shareUrl = `${window.location.origin}/share/${ping.id}`;
     const shareTitle = wave?.title || waveData?.title || 'Farhold';
     const shareText = `Check out this conversation on Farhold`;
 
@@ -363,16 +363,16 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   // Scroll to first unread message or bottom on initial wave load
   useEffect(() => {
-    // Skip if: no data, no container, already scrolled, still loading, pending scroll restoration, OR navigating to specific droplet
-    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading || scrollPositionToRestore.current !== null || scrollToDropletId) return;
+    // Skip if: no data, no container, already scrolled, still loading, pending scroll restoration, OR navigating to specific ping
+    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading || scrollPositionToRestore.current !== null || scrollToPingId) return;
 
     // Only run once per wave
     hasScrolledToUnreadRef.current = true;
 
-    const allDroplets = waveData.all_messages || [];
+    const allPings = waveData.all_messages || [];
 
-    // Find first unread droplet (not authored by current user)
-    const firstUnreadDroplet = allDroplets.find(m =>
+    // Find first unread ping (not authored by current user)
+    const firstUnreadPing = allPings.find(m =>
       m.is_unread && m.author_id !== currentUser?.id
     );
 
@@ -380,35 +380,35 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       const container = messagesRef.current;
       if (!container) return;
 
-      if (firstUnreadDroplet) {
-        // Scroll to first unread droplet
-        const dropletElement = container.querySelector(`[data-message-id="${firstUnreadDroplet.id}"]`);
-        if (dropletElement) {
-          dropletElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (firstUnreadPing) {
+        // Scroll to first unread ping
+        const pingElement = container.querySelector(`[data-message-id="${firstUnreadPing.id}"]`);
+        if (pingElement) {
+          pingElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
           return;
         }
       }
 
-      // No unread droplets or element not found - scroll to bottom
+      // No unread pings or element not found - scroll to bottom
       container.scrollTop = container.scrollHeight;
     }, 100);
   }, [waveData, loading, currentUser?.id]);
 
-  // Scroll to specific droplet when navigating from notification
+  // Scroll to specific ping when navigating from notification
   useEffect(() => {
-    if (!scrollToDropletId || !waveData || loading) {
-      if (scrollToDropletId) {
-        console.log(`🎯 Scroll to droplet deferred - waveData: ${!!waveData}, loading: ${loading}`);
+    if (!scrollToPingId || !waveData || loading) {
+      if (scrollToPingId) {
+        console.log(`🎯 Scroll to ping deferred - waveData: ${!!waveData}, loading: ${loading}`);
       }
       return;
     }
 
-    console.log(`🎯 Attempting to scroll to droplet ${scrollToDropletId}`);
+    console.log(`🎯 Attempting to scroll to ping ${scrollToPingId}`);
 
-    // Check if the droplet exists in our data
-    const dropletInData = waveData.all_messages?.some(m => m.id === scrollToDropletId);
-    if (!dropletInData) {
-      console.log(`⚠️ Target droplet ${scrollToDropletId} not found in wave data (${waveData.all_messages?.length || 0} messages loaded)`);
+    // Check if the ping exists in our data
+    const pingInData = waveData.all_messages?.some(m => m.id === scrollToPingId);
+    if (!pingInData) {
+      console.log(`⚠️ Target ping ${scrollToPingId} not found in wave data (${waveData.all_messages?.length || 0} messages loaded)`);
     }
 
     // Wait for render to complete, with multiple retries
@@ -417,9 +417,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     const retryDelay = 200;
 
     const scrollToTarget = () => {
-      const element = document.querySelector(`[data-message-id="${scrollToDropletId}"]`);
+      const element = document.querySelector(`[data-message-id="${scrollToPingId}"]`);
       if (element) {
-        console.log(`✅ Found droplet ${scrollToDropletId} in DOM, scrolling...`);
+        console.log(`✅ Found ping ${scrollToPingId} in DOM, scrolling...`);
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         // Brief highlight effect
         element.style.transition = 'background-color 0.3s, outline 0.3s';
@@ -430,22 +430,22 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           element.style.outline = '';
         }, 1500);
         // Clear the target
-        onScrollToDropletComplete?.();
+        onScrollToPingComplete?.();
       } else if (retryCount < maxRetries) {
-        // Droplet not in DOM - might be rendering, retry
+        // Ping not in DOM - might be rendering, retry
         retryCount++;
-        console.log(`⏳ Droplet ${scrollToDropletId} not in DOM yet, retry ${retryCount}/${maxRetries}...`);
+        console.log(`⏳ Ping ${scrollToPingId} not in DOM yet, retry ${retryCount}/${maxRetries}...`);
         setTimeout(scrollToTarget, retryDelay);
       } else {
         // Give up after max retries
-        console.log(`❌ Could not find droplet ${scrollToDropletId} in DOM after ${maxRetries} retries`);
-        onScrollToDropletComplete?.();
+        console.log(`❌ Could not find ping ${scrollToPingId} in DOM after ${maxRetries} retries`);
+        onScrollToPingComplete?.();
       }
     };
 
     // Delay to allow React to render the messages
     setTimeout(scrollToTarget, 100);
-  }, [scrollToDropletId, waveData, loading, onScrollToDropletComplete]);
+  }, [scrollToPingId, waveData, loading, onScrollToPingComplete]);
 
   // Mark wave as read when user scrolls to bottom or views unread messages
   useEffect(() => {
@@ -616,9 +616,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       if (data.encrypted && e2ee.isUnlocked) {
         try {
           // Decrypt all_messages flat list
-          data.all_messages = await decryptDroplets(data.all_messages, wave.id);
+          data.all_messages = await decryptPings(data.all_messages, wave.id);
           // Decrypt the tree structure
-          data.messages = await decryptDropletTree(data.messages, wave.id);
+          data.messages = await decryptPingTree(data.messages, wave.id);
         } catch (decryptErr) {
           console.error('Failed to decrypt wave messages:', decryptErr);
         }
@@ -653,7 +653,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       setWaveData(data);
       setHasMoreMessages(data.hasMoreMessages || false);
 
-      // Load unread counts by wave for ripple activity badges
+      // Load unread counts by wave for burst activity badges
       try {
         const countsData = await fetchAPI('/notifications/by-wave');
         setUnreadCountsByWave(countsData.countsByWave || {});
@@ -724,7 +724,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   };
 
-  // E2EE: Continue encrypting droplets in batches
+  // E2EE: Continue encrypting pings in batches
   const handleContinueEncryption = async () => {
     if (!e2ee.isUnlocked || isEncryptingBatch) return;
 
@@ -786,7 +786,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         let decryptedMessages = data.messages;
         if (waveData?.encrypted && e2ee.isUnlocked) {
           try {
-            decryptedMessages = await decryptDroplets(data.messages, wave.id);
+            decryptedMessages = await decryptPings(data.messages, wave.id);
           } catch (decryptErr) {
             console.error('Failed to decrypt older messages:', decryptErr);
           }
@@ -941,7 +941,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
       if (waveData?.encrypted && e2ee.isUnlocked) {
         try {
-          const { ciphertext, nonce } = await e2ee.encryptDroplet(newMessage, wave.id);
+          const { ciphertext, nonce } = await e2ee.encryptPing(newMessage, wave.id);
           const waveKeyVersion = await fetchAPI(`/waves/${wave.id}/key`).then(r => r.keyVersion).catch(() => 1);
           messageBody = {
             ...messageBody,
@@ -1096,7 +1096,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         try {
           // For encrypted waves, we'll encrypt the content (empty for media pings)
           // The media file itself is stored unencrypted for now
-          const { ciphertext, nonce } = await e2ee.encryptDroplet('', wave.id);
+          const { ciphertext, nonce } = await e2ee.encryptPing('', wave.id);
           const waveKeyVersion = await fetchAPI(`/waves/${wave.id}/key`).then(r => r.keyVersion).catch(() => 1);
           messageBody = {
             ...messageBody,
@@ -1186,8 +1186,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     setDecryptingWave(true);
     try {
       // Fetch all pings in the wave
-      const pingsData = await fetchAPI(`/waves/${wave.id}/droplets`);
-      const pings = pingsData.droplets || [];
+      const pingsData = await fetchAPI(`/waves/${wave.id}/pings`);
+      const pings = pingsData.pings || [];
 
       console.log(`Decrypting ${pings.length} pings in wave ${wave.id}...`);
 
@@ -1197,7 +1197,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         try {
           // Check if ping is encrypted (has nonce)
           if (ping.encrypted && ping.nonce) {
-            const decryptedContent = await e2ee.decryptDroplet(ping.content, ping.nonce, wave.id, ping.keyVersion);
+            const decryptedContent = await e2ee.decryptPing(ping.content, ping.nonce, wave.id, ping.keyVersion);
             decryptedPings.push({
               id: ping.id,
               content: decryptedContent
@@ -1314,7 +1314,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     // Extract preview text from message content (strip HTML tags)
     const textContent = message.content?.replace(/<[^>]*>/g, '').slice(0, 100) || '';
     setReportTarget({
-      type: 'droplet',
+      type: 'ping',
       targetId: message.id,
       targetPreview: `${message.sender_name}: ${textContent}${message.content?.length > 100 ? '...' : ''}`,
     });
@@ -1352,7 +1352,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
 
     try {
-      console.log(`📖 Marking droplet ${messageId} as read...`);
+      console.log(`📖 Marking ping ${messageId} as read...`);
       await fetchAPI(`/pings/${messageId}/read`, { method: 'POST' });
       // Reload wave to update unread status
       await loadWave(true);
@@ -1368,7 +1368,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         userActionInProgressRef.current = false;
       }, 150);
     } catch (err) {
-      console.error(`❌ Failed to mark droplet ${messageId} as read:`, err);
+      console.error(`❌ Failed to mark ping ${messageId} as read:`, err);
       showToast('Failed to mark ping as read', 'error');
       scrollPositionToRestore.current = null;
       userActionInProgressRef.current = false;
@@ -1393,11 +1393,11 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   if (!waveData) return <div style={{ padding: '20px', color: 'var(--text-dim)' }}>Wave not found</div>;
 
   // Safe access with fallbacks for pagination fields
-  // Note: API returns `messages` and `all_messages` but we use `droplets` internally (v1.11.0)
-  const allDroplets = waveData.all_messages || [];
+  // Note: API returns `messages` and `all_messages` but we use `pings` internally (v1.11.0)
+  const allPings = waveData.all_messages || [];
   const participants = waveData.participants || [];
-  const droplets = waveData.messages || [];
-  const total = allDroplets.length;
+  const pings = waveData.messages || [];
+  const total = allPings.length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -1743,18 +1743,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           )}
 
           {/* Mark All Read Button - always visible if unread */}
-          {allDroplets.some(m => m.is_unread && m.author_id !== currentUser.id) && (
+          {allPings.some(m => m.is_unread && m.author_id !== currentUser.id) && (
             <button
               onClick={async () => {
                 try {
                   // Use is_unread flag from server for consistency
-                  const unreadDroplets = allDroplets
+                  const unreadPings = allPings
                     .filter(m => m.is_unread && m.author_id !== currentUser.id);
-                  if (unreadDroplets.length === 0) return;
-                  await Promise.all(unreadDroplets.map(m => fetchAPI(`/pings/${m.id}/read`, { method: 'POST' })));
+                  if (unreadPings.length === 0) return;
+                  await Promise.all(unreadPings.map(m => fetchAPI(`/pings/${m.id}/read`, { method: 'POST' })));
                   await loadWave(true);
                   onWaveUpdate?.();
-                  showToast(`Marked ${unreadDroplets.length} ping${unreadDroplets.length !== 1 ? 's' : ''} as read`, 'success');
+                  showToast(`Marked ${unreadPings.length} ping${unreadPings.length !== 1 ? 's' : ''} as read`, 'success');
                 } catch (err) {
                   showToast('Failed to mark pings as read', 'error');
                 }
@@ -1843,8 +1843,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             </div>
           </div>
           {participants.map(p => {
-            const latestDroplet = allDroplets.length > 0 ? allDroplets[allDroplets.length - 1] : null;
-            const hasReadLatest = latestDroplet ? (latestDroplet.readBy || [latestDroplet.author_id]).includes(p.id) : true;
+            const latestPing = allPings.length > 0 ? allPings[allPings.length - 1] : null;
+            const hasReadLatest = latestPing ? (latestPing.readBy || [latestPing.author_id]).includes(p.id) : true;
             const isCurrentUser = p.id === currentUser?.id;
             const isAlreadyContact = isContact(p.id);
             const hasSentRequest = hasSentRequestTo(p.id);
@@ -2101,24 +2101,24 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 fontSize: isMobile ? '0.85rem' : '0.75rem',
               }}
             >
-              {loadingMore ? 'Loading...' : `↑ Load older pings (${(waveData.total_messages || 0) - allDroplets.length} more)`}
+              {loadingMore ? 'Loading...' : `↑ Load older pings (${(waveData.total_messages || 0) - allPings.length} more)`}
             </button>
           </div>
         )}
-        {droplets.map((msg) => (
-          <Droplet key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
+        {pings.map((msg) => (
+          <Ping key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
             onEdit={handleStartEdit} onSaveEdit={handleSaveEdit} onCancelEdit={handleCancelEdit}
             editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={toggleThreadCollapse} isMobile={isMobile}
             onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
             contacts={contacts} onShowProfile={onShowProfile} onReport={handleReportMessage}
-            onFocus={onFocusDroplet ? (droplet) => onFocusDroplet(wave.id, droplet) : undefined}
-            onRipple={(droplet) => setRippleTarget(droplet)}
-            onShare={handleShareDroplet} wave={wave || waveData}
+            onFocus={onFocusPing ? (ping) => onFocusPing(wave.id, ping) : undefined}
+            onBurst={(ping) => setBurstTarget(ping)}
+            onShare={handleSharePing} wave={wave || waveData}
             onNavigateToWave={onNavigateToWave} currentWaveId={wave.id}
             unreadCountsByWave={unreadCountsByWave}
-            autoFocusDroplets={currentUser?.preferences?.autoFocusDroplets === true}
+            autoFocusPings={currentUser?.preferences?.autoFocusPings === true}
             fetchAPI={fetchAPI} />
         ))}
       </div>
@@ -2612,18 +2612,18 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         />
       )}
 
-      {rippleTarget && (
-        <RippleModal
-          isOpen={!!rippleTarget}
-          onClose={() => setRippleTarget(null)}
-          droplet={rippleTarget}
+      {burstTarget && (
+        <BurstModal
+          isOpen={!!burstTarget}
+          onClose={() => setBurstTarget(null)}
+          ping={burstTarget}
           wave={wave}
           participants={waveData?.participants || []}
           fetchAPI={fetchAPI}
           showToast={showToast}
           isMobile={isMobile}
           onSuccess={(newWave) => {
-            setRippleTarget(null);
+            setBurstTarget(null);
             // Navigate to the new wave
             onNavigateToWave?.(newWave);
           }}

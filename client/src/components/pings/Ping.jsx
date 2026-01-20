@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { PRIVACY_LEVELS, THREAD_DEPTH_LIMIT } from '../../config/constants.js';
 import { Avatar, PrivacyBadge } from '../ui/SimpleComponents.jsx';
 import ImageLightbox from '../ui/ImageLightbox.jsx';
-import RippledLinkCard from './RippledLinkCard.jsx';
-import DropletWithEmbeds from './DropletWithEmbeds.jsx';
+import BurstLinkCard from './BurstLinkCard.jsx';
+import PingWithEmbeds from './PingWithEmbeds.jsx';
 import AudioPlayer from '../media/AudioPlayer.jsx';
 import VideoPlayer from '../media/VideoPlayer.jsx';
 
-const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], contacts = [], onShowProfile, onReport, onFocus, onRipple, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusDroplets = false, fetchAPI }) => {
+const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], contacts = [], onShowProfile, onReport, onFocus, onBurst, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusPings = false, fetchAPI }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -29,7 +29,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   const isReply = depth > 0 && message.parentId;
   const isAtDepthLimit = depth >= THREAD_DEPTH_LIMIT;
 
-  // Count all droplets in children (recursive) - for collapsed thread indicator
+  // Count all pings in children (recursive) - for collapsed thread indicator
   const countAllChildren = (children) => {
     if (!children) return 0;
     return children.reduce((count, child) => {
@@ -38,7 +38,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   };
   const totalChildCount = hasChildren ? countAllChildren(message.children) : 0;
 
-  // Count unread droplets in children (recursive) - for collapsed thread indicator
+  // Count unread pings in children (recursive) - for collapsed thread indicator
   const countUnreadChildren = (children) => {
     if (!children) return 0;
     return children.reduce((count, child) => {
@@ -56,36 +56,36 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   // Deleted messages with children show placeholder to preserve thread context
   if (isDeleted && !hasChildren) return null;
 
-  // If this droplet has been rippled out, show a link card instead
-  // But NOT when viewing from the ripple wave itself (where rippledTo === currentWaveId)
-  const isRippled = !!(message.brokenOutTo || message.rippledTo) && (message.brokenOutTo || message.rippledTo) !== currentWaveId;
+  // If this ping has been bursted out, show a link card instead
+  // But NOT when viewing from the burst wave itself (where burstedTo === currentWaveId)
+  const isBurstd = !!(message.brokenOutTo || message.burstedTo) && (message.brokenOutTo || message.burstedTo) !== currentWaveId;
 
   const handleMessageClick = (e) => {
-    e.stopPropagation(); // Prevent click from bubbling to parent droplets
+    e.stopPropagation(); // Prevent click from bubbling to parent pings
     if (isUnread && onMessageClick) {
       onMessageClick(message.id);
     }
-    // Auto-focus if preference enabled and droplet has children (replies)
-    if (autoFocusDroplets && hasChildren && onFocus && !isDeleted) {
+    // Auto-focus if preference enabled and ping has children (replies)
+    if (autoFocusPings && hasChildren && onFocus && !isDeleted) {
       onFocus(message);
     }
   };
 
-  // Render rippled droplet as a link card
-  if (isRippled) {
-    const rippledToId = message.brokenOutTo || message.rippledTo;
-    const rippledToTitle = message.brokenOutToTitle || message.rippledToTitle || 'New Wave';
+  // Render bursted ping as a link card
+  if (isBurstd) {
+    const burstedToId = message.brokenOutTo || message.burstedTo;
+    const burstedToTitle = message.brokenOutToTitle || message.burstedToTitle || 'New Wave';
     return (
       <div data-message-id={message.id}>
-        <RippledLinkCard
-          droplet={message}
-          waveTitle={rippledToTitle}
+        <BurstLinkCard
+          ping={message}
+          waveTitle={burstedToTitle}
           onClick={() => onNavigateToWave && onNavigateToWave({
-            id: rippledToId,
-            title: rippledToTitle,
+            id: burstedToId,
+            title: burstedToTitle,
           })}
           isMobile={isMobile}
-          unreadCount={unreadCountsByWave[rippledToId] || 0}
+          unreadCount={unreadCountsByWave[burstedToId] || 0}
         />
       </div>
     );
@@ -103,7 +103,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
           marginTop: isMobile ? '8px' : '6px',
           background: isHighlighted ? `${config.color}15` : isUnread ? 'var(--accent-amber)08' : 'transparent',
           borderLeft: isUnread ? '2px solid var(--accent-amber)' : '2px solid transparent',
-          cursor: (isUnread || (autoFocusDroplets && hasChildren && !isDeleted)) ? 'pointer' : 'default',
+          cursor: (isUnread || (autoFocusPings && hasChildren && !isDeleted)) ? 'pointer' : 'default',
           transition: 'background 0.15s ease',
           opacity: isDeleted ? 0.5 : 1,
         }}
@@ -134,7 +134,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
               {message.sender_name}
             </span>
             <span style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.7rem' : '0.65rem' }}>
-              {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {new Date(message.created_at).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' })} {new Date(message.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
             </span>
             {wave?.privacy !== message.privacy && <PrivacyBadge level={message.privacy} compact />}
           </div>
@@ -252,10 +252,10 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                           </div>
                         )}
                         {/* Burst */}
-                        {onRipple && (
+                        {onBurst && (
                           <div
                             onClick={() => {
-                              onRipple(message);
+                              onBurst(message);
                               setShowPingMenu(false);
                             }}
                             style={{
@@ -474,7 +474,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
           >
             {/* Text content (if any) */}
             {message.content && (
-              <DropletWithEmbeds
+              <PingWithEmbeds
                 content={message.content}
                 participants={participants}
                 contacts={contacts}
@@ -565,7 +565,7 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
           </details>
         )}
 
-        {/* Nested replies rendered INSIDE parent droplet */}
+        {/* Nested replies rendered INSIDE parent ping */}
         {hasChildren && !isCollapsed && (
           <div style={{
             marginTop: '2px',
@@ -574,14 +574,14 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             borderLeft: '1px solid var(--border-subtle)',
           }}>
             {message.children.map((child) => (
-              <Droplet key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
+              <Ping key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
                 onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
                 editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
                 currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
                 onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
                 participants={participants} contacts={contacts} onShowProfile={onShowProfile} onReport={onReport}
-                onFocus={onFocus} onRipple={onRipple} onShare={onShare} wave={wave} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
-                unreadCountsByWave={unreadCountsByWave} autoFocusDroplets={autoFocusDroplets} fetchAPI={fetchAPI} />
+                onFocus={onFocus} onBurst={onBurst} onShare={onShare} wave={wave} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
+                unreadCountsByWave={unreadCountsByWave} autoFocusPings={autoFocusPings} fetchAPI={fetchAPI} />
             ))}
           </div>
         )}
@@ -593,4 +593,4 @@ const Droplet = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   );
 };
 
-export default Droplet;
+export default Ping;

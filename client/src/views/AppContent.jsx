@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAPI.js';
 import LoginScreen from './LoginScreen.jsx';
 import AboutServerPage from './AboutServerPage.jsx';
 import ResetPasswordPage from './ResetPasswordPage.jsx';
-import PublicDropletView from './PublicDropletView.jsx';
+import PublicPingView from './PublicPingView.jsx';
 import AuthProvider from './AuthProvider.jsx';
 import E2EEAuthenticatedApp from './E2EEAuthenticatedApp.jsx';
 
@@ -86,15 +86,15 @@ function AppContent() {
   }, []);
 
   // Capture share parameter on mount - check both URL formats:
-  // 1. /?share=dropletId (query param style)
-  // 2. /share/dropletId (path style - when server redirect doesn't work due to proxy)
-  const [shareDropletId] = useState(() => {
+  // 1. /?share=pingId (query param style)
+  // 2. /share/pingId (path style - when server redirect doesn't work due to proxy)
+  const [sharePingId] = useState(() => {
     // Check query param first
     const params = new URLSearchParams(window.location.search);
     const fromQuery = params.get('share');
     if (fromQuery) return fromQuery;
 
-    // Check path: /share/:dropletId
+    // Check path: /share/:pingId
     const pathMatch = window.location.pathname.match(/^\/share\/(.+)$/);
     if (pathMatch) return pathMatch[1];
 
@@ -123,8 +123,8 @@ function AppContent() {
     return <ResetPasswordPage onBack={() => navigate('/')} />;
   }
 
-  // Handle shared droplet for unauthenticated users
-  if (shareDropletId && !user) {
+  // Handle shared ping for unauthenticated users
+  if (sharePingId && !user) {
     if (showLoginScreen) {
       return <LoginScreen onAbout={() => navigate('/about')} />;
     }
@@ -132,8 +132,8 @@ function AppContent() {
       return <LoginScreen onAbout={() => navigate('/about')} initialView="register" />;
     }
     return (
-      <PublicDropletView
-        dropletId={shareDropletId}
+      <PublicPingView
+        pingId={sharePingId}
         onLogin={() => setShowLoginScreen(true)}
         onRegister={() => setShowRegisterScreen(true)}
       />
@@ -146,7 +146,7 @@ function AppContent() {
   }
 
   // User is authenticated - wrap with E2EE flow
-  return <E2EEAuthenticatedApp shareDropletId={shareDropletId} logout={logout} />;
+  return <E2EEAuthenticatedApp sharePingId={sharePingId} logout={logout} />;
 }
 
 // E2EE authenticated app wrapper - handles E2EE setup/unlock before showing main app
