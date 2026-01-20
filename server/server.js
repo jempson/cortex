@@ -5929,8 +5929,19 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   ];
   const validFontSizes = ['small', 'medium', 'large', 'xlarge'];
 
-  if (req.body.theme && validThemes.includes(req.body.theme)) {
-    updates.theme = req.body.theme;
+  if (req.body.theme) {
+    // Accept built-in themes from the validThemes array
+    if (validThemes.includes(req.body.theme)) {
+      updates.theme = req.body.theme;
+    }
+    // Accept custom themes (format: custom-{themeId}) if they exist in the database
+    else if (req.body.theme.startsWith('custom-')) {
+      const customThemeId = req.body.theme.replace('custom-', '');
+      const customTheme = db.getThemeById(customThemeId);
+      if (customTheme) {
+        updates.theme = req.body.theme;
+      }
+    }
   }
   if (req.body.fontSize && validFontSizes.includes(req.body.fontSize)) {
     updates.fontSize = req.body.fontSize;

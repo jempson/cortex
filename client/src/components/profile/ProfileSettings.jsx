@@ -1375,8 +1375,10 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
               value={user?.preferences?.theme || 'serenity'}
               onChange={(e) => {
                 const themeId = e.target.value;
-                // Check if it's a custom theme
-                const customTheme = availableThemes.find(t => t.id === themeId);
+                // Check if it's a custom theme (prefixed with 'custom-')
+                const isCustom = themeId.startsWith('custom-');
+                const rawThemeId = isCustom ? themeId.replace('custom-', '') : themeId;
+                const customTheme = isCustom ? availableThemes.find(t => t.id === rawThemeId) : null;
                 if (customTheme) {
                   // Apply custom theme CSS immediately
                   applyCustomTheme(customTheme);
@@ -1384,7 +1386,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   // Built-in theme - remove custom theme styles and set data-theme
                   removeCustomTheme(themeId);
                 }
-                // Save preference to server
+                // Save preference to server (keep the full themeId with prefix)
                 handleUpdatePreferences({ theme: themeId });
               }}
               style={{
@@ -1402,7 +1404,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
               {availableThemes.length > 0 && (
                 <optgroup label="Custom Themes">
                   {availableThemes.map(theme => (
-                    <option key={theme.id} value={theme.id}>{theme.name}</option>
+                    <option key={theme.id} value={`custom-${theme.id}`}>{theme.name}</option>
                   ))}
                 </optgroup>
               )}
@@ -1426,8 +1428,8 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
           </div>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
             {THEMES[user?.preferences?.theme]?.description ||
-             availableThemes.find(t => t.id === user?.preferences?.theme)?.description ||
-             'Custom theme'}
+             availableThemes.find(t => `custom-${t.id}` === user?.preferences?.theme)?.description ||
+             (user?.preferences?.theme?.startsWith('custom-') ? 'Custom theme' : 'Theme')}
           </div>
         </div>
 

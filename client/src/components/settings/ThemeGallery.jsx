@@ -92,7 +92,7 @@ const ThemeGallery = ({
       }
 
       setInstalledThemeIds(prev => new Set([...prev, theme.id]));
-      showToast(`${theme.name} installed`, 'success');
+      showToast(`${theme.name} installed and applied`, 'success');
 
       // Apply the theme immediately
       applyCustomTheme({
@@ -100,6 +100,15 @@ const ThemeGallery = ({
         name: theme.name,
         variables: theme.variables,
       });
+
+      // Save preference to server with 'custom-' prefix so it persists
+      if (onUpdatePreferences) {
+        try {
+          await onUpdatePreferences({ theme: `custom-${theme.id}` });
+        } catch (error) {
+          console.error('Error saving theme preference:', error);
+        }
+      }
     } catch (error) {
       console.error('Error installing theme:', error);
       showToast(error.message || 'Failed to install theme', 'error');
@@ -168,10 +177,10 @@ const ThemeGallery = ({
       variables: theme.variables,
     });
 
-    // Save preference to server so it persists across login/logout
+    // Save preference to server with 'custom-' prefix so it persists across login/logout
     if (onUpdatePreferences) {
       try {
-        await onUpdatePreferences({ theme: theme.id });
+        await onUpdatePreferences({ theme: `custom-${theme.id}` });
       } catch (error) {
         console.error('Error saving theme preference:', error);
       }

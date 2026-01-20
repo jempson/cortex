@@ -93,18 +93,20 @@ function MainApp({ shareDropletId }) {
   useEffect(() => {
     const theme = user?.preferences?.theme || 'serenity';
 
-    // Check if it's a custom theme (theme ID starts with "theme-" or preference starts with "custom-")
-    const isCustom = theme.startsWith('theme-') || theme.startsWith('custom-');
+    // Check if it's a custom theme (preference starts with "custom-")
+    const isCustom = theme.startsWith('custom-');
 
     if (isCustom) {
+      // Extract raw theme ID (remove "custom-" prefix)
+      const rawThemeId = theme.replace('custom-', '');
+
       // Try to get custom theme from localStorage first
       const cachedTheme = getCurrentCustomTheme();
-      if (cachedTheme && (cachedTheme.id === theme || `custom-${cachedTheme.id}` === theme)) {
+      if (cachedTheme && cachedTheme.id === rawThemeId) {
         applyCustomTheme(cachedTheme);
       } else {
         // Fetch from server if not cached
-        const themeId = theme.replace('custom-', '');
-        fetchAPI(`/themes/${themeId}`).then(themeData => {
+        fetchAPI(`/themes/${rawThemeId}`).then(themeData => {
           if (themeData && !themeData.error) {
             applyCustomTheme(themeData);
           } else {
