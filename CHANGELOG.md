@@ -172,6 +172,7 @@ CREATE TABLE custom_theme_installs (
 ### Fixed
 
 - Fixed missing `LOADING` constant import in UserManagementPanel causing admin panel crash
+- Fixed custom theme selection from Display Preferences dropdown not persisting - theme would flash briefly then revert to system theme because server validation only accepted built-in theme names
 
 ## [2.10.0] - 2026-01-19
 
