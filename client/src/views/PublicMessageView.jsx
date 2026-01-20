@@ -3,14 +3,14 @@ import { VERSION, API_URL, BASE_URL, PRIVACY_LEVELS } from '../config/constants.
 import { useWindowSize } from '../hooks/useWindowSize.js';
 import { LoadingSpinner, Toast, Avatar, GlowText } from '../components/ui/SimpleComponents.jsx';
 
-const PublicPingView = ({ pingId, onLogin, onRegister }) => {
+const PublicMessageView = ({ messageId, onLogin, onRegister }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { isMobile } = useWindowSize();
 
   useEffect(() => {
-    fetch(`${API_URL}/share/${pingId}`)
+    fetch(`${API_URL}/share/${messageId}`)
       .then(res => res.json())
       .then(result => {
         if (result.error) {
@@ -21,7 +21,7 @@ const PublicPingView = ({ pingId, onLogin, onRegister }) => {
       })
       .catch(() => setError('Failed to load shared content'))
       .finally(() => setLoading(false));
-  }, [pingId]);
+  }, [messageId]);
 
   const containerStyle = {
     minHeight: '100vh',
@@ -71,7 +71,7 @@ const PublicPingView = ({ pingId, onLogin, onRegister }) => {
               fontSize: '1rem',
             }}
           >
-            LOGIN TO FARHOLD
+            LOGIN TO CORTEX
           </button>
         </div>
       </div>
@@ -84,7 +84,7 @@ const PublicPingView = ({ pingId, onLogin, onRegister }) => {
         <div style={cardStyle}>
           <h2 style={{ color: 'var(--accent-amber)', margin: '0 0 16px 0' }}>Private Content</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
-            This ping is in a private wave.
+            This message is in a private wave.
           </p>
           <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
             Log in or create an account to view it.
@@ -124,9 +124,9 @@ const PublicPingView = ({ pingId, onLogin, onRegister }) => {
     );
   }
 
-  // Public ping - show preview
+  // Public message - show preview
   // Content is already sanitized by the server, render as HTML
-  const pingContent = data.ping?.content || '';
+  const messageContent = data.message?.content || '';
 
   return (
     <div style={containerStyle}>
@@ -141,7 +141,7 @@ const PublicPingView = ({ pingId, onLogin, onRegister }) => {
           gap: '6px',
         }}>
           <span>○</span>
-          <span>{data.wave?.title || 'Farhold Wave'}</span>
+          <span>{data.wave?.title || 'Cortex Wave'}</span>
         </div>
 
         {/* Author and content */}
@@ -202,16 +202,16 @@ const PublicPingView = ({ pingId, onLogin, onRegister }) => {
               lineHeight: '1.6',
               wordBreak: 'break-word',
             }}
-            dangerouslySetInnerHTML={{ __html: pingContent || '<em>No content</em>' }}
-            className="public-ping-content"
+            dangerouslySetInnerHTML={{ __html: messageContent || '<em>No content</em>' }}
+            className="public-message-content"
           />
-          {data.ping?.createdAt && (
+          {data.message?.createdAt && (
             <div style={{
               color: 'var(--text-muted)',
               fontSize: '0.75rem',
               marginTop: '12px',
             }}>
-              {new Date(data.ping.createdAt).toLocaleString()}
+              {new Date(data.message.createdAt).toLocaleString()}
             </div>
           )}
         </div>
@@ -223,7 +223,7 @@ const PublicPingView = ({ pingId, onLogin, onRegister }) => {
           paddingTop: '20px',
         }}>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
-            Join the conversation on Farhold
+            Join the conversation on Cortex
           </p>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button
@@ -262,4 +262,4 @@ const PublicPingView = ({ pingId, onLogin, onRegister }) => {
 };
 
 // ============ AUTH PROVIDER ============
-export default PublicPingView;
+export default PublicMessageView;

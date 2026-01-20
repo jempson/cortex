@@ -89,10 +89,10 @@ const AboutServerPage = ({ onBack }) => {
             marginBottom: '8px',
           }}>
             {info.federationEnabled && <span style={{ marginRight: '10px' }}>◇</span>}
-            {info.name || 'Farhold Server'}
+            {info.name || 'Cortex Server'}
           </div>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>
-            Farhold v{info.version}
+            Cortex v{info.version}
             {info.federationEnabled && (
               <span style={{
                 marginLeft: '12px',
@@ -172,7 +172,7 @@ const AboutServerPage = ({ onBack }) => {
           fontSize: '0.75rem',
           borderTop: '1px solid var(--border-subtle)',
         }}>
-          Powered by <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-teal)' }}>Farhold</a>
+          Powered by <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-teal)' }}>Cortex</a>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-// Firefly-themed messages for Farhold
+// Firefly-themed messages for Cortex
 // "Can't stop the signal, Mal."
 
 // ============ SUCCESS MESSAGES ============

@@ -4,7 +4,7 @@ import { useSwipeGesture } from '../../hooks/useSwipeGesture.js';
 import { SUCCESS, EMPTY } from '../../../messages.js';
 import { PRIVACY_LEVELS } from '../../config/constants.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
-import Ping from '../pings/Ping.jsx';
+import Message from '../messages/Message.jsx';
 
 const FocusView = ({
   wave,
@@ -271,8 +271,8 @@ const FocusView = ({
   // Share ping to external platforms
   const handleSharePing = async (ping) => {
     const shareUrl = `${window.location.origin}/share/${ping.id}`;
-    const shareTitle = wave?.title || wave?.name || 'Farhold';
-    const shareText = `Check out this conversation on Farhold`;
+    const shareTitle = wave?.title || wave?.name || 'Cortex';
+    const shareText = `Check out this conversation on Cortex`;
 
     // Try native Web Share API first
     if (navigator.share) {

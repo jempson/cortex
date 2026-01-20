@@ -1482,19 +1482,19 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>AUTO-FOCUS PINGS</label>
           <button
-            onClick={() => handleUpdatePreferences({ autoFocusPings: !(user?.preferences?.autoFocusPings === true) })}
+            onClick={() => handleUpdatePreferences({ autoFocusMessages: !(user?.preferences?.autoFocusMessages === true) })}
             style={{
               padding: isMobile ? '10px 16px' : '8px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: (user?.preferences?.autoFocusPings === true) ? 'var(--accent-teal)20' : 'transparent',
-              border: `1px solid ${(user?.preferences?.autoFocusPings === true) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
-              color: (user?.preferences?.autoFocusPings === true) ? 'var(--accent-teal)' : 'var(--text-dim)',
+              background: (user?.preferences?.autoFocusMessages === true) ? 'var(--accent-teal)20' : 'transparent',
+              border: `1px solid ${(user?.preferences?.autoFocusMessages === true) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+              color: (user?.preferences?.autoFocusMessages === true) ? 'var(--accent-teal)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.9rem' : '0.85rem',
             }}
           >
-            {(user?.preferences?.autoFocusPings === true) ? '⤢ ENABLED' : '⤢ DISABLED'}
+            {(user?.preferences?.autoFocusMessages === true) ? '⤢ ENABLED' : '⤢ DISABLED'}
           </button>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
             Automatically enter Focus View when clicking pings with replies

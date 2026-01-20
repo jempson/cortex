@@ -1,9 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import FarholdApp from './FarholdApp';
+import CortexApp from './CortexApp';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <FarholdApp />
+    <CortexApp />
   </React.StrictMode>
 );

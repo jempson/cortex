@@ -2544,7 +2544,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
               {requestLoading ? 'SENDING...' : 'REQUEST FEDERATION'}
             </button>
             <div style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-              Send a federation request to another Farhold server. They will need to accept your request.
+              Send a federation request to another Cortex server. They will need to accept your request.
             </div>
           </div>
         </div>

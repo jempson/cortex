@@ -425,8 +425,8 @@ const RichEmbed = ({ embed, autoLoad = false }) => {
   );
 };
 
-// Component to render ping content with embeds (formerly MessageWithEmbeds)
-const PingWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], contacts = [], onMentionClick, fetchAPI }) => {
+// Component to render message content with embeds (formerly MessageWithEmbeds)
+const MessageWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], contacts = [], onMentionClick, fetchAPI }) => {
   const embeds = useMemo(() => detectEmbedUrls(content), [content]);
 
   // Get the plain text URLs that have embeds (to potentially hide them)
@@ -514,4 +514,4 @@ const PingWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [], co
   );
 };
 
-export default PingWithEmbeds;
+export default MessageWithEmbeds;

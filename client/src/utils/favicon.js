@@ -1,7 +1,7 @@
 // ============ FAVICON UTILITIES ============
 
 // Tab notification state
-let originalTitle = 'Farhold';
+let originalTitle = 'Cortex';
 let originalFaviconHref = '/icons/favicon-32x32.png';
 let notificationFaviconDataUrl = null;
 let faviconFlashInterval = null;
