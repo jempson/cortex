@@ -1,5 +1,5 @@
 /**
- * Farhold E2EE Crypto Module (v2.0.0)
+ * Cortex E2EE Crypto Module (v2.0.0)
  *
  * End-to-end encryption using Web Crypto API.
  *

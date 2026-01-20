@@ -79,7 +79,7 @@ const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMo
           <span style={{ fontSize: '1.2rem' }}>◇</span> FEDERATE WAVE
         </h3>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px' }}>
-          Invite users from other Farhold servers to join "{wave.title || wave.name}".
+          Invite users from other Cortex servers to join "{wave.title || wave.name}".
         </p>
 
         <div style={{ marginBottom: '16px' }}>
@@ -130,7 +130,7 @@ const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMo
             </div>
           )}
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>
-            Format: @handle@server.com (user on another Farhold server)
+            Format: @handle@server.com (user on another Cortex server)
           </div>
         </div>
 

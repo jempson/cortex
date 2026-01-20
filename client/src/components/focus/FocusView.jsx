@@ -4,7 +4,7 @@ import { useSwipeGesture } from '../../hooks/useSwipeGesture.js';
 import { SUCCESS, EMPTY } from '../../../messages.js';
 import { PRIVACY_LEVELS } from '../../config/constants.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
-import Ping from '../pings/Ping.jsx';
+import Message from '../messages/Message.jsx';
 
 const FocusView = ({
   wave,
@@ -231,10 +231,10 @@ const FocusView = ({
   };
 
   const handleDeleteMessage = async (message) => {
-    if (!confirm('Delete this ping?')) return;
+    if (!confirm('Delete this message?')) return;
     try {
       await fetchAPI(`/pings/${message.id}`, { method: 'DELETE' });
-      showToast('Ping deleted', 'success');
+      showToast(SUCCESS.messageDeleted, 'success');
     } catch (err) {
       showToast(err.message || 'Failed to delete', 'error');
     }
@@ -253,7 +253,7 @@ const FocusView = ({
       });
       setEditingMessageId(null);
       setEditContent('');
-      showToast('Ping updated', 'success');
+      showToast(SUCCESS.messageUpdated, 'success');
     } catch (err) {
       showToast(err.message || 'Failed to update', 'error');
     }
@@ -271,8 +271,8 @@ const FocusView = ({
   // Share ping to external platforms
   const handleSharePing = async (ping) => {
     const shareUrl = `${window.location.origin}/share/${ping.id}`;
-    const shareTitle = wave?.title || wave?.name || 'Farhold';
-    const shareText = `Check out this conversation on Farhold`;
+    const shareTitle = wave?.title || wave?.name || 'Cortex';
+    const shareText = `Check out this conversation on Cortex`;
 
     // Try native Web Share API first
     if (navigator.share) {

@@ -1,10 +1,12 @@
-// Firefly-themed messages for Farhold
+// Firefly-themed messages for Cortex
 // "Can't stop the signal, Mal."
 
 // ============ SUCCESS MESSAGES ============
 export const SUCCESS = {
   generic: "Shiny!",
-  pingSent: "Signal's away",
+  messageSent: "Signal's away",
+  messageUpdated: "Signal corrected",
+  messageDeleted: "Signal scrubbed",
   waveCreated: "New signal on the cortex",
   waveUpdated: "Signal adjusted",
   waveDeleted: "Signal terminated",

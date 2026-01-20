@@ -1,4 +1,4 @@
-# Farhold Feature Backlog
+# Cortex Feature Backlog
 
 Future feature ideas and enhancements for consideration.
 
@@ -10,23 +10,23 @@ Future feature ideas and enhancements for consideration.
 
 ### Background
 
-Farhold was created as an homage to *Firefly* and *Serenity*, inspired by the Cortex - the 'Verse's interconnected network of databanks and communication systems. The original terminology used water-based metaphors (Waves, Droplets, Ripple), but the v2.0.0 nomenclature overhaul brought space/Firefly-themed naming to better honor the source material and create a more cohesive identity.
+Cortex was created as an homage to *Firefly* and *Serenity*, inspired by the Cortex - the 'Verse's interconnected network of databanks and communication systems. The original terminology used water-based metaphors (Waves, Droplets, Ripple), but the v2.0.0 nomenclature overhaul brought space/Firefly-themed naming to better honor the source material and create a more cohesive identity.
 
 ### App Rename
 
 The app name "Cortex" should change to something more obscure that represents the "entry point into the Cortex" - the Cortex being the entire network of federated nodes in the 'Verse.
 
-**Chosen Name: Farhold**
-- Domain: **farhold.com** (confirmed available, along with .net, .org, .io)
+**Chosen Name: Cortex**
+- Domain: **cortex.com** (confirmed available, along with .net, .org, .io)
 - Meaning: "Your hold in the far reaches of the 'Verse"
 - Short, memorable, evokes frontier/Rim worlds aesthetic
-- Works as both a noun ("the Farhold") and a place ("welcome to Farhold")
+- Works as both a noun ("the Cortex") and a place ("welcome to Cortex")
 
 ### Terminology Changes
 
 | Current | New | Context |
 |---------|-----|---------|
-| Cortex | **Farhold** | App name (entry point to the Cortex) |
+| Cortex | **Cortex** | App name (entry point to the Cortex) |
 | Droplet | **Ping** | Individual message |
 | Ripple | **Burst** | Break out thread to new conversation |
 | Group | **Crew** | User groups |
@@ -280,7 +280,7 @@ Allow users to pause and drag the crawl bar backwards to see or click on content
 Add a calendaring system that automatically applies special visual themes and effects during holidays, creating a festive atmosphere for users.
 
 ### Motivation
-Holidays are times when users naturally want to celebrate and share with their communities. Having the interface reflect these moments creates delight and strengthens the sense of community within Farhold.
+Holidays are times when users naturally want to celebrate and share with their communities. Having the interface reflect these moments creates delight and strengthens the sense of community within Cortex.
 
 ### Proposed Features
 
@@ -334,8 +334,8 @@ Holidays are times when users naturally want to celebrate and share with their c
 
 Features from the backlog that have been implemented.
 
-### v2.0.0 - Farhold Nomenclature Overhaul (January 2026)
-- App renamed from Cortex to Farhold
+### v2.0.0 - Cortex Nomenclature Overhaul (January 2026)
+- App renamed from Cortex to Cortex
 - Droplet → Ping (individual messages)
 - Ripple → Burst (break out threads)
 - Group → Crew (user groups)

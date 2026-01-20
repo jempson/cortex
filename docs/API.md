@@ -1,10 +1,10 @@
-# Farhold REST API Documentation
+# Cortex REST API Documentation
 
 Version: 2.0.0
 
 ## Overview
 
-The Farhold API is a RESTful API that powers the Farhold federated communication platform (formerly Cortex). All endpoints return JSON responses and require `Content-Type: application/json` headers for requests with body content.
+The Cortex API is a RESTful API that powers the Cortex federated communication platform (formerly Cortex). All endpoints return JSON responses and require `Content-Type: application/json` headers for requests with body content.
 
 ### Terminology (v2.0.0)
 - **Ping** = message (formerly "droplet")
@@ -47,7 +47,7 @@ The Farhold API is a RESTful API that powers the Farhold federated communication
 
 ## Authentication
 
-Farhold uses **JWT (JSON Web Tokens)** for authentication. After successful login or registration, you'll receive a token that must be included in subsequent requests.
+Cortex uses **JWT (JSON Web Tokens)** for authentication. After successful login or registration, you'll receive a token that must be included in subsequent requests.
 
 ### Token Format
 
@@ -86,7 +86,7 @@ curl http://localhost:3001/api/waves \
 
 ## Rate Limiting
 
-Farhold implements rate limiting to prevent abuse. Rate limits are enforced per IP address and tracked in-memory.
+Cortex implements rate limiting to prevent abuse. Rate limits are enforced per IP address and tracked in-memory.
 
 ### Global Rate Limits
 
@@ -2720,7 +2720,7 @@ Check server health status.
 
 ## WebSocket API
 
-Farhold uses WebSockets for real-time bidirectional communication.
+Cortex uses WebSockets for real-time bidirectional communication.
 
 **WebSocket URL:** `ws://localhost:3001` (development)
 
@@ -3168,7 +3168,7 @@ WebSocket connections are rate-limited per IP:
 | `GIPHY_API_KEY` | `null` | GIPHY API key for GIF search |
 | `VAPID_PUBLIC_KEY` | `null` | VAPID public key for push notifications |
 | `VAPID_PRIVATE_KEY` | `null` | VAPID private key for push notifications |
-| `VAPID_EMAIL` | `mailto:admin@farhold.local` | VAPID contact email |
+| `VAPID_EMAIL` | `mailto:admin@cortex.local` | VAPID contact email |
 | `RATE_LIMIT_LOGIN_MAX` | `30` | Login requests per 15 minutes |
 | `RATE_LIMIT_REGISTER_MAX` | `15` | Registration requests per hour |
 | `RATE_LIMIT_API_MAX` | `300` | API requests per minute |
@@ -3196,7 +3196,7 @@ WebSocket connections are rate-limited per IP:
 
 **SQLite (optional):**
 
-- `data/farhold.db` - Single database file
+- `data/cortex.db` - Single database file
 - Schema: `schema.sql` (14+ tables with indexes)
 - Migration: `node migrate-json-to-sqlite.js`
 
@@ -3235,7 +3235,7 @@ Get this server's federation identity (public key). No authentication required.
 
 ```json
 {
-  "nodeName": "farhold.example.com",
+  "nodeName": "cortex.example.com",
   "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN...",
   "createdAt": "2025-12-12T10:00:00.000Z"
 }
@@ -3379,7 +3379,7 @@ Get federation status and configuration.
 {
   "enabled": true,
   "configured": true,
-  "nodeName": "farhold.example.com",
+  "nodeName": "cortex.example.com",
   "nodeCount": 2,
   "activeNodes": 1,
   "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN..."
@@ -3400,7 +3400,7 @@ Generate server identity (RSA keypair). Only callable if no identity exists.
 {
   "success": true,
   "identity": {
-    "nodeName": "farhold.example.com",
+    "nodeName": "cortex.example.com",
     "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN...",
     "createdAt": "2025-12-12T10:00:00.000Z"
   }
@@ -3422,8 +3422,8 @@ List all federation nodes.
   "nodes": [
     {
       "id": "node-uuid",
-      "nodeName": "other-farhold.example.com",
-      "baseUrl": "https://other-farhold.example.com",
+      "nodeName": "other-cortex.example.com",
+      "baseUrl": "https://other-cortex.example.com",
       "publicKey": "-----BEGIN PUBLIC KEY-----\n...",
       "status": "active",
       "lastContactAt": "2025-12-12T10:30:00.000Z",
@@ -3455,8 +3455,8 @@ Add a new federation node.
 
 ```json
 {
-  "nodeName": "other-farhold.example.com",
-  "baseUrl": "https://other-farhold.example.com"
+  "nodeName": "other-cortex.example.com",
+  "baseUrl": "https://other-cortex.example.com"
 }
 ```
 
@@ -3467,8 +3467,8 @@ Add a new federation node.
   "success": true,
   "node": {
     "id": "node-uuid",
-    "nodeName": "other-farhold.example.com",
-    "baseUrl": "https://other-farhold.example.com",
+    "nodeName": "other-cortex.example.com",
+    "baseUrl": "https://other-cortex.example.com",
     "status": "pending",
     "createdAt": "2025-12-12T10:00:00.000Z"
   }
@@ -3506,7 +3506,7 @@ Initiate handshake with a federation node to exchange public keys.
   "success": true,
   "node": {
     "id": "node-uuid",
-    "nodeName": "other-farhold.example.com",
+    "nodeName": "other-cortex.example.com",
     "status": "active",
     "publicKey": "-----BEGIN PUBLIC KEY-----\n..."
   }
@@ -3911,4 +3911,4 @@ For more information, see:
 
 - [Project README](../README.md)
 - [CLAUDE.md](../CLAUDE.md) - Development guide for AI assistants
-- [GitHub Repository](https://github.com/jempson/farhold)
+- [GitHub Repository](https://github.com/jempson/cortex)

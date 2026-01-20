@@ -1,8 +1,8 @@
-# FARHOLD - Secure Wave Communications
+# CORTEX - Secure Wave Communications
 
 **Version 2.6.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
-> *"Can't stop the signal."* — Farhold (formerly Cortex)
+> *"Can't stop the signal."* — Cortex
 
 ## Terminology
 
@@ -54,7 +54,7 @@ Demo accounts (password: `demo123`):
 - **Search** - Full-text search across all pings (SQLite FTS)
 - **PWA** - Installable app with offline support and push notifications
 - **E2EE** - End-to-end encryption for private conversations (v1.19.0)
-- **Federation** - Connect multiple Farhold servers to share waves (v1.13.0)
+- **Federation** - Connect multiple Cortex servers to share waves (v1.13.0)
 - **Crawl Bar** - Live scrolling ticker with stocks, weather, and news (v1.15.0)
 
 ### End-to-End Encryption (v1.19.0)
@@ -67,7 +67,7 @@ Demo accounts (password: `demo123`):
 - **Web Crypto API** - Native browser cryptography, no external libraries
 
 ### Federation (v1.13.0)
-- **Server-to-Server** - Multiple Farhold instances can exchange pings
+- **Server-to-Server** - Multiple Cortex instances can exchange pings
 - **Federated Users** - Add `@user@other-server.com` as wave participants
 - **HTTP Signatures** - RSA-SHA256 signed requests for server authentication
 - **Trust Model** - Manual allowlist of trusted federation partners
@@ -120,7 +120,7 @@ Demo accounts (password: `demo123`):
 ## Project Structure
 
 ```
-farhold/
+cortex/
 ├── server/
 │   ├── server.js              # Express + WebSocket server
 │   ├── database-sqlite.js     # SQLite database (optional)
@@ -128,7 +128,7 @@ farhold/
 │   ├── .env                   # Environment config
 │   └── data/                  # Data storage
 ├── client/
-│   ├── FarholdApp.jsx         # Main React app
+│   ├── CortexApp.jsx         # Main React app
 │   ├── public/
 │   │   ├── sw.js              # Service worker
 │   │   └── manifest.json      # PWA manifest
@@ -160,7 +160,7 @@ VAPID_EMAIL=mailto:admin@example.com
 
 # Federation (optional) - see "Enabling Federation" below
 FEDERATION_ENABLED=false           # Enable server-to-server federation
-FEDERATION_NODE_NAME=farhold.example.com  # Your server's federation name
+FEDERATION_NODE_NAME=cortex.example.com  # Your server's federation name
 
 # Email Service (optional) - see "Enabling Email Service" below
 EMAIL_PROVIDER=smtp                # smtp, sendgrid, or mailgun
@@ -280,7 +280,7 @@ Restart your server. You should see this in the logs:
 
 ## Enabling Federation
 
-Federation allows multiple Farhold servers to exchange waves and pings. Users can participate in waves hosted on other servers.
+Federation allows multiple Cortex servers to exchange waves and pings. Users can participate in waves hosted on other servers.
 
 ### Step 1: Enable Federation
 
@@ -288,14 +288,14 @@ Add to your `server/.env` file:
 
 ```bash
 FEDERATION_ENABLED=true
-FEDERATION_NODE_NAME=farhold.example.com  # Your server's public hostname
+FEDERATION_NODE_NAME=cortex.example.com  # Your server's public hostname
 ```
 
 ### Step 2: Restart Server
 
 Restart your server. You should see:
 ```
-🌐 Federation enabled as: farhold.example.com
+🌐 Federation enabled as: cortex.example.com
 📤 Federation queue processor started (30s interval)
 ```
 
@@ -308,12 +308,12 @@ Restart your server. You should see:
 
 ### Step 4: Add Trusted Nodes
 
-To connect with another Farhold server:
+To connect with another Cortex server:
 
 1. In the Federation panel, click **"Add Node"**
 2. Enter the other server's:
-   - **Node Name**: e.g., `other-farhold.example.com`
-   - **Base URL**: e.g., `https://other-farhold.example.com`
+   - **Node Name**: e.g., `other-cortex.example.com`
+   - **Base URL**: e.g., `https://other-cortex.example.com`
 3. Click **"Initiate Handshake"** to exchange public keys
 4. The other server's admin must also add your server
 
@@ -347,7 +347,7 @@ Email service is required for password recovery and email-based MFA. Without it,
 
 ### Supported Providers
 
-Farhold supports three email providers:
+Cortex supports three email providers:
 - **SMTP** - Any standard SMTP server (Gmail, Outlook, custom)
 - **SendGrid** - SendGrid API
 - **Mailgun** - Mailgun API
@@ -411,7 +411,7 @@ If email is not configured, you'll see:
 
 ## Multi-Factor Authentication (MFA)
 
-Farhold supports two MFA methods:
+Cortex supports two MFA methods:
 - **TOTP** - Time-based codes from authenticator apps (Google Authenticator, Authy, etc.)
 - **Email** - 6-digit codes sent to user's email address
 
@@ -565,7 +565,7 @@ Add to your `server/.env`:
 GNEWS_API_KEY=your-gnews-api-key
 ```
 
-**Tip:** Configure both NewsAPI and GNews - Farhold will use NewsAPI first and fall back to GNews if it fails.
+**Tip:** Configure both NewsAPI and GNews - Cortex will use NewsAPI first and fall back to GNews if it fails.
 
 ### Step 5: Restart Server
 
@@ -600,7 +600,7 @@ Users can customize their crawl bar experience in **Profile Settings** → **Cra
 
 ### Location Detection
 
-Farhold automatically detects user location using IP geolocation (ip-api.com):
+Cortex automatically detects user location using IP geolocation (ip-api.com):
 
 1. **User Override** - If user sets a location in preferences, that's used
 2. **IP Geolocation** - Falls back to detecting location from IP address
@@ -665,10 +665,10 @@ npm install -g pm2
 cd server
 
 # Start with PM2
-pm2 start server.js --name farhold-api
+pm2 start server.js --name cortex-api
 
 # Or with environment variables
-pm2 start server.js --name farhold-api --env production
+pm2 start server.js --name cortex-api --env production
 ```
 
 #### PM2 Ecosystem File (Recommended)
@@ -679,7 +679,7 @@ Create `ecosystem.config.js` in the project root:
 module.exports = {
   apps: [
     {
-      name: 'farhold-api',
+      name: 'cortex-api',
       script: './server/server.js',
       instances: 1,              // Use 1 for WebSocket compatibility
       exec_mode: 'fork',         // Fork mode required for WebSocket
@@ -697,15 +697,15 @@ module.exports = {
       restart_delay: 1000,
       // Logging
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
-      error_file: './logs/farhold-api-error.log',
-      out_file: './logs/farhold-api-out.log',
+      error_file: './logs/cortex-api-error.log',
+      out_file: './logs/cortex-api-out.log',
       merge_logs: true,
       // Watch (optional, for development)
       watch: false,
       ignore_watch: ['node_modules', 'data', 'logs', 'uploads']
     },
     {
-      name: 'farhold-web',
+      name: 'cortex-web',
       script: 'serve',
       env: {
         PM2_SERVE_PATH: './client/dist',
@@ -731,15 +731,15 @@ pm2 start ecosystem.config.js --env production
 
 ```bash
 pm2 list                        # List all processes
-pm2 logs farhold-api             # View API logs (real-time)
-pm2 logs farhold-api --lines 100 # View last 100 lines
-pm2 logs farhold-web             # View web server logs
+pm2 logs cortex-api             # View API logs (real-time)
+pm2 logs cortex-api --lines 100 # View last 100 lines
+pm2 logs cortex-web             # View web server logs
 pm2 monit                       # Terminal-based monitoring
-pm2 restart farhold-api          # Restart API server
-pm2 restart farhold-web          # Restart web server
+pm2 restart cortex-api          # Restart API server
+pm2 restart cortex-web          # Restart web server
 pm2 restart all                 # Restart all processes
-pm2 stop farhold-api             # Stop API server
-pm2 delete farhold-api           # Remove API from PM2
+pm2 stop cortex-api             # Stop API server
+pm2 delete cortex-api           # Remove API from PM2
 pm2 save                        # Save process list for startup
 pm2 startup                     # Generate startup script
 ```
@@ -754,7 +754,7 @@ pm2 startup
 pm2 save
 ```
 
-This ensures Farhold automatically restarts after server reboots.
+This ensures Cortex automatically restarts after server reboots.
 
 #### Serving the Client
 
@@ -767,7 +767,7 @@ npm run build
 
 Then either:
 1. **Nginx**: Serve `client/dist/` directly (recommended)
-2. **PM2 + serve**: `pm2 serve client/dist 3000 --name farhold-web --spa`
+2. **PM2 + serve**: `pm2 serve client/dist 3000 --name cortex-web --spa`
 
 ---
 
@@ -776,7 +776,7 @@ Then either:
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name farhold.example.com;
+    server_name cortex.example.com;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -995,7 +995,7 @@ server {
 - **Report System**: Users can report content, admin dashboard for moderation
 - **Moderation Actions**: Warning system, audit log, content removal
 - **API Documentation**: Comprehensive docs/API.md with 70+ endpoints
-- Mobile header shows FARHOLD logo with status indicators
+- Mobile header shows CORTEX logo with status indicators
 
 ### v1.8.1 (December 2025)
 - Fixed video embeds (YouTube, Spotify, Vimeo)

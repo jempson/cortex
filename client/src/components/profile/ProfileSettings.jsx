@@ -6,7 +6,7 @@ import { API_URL, canAccess, FONT_SIZES } from '../../config/constants.js';
 import { THEMES } from '../../config/themes.js';
 import { storage } from '../../utils/storage.js';
 import { applyCustomTheme, removeCustomTheme } from '../../hooks/useTheme.js';
-import { subscribeToPush, unsubscribeFromPush } from '../../utils/pwa.js';
+import { subscribeToPush, unsubscribeFromPush, forceResetPushState } from '../../utils/pwa.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { E2EEStatusIndicator } from '../../../e2ee-components.jsx';
 import CollapsibleSection from '../ui/CollapsibleSection.jsx';
@@ -1482,19 +1482,19 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>AUTO-FOCUS PINGS</label>
           <button
-            onClick={() => handleUpdatePreferences({ autoFocusPings: !(user?.preferences?.autoFocusPings === true) })}
+            onClick={() => handleUpdatePreferences({ autoFocusMessages: !(user?.preferences?.autoFocusMessages === true) })}
             style={{
               padding: isMobile ? '10px 16px' : '8px 16px',
               minHeight: isMobile ? '44px' : 'auto',
-              background: (user?.preferences?.autoFocusPings === true) ? 'var(--accent-teal)20' : 'transparent',
-              border: `1px solid ${(user?.preferences?.autoFocusPings === true) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
-              color: (user?.preferences?.autoFocusPings === true) ? 'var(--accent-teal)' : 'var(--text-dim)',
+              background: (user?.preferences?.autoFocusMessages === true) ? 'var(--accent-teal)20' : 'transparent',
+              border: `1px solid ${(user?.preferences?.autoFocusMessages === true) ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
+              color: (user?.preferences?.autoFocusMessages === true) ? 'var(--accent-teal)' : 'var(--text-dim)',
               cursor: 'pointer',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.9rem' : '0.85rem',
             }}
           >
-            {(user?.preferences?.autoFocusPings === true) ? '⤢ ENABLED' : '⤢ DISABLED'}
+            {(user?.preferences?.autoFocusMessages === true) ? '⤢ ENABLED' : '⤢ DISABLED'}
           </button>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
             Automatically enter Focus View when clicking pings with replies
@@ -1885,6 +1885,30 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                       ⚠️ iOS does not support push notifications for web apps. This is a platform limitation by Apple.
                     </div>
                   )}
+                  {/* Reset button for troubleshooting */}
+                  <button
+                    onClick={async () => {
+                      if (confirm('This will reset your push notification state. You may need to re-enable notifications afterwards. Continue?')) {
+                        showToast('Resetting push state...', 'info');
+                        storage.setPushEnabled(false);
+                        setPushEnabled(false);
+                        await forceResetPushState();
+                        showToast('Push state reset. Try enabling notifications again.', 'success');
+                      }
+                    }}
+                    style={{
+                      marginTop: '8px',
+                      padding: '6px 12px',
+                      background: 'transparent',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: '0.7rem',
+                    }}
+                  >
+                    ↻ Reset Push State
+                  </button>
                 </div>
               </>
             )}

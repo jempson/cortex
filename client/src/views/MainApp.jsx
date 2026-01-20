@@ -51,7 +51,7 @@ function MainApp({ sharePingId }) {
   const [contacts, setContacts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selectedWave, setSelectedWave] = useState(null);
-  const [scrollToPingId, setScrollToPingId] = useState(null); // Ping to scroll to after wave loads
+  const [scrollToMessageId, setScrollToMessageId] = useState(null); // Ping to scroll to after wave loads
   const [focusStack, setFocusStack] = useState([]); // Array of { waveId, pingId, ping } for Focus View navigation
   const [showNewWave, setShowNewWave] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -186,7 +186,7 @@ function MainApp({ sharePingId }) {
             // Navigate to the wave and scroll to the ping
             console.log('[Share] Navigating to wave:', data.wave.id);
             setSelectedWave({ id: data.wave.id, title: data.wave.title });
-            setScrollToPingId(sharePingId);
+            setScrollToMessageId(sharePingId);
             setActiveView('waves');
             // Clear the URL (works for both /?share=x and /share/x formats)
             if (window.location.pathname !== '/' || window.location.search) {
@@ -692,7 +692,7 @@ function MainApp({ sharePingId }) {
     setFocusStack(prev => {
       if (prev.length > 0) {
         // Set scroll target to the first focused ping so WaveView scrolls to it
-        setScrollToPingId(prev[0].pingId);
+        setScrollToMessageId(prev[0].pingId);
       }
       return [];
     });
@@ -749,7 +749,7 @@ function MainApp({ sharePingId }) {
           }
 
           // Set the target ping for WaveView to scroll to after loading
-          setScrollToPingId(pingId);
+          setScrollToMessageId(pingId);
         }
       }
     } catch (err) {
@@ -863,7 +863,7 @@ function MainApp({ sharePingId }) {
     const wave = waves.find(w => w.id === result.waveId);
     if (wave) {
       setSelectedWave(wave);
-      setScrollToPingId(result.id);
+      setScrollToMessageId(result.id);
       setActiveView('waves');
       setShowSearch(false);
     } else {
@@ -965,7 +965,7 @@ function MainApp({ sharePingId }) {
         {/* Logo and Status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-            <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>FARHOLD</GlowText>
+            <GlowText color="var(--accent-amber)" size={isMobile ? '1.2rem' : '1.5rem'} weight={700}>CORTEX</GlowText>
             <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>v{VERSION}</span>
           </div>
           {/* Status indicators */}
@@ -1158,8 +1158,8 @@ function MainApp({ sharePingId }) {
                     onShowProfile={setProfileUserId}
                     onFocusPing={handleFocusPing}
                     onNavigateToWave={handleNavigateToWave}
-                    scrollToPingId={scrollToPingId}
-                    onScrollToPingComplete={() => setScrollToPingId(null)}
+                    scrollToMessageId={scrollToMessageId}
+                    onScrollToMessageComplete={() => setScrollToMessageId(null)}
                     federationEnabled={federationEnabled} />
                 </ErrorBoundary>
               ) : !isMobile && (

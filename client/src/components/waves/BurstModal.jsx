@@ -39,7 +39,7 @@ const BurstModal = ({ isOpen, onClose, ping, wave, participants, fetchAPI, showT
         onSuccess(result.newWave);
       }
     } catch (err) {
-      showToast(err.message || 'Failed to burst ping', 'error');
+      showToast(err.message || 'Failed to burst message', 'error');
     } finally {
       setSubmitting(false);
     }
