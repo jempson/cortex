@@ -5929,8 +5929,19 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   ];
   const validFontSizes = ['small', 'medium', 'large', 'xlarge'];
 
-  if (req.body.theme && validThemes.includes(req.body.theme)) {
-    updates.theme = req.body.theme;
+  if (req.body.theme) {
+    // Accept built-in themes from the validThemes array
+    if (validThemes.includes(req.body.theme)) {
+      updates.theme = req.body.theme;
+    }
+    // Accept custom themes (format: custom-{themeId}) if they exist in the database
+    else if (req.body.theme.startsWith('custom-')) {
+      const customThemeId = req.body.theme.replace('custom-', '');
+      const customTheme = db.getThemeById(customThemeId);
+      if (customTheme) {
+        updates.theme = req.body.theme;
+      }
+    }
   }
   if (req.body.fontSize && validFontSizes.includes(req.body.fontSize)) {
     updates.fontSize = req.body.fontSize;
@@ -12418,6 +12429,236 @@ app.put('/api/waves/:waveId/pin', authenticateToken, (req, res) => {
   } catch (error) {
     console.error('Error pinning/unpinning wave:', error);
     res.status(500).json({ error: 'Failed to pin/unpin wave' });
+  }
+});
+
+// ============ Custom Theme Routes (v2.11.0) ============
+
+// Rate limiter for theme creation (max 5 per hour)
+const themeCreateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  message: { error: 'Too many theme creations, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Get all themes for current user (own + installed)
+app.get('/api/themes', authenticateToken, (req, res) => {
+  try {
+    const themes = db.getThemesForUser(req.user.userId);
+    res.json(themes);
+  } catch (error) {
+    console.error('Error fetching themes:', error);
+    res.status(500).json({ error: 'Failed to fetch themes' });
+  }
+});
+
+// Get public themes gallery
+app.get('/api/themes/gallery', authenticateToken, (req, res) => {
+  try {
+    const { limit = 20, offset = 0, sort = 'newest', search } = req.query;
+
+    const themes = db.getPublicThemes({
+      limit: Math.min(parseInt(limit) || 20, 50),
+      offset: parseInt(offset) || 0,
+      sortBy: sort === 'popular' ? 'popular' : 'newest',
+      search: search ? sanitizeInput(search) : null,
+    });
+
+    // Add isInstalled flag for current user
+    const userThemes = db.getThemesForUser(req.user.userId);
+    const installedIds = new Set([
+      ...userThemes.ownThemes.map(t => t.id),
+      ...userThemes.installedThemes.map(t => t.id),
+    ]);
+
+    themes.themes = themes.themes.map(t => ({
+      ...t,
+      isOwn: t.creatorId === req.user.userId,
+      isInstalled: installedIds.has(t.id),
+    }));
+
+    res.json(themes);
+  } catch (error) {
+    console.error('Error fetching theme gallery:', error);
+    res.status(500).json({ error: 'Failed to fetch theme gallery' });
+  }
+});
+
+// Create a new custom theme
+app.post('/api/themes', authenticateToken, themeCreateLimiter, (req, res) => {
+  const { name, description, variables, isPublic } = req.body;
+
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    return res.status(400).json({ error: 'Theme name is required' });
+  }
+
+  if (name.length > 50) {
+    return res.status(400).json({ error: 'Theme name must be 50 characters or less' });
+  }
+
+  if (description && description.length > 200) {
+    return res.status(400).json({ error: 'Description must be 200 characters or less' });
+  }
+
+  if (!variables || typeof variables !== 'object') {
+    return res.status(400).json({ error: 'Theme variables are required' });
+  }
+
+  try {
+    const result = db.createCustomTheme(req.user.userId, {
+      name: sanitizeInput(name.trim()),
+      description: description ? sanitizeInput(description.trim()) : '',
+      variables,
+      isPublic: isPublic || false,
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'create_theme', 'custom_theme', result.theme.id, getRequestMeta(req));
+
+    res.status(201).json(result.theme);
+  } catch (error) {
+    console.error('Error creating theme:', error);
+    res.status(500).json({ error: 'Failed to create theme' });
+  }
+});
+
+// Get a single theme by ID
+app.get('/api/themes/:id', authenticateToken, (req, res) => {
+  const themeId = sanitizeInput(req.params.id);
+
+  try {
+    const theme = db.getThemeById(themeId, req.user.userId);
+
+    if (!theme) {
+      return res.status(404).json({ error: 'Theme not found' });
+    }
+
+    // Only allow access if public or user is creator/installer
+    if (!theme.isPublic && !theme.isOwn && !theme.isInstalled) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    res.json(theme);
+  } catch (error) {
+    console.error('Error fetching theme:', error);
+    res.status(500).json({ error: 'Failed to fetch theme' });
+  }
+});
+
+// Update a custom theme (creator only)
+app.put('/api/themes/:id', authenticateToken, (req, res) => {
+  const themeId = sanitizeInput(req.params.id);
+  const { name, description, variables, isPublic } = req.body;
+
+  const updates = {};
+  if (name !== undefined) {
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'Theme name cannot be empty' });
+    }
+    if (name.length > 50) {
+      return res.status(400).json({ error: 'Theme name must be 50 characters or less' });
+    }
+    updates.name = sanitizeInput(name.trim());
+  }
+  if (description !== undefined) {
+    if (description && description.length > 200) {
+      return res.status(400).json({ error: 'Description must be 200 characters or less' });
+    }
+    updates.description = description ? sanitizeInput(description.trim()) : '';
+  }
+  if (variables !== undefined) {
+    if (typeof variables !== 'object') {
+      return res.status(400).json({ error: 'Variables must be an object' });
+    }
+    updates.variables = variables;
+  }
+  if (isPublic !== undefined) {
+    updates.isPublic = isPublic;
+  }
+
+  try {
+    const result = db.updateCustomTheme(themeId, req.user.userId, updates);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'update_theme', 'custom_theme', themeId, getRequestMeta(req));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating theme:', error);
+    res.status(500).json({ error: 'Failed to update theme' });
+  }
+});
+
+// Delete a custom theme (creator only)
+app.delete('/api/themes/:id', authenticateToken, (req, res) => {
+  const themeId = sanitizeInput(req.params.id);
+
+  try {
+    const result = db.deleteCustomTheme(themeId, req.user.userId);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'delete_theme', 'custom_theme', themeId, getRequestMeta(req));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting theme:', error);
+    res.status(500).json({ error: 'Failed to delete theme' });
+  }
+});
+
+// Install a public theme
+app.post('/api/themes/:id/install', authenticateToken, (req, res) => {
+  const themeId = sanitizeInput(req.params.id);
+
+  try {
+    const result = db.installTheme(themeId, req.user.userId);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'install_theme', 'custom_theme', themeId, getRequestMeta(req));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error installing theme:', error);
+    res.status(500).json({ error: 'Failed to install theme' });
+  }
+});
+
+// Uninstall a theme
+app.delete('/api/themes/:id/install', authenticateToken, (req, res) => {
+  const themeId = sanitizeInput(req.params.id);
+
+  try {
+    const result = db.uninstallTheme(themeId, req.user.userId);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Log activity
+    if (db.logActivity) db.logActivity(req.user.userId, 'uninstall_theme', 'custom_theme', themeId, getRequestMeta(req));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error uninstalling theme:', error);
+    res.status(500).json({ error: 'Failed to uninstall theme' });
   }
 });
 
