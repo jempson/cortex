@@ -28,46 +28,6 @@ Save media recordings locally when offline and automatically upload when back on
 - `client/src/utils/drafts.js` - NEW - IndexedDB storage layer for drafts
 - `client/src/components/ui/DraftsPanel.jsx` - NEW - Draft management UI
 
-#### Custom Themes
-Allow users to create, save, and share custom color themes.
-
-**Key Features:**
-- Fork any default theme as a starting point (defaults are immutable)
-- Simplified preset editor with grouped color controls:
-  - Background colors (base, elevated, surface, hover, active)
-  - Text colors (primary, secondary, dim, muted)
-  - Accent colors (amber, teal, green, orange, purple)
-  - Border colors (primary, secondary, subtle)
-- Live preview while editing
-- Themes sync across devices via user preferences (server storage)
-- Submit themes to public "Theme Gallery" for other users to browse/use
-- Bad word filtering on custom theme names
-- Import/export themes as JSON
-
-**Database Schema:**
-```sql
-CREATE TABLE custom_themes (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  description TEXT,
-  base_theme TEXT,           -- Which default theme it was forked from
-  variables TEXT NOT NULL,   -- JSON object of CSS variable overrides
-  is_public INTEGER DEFAULT 0,
-  downloads INTEGER DEFAULT 0,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-**Files to create/modify:**
-- `client/src/components/profile/ThemeEditor.jsx` - NEW - Theme creation/editing UI
-- `client/src/components/profile/ThemeGallery.jsx` - NEW - Browse public themes
-- `client/src/components/profile/ProfileSettings.jsx` - Add theme editor access
-- `client/src/config/themes.js` - Add theme application logic
-- `server/server.js` - Theme CRUD endpoints, bad word filtering
-- `server/database-sqlite.js` - Custom themes table
-
 #### Holiday Calendar System
 Automatically apply festive themes and visual effects on holidays.
 
@@ -132,6 +92,86 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/droplets/CollapsedDroplet.jsx` - NEW - Compact ping display
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
+
+## [2.11.0] - 2026-01-20
+
+### Added
+
+#### Custom Theme System
+
+Create, save, and share custom color themes with a visual editor.
+
+**Theme Editor:**
+- Visual color pickers for all CSS variables organized by category:
+  - Backgrounds (base, elevated, surface, hover, active)
+  - Text (primary, secondary, dim, muted)
+  - Borders (primary, secondary, subtle)
+  - Accents (amber, teal, green, orange, purple)
+  - Status (success, warning, error, info)
+  - Glows (amber, teal, green)
+- "Start From" dropdown to base new theme on any built-in theme
+- Live preview panel showing how colors look together
+- Import/export themes as JSON files
+- Public/private toggle for sharing themes
+
+**Theme Gallery:**
+- Browse built-in Firefly-themed themes with visual previews
+- Community themes section for public user-created themes
+- Search and sort (newest, popular, name)
+- Install/uninstall themes from other users
+- One-click apply for any available theme
+
+**Theme Persistence:**
+- Custom themes saved to database (max 20 per user)
+- Theme preference synced to server for cross-device persistence
+- Themes persist across login/logout sessions
+- LocalStorage cache for instant theme application on page load
+
+**Settings Integration:**
+- Custom themes appear in Display Preferences dropdown
+- Grouped into "Built-in Themes" and "Custom Themes" sections
+- "Customize" button opens full theme editor modal
+- Theme description shown below dropdown
+
+**Database Schema:**
+```sql
+CREATE TABLE custom_themes (
+  id TEXT PRIMARY KEY,
+  creator_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  variables TEXT NOT NULL,   -- JSON object of CSS variable values
+  is_public INTEGER DEFAULT 0,
+  install_count INTEGER DEFAULT 0,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+CREATE TABLE custom_theme_installs (
+  user_id TEXT NOT NULL,
+  theme_id TEXT NOT NULL,
+  installed_at TEXT,
+  PRIMARY KEY (user_id, theme_id)
+);
+```
+
+**Files Added:**
+- `client/src/components/settings/ThemeEditor.jsx` - Visual theme editor
+- `client/src/components/settings/ThemeGallery.jsx` - Theme browsing and management
+- `client/src/components/settings/ThemeCustomizationModal.jsx` - Modal wrapper
+- `client/src/components/ui/ColorPicker.jsx` - Color input with swatch and hex
+- `client/src/hooks/useTheme.js` - Theme application and persistence logic
+
+**Files Modified:**
+- `client/src/components/profile/ProfileSettings.jsx` - Theme dropdown with custom themes
+- `client/src/views/MainApp.jsx` - Custom theme initialization on login
+- `client/src/config/themes.js` - Added preview colors for built-in themes
+- `server/server.js` - Theme CRUD endpoints with rate limiting
+- `server/database-sqlite.js` - Theme database methods
+
+### Fixed
+
+- Fixed missing `LOADING` constant import in UserManagementPanel causing admin panel crash
 
 ## [2.10.0] - 2026-01-19
 

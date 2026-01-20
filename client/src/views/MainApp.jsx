@@ -28,6 +28,7 @@ import GroupsView from '../components/groups/GroupsView.jsx';
 import ProfileSettings from '../components/profile/ProfileSettings.jsx';
 import VideoFeedView from '../components/feed/VideoFeedView.jsx';
 import { useVoiceCall } from '../hooks/useVoiceCall.js';
+import { initializeCustomTheme, applyCustomTheme, removeCustomTheme, getCurrentCustomTheme } from '../hooks/useTheme.js';
 import DockedCallWindow from '../components/calls/DockedCallWindow.jsx';
 
 function MainApp({ shareDropletId }) {
@@ -88,15 +89,44 @@ function MainApp({ shareDropletId }) {
   }, [fontScale]);
 
   // Apply theme to document root and persist to localStorage
+  // v2.11.0: Added custom theme support
   useEffect(() => {
     const theme = user?.preferences?.theme || 'serenity';
-    document.documentElement.setAttribute('data-theme', theme);
-    // Only save to dedicated storage when we have actual user data
-    // This prevents overwriting saved theme with 'serenity' on initial load
-    if (user?.preferences?.theme) {
-      storage.setTheme(theme);
+
+    // Check if it's a custom theme (preference starts with "custom-")
+    const isCustom = theme.startsWith('custom-');
+
+    if (isCustom) {
+      // Extract raw theme ID (remove "custom-" prefix)
+      const rawThemeId = theme.replace('custom-', '');
+
+      // Try to get custom theme from localStorage first
+      const cachedTheme = getCurrentCustomTheme();
+      if (cachedTheme && cachedTheme.id === rawThemeId) {
+        applyCustomTheme(cachedTheme);
+      } else {
+        // Fetch from server if not cached
+        fetchAPI(`/themes/${rawThemeId}`).then(themeData => {
+          if (themeData && !themeData.error) {
+            applyCustomTheme(themeData);
+          } else {
+            // Fallback to serenity if custom theme not found
+            removeCustomTheme('serenity');
+          }
+        }).catch(() => {
+          removeCustomTheme('serenity');
+        });
+      }
+      // Note: applyCustomTheme handles storage.setTheme internally
+    } else {
+      // Built-in theme - just set the data-theme attribute
+      removeCustomTheme(theme); // This clears any custom theme styles and sets the built-in theme
+      // Only save to dedicated storage when we have actual user data
+      if (user?.preferences?.theme) {
+        storage.setTheme(theme);
+      }
     }
-  }, [user?.preferences?.theme]);
+  }, [user?.preferences?.theme, fetchAPI]);
 
   // PWA Badge and Tab Notifications - update based on unread count
   useEffect(() => {
