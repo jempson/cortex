@@ -104,24 +104,61 @@ export async function subscribeToPush(token) {
       } catch (subError) {
         console.error('[Push] Failed to create subscription:', subError.name, subError.message);
 
-        // If AbortError (push service error), try unregistering and re-registering service worker
+        // If AbortError (push service error), try recovery strategies
         if (subError.name === 'AbortError') {
-          console.log('[Push] AbortError detected - attempting service worker recovery...');
+          console.log('[Push] AbortError detected - attempting recovery...');
+
+          // Strategy 1: Try to get and unsubscribe any stale subscription
           try {
+            const staleSubscription = await registration.pushManager.getSubscription();
+            if (staleSubscription) {
+              console.log('[Push] Found stale subscription, unsubscribing...');
+              await staleSubscription.unsubscribe();
+              // Wait for push service to process unsubscription
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          } catch (e) {
+            console.log('[Push] Could not clear stale subscription:', e.message);
+          }
+
+          // Strategy 2: Unregister service worker completely and wait
+          try {
+            console.log('[Push] Unregistering service worker...');
             await registration.unregister();
-            console.log('[Push] Service worker unregistered, re-registering...');
+            // Clear any cached VAPID key that might be causing issues
+            localStorage.removeItem('farhold_vapid_key');
+            // Wait for push service to clear state
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            console.log('[Push] Re-registering service worker...');
             const newReg = await navigator.serviceWorker.register('/sw.js');
             await navigator.serviceWorker.ready;
-            console.log('[Push] Service worker re-registered, retrying subscription...');
+            // Additional wait for service worker to fully activate
+            await new Promise(resolve => setTimeout(resolve, 500));
 
+            console.log('[Push] Retrying subscription...');
             subscription = await newReg.pushManager.subscribe({
               userVisibleOnly: true,
               applicationServerKey: urlBase64ToUint8Array(publicKey)
             });
             console.log('[Push] Subscription succeeded after recovery');
           } catch (recoveryError) {
-            console.error('[Push] Recovery failed:', recoveryError.message);
-            return { success: false, reason: 'Push service error. Try clearing browser cache and refreshing.' };
+            console.error('[Push] Recovery failed:', recoveryError.name, recoveryError.message);
+
+            // Provide specific guidance based on browser
+            const isFirefox = navigator.userAgent.includes('Firefox');
+            const isChrome = navigator.userAgent.includes('Chrome');
+
+            let guidance = 'Push service temporarily unavailable. ';
+            if (isFirefox) {
+              guidance += 'Try: Settings → Privacy & Security → Permissions → Notifications → Remove this site, then refresh.';
+            } else if (isChrome) {
+              guidance += 'Try: Click the lock icon in address bar → Site settings → Notifications → Reset permission, then refresh.';
+            } else {
+              guidance += 'Try resetting notification permissions for this site in browser settings, then refresh.';
+            }
+
+            return { success: false, reason: guidance };
           }
         } else {
           return { success: false, reason: `Browser subscription failed: ${subError.message}` };
@@ -165,26 +202,86 @@ export async function unsubscribeFromPush(token) {
     const subscription = await registration.pushManager.getSubscription();
 
     if (subscription) {
-      // Unsubscribe locally
-      await subscription.unsubscribe();
+      const endpoint = subscription.endpoint;
+
+      // Unsubscribe locally first
+      try {
+        await subscription.unsubscribe();
+        console.log('[Push] Local subscription removed');
+      } catch (unsubError) {
+        console.warn('[Push] Local unsubscribe failed:', unsubError.message);
+        // Continue anyway to clean up server-side
+      }
 
       // Tell server to remove subscription
-      await fetch(`${API_URL}/push/subscribe`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ endpoint: subscription.endpoint })
-      });
-
-      // Clear stored VAPID key
-      localStorage.removeItem('farhold_vapid_key');
-      console.log('[Push] Push subscription removed');
+      try {
+        await fetch(`${API_URL}/push/subscribe`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ endpoint })
+        });
+        console.log('[Push] Server subscription removed');
+      } catch (serverError) {
+        console.warn('[Push] Server unsubscribe failed:', serverError.message);
+      }
     }
+
+    // Always clear stored VAPID key to ensure clean state for re-enable
+    localStorage.removeItem('farhold_vapid_key');
+    console.log('[Push] Push subscription cleanup complete');
     return true;
   } catch (error) {
     console.error('[Push] Failed to unsubscribe:', error);
+    // Still try to clear VAPID key
+    localStorage.removeItem('farhold_vapid_key');
+    return false;
+  }
+}
+
+// Force reset push notification state (for troubleshooting)
+export async function forceResetPushState() {
+  console.log('[Push] Force resetting push state...');
+
+  try {
+    // Clear stored VAPID key
+    localStorage.removeItem('farhold_vapid_key');
+
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+
+      // Try to unsubscribe any existing subscription
+      try {
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+          await subscription.unsubscribe();
+          console.log('[Push] Existing subscription unsubscribed');
+        }
+      } catch (e) {
+        console.log('[Push] Could not unsubscribe:', e.message);
+      }
+
+      // Unregister service worker
+      try {
+        await registration.unregister();
+        console.log('[Push] Service worker unregistered');
+      } catch (e) {
+        console.log('[Push] Could not unregister SW:', e.message);
+      }
+
+      // Re-register service worker
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      console.log('[Push] Service worker re-registered');
+    }
+
+    console.log('[Push] Force reset complete - try enabling notifications again');
+    return true;
+  } catch (error) {
+    console.error('[Push] Force reset failed:', error);
     return false;
   }
 }
