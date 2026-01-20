@@ -6,7 +6,7 @@ import { API_URL, canAccess, FONT_SIZES } from '../../config/constants.js';
 import { THEMES } from '../../config/themes.js';
 import { storage } from '../../utils/storage.js';
 import { applyCustomTheme, removeCustomTheme } from '../../hooks/useTheme.js';
-import { subscribeToPush, unsubscribeFromPush } from '../../utils/pwa.js';
+import { subscribeToPush, unsubscribeFromPush, forceResetPushState } from '../../utils/pwa.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { E2EEStatusIndicator } from '../../../e2ee-components.jsx';
 import CollapsibleSection from '../ui/CollapsibleSection.jsx';
@@ -1885,6 +1885,30 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                       ⚠️ iOS does not support push notifications for web apps. This is a platform limitation by Apple.
                     </div>
                   )}
+                  {/* Reset button for troubleshooting */}
+                  <button
+                    onClick={async () => {
+                      if (confirm('This will reset your push notification state. You may need to re-enable notifications afterwards. Continue?')) {
+                        showToast('Resetting push state...', 'info');
+                        storage.setPushEnabled(false);
+                        setPushEnabled(false);
+                        await forceResetPushState();
+                        showToast('Push state reset. Try enabling notifications again.', 'success');
+                      }
+                    }}
+                    style={{
+                      marginTop: '8px',
+                      padding: '6px 12px',
+                      background: 'transparent',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: '0.7rem',
+                    }}
+                  >
+                    ↻ Reset Push State
+                  </button>
                 </div>
               </>
             )}
