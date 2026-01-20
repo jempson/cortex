@@ -7572,6 +7572,9 @@ export class DatabaseSQLite {
    * @param {number} seed - Random seed for consistent shuffle within session
    * @returns {Object} { videos: [], hasMore: boolean, nextCursor: string }
    */
+  // Video Feed Recommendation Algorithm (v2.10.0)
+  // Scores videos based on user preferences and engagement
+  // Scoring: -100 own video, +50 liked creator, +30 contact, +100 unseen, -80 watched, +random(0-30)
   getVideoFeedForUser(userId, limit = 10, cursor = null, seed = null) {
     limit = Math.min(Math.max(1, limit), 50);
 
@@ -7587,10 +7590,34 @@ export class DatabaseSQLite {
 
     const excludedUsers = [...new Set([...blockedUsers, ...optedOutUsers])];
 
-    // Build query for video pings
-    // Include: public waves OR waves user participates in
-    // Exclude: encrypted videos, deleted pings, blocked users, opted-out users
-    // v2.9.0: Include conversation_wave_id and conversation_count for profile video replies
+    // Get user's contacts for scoring boost
+    const contacts = this.db.prepare(`
+      SELECT contact_id FROM contacts WHERE user_id = ?
+    `).all(userId).map(r => r.contact_id);
+    const contactSet = new Set(contacts);
+
+    // Get creators the user has reacted to (liked)
+    const likedCreators = this.db.prepare(`
+      SELECT DISTINCT p.author_id
+      FROM pings p
+      WHERE p.reactions LIKE ?
+        AND p.author_id != ?
+    `).all(`%"${userId}"%`, userId).map(r => r.author_id);
+    const likedCreatorSet = new Set(likedCreators);
+
+    // Get videos the user has already viewed
+    const viewedVideos = this.db.prepare(`
+      SELECT prb.ping_id
+      FROM ping_read_by prb
+      JOIN pings p ON prb.ping_id = p.id
+      WHERE prb.user_id = ?
+        AND p.media_type = 'video'
+    `).all(userId).map(r => r.ping_id);
+    const viewedSet = new Set(viewedVideos);
+
+    // Build query for video pings - fetch more to have candidates after scoring
+    const fetchLimit = Math.min(limit * 5, 200); // Fetch 5x requested to have enough after filtering
+
     let query = `
       SELECT
         p.id,
@@ -7611,7 +7638,10 @@ export class DatabaseSQLite {
         u.handle as author_handle,
         u.avatar as author_avatar,
         u.avatar_url as author_avatar_url,
-        (SELECT COUNT(*) FROM pings WHERE wave_id = p.broken_out_to AND deleted = 0) as conversation_count
+        (SELECT COUNT(*) FROM pings WHERE wave_id = p.broken_out_to AND deleted = 0) as conversation_count,
+        (SELECT COUNT(*) FROM pings p2
+         WHERE p2.reactions LIKE '%"' || ? || '"%'
+         AND json_extract(p2.reactions, '$') != '{}') as total_reactions
       FROM pings p
       JOIN waves w ON p.wave_id = w.id
       JOIN users u ON p.author_id = u.id
@@ -7627,7 +7657,7 @@ export class DatabaseSQLite {
         )
     `;
 
-    const params = [userId];
+    const params = [userId, userId];
 
     // Exclude blocked and opted-out users
     if (excludedUsers.length > 0) {
@@ -7635,23 +7665,89 @@ export class DatabaseSQLite {
       params.push(...excludedUsers);
     }
 
-    // Cursor pagination
+    // For cursor-based pagination, we need to track which videos were already shown
+    // Use a combination of score-based selection and cursor to avoid duplicates
+    let shownVideoIds = new Set();
     if (cursor) {
+      // The cursor contains the last video ID, we'll exclude videos already shown
+      // For simplicity, we'll use created_at as a secondary filter
       const cursorPing = this.db.prepare('SELECT created_at FROM pings WHERE id = ?').get(cursor);
       if (cursorPing) {
-        query += ` AND (p.created_at < ? OR (p.created_at = ? AND p.id < ?))`;
-        params.push(cursorPing.created_at, cursorPing.created_at, cursor);
+        // Include videos from before the cursor time, but we'll filter by score
+        query += ` AND p.created_at <= ?`;
+        params.push(cursorPing.created_at);
       }
     }
 
-    // Order by created_at for now (random shuffle done in application layer for session consistency)
     query += ` ORDER BY p.created_at DESC LIMIT ?`;
-    params.push(limit + 1); // Fetch one extra to check if there are more
+    params.push(fetchLimit);
 
     const rows = this.db.prepare(query).all(...params);
 
-    const hasMore = rows.length > limit;
-    const videos = rows.slice(0, limit).map(row => ({
+    // Seeded random generator for consistent discovery randomness per session
+    const seededRandom = (s) => {
+      const x = Math.sin(s) * 10000;
+      return x - Math.floor(x);
+    };
+    let seedValue = seed || Date.now();
+
+    // Score each video
+    const scoredVideos = rows.map(row => {
+      let score = 0;
+
+      // -100 if own video (practically excludes from top results)
+      if (row.author_id === userId) {
+        score -= 100;
+      }
+
+      // +50 if from a creator the user has reacted to before
+      if (likedCreatorSet.has(row.author_id)) {
+        score += 50;
+      }
+
+      // +30 if from a contact
+      if (contactSet.has(row.author_id)) {
+        score += 30;
+      }
+
+      // +100 if unseen, -80 if already watched
+      if (viewedSet.has(row.id)) {
+        score -= 80;
+      } else {
+        score += 100;
+      }
+
+      // +20 if video has high engagement (conversations)
+      if (row.conversation_count > 0) {
+        score += Math.min(row.conversation_count * 5, 20);
+      }
+
+      // +random(0-30) for discovery and variety
+      seedValue = (seedValue * 9301 + 49297) % 233280;
+      score += Math.floor(seededRandom(seedValue) * 31);
+
+      return {
+        ...row,
+        _score: score,
+      };
+    });
+
+    // Sort by score descending
+    scoredVideos.sort((a, b) => b._score - a._score);
+
+    // For cursor pagination, skip videos we've already shown
+    let startIndex = 0;
+    if (cursor) {
+      const cursorIndex = scoredVideos.findIndex(v => v.id === cursor);
+      if (cursorIndex !== -1) {
+        startIndex = cursorIndex + 1;
+      }
+    }
+
+    // Take the requested number of videos
+    const selectedVideos = scoredVideos.slice(startIndex, startIndex + limit + 1);
+    const hasMore = selectedVideos.length > limit;
+    const videos = selectedVideos.slice(0, limit).map(row => ({
       id: row.id,
       wave_id: row.wave_id,
       wave_title: row.wave_title,
@@ -7671,21 +7767,6 @@ export class DatabaseSQLite {
       conversation_wave_id: row.broken_out_to || null,
       conversation_count: row.conversation_count || 0,
     }));
-
-    // If seed is provided, shuffle deterministically
-    if (seed !== null && videos.length > 1) {
-      // Simple seeded shuffle using Fisher-Yates
-      const seededRandom = (s) => {
-        const x = Math.sin(s) * 10000;
-        return x - Math.floor(x);
-      };
-      let seedValue = seed;
-      for (let i = videos.length - 1; i > 0; i--) {
-        seedValue = (seedValue * 9301 + 49297) % 233280;
-        const j = Math.floor(seededRandom(seedValue) * (i + 1));
-        [videos[i], videos[j]] = [videos[j], videos[i]];
-      }
-    }
 
     return {
       videos,

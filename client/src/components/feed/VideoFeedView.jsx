@@ -144,6 +144,24 @@ const VideoFeedView = ({
     }
   }, [currentIndex]);
 
+  // Track video views for recommendation algorithm (v2.10.0)
+  // Mark video as viewed after 2 seconds of watching
+  useEffect(() => {
+    const currentVideo = videos[currentIndex];
+    if (!currentVideo) return;
+
+    const viewTimer = setTimeout(async () => {
+      try {
+        // Fire and forget - don't need to await or handle errors
+        fetchAPI(`/feed/videos/${currentVideo.id}/view`, { method: 'POST' });
+      } catch (err) {
+        // Silently ignore view tracking errors
+      }
+    }, 2000); // Mark as viewed after 2 seconds
+
+    return () => clearTimeout(viewTimer);
+  }, [currentIndex, videos, fetchAPI]);
+
   // Handle navigate to wave
   const handleNavigateToWave = useCallback((waveId, waveTitle) => {
     onNavigateToWave?.({ id: waveId, title: waveTitle });
