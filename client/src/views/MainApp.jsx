@@ -31,7 +31,7 @@ import { useVoiceCall } from '../hooks/useVoiceCall.js';
 import { initializeCustomTheme, applyCustomTheme, removeCustomTheme, getCurrentCustomTheme } from '../hooks/useTheme.js';
 import DockedCallWindow from '../components/calls/DockedCallWindow.jsx';
 
-function MainApp({ shareDropletId }) {
+function MainApp({ sharePingId }) {
   const { user, token, logout, updateUser } = useAuth();
   const { fetchAPI, isSlowConnection } = useAPI();
   const e2ee = useE2EE();
@@ -51,8 +51,8 @@ function MainApp({ shareDropletId }) {
   const [contacts, setContacts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selectedWave, setSelectedWave] = useState(null);
-  const [scrollToDropletId, setScrollToDropletId] = useState(null); // Droplet to scroll to after wave loads
-  const [focusStack, setFocusStack] = useState([]); // Array of { waveId, dropletId, droplet } for Focus View navigation
+  const [scrollToPingId, setScrollToPingId] = useState(null); // Ping to scroll to after wave loads
+  const [focusStack, setFocusStack] = useState([]); // Array of { waveId, pingId, ping } for Focus View navigation
   const [showNewWave, setShowNewWave] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -168,14 +168,14 @@ function MainApp({ shareDropletId }) {
     };
   }, [waves]);
 
-  // Handle shared droplet URL parameter - navigate to the wave containing the droplet
+  // Handle shared ping URL parameter - navigate to the wave containing the ping
   const shareHandledRef = useRef(false);
   useEffect(() => {
-    if (shareDropletId && user && !shareHandledRef.current) {
+    if (sharePingId && user && !shareHandledRef.current) {
       shareHandledRef.current = true; // Prevent duplicate handling
-      console.log('[Share] Handling shared droplet:', shareDropletId);
+      console.log('[Share] Handling shared ping:', sharePingId);
 
-      fetch(`${API_URL}/share/${shareDropletId}`)
+      fetch(`${API_URL}/share/${sharePingId}`)
         .then(res => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
@@ -183,10 +183,10 @@ function MainApp({ shareDropletId }) {
         .then(data => {
           console.log('[Share] API response:', data);
           if (data.wave?.id) {
-            // Navigate to the wave and scroll to the droplet
+            // Navigate to the wave and scroll to the ping
             console.log('[Share] Navigating to wave:', data.wave.id);
             setSelectedWave({ id: data.wave.id, title: data.wave.title });
-            setScrollToDropletId(shareDropletId);
+            setScrollToPingId(sharePingId);
             setActiveView('waves');
             // Clear the URL (works for both /?share=x and /share/x formats)
             if (window.location.pathname !== '/' || window.location.search) {
@@ -203,7 +203,7 @@ function MainApp({ shareDropletId }) {
           setToast({ message: 'Could not find shared ping', type: 'error' });
         });
     }
-  }, [shareDropletId, user]);
+  }, [sharePingId, user]);
 
   const showToastMsg = useCallback((message, type) => setToast({ message, type }), []);
 
@@ -348,15 +348,15 @@ function MainApp({ shareDropletId }) {
       console.log('🔌 [WS] Received message:', data.type, data);
     }
 
-    // Handle droplet/wave read events - these are always followed by unread_count_update event
+    // Handle ping/wave read events - these are always followed by unread_count_update event
     // Don't call loadWaves() here to avoid duplicate API calls and race conditions
-    if (data.type === 'droplet_read' || data.type === 'message_read' || data.type === 'wave_read') {
+    if (data.type === 'ping_read' || data.type === 'message_read' || data.type === 'wave_read') {
       console.log(`📖 ${data.type} event received, waiting for unread_count_update...`);
       return;
     }
 
-    // Handle both legacy (new_message) and new (new_droplet) event names
-    if (data.type === 'new_message' || data.type === 'new_droplet' || data.type === 'message_edited' || data.type === 'droplet_edited' || data.type === 'message_deleted' || data.type === 'droplet_deleted' || data.type === 'wave_created' || data.type === 'wave_updated' || data.type === 'message_reaction' || data.type === 'droplet_reaction' || data.type === 'wave_invite_received' || data.type === 'wave_broadcast_received') {
+    // Handle both legacy (new_message) and new (new_ping) event names
+    if (data.type === 'new_message' || data.type === 'new_ping' || data.type === 'message_edited' || data.type === 'ping_edited' || data.type === 'message_deleted' || data.type === 'ping_deleted' || data.type === 'wave_created' || data.type === 'wave_updated' || data.type === 'message_reaction' || data.type === 'ping_reaction' || data.type === 'wave_invite_received' || data.type === 'wave_broadcast_received') {
       loadWaves();
       // If the event is for the currently viewed wave, trigger a reload
       // Extract waveId from different event structures
@@ -366,10 +366,10 @@ function MainApp({ shareDropletId }) {
         setWaveReloadTrigger(prev => prev + 1);
       }
 
-      // Desktop notifications for new messages/droplets
-      if ((data.type === 'new_message' || data.type === 'new_droplet') && (data.data || data.droplet)) {
-        // Handle both local (data.data) and federated (data.droplet) message structures
-        const msgData = data.data || data.droplet;
+      // Desktop notifications for new messages/pings
+      if ((data.type === 'new_message' || data.type === 'new_ping') && (data.data || data.ping)) {
+        // Handle both local (data.data) and federated (data.ping) message structures
+        const msgData = data.data || data.ping;
         const authorId = msgData.author_id || msgData.authorId;
         const senderName = msgData.sender_name || msgData.senderName || 'Unknown';
         const content = msgData.content || '';
@@ -671,14 +671,14 @@ function MainApp({ shareDropletId }) {
   }, [fetchAPI, showToastMsg]);
 
   // Focus View handlers
-  const handleFocusDroplet = useCallback((waveId, droplet) => {
-    // Prevent focusing on the same droplet that's already on the stack
+  const handleFocusPing = useCallback((waveId, ping) => {
+    // Prevent focusing on the same ping that's already on the stack
     setFocusStack(prev => {
       const lastFocused = prev[prev.length - 1];
-      if (lastFocused?.dropletId === droplet.id) {
-        return prev; // Already focused on this droplet
+      if (lastFocused?.pingId === ping.id) {
+        return prev; // Already focused on this ping
       }
-      return [...prev, { waveId, dropletId: droplet.id, droplet }];
+      return [...prev, { waveId, pingId: ping.id, ping }];
     });
   }, []);
 
@@ -688,29 +688,29 @@ function MainApp({ shareDropletId }) {
   }, []);
 
   const handleFocusClose = useCallback(() => {
-    // When closing focus view, scroll WaveView to the originally focused droplet
+    // When closing focus view, scroll WaveView to the originally focused ping
     setFocusStack(prev => {
       if (prev.length > 0) {
-        // Set scroll target to the first focused droplet so WaveView scrolls to it
-        setScrollToDropletId(prev[0].dropletId);
+        // Set scroll target to the first focused ping so WaveView scrolls to it
+        setScrollToPingId(prev[0].pingId);
       }
       return [];
     });
   }, []);
 
-  const handleFocusDeeper = useCallback((droplet) => {
-    // Focus on a child droplet within the current focus view
+  const handleFocusDeeper = useCallback((ping) => {
+    // Focus on a child ping within the current focus view
     setFocusStack(prev => {
       if (prev.length === 0) return prev;
 
-      // Prevent focusing on the same droplet that's already focused
+      // Prevent focusing on the same ping that's already focused
       const lastFocused = prev[prev.length - 1];
-      if (lastFocused?.dropletId === droplet.id) {
-        return prev; // Already focused on this droplet
+      if (lastFocused?.pingId === ping.id) {
+        return prev; // Already focused on this ping
       }
 
       const currentWaveId = lastFocused.waveId;
-      return [...prev, { waveId: currentWaveId, dropletId: droplet.id, droplet }];
+      return [...prev, { waveId: currentWaveId, pingId: ping.id, ping }];
     });
   }, []);
 
@@ -725,7 +725,7 @@ function MainApp({ shareDropletId }) {
   }, [loadWaves]);
 
   // Navigate to a wave by ID (used by notifications)
-  const handleNavigateToWaveById = useCallback(async (waveId, dropletId) => {
+  const handleNavigateToWaveById = useCallback(async (waveId, pingId) => {
     try {
       // Fetch the wave if we don't have it
       let wave = waves.find(w => w.id === waveId);
@@ -737,19 +737,19 @@ function MainApp({ shareDropletId }) {
         setSelectedWave(wave);
         setActiveView('waves');
 
-        // If dropletId provided, mark it as read and set it for WaveView to scroll to
-        if (dropletId) {
-          // Mark the droplet as read since user is navigating to it
+        // If pingId provided, mark it as read and set it for WaveView to scroll to
+        if (pingId) {
+          // Mark the ping as read since user is navigating to it
           try {
-            await fetchAPI(`/pings/${dropletId}/read`, { method: 'POST' });
+            await fetchAPI(`/pings/${pingId}/read`, { method: 'POST' });
             // Refresh wave list to update unread counts
             loadWaves();
           } catch (e) {
-            // Ignore errors - droplet might not exist or already read
+            // Ignore errors - ping might not exist or already read
           }
 
-          // Set the target droplet for WaveView to scroll to after loading
-          setScrollToDropletId(dropletId);
+          // Set the target ping for WaveView to scroll to after loading
+          setScrollToPingId(pingId);
         }
       }
     } catch (err) {
@@ -796,9 +796,9 @@ function MainApp({ shareDropletId }) {
     const handleSWMessage = (event) => {
       if (event.data?.type === 'navigate-to-wave') {
         console.log('[SW] Received navigate-to-wave:', event.data);
-        const { waveId, dropletId } = event.data;
+        const { waveId, pingId } = event.data;
         if (waveId) {
-          handleNavigateToWaveById(waveId, dropletId);
+          handleNavigateToWaveById(waveId, pingId);
         }
       }
     };
@@ -863,7 +863,7 @@ function MainApp({ shareDropletId }) {
     const wave = waves.find(w => w.id === result.waveId);
     if (wave) {
       setSelectedWave(wave);
-      setScrollToDropletId(result.id);
+      setScrollToPingId(result.id);
       setActiveView('waves');
       setShowSearch(false);
     } else {
@@ -1112,8 +1112,8 @@ function MainApp({ shareDropletId }) {
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
               {selectedWave && focusStack.length > 0 ? (
-                // Focus View - showing focused droplet and its replies
-                <ErrorBoundary key={`focus-${focusStack[focusStack.length - 1]?.dropletId}`}>
+                // Focus View - showing focused ping and its replies
+                <ErrorBoundary key={`focus-${focusStack[focusStack.length - 1]?.pingId}`}>
                   <FocusView
                     wave={selectedWave}
                     focusStack={focusStack}
@@ -1156,10 +1156,10 @@ function MainApp({ shareDropletId }) {
                     onUnmuteUser={handleUnmuteUser}
                     onBlockedMutedChange={loadBlockedMutedUsers}
                     onShowProfile={setProfileUserId}
-                    onFocusDroplet={handleFocusDroplet}
+                    onFocusPing={handleFocusPing}
                     onNavigateToWave={handleNavigateToWave}
-                    scrollToDropletId={scrollToDropletId}
-                    onScrollToDropletComplete={() => setScrollToDropletId(null)}
+                    scrollToPingId={scrollToPingId}
+                    onScrollToPingComplete={() => setScrollToPingId(null)}
                     federationEnabled={federationEnabled} />
                 </ErrorBoundary>
               ) : !isMobile && (

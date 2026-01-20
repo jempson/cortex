@@ -172,6 +172,35 @@ CREATE TABLE custom_theme_installs (
 ### Fixed
 
 - Fixed missing `LOADING` constant import in UserManagementPanel causing admin panel crash
+- Fixed custom theme selection from Display Preferences dropdown not persisting - theme would flash briefly then revert to system theme because server validation only accepted built-in theme names
+
+### Changed
+
+#### Terminology Refactoring
+
+Updated codebase to use consistent Firefly-inspired terminology:
+
+**Terminology Changes:**
+- "Droplet" → "Ping" (individual messages)
+- "Ripple" → "Burst" (break-out thread to new wave)
+
+**File Renames:**
+- `components/droplets/` → `components/pings/`
+- `Droplet.jsx` → `Ping.jsx`
+- `DropletWithEmbeds.jsx` → `PingWithEmbeds.jsx`
+- `RippledLinkCard.jsx` → `BurstLinkCard.jsx`
+- `RippleModal.jsx` → `BurstModal.jsx`
+- `PublicDropletView.jsx` → `PublicPingView.jsx`
+
+**Variable/Prop Renames:**
+- `scrollToDropletId` → `scrollToPingId`
+- `autoFocusDroplets` → `autoFocusPings`
+- `decryptDroplets` → `decryptPings`
+- `rippleTarget` → `burstTarget`
+- `onRipple` → `onBurst`
+
+**Timestamp Format:**
+- Ping timestamps now display full date and time (e.g., "1/20/26 2:30 PM") instead of just time
 
 ## [2.10.0] - 2026-01-19
 

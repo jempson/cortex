@@ -36,7 +36,7 @@ export const canAccess = (user, requiredRole) => {
 };
 
 // ============ THREADING DEPTH LIMIT ============
-// Maximum nesting depth before prompting user to Focus or Ripple
+// Maximum nesting depth before prompting user to Focus or Burst
 export const THREAD_DEPTH_LIMIT = 3;
 
 // ============ FONT SIZES ============
@@ -51,6 +51,6 @@ export const FONT_SIZES = {
 export const NOTIFICATION_BADGE_COLORS = {
   direct_mention: { bg: 'var(--accent-amber)', shadow: 'var(--glow-amber)', icon: '@' },  // Amber - someone mentioned you
   reply: { bg: 'var(--accent-green)', shadow: 'var(--glow-green)', icon: '↩' },           // Green - reply to your ping
-  ripple: { bg: 'var(--accent-purple)', shadow: 'var(--glow-purple)', icon: '◈' },          // Purple - burst activity
+  burst: { bg: 'var(--accent-purple)', shadow: 'var(--glow-purple)', icon: '◈' },          // Purple - burst activity
   wave_activity: { bg: 'var(--accent-orange)', shadow: 'var(--glow-orange)', icon: null },  // Orange - general activity
 };

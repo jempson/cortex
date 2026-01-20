@@ -58,7 +58,7 @@ const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
                 <div style={{ fontSize: '0.8rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Reported: </span>
                   <span style={{ color: 'var(--accent-teal)', fontWeight: 500 }}>
-                    {report.targetType === 'droplet' ? 'Message' : 'User'}
+                    {report.targetType === 'ping' ? 'Message' : 'User'}
                   </span>
                 </div>
                 <div style={{

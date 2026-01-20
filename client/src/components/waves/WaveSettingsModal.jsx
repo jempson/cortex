@@ -54,8 +54,8 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
     setDecrypting(true);
     try {
       // Fetch all pings in the wave
-      const pingsData = await fetchAPI(`/waves/${wave.id}/droplets`);
-      const pings = pingsData.droplets || [];
+      const pingsData = await fetchAPI(`/waves/${wave.id}/pings`);
+      const pings = pingsData.pings || [];
 
       console.log(`Decrypting ${pings.length} pings in wave ${wave.id}...`);
 
@@ -65,7 +65,7 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
         try {
           // Check if ping is encrypted (has nonce)
           if (ping.encrypted && ping.nonce) {
-            const decryptedContent = await e2ee.decryptDroplet(ping.content, ping.nonce, wave.id, ping.keyVersion);
+            const decryptedContent = await e2ee.decryptPing(ping.content, ping.nonce, wave.id, ping.keyVersion);
             decryptedPings.push({
               id: ping.id,
               content: decryptedContent

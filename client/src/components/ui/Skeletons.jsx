@@ -79,8 +79,8 @@ export function WaveViewHeaderSkeleton() {
   );
 }
 
-// Skeleton for a single droplet/message
-export function DropletSkeleton() {
+// Skeleton for a single ping/message
+export function PingSkeleton() {
   return (
     <div style={{ padding: '12px', marginBottom: '4px' }}>
       <style>{skeletonKeyframes}</style>
@@ -99,15 +99,15 @@ export function DropletSkeleton() {
   );
 }
 
-// Skeleton for wave view content (multiple droplets)
-export function WaveViewSkeleton({ dropletCount = 5 }) {
+// Skeleton for wave view content (multiple pings)
+export function WaveViewSkeleton({ pingCount = 5 }) {
   return (
     <div style={{ flex: 1, overflow: 'hidden' }}>
       <style>{skeletonKeyframes}</style>
       <WaveViewHeaderSkeleton />
       <div style={{ padding: '8px' }}>
-        {Array.from({ length: dropletCount }).map((_, i) => (
-          <DropletSkeleton key={i} />
+        {Array.from({ length: pingCount }).map((_, i) => (
+          <PingSkeleton key={i} />
         ))}
       </div>
     </div>
@@ -159,7 +159,7 @@ export default {
   SkeletonBlock,
   WaveListSkeleton,
   WaveViewHeaderSkeleton,
-  DropletSkeleton,
+  PingSkeleton,
   WaveViewSkeleton,
   SkeletonText,
   LowBandwidthIndicator,

@@ -183,7 +183,7 @@ const VideoFeedView = ({
     if (!reactingToVideo) return;
 
     try {
-      await fetchAPI(`/droplets/${reactingToVideo.id}/react`, {
+      await fetchAPI(`/pings/${reactingToVideo.id}/react`, {
         method: 'POST',
         body: { emoji },
       });

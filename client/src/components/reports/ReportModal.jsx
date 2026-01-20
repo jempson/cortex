@@ -48,7 +48,7 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
 
   if (!isOpen) return null;
 
-  const typeLabels = { message: 'Ping', droplet: 'Ping', wave: 'Wave', user: 'User' };
+  const typeLabels = { message: 'Ping', ping: 'Ping', wave: 'Wave', user: 'User' };
 
   return (
     <div style={{
