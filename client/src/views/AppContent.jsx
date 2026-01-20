@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAPI.js';
 import LoginScreen from './LoginScreen.jsx';
 import AboutServerPage from './AboutServerPage.jsx';
 import ResetPasswordPage from './ResetPasswordPage.jsx';
-import PublicPingView from './PublicPingView.jsx';
+import PublicMessageView from './PublicMessageView.jsx';
 import AuthProvider from './AuthProvider.jsx';
 import E2EEAuthenticatedApp from './E2EEAuthenticatedApp.jsx';
 
@@ -132,7 +132,7 @@ function AppContent() {
       return <LoginScreen onAbout={() => navigate('/about')} initialView="register" />;
     }
     return (
-      <PublicPingView
+      <PublicMessageView
         pingId={sharePingId}
         onLogin={() => setShowLoginScreen(true)}
         onRegister={() => setShowRegisterScreen(true)}

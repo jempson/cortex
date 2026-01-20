@@ -3,11 +3,11 @@ import { PRIVACY_LEVELS, THREAD_DEPTH_LIMIT } from '../../config/constants.js';
 import { Avatar, PrivacyBadge } from '../ui/SimpleComponents.jsx';
 import ImageLightbox from '../ui/ImageLightbox.jsx';
 import BurstLinkCard from './BurstLinkCard.jsx';
-import PingWithEmbeds from './PingWithEmbeds.jsx';
+import MessageWithEmbeds from './MessageWithEmbeds.jsx';
 import AudioPlayer from '../media/AudioPlayer.jsx';
 import VideoPlayer from '../media/VideoPlayer.jsx';
 
-const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], contacts = [], onShowProfile, onReport, onFocus, onBurst, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusPings = false, fetchAPI }) => {
+const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], contacts = [], onShowProfile, onReport, onFocus, onBurst, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusMessages = false, fetchAPI }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -23,13 +23,13 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
   const canDelete = !isDeleted && message.author_id === currentUserId;
   const isEditing = !isDeleted && editingMessageId === message.id;
   const [showReactionPicker, setShowReactionPicker] = useState(false);
-  const [showPingMenu, setShowPingMenu] = useState(false);
+  const [showMessageMenu, setShowMessageMenu] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
   const isUnread = !isDeleted && message.is_unread && message.author_id !== currentUserId;
   const isReply = depth > 0 && message.parentId;
   const isAtDepthLimit = depth >= THREAD_DEPTH_LIMIT;
 
-  // Count all pings in children (recursive) - for collapsed thread indicator
+  // Count all messages in children (recursive) - for collapsed thread indicator
   const countAllChildren = (children) => {
     if (!children) return 0;
     return children.reduce((count, child) => {
@@ -38,7 +38,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
   };
   const totalChildCount = hasChildren ? countAllChildren(message.children) : 0;
 
-  // Count unread pings in children (recursive) - for collapsed thread indicator
+  // Count unread messages in children (recursive) - for collapsed thread indicator
   const countUnreadChildren = (children) => {
     if (!children) return 0;
     return children.reduce((count, child) => {
@@ -56,29 +56,29 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
   // Deleted messages with children show placeholder to preserve thread context
   if (isDeleted && !hasChildren) return null;
 
-  // If this ping has been bursted out, show a link card instead
+  // If this message has been bursted out, show a link card instead
   // But NOT when viewing from the burst wave itself (where burstedTo === currentWaveId)
   const isBurstd = !!(message.brokenOutTo || message.burstedTo) && (message.brokenOutTo || message.burstedTo) !== currentWaveId;
 
   const handleMessageClick = (e) => {
-    e.stopPropagation(); // Prevent click from bubbling to parent pings
+    e.stopPropagation(); // Prevent click from bubbling to parent messages
     if (isUnread && onMessageClick) {
       onMessageClick(message.id);
     }
-    // Auto-focus if preference enabled and ping has children (replies)
-    if (autoFocusPings && hasChildren && onFocus && !isDeleted) {
+    // Auto-focus if preference enabled and message has children (replies)
+    if (autoFocusMessages && hasChildren && onFocus && !isDeleted) {
       onFocus(message);
     }
   };
 
-  // Render bursted ping as a link card
+  // Render bursted message as a link card
   if (isBurstd) {
     const burstedToId = message.brokenOutTo || message.burstedTo;
     const burstedToTitle = message.brokenOutToTitle || message.burstedToTitle || 'New Wave';
     return (
       <div data-message-id={message.id}>
         <BurstLinkCard
-          ping={message}
+          message={message}
           waveTitle={burstedToTitle}
           onClick={() => onNavigateToWave && onNavigateToWave({
             id: burstedToId,
@@ -103,7 +103,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
           marginTop: isMobile ? '8px' : '6px',
           background: isHighlighted ? `${config.color}15` : isUnread ? 'var(--accent-amber)08' : 'transparent',
           borderLeft: isUnread ? '2px solid var(--accent-amber)' : '2px solid transparent',
-          cursor: (isUnread || (autoFocusPings && hasChildren && !isDeleted)) ? 'pointer' : 'default',
+          cursor: (isUnread || (autoFocusMessages && hasChildren && !isDeleted)) ? 'pointer' : 'default',
           transition: 'background 0.15s ease',
           opacity: isDeleted ? 0.5 : 1,
         }}
@@ -171,7 +171,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setShowPingMenu(!showPingMenu);
+                      setShowMessageMenu(!showMessageMenu);
                     }}
                     title="More actions"
                     style={{
@@ -185,8 +185,8 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
                   >
                     ⋮
                   </button>
-                  {/* Ping actions dropdown */}
-                  {showPingMenu && (
+                  {/* Message actions dropdown */}
+                  {showMessageMenu && (
                     <div
                       style={{
                         position: 'absolute',
@@ -208,7 +208,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
                           <div
                             onClick={() => {
                               onFocus(message);
-                              setShowPingMenu(false);
+                              setShowMessageMenu(false);
                             }}
                             style={{
                               padding: '8px 12px',
@@ -232,7 +232,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
                           <div
                             onClick={() => {
                               onShare(message);
-                              setShowPingMenu(false);
+                              setShowMessageMenu(false);
                             }}
                             style={{
                               padding: '8px 12px',
@@ -256,7 +256,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
                           <div
                             onClick={() => {
                               onBurst(message);
-                              setShowPingMenu(false);
+                              setShowMessageMenu(false);
                             }}
                             style={{
                               padding: '8px 12px',
@@ -280,7 +280,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
                           <div
                             onClick={() => {
                               onEdit(message);
-                              setShowPingMenu(false);
+                              setShowMessageMenu(false);
                             }}
                             style={{
                               padding: '8px 12px',
@@ -305,7 +305,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
                           <div
                             onClick={() => {
                               onDelete(message);
-                              setShowPingMenu(false);
+                              setShowMessageMenu(false);
                             }}
                             style={{
                               padding: '8px 12px',
@@ -414,7 +414,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
                 fontSize: isMobile ? '0.95rem' : '0.85rem',
                 resize: 'vertical',
               }}
-              placeholder="Edit your ping..."
+              placeholder="Edit your message..."
               autoFocus
             />
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
@@ -450,7 +450,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
               fontStyle: 'italic',
             }}
           >
-            [Ping deleted]
+            [Message deleted]
           </div>
         ) : (
           <div
@@ -474,7 +474,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
           >
             {/* Text content (if any) */}
             {message.content && (
-              <PingWithEmbeds
+              <MessageWithEmbeds
                 content={message.content}
                 participants={participants}
                 contacts={contacts}
@@ -565,7 +565,7 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
           </details>
         )}
 
-        {/* Nested replies rendered INSIDE parent ping */}
+        {/* Nested replies rendered INSIDE parent message */}
         {hasChildren && !isCollapsed && (
           <div style={{
             marginTop: '2px',
@@ -574,14 +574,14 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
             borderLeft: '1px solid var(--border-subtle)',
           }}>
             {message.children.map((child) => (
-              <Ping key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
+              <Message key={child.id} message={child} depth={depth + 1} onReply={onReply} onDelete={onDelete}
                 onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
                 editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
                 currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
                 onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
                 participants={participants} contacts={contacts} onShowProfile={onShowProfile} onReport={onReport}
                 onFocus={onFocus} onBurst={onBurst} onShare={onShare} wave={wave} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
-                unreadCountsByWave={unreadCountsByWave} autoFocusPings={autoFocusPings} fetchAPI={fetchAPI} />
+                unreadCountsByWave={unreadCountsByWave} autoFocusMessages={autoFocusMessages} fetchAPI={fetchAPI} />
             ))}
           </div>
         )}
@@ -593,4 +593,4 @@ const Ping = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCan
   );
 };
 
-export default Ping;
+export default Message;

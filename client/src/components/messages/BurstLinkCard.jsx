@@ -1,7 +1,7 @@
 import React from 'react';
 
 // ============ LINK CARD FOR RIPPLED DROPLETS ============
-const BurstLinkCard = ({ ping, waveTitle, onClick, isMobile, unreadCount = 0 }) => {
+const BurstLinkCard = ({ message, waveTitle, onClick, isMobile, unreadCount = 0 }) => {
   return (
     <div
       onClick={onClick}

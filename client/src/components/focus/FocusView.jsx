@@ -4,7 +4,7 @@ import { useSwipeGesture } from '../../hooks/useSwipeGesture.js';
 import { SUCCESS, EMPTY } from '../../../messages.js';
 import { PRIVACY_LEVELS } from '../../config/constants.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
-import Ping from '../pings/Ping.jsx';
+import Message from '../messages/Message.jsx';
 
 const FocusView = ({
   wave,

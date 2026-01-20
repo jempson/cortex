@@ -1,6 +1,6 @@
 {
   "name": "farhold-server",
-  "version": "2.11.1",
+  "version": "2.11.2",
   "description": "Farhold - Privacy-First Federated Communication Platform (formerly Cortex)",
   "type": "module",
   "scripts": {

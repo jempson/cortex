@@ -93,6 +93,40 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.11.2] - 2026-01-20
+
+### Changed
+
+#### Terminology Simplification: Ping → Message
+
+Simplified terminology from "Ping" to "Message" for clarity and universality.
+
+**Rationale:**
+- "Message" is universally understood
+- "Reply to a message" is natural language
+- Still maintains tech/futuristic feel within Wave context
+- "Burst" retained for breaking out to new waves
+
+**File Renames:**
+- `components/pings/` → `components/messages/`
+- `Ping.jsx` → `Message.jsx`
+- `PingWithEmbeds.jsx` → `MessageWithEmbeds.jsx`
+- `PublicPingView.jsx` → `PublicMessageView.jsx`
+
+**Variable Renames:**
+- `scrollToPingId` → `scrollToMessageId`
+- `autoFocusPings` → `autoFocusMessages`
+- `decryptPings` → `decryptMessages`
+
+**Note:** API endpoints for `/droplets` and `/pings` remain for backwards compatibility.
+
+## [2.11.1] - 2026-01-20
+
+### Changed
+
+- Terminology refactoring: droplet→ping, ripple→burst (superseded by 2.11.2)
+- Ping timestamps now display full date and time
+
 ## [2.11.0] - 2026-01-20
 
 ### Added

@@ -6,7 +6,7 @@ import { PRIVACY_LEVELS, API_URL } from '../../config/constants.js';
 import { Avatar, GlowText, PrivacyBadge, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { LegacyWaveNotice, PartialEncryptionBanner } from '../../../e2ee-components.jsx';
 import ImageLightbox from '../ui/ImageLightbox.jsx';
-import Ping from '../pings/Ping.jsx';
+import Message from '../messages/Message.jsx';
 import GifSearchModal from '../search/GifSearchModal.jsx';
 import PlaybackControls from './PlaybackControls.jsx';
 import DeleteConfirmModal from './DeleteConfirmModal.jsx';
@@ -20,7 +20,7 @@ import MediaRecorder from '../media/MediaRecorder.jsx';
 import CameraCapture from '../media/CameraCapture.jsx';
 import { storage } from '../../utils/storage.js';
 
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusPing, onNavigateToWave, scrollToPingId, onScrollToPingComplete, federationEnabled }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusPing, onNavigateToWave, scrollToMessageId, onScrollToMessageComplete, federationEnabled }) => {
   // E2EE context
   const e2ee = useE2EE();
 
@@ -111,7 +111,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const isMuted = (userId) => mutedUsers?.some(u => u.mutedUserId === userId) || false;
 
   // E2EE: Helper to decrypt pings
-  const decryptPings = useCallback(async (pings, waveId) => {
+  const decryptMessages = useCallback(async (pings, waveId) => {
     if (!e2ee.isUnlocked) return pings;
 
     const errors = {};
@@ -142,7 +142,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // E2EE: Helper to decrypt a tree of pings recursively
   const decryptPingTree = useCallback(async (tree, waveId) => {
     const decryptNode = async (node) => {
-      const decrypted = await decryptPings([node], waveId);
+      const decrypted = await decryptMessages([node], waveId);
       const result = decrypted[0];
       if (result.children && result.children.length > 0) {
         result.children = await Promise.all(result.children.map(child => decryptNode(child)));
@@ -150,7 +150,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       return result;
     };
     return Promise.all(tree.map(node => decryptNode(node)));
-  }, [decryptPings]);
+  }, [decryptMessages]);
 
   // State for showing moderation menu
   const [showModMenu, setShowModMenu] = useState(null); // participant.id or null
@@ -364,7 +364,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   // Scroll to first unread message or bottom on initial wave load
   useEffect(() => {
     // Skip if: no data, no container, already scrolled, still loading, pending scroll restoration, OR navigating to specific ping
-    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading || scrollPositionToRestore.current !== null || scrollToPingId) return;
+    if (!waveData || !messagesRef.current || hasScrolledToUnreadRef.current || loading || scrollPositionToRestore.current !== null || scrollToMessageId) return;
 
     // Only run once per wave
     hasScrolledToUnreadRef.current = true;
@@ -396,19 +396,19 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   // Scroll to specific ping when navigating from notification
   useEffect(() => {
-    if (!scrollToPingId || !waveData || loading) {
-      if (scrollToPingId) {
+    if (!scrollToMessageId || !waveData || loading) {
+      if (scrollToMessageId) {
         console.log(`🎯 Scroll to ping deferred - waveData: ${!!waveData}, loading: ${loading}`);
       }
       return;
     }
 
-    console.log(`🎯 Attempting to scroll to ping ${scrollToPingId}`);
+    console.log(`🎯 Attempting to scroll to ping ${scrollToMessageId}`);
 
     // Check if the ping exists in our data
-    const pingInData = waveData.all_messages?.some(m => m.id === scrollToPingId);
+    const pingInData = waveData.all_messages?.some(m => m.id === scrollToMessageId);
     if (!pingInData) {
-      console.log(`⚠️ Target ping ${scrollToPingId} not found in wave data (${waveData.all_messages?.length || 0} messages loaded)`);
+      console.log(`⚠️ Target ping ${scrollToMessageId} not found in wave data (${waveData.all_messages?.length || 0} messages loaded)`);
     }
 
     // Wait for render to complete, with multiple retries
@@ -417,9 +417,9 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     const retryDelay = 200;
 
     const scrollToTarget = () => {
-      const element = document.querySelector(`[data-message-id="${scrollToPingId}"]`);
+      const element = document.querySelector(`[data-message-id="${scrollToMessageId}"]`);
       if (element) {
-        console.log(`✅ Found ping ${scrollToPingId} in DOM, scrolling...`);
+        console.log(`✅ Found ping ${scrollToMessageId} in DOM, scrolling...`);
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         // Brief highlight effect
         element.style.transition = 'background-color 0.3s, outline 0.3s';
@@ -430,22 +430,22 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           element.style.outline = '';
         }, 1500);
         // Clear the target
-        onScrollToPingComplete?.();
+        onScrollToMessageComplete?.();
       } else if (retryCount < maxRetries) {
         // Ping not in DOM - might be rendering, retry
         retryCount++;
-        console.log(`⏳ Ping ${scrollToPingId} not in DOM yet, retry ${retryCount}/${maxRetries}...`);
+        console.log(`⏳ Ping ${scrollToMessageId} not in DOM yet, retry ${retryCount}/${maxRetries}...`);
         setTimeout(scrollToTarget, retryDelay);
       } else {
         // Give up after max retries
-        console.log(`❌ Could not find ping ${scrollToPingId} in DOM after ${maxRetries} retries`);
-        onScrollToPingComplete?.();
+        console.log(`❌ Could not find ping ${scrollToMessageId} in DOM after ${maxRetries} retries`);
+        onScrollToMessageComplete?.();
       }
     };
 
     // Delay to allow React to render the messages
     setTimeout(scrollToTarget, 100);
-  }, [scrollToPingId, waveData, loading, onScrollToPingComplete]);
+  }, [scrollToMessageId, waveData, loading, onScrollToMessageComplete]);
 
   // Mark wave as read when user scrolls to bottom or views unread messages
   useEffect(() => {
@@ -616,7 +616,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       if (data.encrypted && e2ee.isUnlocked) {
         try {
           // Decrypt all_messages flat list
-          data.all_messages = await decryptPings(data.all_messages, wave.id);
+          data.all_messages = await decryptMessages(data.all_messages, wave.id);
           // Decrypt the tree structure
           data.messages = await decryptPingTree(data.messages, wave.id);
         } catch (decryptErr) {
@@ -786,7 +786,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         let decryptedMessages = data.messages;
         if (waveData?.encrypted && e2ee.isUnlocked) {
           try {
-            decryptedMessages = await decryptPings(data.messages, wave.id);
+            decryptedMessages = await decryptMessages(data.messages, wave.id);
           } catch (decryptErr) {
             console.error('Failed to decrypt older messages:', decryptErr);
           }
@@ -2106,7 +2106,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           </div>
         )}
         {pings.map((msg) => (
-          <Ping key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
+          <Message key={msg.id} message={msg} onReply={setReplyingTo} onDelete={handleDeleteMessage}
             onEdit={handleStartEdit} onSaveEdit={handleSaveEdit} onCancelEdit={handleCancelEdit}
             editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
@@ -2118,7 +2118,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             onShare={handleSharePing} wave={wave || waveData}
             onNavigateToWave={onNavigateToWave} currentWaveId={wave.id}
             unreadCountsByWave={unreadCountsByWave}
-            autoFocusPings={currentUser?.preferences?.autoFocusPings === true}
+            autoFocusMessages={currentUser?.preferences?.autoFocusMessages === true}
             fetchAPI={fetchAPI} />
         ))}
       </div>
