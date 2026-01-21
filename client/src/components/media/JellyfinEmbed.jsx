@@ -18,9 +18,12 @@ const JellyfinEmbed = ({
   overview,
   onStartWatchParty,
   canStartWatchParty = false,
+  onPlay,
 }) => {
   const [imageError, setImageError] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [videoError, setVideoError] = useState(null);
 
   const formatDuration = (ticks) => {
     if (!ticks) return null;
@@ -33,9 +36,10 @@ const JellyfinEmbed = ({
     return `${minutes}m`;
   };
 
-  // Include token in URL since <img src> can't pass auth headers
+  // Include token in URL since <img src> and <video src> can't pass auth headers
   const token = storage.getToken();
   const thumbnailUrl = `${API_URL}/jellyfin/thumbnail/${connectionId}/${itemId}?type=Primary&maxWidth=300${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+  const streamUrl = `${API_URL}/jellyfin/stream/${connectionId}/${itemId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 
   const getTypeIcon = () => {
     switch (type) {
@@ -57,7 +61,7 @@ const JellyfinEmbed = ({
       borderRadius: '8px',
       overflow: 'hidden',
     }}>
-      {/* Thumbnail */}
+      {/* Video/Thumbnail area */}
       <div style={{
         position: 'relative',
         aspectRatio: '16/9',
@@ -67,79 +71,165 @@ const JellyfinEmbed = ({
         justifyContent: 'center',
         overflow: 'hidden',
       }}>
-        {!imageError ? (
-          <img
-            src={thumbnailUrl}
-            alt={name}
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-            }}
-            onError={() => setImageError(true)}
-          />
+        {playing ? (
+          /* Inline video player */
+          <>
+            <video
+              src={streamUrl}
+              controls
+              autoPlay
+              style={{
+                width: '100%',
+                height: '100%',
+                background: '#000',
+              }}
+              onError={(e) => {
+                console.error('Video error:', e);
+                setVideoError('Failed to play video. Try opening in new tab.');
+              }}
+            />
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setPlaying(false);
+                setVideoError(null);
+              }}
+              style={{
+                position: 'absolute',
+                top: '8px',
+                right: '8px',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: 'rgba(0,0,0,0.7)',
+                border: 'none',
+                color: '#fff',
+                fontSize: '16px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Close player"
+            >
+              ✕
+            </button>
+            {videoError && (
+              <div style={{
+                position: 'absolute',
+                bottom: '8px',
+                left: '8px',
+                right: '8px',
+                background: 'rgba(255,100,100,0.9)',
+                color: '#fff',
+                padding: '8px',
+                fontSize: '0.75rem',
+                borderRadius: '4px',
+              }}>
+                {videoError}
+              </div>
+            )}
+          </>
         ) : (
-          <div style={{
-            fontSize: '3rem',
-            opacity: 0.3,
-          }}>
-            {getTypeIcon()}
-          </div>
-        )}
+          /* Thumbnail with play button */
+          <>
+            {!imageError ? (
+              <img
+                src={thumbnailUrl}
+                alt={name}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                }}
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <div style={{
+                fontSize: '3rem',
+                opacity: 0.3,
+              }}>
+                {getTypeIcon()}
+              </div>
+            )}
 
-        {/* Play button overlay */}
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '60px',
-          height: '60px',
-          borderRadius: '50%',
-          background: 'rgba(138, 43, 226, 0.9)', // Purple
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '24px',
-          color: '#fff',
-          cursor: 'default',
-        }}>
-          ▶
-        </div>
+            {/* Play button overlay */}
+            <button
+              onClick={() => {
+                if (onPlay) {
+                  onPlay({ connectionId, itemId, name, type });
+                } else {
+                  setPlaying(true);
+                }
+              }}
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '60px',
+                height: '60px',
+                borderRadius: '50%',
+                background: 'rgba(138, 43, 226, 0.9)',
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '24px',
+                color: '#fff',
+                cursor: 'pointer',
+                transition: 'transform 0.2s, background 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.1)';
+                e.currentTarget.style.background = 'rgba(138, 43, 226, 1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)';
+                e.currentTarget.style.background = 'rgba(138, 43, 226, 0.9)';
+              }}
+              title="Play video"
+            >
+              ▶
+            </button>
 
-        {/* Duration badge */}
-        {duration && (
-          <div style={{
-            position: 'absolute',
-            bottom: '8px',
-            right: '8px',
-            background: 'rgba(0,0,0,0.8)',
-            padding: '4px 8px',
-            fontSize: '0.7rem',
-            color: '#fff',
-            borderRadius: '4px',
-          }}>
-            {formatDuration(duration)}
-          </div>
+            {/* Duration badge */}
+            {duration && !playing && (
+              <div style={{
+                position: 'absolute',
+                bottom: '8px',
+                right: '8px',
+                background: 'rgba(0,0,0,0.8)',
+                padding: '4px 8px',
+                fontSize: '0.7rem',
+                color: '#fff',
+                borderRadius: '4px',
+              }}>
+                {formatDuration(duration)}
+              </div>
+            )}
+          </>
         )}
 
         {/* Type badge */}
-        <div style={{
-          position: 'absolute',
-          top: '8px',
-          left: '8px',
-          background: 'rgba(138, 43, 226, 0.9)',
-          padding: '4px 8px',
-          fontSize: '0.65rem',
-          color: '#fff',
-          borderRadius: '4px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-        }}>
-          <span>{getTypeIcon()}</span>
-          <span>Jellyfin</span>
-        </div>
+        {!playing && (
+          <div style={{
+            position: 'absolute',
+            top: '8px',
+            left: '8px',
+            background: 'rgba(138, 43, 226, 0.9)',
+            padding: '4px 8px',
+            fontSize: '0.65rem',
+            color: '#fff',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+          }}>
+            <span>{getTypeIcon()}</span>
+            <span>Jellyfin</span>
+          </div>
+        )}
       </div>
 
       {/* Info */}

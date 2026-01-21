@@ -20,6 +20,7 @@ import crypto from 'crypto';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import ffmpeg from 'fluent-ffmpeg';
+import { Readable } from 'stream';
 import { DatabaseSQLite } from './database-sqlite.js';
 import { getEmailService } from './email-service.js';
 import { storage } from './storage.js';
@@ -7076,11 +7077,16 @@ app.get('/api/jellyfin/connections', authenticateToken, (req, res) => {
 });
 
 // Add new Jellyfin connection (authenticate with Jellyfin server)
+// Supports both username/password auth and direct API key
 app.post('/api/jellyfin/connections', authenticateToken, jellyfinLimiter, async (req, res) => {
-  const { serverUrl, username, password } = req.body;
+  const { serverUrl, username, password, apiKey } = req.body;
 
-  if (!serverUrl || !username || !password) {
-    return res.status(400).json({ error: 'Server URL, username, and password are required' });
+  // Require server URL and either credentials or API key
+  if (!serverUrl) {
+    return res.status(400).json({ error: 'Server URL is required' });
+  }
+  if (!apiKey && (!username || !password)) {
+    return res.status(400).json({ error: 'Either API key or username/password is required' });
   }
 
   // Validate and normalize server URL
@@ -7093,26 +7099,66 @@ app.post('/api/jellyfin/connections', authenticateToken, jellyfinLimiter, async 
   }
 
   try {
-    // Authenticate with Jellyfin server
-    const authResponse = await fetch(`${normalizedUrl}/Users/AuthenticateByName`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Emby-Authorization': 'MediaBrowser Client="Cortex", Device="Server", DeviceId="cortex-server", Version="2.14.0"',
-      },
-      body: JSON.stringify({ Username: username, Pw: password }),
-    });
+    let accessToken;
+    let jellyfinUserId = null;
+    let serverName = 'Jellyfin';
 
-    if (!authResponse.ok) {
-      const error = await authResponse.text();
-      console.error('Jellyfin auth failed:', error);
-      return res.status(401).json({ error: 'Authentication failed. Check your credentials.' });
+    if (apiKey) {
+      // Direct API key - validate it works
+      const testResponse = await fetch(`${normalizedUrl}/System/Info`, {
+        headers: {
+          'X-Emby-Token': apiKey,
+        },
+      });
+
+      if (!testResponse.ok) {
+        return res.status(401).json({ error: 'Invalid API key. Check your key and server URL.' });
+      }
+
+      const info = await testResponse.json();
+      serverName = info.ServerName || 'Jellyfin';
+      accessToken = apiKey;
+
+      // Get user list to find a user ID for library access
+      const usersResponse = await fetch(`${normalizedUrl}/Users`, {
+        headers: {
+          'X-Emby-Token': apiKey,
+        },
+      });
+
+      if (usersResponse.ok) {
+        const users = await usersResponse.json();
+        // Use the first admin user, or first user if no admin
+        const adminUser = users.find(u => u.Policy?.IsAdministrator);
+        const firstUser = users[0];
+        jellyfinUserId = (adminUser || firstUser)?.Id || null;
+      }
+
+      if (!jellyfinUserId) {
+        return res.status(400).json({ error: 'Could not find a user for library access. Try username/password auth instead.' });
+      }
+    } else {
+      // Username/password authentication
+      const authResponse = await fetch(`${normalizedUrl}/Users/AuthenticateByName`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Emby-Authorization': 'MediaBrowser Client="Cortex", Device="Server", DeviceId="cortex-server", Version="2.14.0"',
+        },
+        body: JSON.stringify({ Username: username, Pw: password }),
+      });
+
+      if (!authResponse.ok) {
+        const error = await authResponse.text();
+        console.error('Jellyfin auth failed:', error);
+        return res.status(401).json({ error: 'Authentication failed. Check your credentials.' });
+      }
+
+      const authData = await authResponse.json();
+      accessToken = authData.AccessToken;
+      jellyfinUserId = authData.User?.Id;
+      serverName = 'Jellyfin';
     }
-
-    const authData = await authResponse.json();
-    const accessToken = authData.AccessToken;
-    const jellyfinUserId = authData.User?.Id;
-    const serverName = authData.ServerId ? `Jellyfin Server` : 'Jellyfin';
 
     // Get server info for name
     try {
@@ -7383,11 +7429,31 @@ app.get('/api/jellyfin/item/:connectionId/:itemId', authenticateToken, jellyfinL
 });
 
 // Proxy Jellyfin video stream
-app.get('/api/jellyfin/stream/:connectionId/:itemId', authenticateToken, async (req, res) => {
+// Accepts token via query param for direct browser access
+app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   const { connectionId, itemId } = req.params;
+  const { token } = req.query;
+
+  // Try to authenticate - accept token from query param or header
+  let userId = null;
+  const authHeader = req.headers.authorization;
+  const tokenToVerify = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : token;
+
+  if (tokenToVerify) {
+    try {
+      const decoded = jwt.verify(tokenToVerify, process.env.JWT_SECRET);
+      userId = decoded.userId;
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  }
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
 
   // Verify ownership
-  if (!db.userOwnsJellyfinConnection(req.user.userId, connectionId)) {
+  if (!db.userOwnsJellyfinConnection(userId, connectionId)) {
     return res.status(404).json({ error: 'Connection not found' });
   }
 
@@ -7399,11 +7465,51 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', authenticateToken, async (
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Build stream URL - use HLS for better compatibility
+    // Build stream URL - use static stream for direct playback
     const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream?static=true&api_key=${accessToken}`;
 
-    // Redirect to Jellyfin stream (client will handle auth via URL param)
-    res.redirect(streamUrl);
+    // Build headers to forward - include Range for seeking support
+    const fetchHeaders = {
+      'Accept': '*/*',
+    };
+
+    // Forward Range header for video seeking
+    if (req.headers.range) {
+      fetchHeaders['Range'] = req.headers.range;
+    }
+
+    // Proxy the video stream instead of redirecting
+    // This allows the HTML5 video element to play inline
+    const streamResponse = await fetch(streamUrl, {
+      headers: fetchHeaders,
+    });
+
+    if (!streamResponse.ok && streamResponse.status !== 206) {
+      console.error('Jellyfin stream response not ok:', streamResponse.status);
+      return res.status(streamResponse.status).json({ error: 'Failed to get stream from Jellyfin' });
+    }
+
+    // Forward relevant headers
+    const contentType = streamResponse.headers.get('content-type');
+    const contentLength = streamResponse.headers.get('content-length');
+    const acceptRanges = streamResponse.headers.get('accept-ranges');
+    const contentRange = streamResponse.headers.get('content-range');
+
+    if (contentType) res.setHeader('Content-Type', contentType);
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
+    if (contentRange) res.setHeader('Content-Range', contentRange);
+
+    // Enable CORS for video element
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    // Set status code (206 for partial content / range requests)
+    res.status(streamResponse.status);
+
+    // Pipe the stream to the response
+    const readable = Readable.fromWeb(streamResponse.body);
+    readable.pipe(res);
+
   } catch (err) {
     console.error('Jellyfin stream error:', err);
     res.status(500).json({ error: 'Failed to get stream' });

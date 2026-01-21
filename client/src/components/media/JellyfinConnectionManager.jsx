@@ -24,7 +24,9 @@ const JellyfinConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
     serverUrl: '',
     username: '',
     password: '',
+    apiKey: '',
   });
+  const [authMode, setAuthMode] = useState('apiKey'); // 'apiKey' or 'credentials'
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,21 +57,25 @@ const JellyfinConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
     setFormError('');
 
     // Validation
-    if (!formData.name.trim()) {
-      setFormError('Connection name is required');
-      return;
-    }
     if (!formData.serverUrl.trim()) {
       setFormError('Server URL is required');
       return;
     }
-    if (!formData.username.trim()) {
-      setFormError('Username is required');
-      return;
-    }
-    if (!formData.password.trim()) {
-      setFormError('Password is required');
-      return;
+
+    if (authMode === 'apiKey') {
+      if (!formData.apiKey.trim()) {
+        setFormError('API key is required');
+        return;
+      }
+    } else {
+      if (!formData.username.trim()) {
+        setFormError('Username is required');
+        return;
+      }
+      if (!formData.password.trim()) {
+        setFormError('Password is required');
+        return;
+      }
     }
 
     // Normalize server URL
@@ -82,19 +88,26 @@ const JellyfinConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
 
     setSubmitting(true);
     try {
+      const body = {
+        name: formData.name.trim() || serverUrl,
+        serverUrl,
+      };
+
+      if (authMode === 'apiKey') {
+        body.apiKey = formData.apiKey.trim();
+      } else {
+        body.username = formData.username.trim();
+        body.password = formData.password;
+      }
+
       await fetchAPI('/jellyfin/connections', {
         method: 'POST',
-        body: {
-          name: formData.name.trim(),
-          serverUrl,
-          username: formData.username.trim(),
-          password: formData.password,
-        },
+        body,
       });
 
       showToast('Jellyfin connection added', 'success');
       setShowAddForm(false);
-      setFormData({ name: '', serverUrl: '', username: '', password: '' });
+      setFormData({ name: '', serverUrl: '', username: '', password: '', apiKey: '' });
       loadConnections();
     } catch (err) {
       setFormError(err.message || 'Failed to add connection');
@@ -355,18 +368,6 @@ const JellyfinConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
           </GlowText>
 
           <div style={styles.formGroup}>
-            <label style={styles.label}>Connection Name</label>
-            <input
-              type="text"
-              style={styles.input}
-              value={formData.name}
-              onChange={(e) => handleInputChange('name', e.target.value)}
-              placeholder="Home Server"
-              autoFocus
-            />
-          </div>
-
-          <div style={styles.formGroup}>
             <label style={styles.label}>Server URL</label>
             <input
               type="text"
@@ -374,30 +375,93 @@ const JellyfinConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
               value={formData.serverUrl}
               onChange={(e) => handleInputChange('serverUrl', e.target.value)}
               placeholder="https://jellyfin.example.com"
+              autoFocus
             />
           </div>
 
           <div style={styles.formGroup}>
-            <label style={styles.label}>Username</label>
+            <label style={styles.label}>Connection Name (optional)</label>
             <input
               type="text"
               style={styles.input}
-              value={formData.username}
-              onChange={(e) => handleInputChange('username', e.target.value)}
-              placeholder="your-username"
+              value={formData.name}
+              onChange={(e) => handleInputChange('name', e.target.value)}
+              placeholder="Home Server"
             />
           </div>
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Password</label>
-            <input
-              type="password"
-              style={styles.input}
-              value={formData.password}
-              onChange={(e) => handleInputChange('password', e.target.value)}
-              placeholder="your-password"
-            />
+          {/* Auth mode toggle */}
+          <div style={{ ...styles.formGroup, display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <button
+              type="button"
+              onClick={() => setAuthMode('apiKey')}
+              style={{
+                ...styles.button,
+                flex: 1,
+                background: authMode === 'apiKey' ? 'var(--accent-color)' : 'transparent',
+                color: authMode === 'apiKey' ? 'var(--bg-color)' : 'var(--text-dim)',
+                borderColor: authMode === 'apiKey' ? 'var(--accent-color)' : 'var(--border-primary)',
+              }}
+            >
+              API KEY
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthMode('credentials')}
+              style={{
+                ...styles.button,
+                flex: 1,
+                background: authMode === 'credentials' ? 'var(--accent-color)' : 'transparent',
+                color: authMode === 'credentials' ? 'var(--bg-color)' : 'var(--text-dim)',
+                borderColor: authMode === 'credentials' ? 'var(--accent-color)' : 'var(--border-primary)',
+              }}
+            >
+              LOGIN
+            </button>
           </div>
+
+          {authMode === 'apiKey' ? (
+            <div style={styles.formGroup}>
+              <label style={styles.label}>API Key</label>
+              <input
+                type="password"
+                style={styles.input}
+                value={formData.apiKey}
+                onChange={(e) => handleInputChange('apiKey', e.target.value)}
+                placeholder="Your Jellyfin API key"
+              />
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Create in Jellyfin Dashboard → API Keys
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Username</label>
+                <input
+                  type="text"
+                  style={styles.input}
+                  value={formData.username}
+                  onChange={(e) => handleInputChange('username', e.target.value)}
+                  placeholder="your-username"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Password</label>
+                <input
+                  type="password"
+                  style={styles.input}
+                  value={formData.password}
+                  onChange={(e) => handleInputChange('password', e.target.value)}
+                  placeholder="your-password"
+                />
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Used once to get access token, not stored
+                </div>
+              </div>
+            </>
+          )}
 
           {formError && <div style={styles.error}>{formError}</div>}
 
@@ -414,7 +478,8 @@ const JellyfinConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
               style={styles.button}
               onClick={() => {
                 setShowAddForm(false);
-                setFormData({ name: '', serverUrl: '', username: '', password: '' });
+                setFormData({ name: '', serverUrl: '', username: '', password: '', apiKey: '' });
+                setAuthMode('apiKey');
                 setFormError('');
               }}
             >

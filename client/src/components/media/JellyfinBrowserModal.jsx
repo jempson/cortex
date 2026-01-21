@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { API_URL } from '../../config/constants.js';
+import { storage } from '../../utils/storage.js';
 
 /**
  * Jellyfin Media Browser Modal (v2.14.0)
@@ -157,7 +158,8 @@ const JellyfinBrowserModal = ({ isOpen, onClose, onSelect, fetchAPI, isMobile, c
 
   const getImageUrl = (item) => {
     if (!item.primaryImageTag || !selectedConnection) return null;
-    return `${API_URL}/jellyfin/thumbnail/${selectedConnection.id}/${item.id}?type=Primary&maxWidth=200`;
+    const token = storage.getToken();
+    return `${API_URL}/jellyfin/thumbnail/${selectedConnection.id}/${item.id}?type=Primary&maxWidth=200${token ? `&token=${encodeURIComponent(token)}` : ''}`;
   };
 
   if (!isOpen) return null;
