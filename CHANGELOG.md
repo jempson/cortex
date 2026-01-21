@@ -93,6 +93,64 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.14.0] - 2026-01-21
+
+### Added
+
+#### Jellyfin/Emby Media Server Integration
+Connect personal media servers to share content in waves and host synchronized watch parties.
+
+**Features:**
+- **Media Server Connections**: Connect multiple Jellyfin/Emby servers via profile settings
+  - Secure credential storage with encrypted API tokens
+  - Test connection functionality
+  - Default server selection for quick access
+
+- **Media Browser**: Browse and share content from connected servers
+  - Library navigation (Movies, TV Shows, Music, etc.)
+  - Search functionality across all libraries
+  - Season/episode navigation for TV series
+  - Poster/backdrop image display
+  - Add media to messages with embedded player cards
+
+- **Jellyfin Embeds**: Rich media cards in messages
+  - Automatic metadata display (title, year, runtime, rating)
+  - Play button for direct streaming
+  - Poster thumbnails with fallback handling
+
+- **Watch Parties**: Synchronized viewing sessions (foundation)
+  - Create watch parties from Jellyfin embeds
+  - Real-time playback sync via WebSocket
+  - Join/leave party functionality
+  - Party banner in wave header
+  - Participant list display
+
+**New Components:**
+- `JellyfinBrowserModal.jsx` - Media library browser
+- `JellyfinEmbed.jsx` - Embedded media card for messages
+- `JellyfinConnectionManager.jsx` - Server connection settings
+- `WatchPartyPlayer.jsx` - Synchronized video player
+- `WatchPartyBanner.jsx` - Active party indicator
+
+**Server Endpoints:**
+- `GET/POST/DELETE /api/jellyfin/connections` - Connection management
+- `POST /api/jellyfin/connections/:id/test` - Test connection
+- `GET /api/jellyfin/proxy/*` - Secure API proxy to Jellyfin
+- `GET /api/jellyfin/stream/:connectionId/:itemId` - Media stream proxy
+- `POST/GET /api/jellyfin/watch-parties` - Watch party management
+- `POST /api/jellyfin/watch-parties/:id/join|leave|sync` - Party actions
+
+**Database Schema:**
+- `jellyfin_connections` - User's media server connections
+- `watch_parties` - Active watch party sessions
+- `watch_party_participants` - Party participant tracking
+
+**Configuration:**
+```bash
+JELLYFIN_PROXY_ENABLED=true     # Enable/disable Jellyfin proxy feature
+JELLYFIN_ALLOWED_HOSTS=*        # Comma-separated list of allowed Jellyfin hostnames
+```
+
 ## [2.13.0] - 2026-01-21
 
 ### Added

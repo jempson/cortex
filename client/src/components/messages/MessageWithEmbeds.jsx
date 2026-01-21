@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { API_URL } from '../../config/constants.js';
 import { detectEmbedUrls, EMBED_PLATFORMS } from '../../utils/embed.js';
+import JellyfinEmbed from '../media/JellyfinEmbed.jsx';
 
 // Single embed component with click-to-load
 const RichEmbed = ({ embed, autoLoad = false }) => {
@@ -508,7 +509,20 @@ const MessageWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [],
         onClick={handleClick}
       />
       {embeds.map((embed, index) => (
-        <RichEmbed key={`${embed.platform}-${embed.contentId}-${index}`} embed={embed} autoLoad={autoLoadEmbeds} />
+        embed.platform === 'jellyfin' ? (
+          <JellyfinEmbed
+            key={`jellyfin-${embed.connectionId}-${embed.itemId}-${index}`}
+            connectionId={embed.connectionId}
+            itemId={embed.itemId}
+            name={embed.name}
+            type={embed.type}
+            duration={embed.duration}
+            overview={embed.overview}
+            canStartWatchParty={false}
+          />
+        ) : (
+          <RichEmbed key={`${embed.platform}-${embed.contentId}-${index}`} embed={embed} autoLoad={autoLoadEmbeds} />
+        )
       ))}
     </>
   );

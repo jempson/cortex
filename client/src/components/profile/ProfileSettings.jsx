@@ -23,6 +23,7 @@ import FederationAdminPanel from '../admin/FederationAdminPanel.jsx';
 import HandleRequestsList from '../admin/HandleRequestsList.jsx';
 import BotsAdminPanel from '../admin/BotsAdminPanel.jsx';
 import ThemeCustomizationModal from '../settings/ThemeCustomizationModal.jsx';
+import JellyfinConnectionManager from '../media/JellyfinConnectionManager.jsx';
 
 const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, federationRequestsRefresh }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
@@ -1722,6 +1723,18 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
         <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
           ℹ️ The Discover feed shows video pings from public waves and waves you participate in.
+        </div>
+      </CollapsibleSection>
+
+      {/* Jellyfin Integration (v2.14.0) */}
+      <CollapsibleSection title="📺 MEDIA SERVERS" isOpen={openSection === 'jellyfin'} onToggle={() => toggleSection('jellyfin')} isMobile={isMobile}>
+        <JellyfinConnectionManager
+          fetchAPI={fetchAPI}
+          showToast={showToast}
+          isMobile={isMobile}
+        />
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+          ℹ️ Connect your Jellyfin or Emby media server to share content in waves and host watch parties.
         </div>
       </CollapsibleSection>
 

@@ -30,6 +30,7 @@ import VideoFeedView from '../components/feed/VideoFeedView.jsx';
 import { useVoiceCall } from '../hooks/useVoiceCall.js';
 import { initializeCustomTheme, applyCustomTheme, removeCustomTheme, getCurrentCustomTheme } from '../hooks/useTheme.js';
 import DockedCallWindow from '../components/calls/DockedCallWindow.jsx';
+import WatchPartyPlayer from '../components/media/WatchPartyPlayer.jsx';
 
 function MainApp({ sharePingId }) {
   const { user, token, logout, updateUser } = useAuth();
@@ -73,6 +74,8 @@ function MainApp({ sharePingId }) {
   const [footerTagline, setFooterTagline] = useState(getRandomTagline()); // Rotating Firefly tagline
   const [waveCategories, setWaveCategories] = useState([]); // User's wave categories (v2.2.0)
   const [categoryManagementOpen, setCategoryManagementOpen] = useState(false); // Category management modal (v2.2.0)
+  const [activeWatchParties, setActiveWatchParties] = useState({}); // Active watch parties by wave ID (v2.14.0)
+  const [watchPartyPlayer, setWatchPartyPlayer] = useState(null); // { waveId, partyId } for open player (v2.14.0)
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop, hasMeasured } = useWindowSize();
 
@@ -551,8 +554,49 @@ function MainApp({ sharePingId }) {
       if (user?.isAdmin) {
         showToastMsg(`Federation request from ${data.request?.fromNodeName || 'unknown server'}`, 'info');
       }
+    } else if (data.type === 'watch_party_created' || data.type === 'watch_party_started') {
+      // Watch party started in a wave (v2.14.0)
+      const party = data.party || data;
+      console.log('🎬 Watch party created/started:', party);
+      setActiveWatchParties(prev => ({
+        ...prev,
+        [party.waveId]: party
+      }));
+      if (party.hostId !== user?.id) {
+        showToastMsg(`${party.hostName || 'Someone'} started a watch party`, 'info');
+      }
+    } else if (data.type === 'watch_party_ended') {
+      // Watch party ended (v2.14.0)
+      const { waveId, partyId } = data;
+      console.log('🎬 Watch party ended:', partyId);
+      setActiveWatchParties(prev => {
+        const next = { ...prev };
+        delete next[waveId];
+        return next;
+      });
+      // Close player if it was open for this party
+      if (watchPartyPlayer?.partyId === partyId) {
+        setWatchPartyPlayer(null);
+        showToastMsg('Watch party ended', 'info');
+      }
+    } else if (data.type === 'watch_party_sync') {
+      // Watch party playback state sync (v2.14.0)
+      const { waveId, state, position, timestamp } = data;
+      console.log('🎬 Watch party sync:', state, position);
+      setActiveWatchParties(prev => ({
+        ...prev,
+        [waveId]: prev[waveId] ? { ...prev[waveId], state, position, lastSync: timestamp } : prev[waveId]
+      }));
+    } else if (data.type === 'watch_party_participant_joined' || data.type === 'watch_party_participant_left') {
+      // Watch party participant change (v2.14.0)
+      const { waveId, participants, userName } = data;
+      console.log(`🎬 Watch party participant ${data.type === 'watch_party_participant_joined' ? 'joined' : 'left'}:`, userName);
+      setActiveWatchParties(prev => ({
+        ...prev,
+        [waveId]: prev[waveId] ? { ...prev[waveId], participants } : prev[waveId]
+      }));
     }
-  }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView, fetchAPI]);
+  }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView, fetchAPI, watchPartyPlayer]);
 
   const { connected: wsConnected, sendMessage: sendWSMessage } = useWebSocket(token, handleWSMessage);
 
@@ -657,6 +701,50 @@ function MainApp({ sharePingId }) {
       return false;
     }
   }, [fetchAPI, loadBlockedMutedUsers]);
+
+  // Watch party handlers (v2.14.0)
+  const loadActiveWatchParties = useCallback(async () => {
+    try {
+      const data = await fetchAPI('/jellyfin/watch-parties/active');
+      const partiesMap = {};
+      (data.parties || []).forEach(party => {
+        partiesMap[party.waveId] = party;
+      });
+      setActiveWatchParties(partiesMap);
+    } catch (e) {
+      // Jellyfin might not be configured - ignore
+      console.log('Watch parties not available:', e.message);
+    }
+  }, [fetchAPI]);
+
+  const handleJoinWatchParty = useCallback(async (waveId, partyId) => {
+    try {
+      await fetchAPI(`/jellyfin/watch-parties/${partyId}/join`, { method: 'POST' });
+      // Open the player after joining
+      setWatchPartyPlayer({ waveId, partyId });
+    } catch (e) {
+      console.error('Failed to join watch party:', e);
+      showToastMsg(e.message || 'Failed to join watch party', 'error');
+    }
+  }, [fetchAPI, showToastMsg]);
+
+  const handleLeaveWatchParty = useCallback(async (partyId) => {
+    try {
+      await fetchAPI(`/jellyfin/watch-parties/${partyId}/leave`, { method: 'POST' });
+      setWatchPartyPlayer(null);
+    } catch (e) {
+      console.error('Failed to leave watch party:', e);
+      showToastMsg(e.message || 'Failed to leave watch party', 'error');
+    }
+  }, [fetchAPI, showToastMsg]);
+
+  const handleOpenWatchParty = useCallback((waveId, partyId) => {
+    setWatchPartyPlayer({ waveId, partyId });
+  }, []);
+
+  const handleCloseWatchPartyPlayer = useCallback(() => {
+    setWatchPartyPlayer(null);
+  }, []);
 
   // Dismiss alert handler
   const handleDismissAlert = useCallback(async (alertId) => {
@@ -767,11 +855,12 @@ function MainApp({ sharePingId }) {
     loadBlockedMutedUsers();
     loadWaveNotifications();
     loadActiveCalls();
+    loadActiveWatchParties();
     // Check if federation is enabled (public endpoint returns 404 if disabled)
     fetch(`${API_URL}/federation/identity`)
       .then(res => setFederationEnabled(res.ok))
       .catch(() => setFederationEnabled(false));
-  }, [loadWaves, loadCategories, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications, loadActiveCalls]);
+  }, [loadWaves, loadCategories, loadContacts, loadGroups, loadContactRequests, loadGroupInvitations, loadBlockedMutedUsers, loadWaveNotifications, loadActiveCalls, loadActiveWatchParties]);
 
   // Poll active calls every 10 seconds (v2.5.0 - call indicators in wave list)
   useEffect(() => {
@@ -1160,7 +1249,12 @@ function MainApp({ sharePingId }) {
                     onNavigateToWave={handleNavigateToWave}
                     scrollToMessageId={scrollToMessageId}
                     onScrollToMessageComplete={() => setScrollToMessageId(null)}
-                    federationEnabled={federationEnabled} />
+                    federationEnabled={federationEnabled}
+                    activeWatchParty={activeWatchParties[selectedWave?.id]}
+                    onJoinWatchParty={(partyId) => handleJoinWatchParty(selectedWave?.id, partyId)}
+                    onLeaveWatchParty={handleLeaveWatchParty}
+                    onOpenWatchParty={(partyId) => handleOpenWatchParty(selectedWave?.id, partyId)}
+                    onWatchPartiesChange={loadActiveWatchParties} />
                 </ErrorBoundary>
               ) : !isMobile && (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--border-primary)' }}>
@@ -1347,6 +1441,20 @@ function MainApp({ sharePingId }) {
           voiceCall={globalVoiceCall}
           isMobile={isMobile}
           user={user}
+        />
+      )}
+
+      {/* Watch Party Player Modal (v2.14.0) */}
+      {watchPartyPlayer && (
+        <WatchPartyPlayer
+          partyId={watchPartyPlayer.partyId}
+          waveId={watchPartyPlayer.waveId}
+          fetchAPI={fetchAPI}
+          sendWSMessage={sendWSMessage}
+          currentUser={user}
+          onClose={handleCloseWatchPartyPlayer}
+          onLeave={() => handleLeaveWatchParty(watchPartyPlayer.partyId)}
+          isMobile={isMobile}
         />
       )}
     </div>
