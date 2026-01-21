@@ -93,6 +93,42 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.13.0] - 2026-01-21
+
+### Added
+
+#### S3-Compatible Object Storage Support
+Optional S3-compatible storage backend for uploaded files, supporting MinIO, AWS S3, Backblaze B2, and Cloudflare R2.
+
+**Features:**
+- Storage abstraction layer (`server/storage.js`) supporting local filesystem or S3
+- Automatic fallback to local storage if S3 credentials are missing
+- Presigned URL endpoint (`POST /api/uploads/presign`) for direct browser-to-S3 uploads
+- Support for large media files up to 5GB (configurable via `S3_MAX_FILE_SIZE_MB`)
+- Public URL configuration for CDN integration (`S3_PUBLIC_URL`)
+
+**Configuration:**
+```bash
+STORAGE_PROVIDER=s3              # 'local' (default) or 's3'
+S3_ENDPOINT=http://localhost:9000
+S3_BUCKET=cortex-media
+S3_ACCESS_KEY=your-access-key
+S3_SECRET_KEY=your-secret-key
+S3_REGION=us-east-1
+S3_PUBLIC_URL=https://cdn.example.com  # Optional CDN URL
+S3_MAX_FILE_SIZE_MB=5000               # Default 5GB
+```
+
+**Updated Endpoints:**
+- Avatar uploads now use storage abstraction
+- Message image uploads now use storage abstraction
+- Media (audio/video) uploads now use storage abstraction
+- New presigned URL endpoint for large direct uploads
+
+**Dependencies Added:**
+- `@aws-sdk/client-s3` - AWS SDK S3 client
+- `@aws-sdk/s3-request-presigner` - Presigned URL generation
+
 ## [2.12.0] - 2026-01-20
 
 ### Changed

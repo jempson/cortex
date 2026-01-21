@@ -22,6 +22,7 @@ import QRCode from 'qrcode';
 import ffmpeg from 'fluent-ffmpeg';
 import { DatabaseSQLite } from './database-sqlite.js';
 import { getEmailService } from './email-service.js';
+import { storage } from './storage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -5552,29 +5553,28 @@ app.post('/api/profile/avatar', authenticateToken, (req, res, next) => {
 
     // Generate unique filename
     const filename = `${user.id}-${Date.now()}.webp`;
-    const filepath = path.join(AVATARS_DIR, filename);
+    const storageKey = `avatars/${filename}`;
 
     // Process image with sharp: resize to 256x256, convert to webp, strip metadata
-    await sharp(req.file.buffer)
+    const processedBuffer = await sharp(req.file.buffer)
       .resize(256, 256, { fit: 'cover', position: 'center' })
       .webp({ quality: 85 })
-      .toFile(filepath);
+      .toBuffer();
 
-    // Delete old avatar if exists (with path traversal protection)
+    // Upload to storage (local or S3)
+    const avatarUrl = await storage.upload(processedBuffer, storageKey, 'image/webp');
+
+    // Delete old avatar if exists
     if (user.avatarUrl) {
       const oldFilename = path.basename(user.avatarUrl);
       if (isValidAvatarFilename(oldFilename)) {
-        const oldFilepath = path.join(AVATARS_DIR, oldFilename);
-        if (fs.existsSync(oldFilepath)) {
-          fs.unlinkSync(oldFilepath);
-        }
+        await storage.delete(`avatars/${oldFilename}`);
       } else {
         console.warn(`Invalid avatar filename format, skipping deletion: ${oldFilename}`);
       }
     }
 
     // Update user with new avatar URL
-    const avatarUrl = `/uploads/avatars/${filename}`;
     db.updateUser(user.id, { avatarUrl });
 
     res.json({ success: true, avatarUrl });
@@ -5585,7 +5585,7 @@ app.post('/api/profile/avatar', authenticateToken, (req, res, next) => {
 });
 
 // Delete profile avatar image
-app.delete('/api/profile/avatar', authenticateToken, (req, res) => {
+app.delete('/api/profile/avatar', authenticateToken, async (req, res) => {
   try {
     const user = db.findUserById(req.user.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -5594,10 +5594,7 @@ app.delete('/api/profile/avatar', authenticateToken, (req, res) => {
       // Delete the file (with path traversal protection)
       const filename = path.basename(user.avatarUrl);
       if (isValidAvatarFilename(filename)) {
-        const filepath = path.join(AVATARS_DIR, filename);
-        if (fs.existsSync(filepath)) {
-          fs.unlinkSync(filepath);
-        }
+        await storage.delete(`avatars/${filename}`);
       } else {
         console.warn(`Invalid avatar filename format, skipping deletion: ${filename}`);
       }
@@ -5638,30 +5635,33 @@ app.post('/api/uploads', authenticateToken, (req, res, next) => {
     const timestamp = Date.now();
     const ext = req.file.mimetype === 'image/gif' ? 'gif' : 'webp';
     const filename = `${user.id}-${timestamp}.${ext}`;
-    const filepath = path.join(MESSAGES_DIR, filename);
+    const storageKey = `messages/${filename}`;
+    const contentType = req.file.mimetype === 'image/gif' ? 'image/gif' : 'image/webp';
 
     // Process image with sharp
     // For GIFs, preserve animation; for others, resize and convert to webp
+    let processedBuffer;
     if (req.file.mimetype === 'image/gif') {
       // Keep GIF as-is to preserve animation, just resize if too large
       const metadata = await sharp(req.file.buffer).metadata();
       if (metadata.width > 1200 || metadata.height > 1200) {
-        await sharp(req.file.buffer, { animated: true })
+        processedBuffer = await sharp(req.file.buffer, { animated: true })
           .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
-          .toFile(filepath);
+          .toBuffer();
       } else {
-        // Save as-is
-        fs.writeFileSync(filepath, req.file.buffer);
+        // Use as-is
+        processedBuffer = req.file.buffer;
       }
     } else {
       // Convert to webp, resize if needed, strip metadata
-      await sharp(req.file.buffer)
+      processedBuffer = await sharp(req.file.buffer)
         .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
         .webp({ quality: 85 })
-        .toFile(filepath);
+        .toBuffer();
     }
 
-    const imageUrl = `/uploads/messages/${filename}`;
+    // Upload to storage (local or S3)
+    const imageUrl = await storage.upload(processedBuffer, storageKey, contentType);
     console.log(`📷 Image uploaded by ${user.handle}: ${imageUrl}`);
 
     res.json({ success: true, url: imageUrl });
@@ -5754,7 +5754,17 @@ app.post('/api/uploads/media', authenticateToken, (req, res, next) => {
       });
 
       const outputStats = fs.statSync(outputFilepath);
-      const mediaUrl = `/api/media/${outputFilename}`;
+
+      // Upload to storage (local keeps file in place, S3 uploads then cleans up)
+      let mediaUrl;
+      if (storage.isS3Enabled()) {
+        const videoBuffer = fs.readFileSync(outputFilepath);
+        mediaUrl = await storage.upload(videoBuffer, `media/${outputFilename}`, 'video/mp4');
+        // Clean up local transcoded file after S3 upload
+        try { fs.unlinkSync(outputFilepath); } catch (e) {}
+      } else {
+        mediaUrl = `/api/media/${outputFilename}`;
+      }
 
       console.log(`🎬 Video transcoded by ${user.handle}: ${mediaUrl} (${Math.round(outputStats.size / 1024)}KB)`);
 
@@ -5767,7 +5777,7 @@ app.post('/api/uploads/media', authenticateToken, (req, res, next) => {
       });
     }
 
-    // For audio files, save directly (no transcoding needed)
+    // For audio files, upload directly (no transcoding needed)
     const mimeToExt = {
       'audio/webm': 'webm',
       'audio/mp4': 'm4a',
@@ -5777,11 +5787,9 @@ app.post('/api/uploads/media', authenticateToken, (req, res, next) => {
     };
     const ext = mimeToExt[req.file.mimetype] || 'webm';
     const filename = `${user.id}-${timestamp}.${ext}`;
-    const filepath = path.join(MEDIA_DIR, filename);
+    const storageKey = `media/${filename}`;
 
-    fs.writeFileSync(filepath, req.file.buffer);
-
-    const mediaUrl = `/api/media/${filename}`;
+    const mediaUrl = await storage.upload(req.file.buffer, storageKey, req.file.mimetype);
 
     console.log(`🎬 Audio uploaded by ${user.handle}: ${mediaUrl} (${Math.round(req.file.size / 1024)}KB)`);
 
@@ -5795,6 +5803,72 @@ app.post('/api/uploads/media', authenticateToken, (req, res, next) => {
   } catch (err) {
     console.error('Media upload error:', err);
     res.status(500).json({ error: err.message || 'Failed to upload media' });
+  }
+});
+
+// ============ Presigned Upload URL (v2.13.0) ============
+// Get a presigned URL for direct browser-to-S3 uploads of large files
+// This bypasses the server for large video uploads (Firefly episodes, etc.)
+app.post('/api/uploads/presign', authenticateToken, async (req, res) => {
+  try {
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Check if S3 storage is enabled
+    if (!storage.isS3Enabled()) {
+      return res.status(400).json({
+        error: 'Direct uploads not available',
+        message: 'S3 storage is not configured. Use standard upload endpoint.'
+      });
+    }
+
+    const { filename, contentType, size } = req.body;
+
+    if (!filename || !contentType) {
+      return res.status(400).json({ error: 'filename and contentType are required' });
+    }
+
+    // Validate content type (video/audio only for large uploads)
+    const allowedTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska',
+                          'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/webm', 'audio/wav'];
+    if (!allowedTypes.includes(contentType)) {
+      return res.status(400).json({ error: 'Invalid content type for direct upload' });
+    }
+
+    // Get size limits from env (default 5GB for S3, or override via S3_MAX_FILE_SIZE_MB)
+    const maxSizeMB = parseInt(process.env.S3_MAX_FILE_SIZE_MB) || 5000;
+    const maxSizeBytes = maxSizeMB * 1024 * 1024;
+
+    if (size && size > maxSizeBytes) {
+      return res.status(400).json({
+        error: `File too large. Maximum size is ${maxSizeMB}MB`
+      });
+    }
+
+    // Generate storage key with user ID prefix for organization
+    const timestamp = Date.now();
+    const safeFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const storageKey = `media/${user.id}-${timestamp}-${safeFilename}`;
+
+    // Get presigned URL from storage provider
+    const presigned = await storage.getPresignedUploadUrl(storageKey, contentType);
+
+    if (!presigned) {
+      return res.status(500).json({ error: 'Failed to generate presigned URL' });
+    }
+
+    console.log(`🔗 Presigned upload URL generated for ${user.handle}: ${storageKey}`);
+
+    res.json({
+      success: true,
+      uploadUrl: presigned.uploadUrl,
+      publicUrl: presigned.publicUrl,
+      key: presigned.key,
+      expiresIn: 3600 // 1 hour
+    });
+  } catch (err) {
+    console.error('Presign error:', err);
+    res.status(500).json({ error: 'Failed to generate upload URL' });
   }
 });
 
