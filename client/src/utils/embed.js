@@ -10,6 +10,7 @@ export const EMBED_PLATFORMS = {
   soundcloud: { icon: '☁', color: '#ff5500', name: 'SoundCloud' },
   tenor: { icon: '🎬', color: '#5856d6', name: 'Tenor' },
   giphy: { icon: '🎬', color: '#00ff99', name: 'GIPHY' },
+  jellyfin: { icon: '🎬', color: '#a86ce8', name: 'Jellyfin' },
 };
 
 // URL patterns for detecting embeddable content (mirrors server)
@@ -57,6 +58,27 @@ export function detectEmbedUrls(text) {
   let imgMatch;
   while ((imgMatch = imgSrcRegex.exec(text)) !== null) {
     alreadyEmbeddedImages.add(imgMatch[1]);
+  }
+
+  // Detect Jellyfin cortex:// URLs (v2.14.0)
+  const jellyfinRegex = /cortex:\/\/jellyfin\/([a-zA-Z0-9-]+)\/([a-zA-Z0-9]+)(\?[^\s<>"]*)?/gi;
+  let jellyfinMatch;
+  while ((jellyfinMatch = jellyfinRegex.exec(text)) !== null) {
+    const fullUrl = jellyfinMatch[0];
+    if (!seenUrls.has(fullUrl)) {
+      const params = new URLSearchParams(jellyfinMatch[3]?.substring(1) || '');
+      embeds.push({
+        platform: 'jellyfin',
+        url: fullUrl,
+        connectionId: jellyfinMatch[1],
+        itemId: jellyfinMatch[2],
+        name: params.get('name') || 'Unknown Media',
+        type: params.get('type') || 'Video',
+        duration: params.get('duration') ? parseInt(params.get('duration'), 10) : null,
+        overview: params.get('overview') || null,
+      });
+      seenUrls.add(fullUrl);
+    }
   }
 
   // Find all URLs in the text (including those in <a> tags - we want to embed videos)

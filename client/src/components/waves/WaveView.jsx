@@ -18,9 +18,12 @@ import InviteToWaveModal from './InviteToWaveModal.jsx';
 import InviteFederatedModal from './InviteFederatedModal.jsx';
 import MediaRecorder from '../media/MediaRecorder.jsx';
 import CameraCapture from '../media/CameraCapture.jsx';
+import JellyfinBrowserModal from '../media/JellyfinBrowserModal.jsx';
+import { createJellyfinUrl } from '../media/JellyfinEmbed.jsx';
+import WatchPartyBanner from '../media/WatchPartyBanner.jsx';
 import { storage } from '../../utils/storage.js';
 
-const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusPing, onNavigateToWave, scrollToMessageId, onScrollToMessageComplete, federationEnabled }) => {
+const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWaveUpdate, isMobile, sendWSMessage, typingUsers, reloadTrigger, contacts, contactRequests, sentContactRequests, onRequestsChange, onContactsChange, blockedUsers, mutedUsers, onBlockUser, onUnblockUser, onMuteUser, onUnmuteUser, onBlockedMutedChange, onShowProfile, onFocusPing, onNavigateToWave, scrollToMessageId, onScrollToMessageComplete, federationEnabled, activeWatchParty, onJoinWatchParty, onLeaveWatchParty, onOpenWatchParty, onWatchPartiesChange }) => {
   // E2EE context
   const e2ee = useE2EE();
 
@@ -73,6 +76,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [uploadingMedia, setUploadingMedia] = useState(false); // Media upload in progress
   const [mediaUploadStatus, setMediaUploadStatus] = useState(''); // Status message during upload
   const [showCameraCapture, setShowCameraCapture] = useState(false); // Camera capture for image upload (v2.7.0)
+  const [showJellyfinBrowser, setShowJellyfinBrowser] = useState(false); // Jellyfin media browser (v2.14.0)
+  const [jellyfinConnections, setJellyfinConnections] = useState([]); // User's Jellyfin connections
 
   // E2EE Migration state
   const [encryptionStatus, setEncryptionStatus] = useState(null); // { state, progress, participantsWithE2EE, totalParticipants }
@@ -97,6 +102,20 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   }, [wave?.id, showCallModal, voiceCall]);
 
   // Note: Call status polling is handled by useVoiceCall hook when waveId is provided
+
+  // Load Jellyfin connections (v2.14.0)
+  useEffect(() => {
+    const loadJellyfinConnections = async () => {
+      try {
+        const data = await fetchAPI('/jellyfin/connections');
+        setJellyfinConnections(data.connections || []);
+      } catch (err) {
+        // Silently fail - user may not have Jellyfin feature enabled
+        console.debug('Jellyfin connections not available:', err.message);
+      }
+    };
+    loadJellyfinConnections();
+  }, [fetchAPI]);
 
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -2085,6 +2104,17 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             isContinuing={isEncryptingBatch}
           />
         )}
+        {/* Watch Party Banner (v2.14.0) */}
+        {activeWatchParty && (
+          <WatchPartyBanner
+            party={activeWatchParty}
+            isHost={activeWatchParty.hostId === currentUser?.id}
+            onJoin={() => onJoinWatchParty?.(activeWatchParty.id)}
+            onLeave={() => onLeaveWatchParty?.(activeWatchParty.id)}
+            onOpen={() => onOpenWatchParty?.(activeWatchParty.id)}
+            isMobile={isMobile}
+          />
+        )}
         {/* Load Older Messages Button */}
         {hasMoreMessages && (
           <div style={{ textAlign: 'center', marginBottom: '16px' }}>
@@ -2534,6 +2564,26 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             >
               VID
             </button>
+            {/* Jellyfin media button (v2.14.0) */}
+            {jellyfinConnections.length > 0 && (
+              <button
+                onClick={() => setShowJellyfinBrowser(true)}
+                style={{
+                  padding: isMobile ? '8px 10px' : '8px 10px',
+                  minHeight: isMobile ? '38px' : '32px',
+                  background: showJellyfinBrowser ? 'var(--accent-purple)20' : 'transparent',
+                  border: `1px solid ${showJellyfinBrowser ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
+                  color: 'var(--accent-purple)',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.7rem' : '0.65rem',
+                  fontWeight: 700,
+                }}
+                title="Share Jellyfin Media"
+              >
+                JF
+              </button>
+            )}
           </div>
           {/* Spacer */}
           <div style={{ flex: 1 }} />
@@ -2596,6 +2646,29 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           }}
           fetchAPI={fetchAPI}
           isMobile={isMobile}
+        />
+      )}
+
+      {showJellyfinBrowser && (
+        <JellyfinBrowserModal
+          isOpen={showJellyfinBrowser}
+          onClose={() => setShowJellyfinBrowser(false)}
+          onSelect={(media) => {
+            // Create embed URL and add to message
+            const embedUrl = createJellyfinUrl({
+              connectionId: media.connectionId,
+              itemId: media.itemId,
+              name: media.name,
+              type: media.type,
+              duration: media.runTimeTicks,
+              overview: media.overview,
+            });
+            setNewMessage(prev => prev + (prev.trim() ? ' ' : '') + embedUrl);
+            setShowJellyfinBrowser(false);
+          }}
+          fetchAPI={fetchAPI}
+          isMobile={isMobile}
+          connections={jellyfinConnections}
         />
       )}
 

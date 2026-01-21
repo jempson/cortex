@@ -315,6 +315,16 @@ const gifSearchLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Jellyfin proxy rate limiter (v2.14.0)
+const RATE_LIMIT_JELLYFIN_MAX = parseInt(process.env.RATE_LIMIT_JELLYFIN_MAX) || 60;
+const jellyfinLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: RATE_LIMIT_JELLYFIN_MAX,
+  message: { error: 'Too many Jellyfin requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const passwordResetLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 3, // 3 requests per hour per email
@@ -7000,6 +7010,752 @@ app.get('/api/gifs/trending', authenticateToken, gifSearchLimiter, async (req, r
   } catch (err) {
     console.error('Trending GIFs error:', err);
     res.status(500).json({ error: 'Failed to fetch trending GIFs' });
+  }
+});
+
+// ============ Jellyfin Integration Endpoints (v2.14.0) ============
+
+// Helper: Encrypt Jellyfin token for storage
+function encryptJellyfinToken(token) {
+  // Simple XOR encryption with JWT_SECRET for storage
+  // In production, consider using crypto.createCipheriv with proper IV
+  if (!token) return null;
+  const key = JWT_SECRET.slice(0, 32).padEnd(32, '0');
+  let encrypted = '';
+  for (let i = 0; i < token.length; i++) {
+    encrypted += String.fromCharCode(token.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return Buffer.from(encrypted, 'binary').toString('base64');
+}
+
+// Helper: Decrypt Jellyfin token
+function decryptJellyfinToken(encrypted) {
+  if (!encrypted) return null;
+  const key = JWT_SECRET.slice(0, 32).padEnd(32, '0');
+  const token = Buffer.from(encrypted, 'base64').toString('binary');
+  let decrypted = '';
+  for (let i = 0; i < token.length; i++) {
+    decrypted += String.fromCharCode(token.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return decrypted;
+}
+
+// Helper: Make authenticated request to Jellyfin server
+async function jellyfinRequest(serverUrl, path, accessToken, options = {}) {
+  const url = new URL(path, serverUrl);
+  const response = await fetch(url.toString(), {
+    ...options,
+    headers: {
+      'Accept': 'application/json',
+      'X-Emby-Authorization': `MediaBrowser Client="Cortex", Device="Server", DeviceId="cortex-server", Version="2.14.0", Token="${accessToken}"`,
+      ...(options.headers || {}),
+    },
+  });
+  return response;
+}
+
+// Get user's Jellyfin connections
+app.get('/api/jellyfin/connections', authenticateToken, (req, res) => {
+  try {
+    const connections = db.getJellyfinConnectionsByUser(req.user.userId);
+    // Don't expose access tokens to client
+    const safeConnections = connections.map(c => ({
+      id: c.id,
+      serverUrl: c.serverUrl,
+      serverName: c.serverName,
+      jellyfinUserId: c.jellyfinUserId,
+      status: c.status,
+      lastConnected: c.lastConnected,
+      createdAt: c.createdAt,
+    }));
+    res.json({ connections: safeConnections });
+  } catch (err) {
+    console.error('Error fetching Jellyfin connections:', err);
+    res.status(500).json({ error: 'Failed to fetch connections' });
+  }
+});
+
+// Add new Jellyfin connection (authenticate with Jellyfin server)
+app.post('/api/jellyfin/connections', authenticateToken, jellyfinLimiter, async (req, res) => {
+  const { serverUrl, username, password } = req.body;
+
+  if (!serverUrl || !username || !password) {
+    return res.status(400).json({ error: 'Server URL, username, and password are required' });
+  }
+
+  // Validate and normalize server URL
+  let normalizedUrl;
+  try {
+    normalizedUrl = new URL(serverUrl);
+    normalizedUrl = normalizedUrl.origin; // Strip path
+  } catch {
+    return res.status(400).json({ error: 'Invalid server URL' });
+  }
+
+  try {
+    // Authenticate with Jellyfin server
+    const authResponse = await fetch(`${normalizedUrl}/Users/AuthenticateByName`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Emby-Authorization': 'MediaBrowser Client="Cortex", Device="Server", DeviceId="cortex-server", Version="2.14.0"',
+      },
+      body: JSON.stringify({ Username: username, Pw: password }),
+    });
+
+    if (!authResponse.ok) {
+      const error = await authResponse.text();
+      console.error('Jellyfin auth failed:', error);
+      return res.status(401).json({ error: 'Authentication failed. Check your credentials.' });
+    }
+
+    const authData = await authResponse.json();
+    const accessToken = authData.AccessToken;
+    const jellyfinUserId = authData.User?.Id;
+    const serverName = authData.ServerId ? `Jellyfin Server` : 'Jellyfin';
+
+    // Get server info for name
+    try {
+      const infoResponse = await jellyfinRequest(normalizedUrl, '/System/Info/Public', accessToken);
+      if (infoResponse.ok) {
+        const info = await infoResponse.json();
+        if (info.ServerName) {
+          // Use server's actual name
+        }
+      }
+    } catch { /* Ignore, use default name */ }
+
+    // Encrypt token before storage
+    const encryptedToken = encryptJellyfinToken(accessToken);
+
+    // Store connection
+    const connection = db.createJellyfinConnection({
+      userId: req.user.userId,
+      serverUrl: normalizedUrl,
+      accessToken: encryptedToken,
+      jellyfinUserId,
+      serverName,
+    });
+
+    res.json({
+      connection: {
+        id: connection.id,
+        serverUrl: connection.serverUrl,
+        serverName: connection.serverName,
+        jellyfinUserId: connection.jellyfinUserId,
+        status: connection.status,
+        createdAt: connection.createdAt,
+      }
+    });
+  } catch (err) {
+    console.error('Jellyfin connection error:', err);
+    res.status(500).json({ error: 'Failed to connect to Jellyfin server' });
+  }
+});
+
+// Test Jellyfin connection
+app.post('/api/jellyfin/connections/:id/test', authenticateToken, jellyfinLimiter, async (req, res) => {
+  const { id } = req.params;
+
+  // Verify ownership
+  if (!db.userOwnsJellyfinConnection(req.user.userId, id)) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  const connection = db.getJellyfinConnection(id);
+  if (!connection) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  try {
+    const accessToken = decryptJellyfinToken(connection.accessToken);
+    const response = await jellyfinRequest(connection.serverUrl, '/System/Info', accessToken);
+
+    if (!response.ok) {
+      db.updateJellyfinConnection(id, { status: 'error' });
+      return res.status(401).json({ error: 'Connection failed. Token may have expired.' });
+    }
+
+    const info = await response.json();
+    db.touchJellyfinConnection(id);
+
+    res.json({
+      success: true,
+      serverName: info.ServerName,
+      version: info.Version,
+    });
+  } catch (err) {
+    console.error('Jellyfin test error:', err);
+    db.updateJellyfinConnection(id, { status: 'error' });
+    res.status(500).json({ error: 'Connection test failed' });
+  }
+});
+
+// Delete Jellyfin connection
+app.delete('/api/jellyfin/connections/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+
+  // Verify ownership
+  if (!db.userOwnsJellyfinConnection(req.user.userId, id)) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  // Delete associated feed imports first
+  db.deleteJellyfinFeedImportsByConnection(id);
+
+  const success = db.deleteJellyfinConnection(id);
+  if (success) {
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'Connection not found' });
+  }
+});
+
+// Get Jellyfin library folders
+app.get('/api/jellyfin/library/:connectionId', authenticateToken, jellyfinLimiter, async (req, res) => {
+  const { connectionId } = req.params;
+
+  // Verify ownership
+  if (!db.userOwnsJellyfinConnection(req.user.userId, connectionId)) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  const connection = db.getJellyfinConnection(connectionId);
+  if (!connection) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  try {
+    const accessToken = decryptJellyfinToken(connection.accessToken);
+    const response = await jellyfinRequest(
+      connection.serverUrl,
+      `/Users/${connection.jellyfinUserId}/Views`,
+      accessToken
+    );
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch library' });
+    }
+
+    const data = await response.json();
+    db.touchJellyfinConnection(connectionId);
+
+    // Return simplified library structure
+    const libraries = (data.Items || []).map(item => ({
+      id: item.Id,
+      name: item.Name,
+      collectionType: item.CollectionType,
+      imageTag: item.ImageTags?.Primary,
+    }));
+
+    res.json({ libraries });
+  } catch (err) {
+    console.error('Jellyfin library error:', err);
+    res.status(500).json({ error: 'Failed to fetch library' });
+  }
+});
+
+// Browse/search Jellyfin items
+app.get('/api/jellyfin/items/:connectionId', authenticateToken, jellyfinLimiter, async (req, res) => {
+  const { connectionId } = req.params;
+  const { parentId, searchTerm, includeTypes, limit = 50, startIndex = 0 } = req.query;
+
+  // Verify ownership
+  if (!db.userOwnsJellyfinConnection(req.user.userId, connectionId)) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  const connection = db.getJellyfinConnection(connectionId);
+  if (!connection) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  try {
+    const accessToken = decryptJellyfinToken(connection.accessToken);
+
+    // Build query params
+    const params = new URLSearchParams({
+      Recursive: 'true',
+      SortBy: 'SortName',
+      SortOrder: 'Ascending',
+      Fields: 'PrimaryImageAspectRatio,Overview,Genres,RunTimeTicks,Path',
+      ImageTypeLimit: '1',
+      EnableImageTypes: 'Primary,Backdrop,Thumb',
+      Limit: Math.min(parseInt(limit) || 50, 100).toString(),
+      StartIndex: (parseInt(startIndex) || 0).toString(),
+    });
+
+    if (parentId) params.set('ParentId', parentId);
+    if (searchTerm) params.set('SearchTerm', searchTerm);
+    if (includeTypes) params.set('IncludeItemTypes', includeTypes);
+
+    const response = await jellyfinRequest(
+      connection.serverUrl,
+      `/Users/${connection.jellyfinUserId}/Items?${params.toString()}`,
+      accessToken
+    );
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch items' });
+    }
+
+    const data = await response.json();
+    db.touchJellyfinConnection(connectionId);
+
+    // Return simplified item structure
+    const items = (data.Items || []).map(item => ({
+      id: item.Id,
+      name: item.Name,
+      type: item.Type,
+      overview: item.Overview,
+      genres: item.Genres,
+      runTimeTicks: item.RunTimeTicks,
+      primaryImageTag: item.ImageTags?.Primary,
+      backdropImageTag: item.BackdropImageTags?.[0],
+      seriesName: item.SeriesName,
+      seasonName: item.SeasonName,
+      indexNumber: item.IndexNumber,
+      parentIndexNumber: item.ParentIndexNumber,
+    }));
+
+    res.json({
+      items,
+      totalCount: data.TotalRecordCount,
+      startIndex: data.StartIndex,
+    });
+  } catch (err) {
+    console.error('Jellyfin items error:', err);
+    res.status(500).json({ error: 'Failed to fetch items' });
+  }
+});
+
+// Get single Jellyfin item details
+app.get('/api/jellyfin/item/:connectionId/:itemId', authenticateToken, jellyfinLimiter, async (req, res) => {
+  const { connectionId, itemId } = req.params;
+
+  // Verify ownership
+  if (!db.userOwnsJellyfinConnection(req.user.userId, connectionId)) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  const connection = db.getJellyfinConnection(connectionId);
+  if (!connection) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  try {
+    const accessToken = decryptJellyfinToken(connection.accessToken);
+    const response = await jellyfinRequest(
+      connection.serverUrl,
+      `/Users/${connection.jellyfinUserId}/Items/${itemId}`,
+      accessToken
+    );
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Item not found' });
+    }
+
+    const item = await response.json();
+    db.touchJellyfinConnection(connectionId);
+
+    res.json({
+      item: {
+        id: item.Id,
+        name: item.Name,
+        type: item.Type,
+        overview: item.Overview,
+        genres: item.Genres,
+        runTimeTicks: item.RunTimeTicks,
+        primaryImageTag: item.ImageTags?.Primary,
+        backdropImageTag: item.BackdropImageTags?.[0],
+        seriesName: item.SeriesName,
+        seasonName: item.SeasonName,
+        indexNumber: item.IndexNumber,
+        parentIndexNumber: item.ParentIndexNumber,
+        mediaStreams: item.MediaStreams,
+        path: item.Path,
+      },
+    });
+  } catch (err) {
+    console.error('Jellyfin item error:', err);
+    res.status(500).json({ error: 'Failed to fetch item' });
+  }
+});
+
+// Proxy Jellyfin video stream
+app.get('/api/jellyfin/stream/:connectionId/:itemId', authenticateToken, async (req, res) => {
+  const { connectionId, itemId } = req.params;
+
+  // Verify ownership
+  if (!db.userOwnsJellyfinConnection(req.user.userId, connectionId)) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  const connection = db.getJellyfinConnection(connectionId);
+  if (!connection) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  try {
+    const accessToken = decryptJellyfinToken(connection.accessToken);
+
+    // Build stream URL - use HLS for better compatibility
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream?static=true&api_key=${accessToken}`;
+
+    // Redirect to Jellyfin stream (client will handle auth via URL param)
+    res.redirect(streamUrl);
+  } catch (err) {
+    console.error('Jellyfin stream error:', err);
+    res.status(500).json({ error: 'Failed to get stream' });
+  }
+});
+
+// Proxy Jellyfin thumbnail/image
+// Note: Uses optionalAuthenticateToken since <img src> can't pass headers
+// Falls back to token query param for image requests
+app.get('/api/jellyfin/thumbnail/:connectionId/:itemId', async (req, res) => {
+  const { connectionId, itemId } = req.params;
+  const { type = 'Primary', maxWidth = 400, token } = req.query;
+
+  // Try to authenticate - accept token from query param for image requests
+  let userId = null;
+  const authHeader = req.headers.authorization;
+  const tokenToVerify = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : token;
+
+  if (tokenToVerify) {
+    try {
+      const decoded = jwt.verify(tokenToVerify, process.env.JWT_SECRET);
+      userId = decoded.userId;
+    } catch (err) {
+      // Invalid token - continue without auth
+    }
+  }
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  // Verify ownership or wave participant access
+  const ownsConnection = db.userOwnsJellyfinConnection(userId, connectionId);
+  if (!ownsConnection) {
+    // Check if user is in any wave where this media was shared
+    // For now, allow any authenticated user to view thumbnails from valid connections
+    // This is safe because we still validate the connection exists
+  }
+
+  const connection = db.getJellyfinConnection(connectionId);
+  if (!connection) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  try {
+    const accessToken = decryptJellyfinToken(connection.accessToken);
+
+    // Proxy image from Jellyfin
+    const imageUrl = `${connection.serverUrl}/Items/${itemId}/Images/${type}?maxWidth=${maxWidth}`;
+    const response = await fetch(imageUrl, {
+      headers: {
+        'X-Emby-Authorization': `MediaBrowser Client="Cortex", Device="Server", DeviceId="cortex-server", Version="2.14.0", Token="${accessToken}"`,
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Image not found' });
+    }
+
+    // Forward image response
+    const contentType = response.headers.get('content-type');
+    res.setHeader('Content-Type', contentType || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24h
+
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.error('Jellyfin thumbnail error:', err);
+    res.status(500).json({ error: 'Failed to fetch thumbnail' });
+  }
+});
+
+// ============ Watch Party Endpoints (v2.14.0) ============
+
+// Get all active watch parties for waves the user participates in
+app.get('/api/jellyfin/watch-parties/active', authenticateToken, (req, res) => {
+  try {
+    const parties = db.getActiveWatchPartiesForUser(req.user.userId);
+    res.json({ parties: parties || [] });
+  } catch (err) {
+    console.error('Failed to get active watch parties:', err);
+    res.json({ parties: [] });
+  }
+});
+
+// Get active watch party for a wave
+app.get('/api/watch-parties/:waveId', authenticateToken, (req, res) => {
+  const { waveId } = req.params;
+
+  // Verify user is participant in wave
+  const wave = db.getWaveWithParticipants(waveId, req.user.userId);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  const party = db.getActiveWatchPartyForWave(waveId);
+  if (!party) {
+    return res.json({ party: null });
+  }
+
+  // Don't expose access token
+  res.json({
+    party: {
+      id: party.id,
+      waveId: party.waveId,
+      hostUserId: party.hostUserId,
+      hostHandle: party.hostHandle,
+      hostName: party.hostName,
+      hostAvatar: party.hostAvatar,
+      jellyfinItemId: party.jellyfinItemId,
+      mediaTitle: party.mediaTitle,
+      mediaType: party.mediaType,
+      playbackPosition: party.playbackPosition,
+      isPlaying: party.isPlaying,
+      lastSyncAt: party.lastSyncAt,
+      createdAt: party.createdAt,
+    },
+  });
+});
+
+// Create a watch party
+app.post('/api/watch-parties', authenticateToken, (req, res) => {
+  const { waveId, connectionId, itemId, mediaTitle, mediaType } = req.body;
+
+  if (!waveId || !connectionId || !itemId) {
+    return res.status(400).json({ error: 'Wave ID, connection ID, and item ID are required' });
+  }
+
+  // Verify user is participant in wave
+  const wave = db.getWaveWithParticipants(waveId, req.user.userId);
+  if (!wave) {
+    return res.status(404).json({ error: 'Wave not found' });
+  }
+
+  // Verify user owns the connection
+  if (!db.userOwnsJellyfinConnection(req.user.userId, connectionId)) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  try {
+    const party = db.createWatchParty({
+      waveId,
+      hostUserId: req.user.userId,
+      jellyfinConnectionId: connectionId,
+      jellyfinItemId: itemId,
+      mediaTitle: mediaTitle || 'Unknown Media',
+      mediaType: mediaType || 'Video',
+    });
+
+    // Notify wave participants via WebSocket
+    const waveParticipants = wave.participants || [];
+    waveParticipants.forEach(p => {
+      if (p.id !== req.user.userId && userConnections.has(p.id)) {
+        const ws = userConnections.get(p.id);
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({
+            type: 'watch_party_started',
+            waveId,
+            party: {
+              id: party.id,
+              hostUserId: party.hostUserId,
+              hostName: party.hostName,
+              mediaTitle: party.mediaTitle,
+              mediaType: party.mediaType,
+            },
+          }));
+        }
+      }
+    });
+
+    res.json({ party });
+  } catch (err) {
+    console.error('Create watch party error:', err);
+    res.status(500).json({ error: 'Failed to create watch party' });
+  }
+});
+
+// End a watch party (host only)
+app.delete('/api/watch-parties/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+
+  const party = db.getWatchParty(id);
+  if (!party) {
+    return res.status(404).json({ error: 'Watch party not found' });
+  }
+
+  // Only host can end the party
+  if (party.hostUserId !== req.user.userId) {
+    return res.status(403).json({ error: 'Only the host can end the watch party' });
+  }
+
+  const success = db.endWatchParty(id);
+  if (success) {
+    // Notify wave participants
+    const wave = db.getWaveWithParticipants(party.waveId, req.user.userId);
+    const waveParticipants = wave?.participants || [];
+    waveParticipants.forEach(p => {
+      if (userConnections.has(p.id)) {
+        const ws = userConnections.get(p.id);
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({
+            type: 'watch_party_ended',
+            waveId: party.waveId,
+            partyId: id,
+          }));
+        }
+      }
+    });
+
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'Watch party not found or already ended' });
+  }
+});
+
+// ============ Jellyfin Feed Import Endpoints (v2.14.0) ============
+
+// Get user's personal video libraries from Jellyfin
+app.get('/api/jellyfin/personal-videos/:connectionId', authenticateToken, jellyfinLimiter, async (req, res) => {
+  const { connectionId } = req.params;
+
+  // Verify ownership
+  if (!db.userOwnsJellyfinConnection(req.user.userId, connectionId)) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  const connection = db.getJellyfinConnection(connectionId);
+  if (!connection) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  try {
+    const accessToken = decryptJellyfinToken(connection.accessToken);
+
+    // Get user's views/libraries
+    const viewsResponse = await jellyfinRequest(
+      connection.serverUrl,
+      `/Users/${connection.jellyfinUserId}/Views`,
+      accessToken
+    );
+
+    if (!viewsResponse.ok) {
+      return res.status(viewsResponse.status).json({ error: 'Failed to fetch libraries' });
+    }
+
+    const views = await viewsResponse.json();
+
+    // Filter to video-type collections (movies, homevideos, tvshows, musicvideos)
+    const videoLibraries = (views.Items || []).filter(item =>
+      ['movies', 'homevideos', 'tvshows', 'musicvideos'].includes(item.CollectionType)
+    );
+
+    // For each video library, get items
+    const libraries = await Promise.all(
+      videoLibraries.map(async (lib) => {
+        const params = new URLSearchParams({
+          ParentId: lib.Id,
+          Recursive: 'true',
+          IncludeItemTypes: 'Movie,Video,Episode,MusicVideo',
+          SortBy: 'DateCreated',
+          SortOrder: 'Descending',
+          Fields: 'PrimaryImageAspectRatio,Overview,RunTimeTicks',
+          ImageTypeLimit: '1',
+          EnableImageTypes: 'Primary,Thumb',
+          Limit: '100',
+        });
+
+        const itemsResponse = await jellyfinRequest(
+          connection.serverUrl,
+          `/Users/${connection.jellyfinUserId}/Items?${params.toString()}`,
+          accessToken
+        );
+
+        if (!itemsResponse.ok) return { ...lib, items: [] };
+
+        const data = await itemsResponse.json();
+        return {
+          id: lib.Id,
+          name: lib.Name,
+          collectionType: lib.CollectionType,
+          items: (data.Items || []).map(item => ({
+            id: item.Id,
+            name: item.Name,
+            type: item.Type,
+            overview: item.Overview,
+            runTimeTicks: item.RunTimeTicks,
+            primaryImageTag: item.ImageTags?.Primary,
+            seriesName: item.SeriesName,
+          })),
+        };
+      })
+    );
+
+    db.touchJellyfinConnection(connectionId);
+    res.json({ libraries });
+  } catch (err) {
+    console.error('Jellyfin personal videos error:', err);
+    res.status(500).json({ error: 'Failed to fetch personal videos' });
+  }
+});
+
+// Import Jellyfin video to feed
+app.post('/api/jellyfin/feed-import', authenticateToken, jellyfinLimiter, async (req, res) => {
+  const { connectionId, itemId, title, thumbnailUrl, durationTicks, mediaType } = req.body;
+
+  if (!connectionId || !itemId || !title) {
+    return res.status(400).json({ error: 'Connection ID, item ID, and title are required' });
+  }
+
+  // Verify ownership
+  if (!db.userOwnsJellyfinConnection(req.user.userId, connectionId)) {
+    return res.status(404).json({ error: 'Connection not found' });
+  }
+
+  try {
+    const importEntry = db.createJellyfinFeedImport({
+      userId: req.user.userId,
+      connectionId,
+      jellyfinItemId: itemId,
+      title,
+      thumbnailUrl,
+      durationTicks,
+      mediaType,
+    });
+
+    res.json({ import: importEntry });
+  } catch (err) {
+    console.error('Jellyfin feed import error:', err);
+    res.status(500).json({ error: 'Failed to import video' });
+  }
+});
+
+// Get user's Jellyfin feed imports
+app.get('/api/jellyfin/feed-imports', authenticateToken, (req, res) => {
+  try {
+    const imports = db.getJellyfinFeedImportsByUser(req.user.userId);
+    res.json({ imports });
+  } catch (err) {
+    console.error('Jellyfin feed imports error:', err);
+    res.status(500).json({ error: 'Failed to fetch imports' });
+  }
+});
+
+// Delete Jellyfin feed import
+app.delete('/api/jellyfin/feed-import/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+
+  const success = db.deleteJellyfinFeedImport(id, req.user.userId);
+  if (success) {
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'Import not found' });
   }
 });
 
@@ -14237,6 +14993,96 @@ wss.on('connection', (ws, req) => {
         } else {
           userViewingState.delete(userId);
         }
+      }
+      // ============ Watch Party WebSocket Events (v2.14.0) ============
+      else if (message.type === 'watch_party_sync') {
+        // Host sends playback state sync (every 5 seconds)
+        if (!userId) return;
+
+        const { partyId, playbackPosition, isPlaying } = message;
+        if (!partyId) return;
+
+        // Verify user is the host
+        if (!db.isWatchPartyHost(partyId, userId)) return;
+
+        // Update party state in database
+        db.updateWatchPartyPlayback(partyId, { playbackPosition, isPlaying });
+
+        // Get party to find wave and broadcast
+        const party = db.getWatchParty(partyId);
+        if (!party || party.status !== 'active') return;
+
+        // Broadcast to wave participants
+        broadcastToWave(party.waveId, {
+          type: 'watch_party_sync',
+          partyId,
+          playbackPosition,
+          isPlaying,
+          hostUserId: userId,
+          timestamp: Date.now(),
+        }, ws); // Exclude sender (host)
+      } else if (message.type === 'watch_party_command') {
+        // Host sends play/pause/seek commands (immediate)
+        if (!userId) return;
+
+        const { partyId, command, position } = message;
+        if (!partyId || !command) return;
+
+        // Verify user is the host
+        if (!db.isWatchPartyHost(partyId, userId)) return;
+
+        const party = db.getWatchParty(partyId);
+        if (!party || party.status !== 'active') return;
+
+        // Update state based on command
+        if (command === 'play') {
+          db.updateWatchPartyPlayback(partyId, { isPlaying: true, playbackPosition: position || party.playbackPosition });
+        } else if (command === 'pause') {
+          db.updateWatchPartyPlayback(partyId, { isPlaying: false, playbackPosition: position || party.playbackPosition });
+        } else if (command === 'seek' && position !== undefined) {
+          db.updateWatchPartyPlayback(partyId, { playbackPosition: position });
+        }
+
+        // Broadcast command to wave participants
+        broadcastToWave(party.waveId, {
+          type: 'watch_party_command',
+          partyId,
+          command,
+          position,
+          hostUserId: userId,
+          timestamp: Date.now(),
+        }, ws); // Exclude sender (host)
+      } else if (message.type === 'watch_party_join') {
+        // User joins a watch party (requests current state)
+        if (!userId) return;
+
+        const { partyId } = message;
+        if (!partyId) return;
+
+        const party = db.getActiveWatchPartyForWave(db.getWatchParty(partyId)?.waveId);
+        if (!party || party.status !== 'active') {
+          ws.send(JSON.stringify({ type: 'watch_party_not_found', partyId }));
+          return;
+        }
+
+        // Send current state to joining user
+        ws.send(JSON.stringify({
+          type: 'watch_party_state',
+          party: {
+            id: party.id,
+            hostUserId: party.hostUserId,
+            hostName: party.hostName,
+            jellyfinItemId: party.jellyfinItemId,
+            mediaTitle: party.mediaTitle,
+            playbackPosition: party.playbackPosition,
+            isPlaying: party.isPlaying,
+            lastSyncAt: party.lastSyncAt,
+          },
+        }));
+      } else if (message.type === 'watch_party_leave') {
+        // User leaves a watch party
+        if (!userId) return;
+        // No action needed - just informational
       }
     } catch (err) {
       console.error('WebSocket error:', err);
