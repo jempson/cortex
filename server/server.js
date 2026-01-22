@@ -7452,6 +7452,7 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
       const decoded = jwt.verify(tokenToVerify, process.env.JWT_SECRET);
       userId = decoded.userId;
     } catch (err) {
+      console.error('Jellyfin stream JWT error:', err.message);
       return res.status(401).json({ error: 'Invalid token' });
     }
   }
@@ -7539,7 +7540,7 @@ app.get('/api/jellyfin/thumbnail/:connectionId/:itemId', async (req, res) => {
       const decoded = jwt.verify(tokenToVerify, process.env.JWT_SECRET);
       userId = decoded.userId;
     } catch (err) {
-      // Invalid token - continue without auth
+      console.error('Jellyfin thumbnail JWT error:', err.message);
     }
   }
 
