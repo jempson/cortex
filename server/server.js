@@ -7472,52 +7472,29 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // First, get PlaybackInfo to obtain the mediaSourceId (required for HLS)
-    const playbackInfoUrl = `${connection.serverUrl}/Items/${itemId}/PlaybackInfo?api_key=${encodeURIComponent(accessToken)}`;
-    console.log(`[Jellyfin] Fetching PlaybackInfo for item: ${itemId}`);
+    // First, get item info to obtain the mediaSourceId (required for HLS)
+    // Use X-Emby-Token header for authentication
+    const itemInfoUrl = `${connection.serverUrl}/Items/${itemId}`;
+    console.log(`[Jellyfin] Fetching item info for: ${itemId}`);
 
-    const playbackInfoResponse = await fetch(playbackInfoUrl, {
-      method: 'POST',
+    const itemInfoResponse = await fetch(itemInfoUrl, {
       headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        DeviceProfile: {
-          MaxStreamingBitrate: 20000000,
-          TranscodingProfiles: [{
-            Container: 'ts',
-            Type: 'Video',
-            AudioCodec: 'aac',
-            VideoCodec: 'h264',
-            Protocol: 'hls'
-          }],
-          DirectPlayProfiles: [{
-            Container: 'mp4,webm',
-            Type: 'Video',
-            VideoCodec: 'h264,vp8,vp9',
-            AudioCodec: 'aac,mp3,opus'
-          }]
-        }
-      })
+        'X-Emby-Token': accessToken,
+      }
     });
 
-    if (!playbackInfoResponse.ok) {
-      const errorText = await playbackInfoResponse.text();
-      console.error(`[Jellyfin] PlaybackInfo error: ${errorText}`);
-      return res.status(playbackInfoResponse.status).json({ error: 'Failed to get playback info' });
+    if (!itemInfoResponse.ok) {
+      const errorText = await itemInfoResponse.text();
+      console.error(`[Jellyfin] Item info error (${itemInfoResponse.status}): ${errorText}`);
+      return res.status(itemInfoResponse.status).json({ error: 'Failed to get item info' });
     }
 
-    const playbackInfo = await playbackInfoResponse.json();
-    console.log(`[Jellyfin] PlaybackInfo: ${playbackInfo.MediaSources?.length} sources`);
+    const itemInfo = await itemInfoResponse.json();
+    // For videos, the MediaSourceId is typically the same as the ItemId
+    // Or we can get it from MediaSources if available
+    const mediaSourceId = itemInfo.MediaSources?.[0]?.Id || itemId;
 
-    if (!playbackInfo.MediaSources || playbackInfo.MediaSources.length === 0) {
-      return res.status(404).json({ error: 'No media sources available' });
-    }
-
-    const mediaSource = playbackInfo.MediaSources[0];
-    const mediaSourceId = mediaSource.Id;
-
-    console.log(`[Jellyfin] Using mediaSourceId: ${mediaSourceId}, SupportsDirectPlay: ${mediaSource.SupportsDirectPlay}, SupportsTranscoding: ${mediaSource.SupportsTranscoding}`);
+    console.log(`[Jellyfin] Item: ${itemInfo.Name}, Type: ${itemInfo.Type}, MediaSourceId: ${mediaSourceId}`);
 
     // Use HLS (HTTP Live Streaming) which is natively supported on iOS/Safari
     const streamUrl = `${connection.serverUrl}/Videos/${itemId}/master.m3u8?api_key=${encodeURIComponent(accessToken)}&MediaSourceId=${mediaSourceId}&VideoCodec=h264&AudioCodec=aac&AudioBitRate=128000&VideoBitRate=2000000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&SegmentLength=6&MinSegments=1`;
