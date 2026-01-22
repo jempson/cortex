@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { API_URL } from '../../config/constants.js';
 import { storage } from '../../utils/storage.js';
 
@@ -24,10 +24,6 @@ const JellyfinEmbed = ({
   const [showOverview, setShowOverview] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [videoError, setVideoError] = useState(null);
-  const [directStreamUrl, setDirectStreamUrl] = useState(null);
-  const [webPlayerUrl, setWebPlayerUrl] = useState(null);
-  const [jellyfinServerUrl, setJellyfinServerUrl] = useState(null);
-  const [loadingStream, setLoadingStream] = useState(false);
 
   const formatDuration = (ticks) => {
     if (!ticks) return null;
@@ -43,29 +39,7 @@ const JellyfinEmbed = ({
   // Include token in URL since <img src> and <video src> can't pass auth headers
   const token = storage.getToken();
   const thumbnailUrl = `${API_URL}/jellyfin/thumbnail/${connectionId}/${itemId}?type=Primary&maxWidth=300${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-
-  // Fetch direct stream URL when playing starts
-  useEffect(() => {
-    if (playing && !directStreamUrl && !loadingStream) {
-      setLoadingStream(true);
-      fetch(`${API_URL}/jellyfin/stream/${connectionId}/${itemId}?token=${encodeURIComponent(token)}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.streamUrl) {
-            setDirectStreamUrl(data.streamUrl);
-            setWebPlayerUrl(data.webPlayerUrl);
-            setJellyfinServerUrl(data.serverUrl);
-          } else {
-            setVideoError('Failed to get stream URL');
-          }
-        })
-        .catch(err => {
-          console.error('Failed to get stream URL:', err);
-          setVideoError('Failed to get stream URL');
-        })
-        .finally(() => setLoadingStream(false));
-    }
-  }, [playing, connectionId, itemId, token, directStreamUrl, loadingStream]);
+  const streamUrl = `${API_URL}/jellyfin/stream/${connectionId}/${itemId}?token=${encodeURIComponent(token)}`;
 
   const getTypeIcon = () => {
     switch (type) {
@@ -100,41 +74,25 @@ const JellyfinEmbed = ({
         {playing ? (
           /* Inline video player */
           <>
-            {loadingStream ? (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+            <video
+              src={streamUrl}
+              controls
+              autoPlay
+              style={{
                 width: '100%',
                 height: '100%',
                 background: '#000',
-                color: '#fff',
-                fontSize: '0.9rem',
-              }}>
-                Loading stream...
-              </div>
-            ) : directStreamUrl ? (
-              <video
-                src={directStreamUrl}
-                controls
-                autoPlay
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  background: '#000',
-                }}
-                onError={(e) => {
-                  console.error('Video error:', e);
-                  setVideoError('Failed to play video. Format may not be supported.');
-                }}
-              />
-            ) : null}
+              }}
+              onError={(e) => {
+                console.error('Video error:', e);
+                setVideoError('Failed to play video. Format may not be supported.');
+              }}
+            />
             {/* Close button */}
             <button
               onClick={() => {
                 setPlaying(false);
                 setVideoError(null);
-                setDirectStreamUrl(null);
               }}
               style={{
                 position: 'absolute',
@@ -162,31 +120,13 @@ const JellyfinEmbed = ({
                 bottom: '8px',
                 left: '8px',
                 right: '8px',
-                background: 'rgba(0,0,0,0.9)',
+                background: 'rgba(255,100,100,0.9)',
                 color: '#fff',
-                padding: '12px',
+                padding: '8px',
                 fontSize: '0.75rem',
                 borderRadius: '4px',
-                textAlign: 'center',
               }}>
-                <div style={{ marginBottom: '8px' }}>{videoError}</div>
-                {jellyfinServerUrl && (
-                  <button
-                    onClick={() => window.open(`${jellyfinServerUrl}/web/index.html#!/details?id=${itemId}`, '_blank')}
-                    style={{
-                      padding: '8px 16px',
-                      background: 'var(--accent-purple)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      color: '#fff',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    Open in Jellyfin
-                  </button>
-                )}
+                {videoError}
               </div>
             )}
           </>

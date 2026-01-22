@@ -7472,15 +7472,43 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Return both the direct stream URL and the web player URL
-    // Let the client try direct playback first, fall back to web player
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&VideoCodec=h264&AudioCodec=aac&AudioBitRate=128000&VideoBitRate=3000000`;
-    const webPlayerUrl = `${connection.serverUrl}/web/index.html#!/details?id=${itemId}&serverId=${connection.jellyfinUserId}`;
+    // Proxy the video stream from Jellyfin
+    // Request transcoding to browser-compatible format
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&VideoCodec=h264&AudioCodec=aac&AudioBitRate=128000&VideoBitRate=3000000&TranscodingMaxAudioChannels=2`;
 
-    console.log(`[Jellyfin] Returning stream URLs for item: ${itemId}`);
+    console.log(`[Jellyfin] Proxying stream for item: ${itemId}`);
 
-    // Return URLs for client to use
-    res.json({ streamUrl, webPlayerUrl, serverUrl: connection.serverUrl });
+    // Build headers to forward
+    const fetchHeaders = { 'Accept': '*/*' };
+    if (req.headers.range) {
+      fetchHeaders['Range'] = req.headers.range;
+    }
+
+    const streamResponse = await fetch(streamUrl, { headers: fetchHeaders });
+
+    console.log(`[Jellyfin] Stream response: ${streamResponse.status}, type: ${streamResponse.headers.get('content-type')}`);
+
+    if (!streamResponse.ok && streamResponse.status !== 206) {
+      return res.status(streamResponse.status).json({ error: 'Failed to get stream' });
+    }
+
+    // Forward headers
+    const contentType = streamResponse.headers.get('content-type');
+    const contentLength = streamResponse.headers.get('content-length');
+    const acceptRanges = streamResponse.headers.get('accept-ranges');
+    const contentRange = streamResponse.headers.get('content-range');
+
+    res.setHeader('Content-Type', contentType || 'video/mp4');
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
+    if (contentRange) res.setHeader('Content-Range', contentRange);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    res.status(streamResponse.status);
+
+    // Pipe the stream
+    const readable = Readable.fromWeb(streamResponse.body);
+    readable.pipe(res);
   } catch (err) {
     console.error('Jellyfin stream error:', err);
     res.status(500).json({ error: 'Failed to get stream' });
