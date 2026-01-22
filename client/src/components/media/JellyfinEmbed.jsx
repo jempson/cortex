@@ -24,6 +24,13 @@ const JellyfinEmbed = ({
   const [showOverview, setShowOverview] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [videoError, setVideoError] = useState(null);
+  const [debugLog, setDebugLog] = useState([]);
+  const [showDebug, setShowDebug] = useState(true); // Show debug by default for testing
+
+  const addDebug = (msg) => {
+    const time = new Date().toLocaleTimeString();
+    setDebugLog(prev => [...prev.slice(-9), `[${time}] ${msg}`]); // Keep last 10 entries
+  };
 
   const formatDuration = (ticks) => {
     if (!ticks) return null;
@@ -86,23 +93,30 @@ const JellyfinEmbed = ({
                 background: '#000',
               }}
               onError={(e) => {
-                console.error('Video error:', e.target.error);
                 const error = e.target.error;
                 let msg = 'Failed to play video.';
                 if (error) {
                   switch (error.code) {
-                    case 1: msg = 'Video loading aborted.'; break;
-                    case 2: msg = 'Network error while loading video.'; break;
-                    case 3: msg = 'Video decoding error. Format may not be supported.'; break;
-                    case 4: msg = 'Video format not supported by browser.'; break;
-                    default: msg = `Video error: ${error.message || 'Unknown error'}`;
+                    case 1: msg = 'MEDIA_ERR_ABORTED: Loading aborted'; break;
+                    case 2: msg = 'MEDIA_ERR_NETWORK: Network error'; break;
+                    case 3: msg = 'MEDIA_ERR_DECODE: Decoding failed'; break;
+                    case 4: msg = 'MEDIA_ERR_SRC_NOT_SUPPORTED: Format not supported'; break;
+                    default: msg = `Error code ${error.code}: ${error.message || 'Unknown'}`;
                   }
                 }
+                addDebug(`ERROR: ${msg}`);
                 setVideoError(msg);
               }}
-              onLoadStart={() => console.log('Video loading started')}
-              onCanPlay={() => console.log('Video can play')}
-              onStalled={() => console.log('Video stalled - buffering')}
+              onLoadStart={() => addDebug('loadstart: Beginning load')}
+              onLoadedMetadata={(e) => addDebug(`metadata: ${e.target.videoWidth}x${e.target.videoHeight}`)}
+              onLoadedData={() => addDebug('loadeddata: First frame ready')}
+              onCanPlay={() => addDebug('canplay: Ready to play')}
+              onCanPlayThrough={() => addDebug('canplaythrough: Can play fully')}
+              onPlaying={() => addDebug('playing: Playback started')}
+              onWaiting={() => addDebug('waiting: Buffering...')}
+              onStalled={() => addDebug('stalled: Network stall')}
+              onSuspend={() => addDebug('suspend: Loading suspended')}
+              onProgress={() => addDebug('progress: Downloading')}
             />
             {/* Close button */}
             <button
@@ -144,6 +158,61 @@ const JellyfinEmbed = ({
               }}>
                 {videoError}
               </div>
+            )}
+            {/* Debug panel */}
+            {showDebug && (
+              <div style={{
+                position: 'absolute',
+                top: '44px',
+                left: '4px',
+                right: '4px',
+                background: 'rgba(0,0,0,0.85)',
+                color: '#0f0',
+                padding: '8px',
+                fontSize: '0.65rem',
+                fontFamily: 'monospace',
+                borderRadius: '4px',
+                maxHeight: '120px',
+                overflow: 'auto',
+                zIndex: 10,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <strong>DEBUG LOG</strong>
+                  <button
+                    onClick={() => setShowDebug(false)}
+                    style={{ background: 'none', border: 'none', color: '#0f0', cursor: 'pointer', fontSize: '0.65rem' }}
+                  >
+                    [HIDE]
+                  </button>
+                </div>
+                {debugLog.length === 0 ? (
+                  <div style={{ color: '#666' }}>Waiting for events...</div>
+                ) : (
+                  debugLog.map((log, i) => (
+                    <div key={i} style={{ color: log.includes('ERROR') ? '#f66' : '#0f0' }}>{log}</div>
+                  ))
+                )}
+              </div>
+            )}
+            {!showDebug && (
+              <button
+                onClick={() => setShowDebug(true)}
+                style={{
+                  position: 'absolute',
+                  top: '44px',
+                  left: '8px',
+                  background: 'rgba(0,0,0,0.7)',
+                  border: 'none',
+                  color: '#0f0',
+                  padding: '4px 8px',
+                  fontSize: '0.6rem',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                }}
+              >
+                [DEBUG]
+              </button>
             )}
           </>
         ) : (
