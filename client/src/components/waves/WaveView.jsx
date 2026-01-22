@@ -18,8 +18,6 @@ import InviteToWaveModal from './InviteToWaveModal.jsx';
 import InviteFederatedModal from './InviteFederatedModal.jsx';
 import MediaRecorder from '../media/MediaRecorder.jsx';
 import CameraCapture from '../media/CameraCapture.jsx';
-import JellyfinBrowserModal from '../media/JellyfinBrowserModal.jsx';
-import { createJellyfinUrl } from '../media/JellyfinEmbed.jsx';
 import PlexBrowserModal from '../media/PlexBrowserModal.jsx';
 import { createPlexUrl } from '../media/PlexEmbed.jsx';
 import WatchPartyBanner from '../media/WatchPartyBanner.jsx';
@@ -78,10 +76,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [uploadingMedia, setUploadingMedia] = useState(false); // Media upload in progress
   const [mediaUploadStatus, setMediaUploadStatus] = useState(''); // Status message during upload
   const [showCameraCapture, setShowCameraCapture] = useState(false); // Camera capture for image upload (v2.7.0)
-  const [showJellyfinBrowser, setShowJellyfinBrowser] = useState(false); // Jellyfin media browser (v2.14.0)
-  const [jellyfinConnections, setJellyfinConnections] = useState([]); // User's Jellyfin connections
   const [showPlexBrowser, setShowPlexBrowser] = useState(false); // Plex media browser (v2.15.0)
   const [plexConnections, setPlexConnections] = useState([]); // User's Plex connections
+  const [showActionMenu, setShowActionMenu] = useState(false); // Overflow menu for additional actions
+  const [showPhotoOptions, setShowPhotoOptions] = useState(false); // Photo button dropdown (IMG/CAM)
 
   // E2EE Migration state
   const [encryptionStatus, setEncryptionStatus] = useState(null); // { state, progress, participantsWithE2EE, totalParticipants }
@@ -106,20 +104,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   }, [wave?.id, showCallModal, voiceCall]);
 
   // Note: Call status polling is handled by useVoiceCall hook when waveId is provided
-
-  // Load Jellyfin connections (v2.14.0)
-  useEffect(() => {
-    const loadJellyfinConnections = async () => {
-      try {
-        const data = await fetchAPI('/jellyfin/connections');
-        setJellyfinConnections(data.connections || []);
-      } catch (err) {
-        // Silently fail - user may not have Jellyfin feature enabled
-        console.debug('Jellyfin connections not available:', err.message);
-      }
-    };
-    loadJellyfinConnections();
-  }, [fetchAPI]);
 
   // Load Plex connections (v2.15.0)
   useEffect(() => {
@@ -2473,9 +2457,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           })()}
         </div>
         {/* Button row - below textarea */}
-        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center', position: 'relative', flexWrap: 'wrap' }}>
-          {/* Left side: media buttons */}
-          <div style={{ display: 'flex', gap: '6px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center', position: 'relative' }}>
+          {/* Left side: primary media buttons */}
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            {/* GIF button */}
             <button
               onClick={() => setShowGifSearch(true)}
               style={{
@@ -2493,138 +2478,213 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             >
               GIF
             </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleImageUpload(file);
-              }}
-              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-              style={{ display: 'none' }}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              style={{
-                padding: isMobile ? '8px 10px' : '8px 10px',
-                minHeight: isMobile ? '38px' : '32px',
-                background: uploading ? 'var(--accent-orange)20' : 'transparent',
-                border: `1px solid ${uploading ? 'var(--accent-orange)' : 'var(--border-subtle)'}`,
-                color: 'var(--accent-orange)',
-                cursor: uploading ? 'wait' : 'pointer',
-                fontFamily: 'monospace',
-                fontSize: isMobile ? '0.7rem' : '0.65rem',
-                fontWeight: 700,
-                opacity: uploading ? 0.7 : 1,
-              }}
-              title="Upload Image"
-            >
-              {uploading ? '...' : 'IMG'}
-            </button>
-            {/* Camera capture button (v2.7.0) */}
-            <button
-              onClick={() => setShowCameraCapture(!showCameraCapture)}
-              disabled={uploading}
-              style={{
-                padding: isMobile ? '8px 10px' : '8px 10px',
-                minHeight: isMobile ? '38px' : '32px',
-                background: showCameraCapture ? 'var(--accent-purple)20' : 'transparent',
-                border: `1px solid ${showCameraCapture ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
-                color: 'var(--accent-purple)',
-                cursor: uploading ? 'wait' : 'pointer',
-                fontFamily: 'monospace',
-                fontSize: isMobile ? '0.7rem' : '0.65rem',
-                fontWeight: 700,
-                opacity: uploading ? 0.7 : 1,
-              }}
-              title="Take Photo"
-            >
-              CAM
-            </button>
-            {/* Audio recording button */}
-            <button
-              onClick={() => setShowMediaRecorder(showMediaRecorder === 'audio' ? null : 'audio')}
-              disabled={uploadingMedia}
-              style={{
-                padding: isMobile ? '8px 10px' : '8px 10px',
-                minHeight: isMobile ? '38px' : '32px',
-                background: showMediaRecorder === 'audio' ? 'var(--accent-green)20' : 'transparent',
-                border: `1px solid ${showMediaRecorder === 'audio' ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
-                color: 'var(--accent-green)',
-                cursor: uploadingMedia ? 'wait' : 'pointer',
-                fontFamily: 'monospace',
-                fontSize: isMobile ? '0.7rem' : '0.65rem',
-                fontWeight: 700,
-                opacity: uploadingMedia ? 0.7 : 1,
-              }}
-              title="Record Audio"
-            >
-              AUD
-            </button>
-            {/* Video recording button */}
-            <button
-              onClick={() => setShowMediaRecorder(showMediaRecorder === 'video' ? null : 'video')}
-              disabled={uploadingMedia}
-              style={{
-                padding: isMobile ? '8px 10px' : '8px 10px',
-                minHeight: isMobile ? '38px' : '32px',
-                background: showMediaRecorder === 'video' ? 'var(--accent-teal)20' : 'transparent',
-                border: `1px solid ${showMediaRecorder === 'video' ? 'var(--accent-teal)' : 'var(--border-subtle)'}`,
-                color: 'var(--accent-teal)',
-                cursor: uploadingMedia ? 'wait' : 'pointer',
-                fontFamily: 'monospace',
-                fontSize: isMobile ? '0.7rem' : '0.65rem',
-                fontWeight: 700,
-                opacity: uploadingMedia ? 0.7 : 1,
-              }}
-              title="Record Video"
-            >
-              VID
-            </button>
-            {/* Jellyfin media button (v2.14.0) */}
-            {jellyfinConnections.length > 0 && (
+
+            {/* Photo button with dropdown (IMG/CAM combined) */}
+            <div style={{ position: 'relative' }}>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImageUpload(file);
+                }}
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                style={{ display: 'none' }}
+              />
               <button
-                onClick={() => setShowJellyfinBrowser(true)}
+                onClick={() => setShowPhotoOptions(!showPhotoOptions)}
+                disabled={uploading}
                 style={{
                   padding: isMobile ? '8px 10px' : '8px 10px',
                   minHeight: isMobile ? '38px' : '32px',
-                  background: showJellyfinBrowser ? 'var(--accent-purple)20' : 'transparent',
-                  border: `1px solid ${showJellyfinBrowser ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
-                  color: 'var(--accent-purple)',
-                  cursor: 'pointer',
+                  background: (showPhotoOptions || showCameraCapture) ? 'var(--accent-orange)20' : 'transparent',
+                  border: `1px solid ${(showPhotoOptions || showCameraCapture) ? 'var(--accent-orange)' : 'var(--border-subtle)'}`,
+                  color: 'var(--accent-orange)',
+                  cursor: uploading ? 'wait' : 'pointer',
                   fontFamily: 'monospace',
                   fontSize: isMobile ? '0.7rem' : '0.65rem',
                   fontWeight: 700,
+                  opacity: uploading ? 0.7 : 1,
                 }}
-                title="Share Jellyfin Media"
+                title="Photo options"
               >
-                JF
+                {uploading ? '...' : '📷'}
               </button>
-            )}
-            {/* Plex media button (v2.15.0) */}
-            {plexConnections.length > 0 && (
+              {/* Photo options dropdown */}
+              {showPhotoOptions && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: 0,
+                  marginBottom: '4px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '4px',
+                  overflow: 'hidden',
+                  zIndex: 100,
+                  minWidth: '120px',
+                }}>
+                  <button
+                    onClick={() => {
+                      setShowPhotoOptions(false);
+                      fileInputRef.current?.click();
+                    }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem',
+                    }}
+                    onMouseEnter={(e) => e.target.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                  >
+                    📁 Upload Image
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPhotoOptions(false);
+                      setShowCameraCapture(true);
+                    }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem',
+                    }}
+                    onMouseEnter={(e) => e.target.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                  >
+                    📷 Take Photo
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* More actions menu (⋮) */}
+            <div style={{ position: 'relative' }}>
               <button
-                onClick={() => setShowPlexBrowser(true)}
+                onClick={() => setShowActionMenu(!showActionMenu)}
                 style={{
                   padding: isMobile ? '8px 10px' : '8px 10px',
                   minHeight: isMobile ? '38px' : '32px',
-                  background: showPlexBrowser ? '#e5a00d20' : 'transparent',
-                  border: `1px solid ${showPlexBrowser ? '#e5a00d' : 'var(--border-subtle)'}`,
-                  color: '#e5a00d',
+                  background: showActionMenu ? 'var(--bg-hover)' : 'transparent',
+                  border: `1px solid ${showActionMenu ? 'var(--border-primary)' : 'var(--border-subtle)'}`,
+                  color: 'var(--text-secondary)',
                   cursor: 'pointer',
                   fontFamily: 'monospace',
-                  fontSize: isMobile ? '0.7rem' : '0.65rem',
+                  fontSize: isMobile ? '1rem' : '0.85rem',
                   fontWeight: 700,
                 }}
-                title="Share Plex Media"
+                title="More actions"
               >
-                PX
+                ⋮
               </button>
-            )}
+              {/* Actions dropdown */}
+              {showActionMenu && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: 0,
+                  marginBottom: '4px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '4px',
+                  overflow: 'hidden',
+                  zIndex: 100,
+                  minWidth: '140px',
+                }}>
+                  <button
+                    onClick={() => {
+                      setShowActionMenu(false);
+                      setShowMediaRecorder(showMediaRecorder === 'audio' ? null : 'audio');
+                    }}
+                    disabled={uploadingMedia}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: showMediaRecorder === 'audio' ? 'var(--accent-green)20' : 'transparent',
+                      border: 'none',
+                      color: showMediaRecorder === 'audio' ? 'var(--accent-green)' : 'var(--text-primary)',
+                      cursor: uploadingMedia ? 'wait' : 'pointer',
+                      textAlign: 'left',
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem',
+                      opacity: uploadingMedia ? 0.7 : 1,
+                    }}
+                    onMouseEnter={(e) => e.target.style.background = showMediaRecorder === 'audio' ? 'var(--accent-green)30' : 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.target.style.background = showMediaRecorder === 'audio' ? 'var(--accent-green)20' : 'transparent'}
+                  >
+                    🎤 Record Audio
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowActionMenu(false);
+                      setShowMediaRecorder(showMediaRecorder === 'video' ? null : 'video');
+                    }}
+                    disabled={uploadingMedia}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: showMediaRecorder === 'video' ? 'var(--accent-teal)20' : 'transparent',
+                      border: 'none',
+                      color: showMediaRecorder === 'video' ? 'var(--accent-teal)' : 'var(--text-primary)',
+                      cursor: uploadingMedia ? 'wait' : 'pointer',
+                      textAlign: 'left',
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem',
+                      opacity: uploadingMedia ? 0.7 : 1,
+                    }}
+                    onMouseEnter={(e) => e.target.style.background = showMediaRecorder === 'video' ? 'var(--accent-teal)30' : 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.target.style.background = showMediaRecorder === 'video' ? 'var(--accent-teal)20' : 'transparent'}
+                  >
+                    🎥 Record Video
+                  </button>
+                  {plexConnections.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setShowActionMenu(false);
+                        setShowPlexBrowser(true);
+                      }}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#e5a00d',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontFamily: 'monospace',
+                        fontSize: '0.75rem',
+                      }}
+                      onMouseEnter={(e) => e.target.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                    >
+                      🎬 Share Plex
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
+
           {/* Spacer */}
           <div style={{ flex: 1 }} />
+
           {/* Right side: send button */}
           <button
             onClick={handleSendMessage}
@@ -2638,11 +2698,30 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
               fontFamily: 'monospace',
               fontSize: isMobile ? '0.85rem' : '0.75rem',
+              flexShrink: 0,
             }}
           >
             SEND
           </button>
         </div>
+
+        {/* Click outside handler for dropdowns */}
+        {(showPhotoOptions || showActionMenu) && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 99,
+            }}
+            onClick={() => {
+              setShowPhotoOptions(false);
+              setShowActionMenu(false);
+            }}
+          />
+        )}
       </div>
 
       <WaveSettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)}
@@ -2684,29 +2763,6 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           }}
           fetchAPI={fetchAPI}
           isMobile={isMobile}
-        />
-      )}
-
-      {showJellyfinBrowser && (
-        <JellyfinBrowserModal
-          isOpen={showJellyfinBrowser}
-          onClose={() => setShowJellyfinBrowser(false)}
-          onSelect={(media) => {
-            // Create embed URL and add to message
-            const embedUrl = createJellyfinUrl({
-              connectionId: media.connectionId,
-              itemId: media.itemId,
-              name: media.name,
-              type: media.type,
-              duration: media.runTimeTicks,
-              overview: media.overview,
-            });
-            setNewMessage(prev => prev + (prev.trim() ? ' ' : '') + embedUrl);
-            setShowJellyfinBrowser(false);
-          }}
-          fetchAPI={fetchAPI}
-          isMobile={isMobile}
-          connections={jellyfinConnections}
         />
       )}
 
