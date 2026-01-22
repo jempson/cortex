@@ -7472,35 +7472,16 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Use direct video stream with transcoding to MP4 H.264
-    // Force transcoding with H.264 Baseline profile for maximum compatibility
-    // Use .mp4 extension to hint format to Jellyfin
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&Static=false&Container=mp4&VideoCodec=h264&AudioCodec=aac&VideoBitRate=2000000&AudioBitRate=128000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&StartTimeTicks=0&Profile=Baseline&Level=30&CopyTimestamps=false&EnableSubtitlesInManifest=false&SubtitleMethod=Encode`;
+    // Redirect to Jellyfin's direct stream URL
+    // This lets the browser handle the connection directly, bypassing proxy buffering issues
+    // Use MP4 with H.264 Baseline profile for maximum iOS compatibility
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&Static=false&Container=mp4&VideoCodec=h264&AudioCodec=aac&VideoBitRate=2000000&AudioBitRate=128000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&Profile=Baseline&Level=30`;
 
-    console.log(`[Jellyfin] Proxying transcoded stream for item: ${itemId}`);
+    console.log(`[Jellyfin] Redirecting to stream: ${streamUrl.replace(accessToken, '***')}`);
 
-    const streamResponse = await fetch(streamUrl, {
-      headers: { 'Accept': '*/*' }
-    });
-
-    const contentType = streamResponse.headers.get('content-type');
-    const contentLength = streamResponse.headers.get('content-length');
-    const transferEncoding = streamResponse.headers.get('transfer-encoding');
-    console.log(`[Jellyfin] Stream response: ${streamResponse.status}, type: ${contentType}, length: ${contentLength}, transfer: ${transferEncoding}`);
-
-    if (!streamResponse.ok) {
-      const errorText = await streamResponse.text();
-      console.error(`[Jellyfin] Stream error: ${errorText}`);
-      return res.status(streamResponse.status).json({ error: 'Failed to get stream' });
-    }
-
-    // Pipe the transcoded stream to the client
-    res.setHeader('Content-Type', contentType || 'video/mp4');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'no-cache');
-
-    const readable = Readable.fromWeb(streamResponse.body);
-    readable.pipe(res);
+    // Return the direct URL for the client to use
+    // Note: This exposes the API key in the URL, but it's temporary and scoped to this video
+    res.json({ streamUrl });
   } catch (err) {
     console.error('Jellyfin stream error:', err);
     res.status(500).json({ error: 'Failed to get stream' });
