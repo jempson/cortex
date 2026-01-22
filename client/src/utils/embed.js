@@ -11,6 +11,7 @@ export const EMBED_PLATFORMS = {
   tenor: { icon: '🎬', color: '#5856d6', name: 'Tenor' },
   giphy: { icon: '🎬', color: '#00ff99', name: 'GIPHY' },
   jellyfin: { icon: '🎬', color: '#a86ce8', name: 'Jellyfin' },
+  plex: { icon: '▶', color: '#e5a00d', name: 'Plex' },
 };
 
 // URL patterns for detecting embeddable content (mirrors server)
@@ -76,6 +77,27 @@ export function detectEmbedUrls(text) {
         type: params.get('type') || 'Video',
         duration: params.get('duration') ? parseInt(params.get('duration'), 10) : null,
         overview: params.get('overview') || null,
+      });
+      seenUrls.add(fullUrl);
+    }
+  }
+
+  // Detect Plex cortex:// URLs (v2.15.0)
+  const plexRegex = /cortex:\/\/plex\/([a-zA-Z0-9-]+)\/([a-zA-Z0-9]+)(\?[^\s<>"]*)?/gi;
+  let plexMatch;
+  while ((plexMatch = plexRegex.exec(text)) !== null) {
+    const fullUrl = plexMatch[0];
+    if (!seenUrls.has(fullUrl)) {
+      const params = new URLSearchParams(plexMatch[3]?.substring(1) || '');
+      embeds.push({
+        platform: 'plex',
+        url: fullUrl,
+        connectionId: plexMatch[1],
+        ratingKey: plexMatch[2],
+        name: params.get('name') || 'Unknown Media',
+        type: params.get('type') || 'movie',
+        duration: params.get('duration') ? parseInt(params.get('duration'), 10) : null,
+        summary: params.get('summary') || null,
       });
       seenUrls.add(fullUrl);
     }

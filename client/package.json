@@ -1,6 +1,6 @@
 {
   "name": "cortex-client",
-  "version": "2.14.0",
+  "version": "2.15.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port 3000",
@@ -8,10 +8,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "@livekit/components-react": "^2.6.0",
-    "livekit-client": "^2.6.0"
+    "hls.js": "^1.6.15",
+    "livekit-client": "^2.6.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.2",

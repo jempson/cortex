@@ -326,6 +326,16 @@ const jellyfinLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Plex proxy rate limiter (v2.15.0)
+const RATE_LIMIT_PLEX_MAX = parseInt(process.env.RATE_LIMIT_PLEX_MAX) || 60;
+const plexLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: RATE_LIMIT_PLEX_MAX,
+  message: { error: 'Too many Plex requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const passwordResetLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 3, // 3 requests per hour per email
@@ -7835,6 +7845,893 @@ app.delete('/api/jellyfin/feed-import/:id', authenticateToken, (req, res) => {
     res.json({ success: true });
   } else {
     res.status(404).json({ error: 'Import not found' });
+  }
+});
+
+// ============ Plex Integration Endpoints (v2.15.0) ============
+
+// Plex client identifier for API requests
+const PLEX_CLIENT_IDENTIFIER = 'cortex-media-server';
+const PLEX_PRODUCT = 'Cortex';
+const PLEX_VERSION = '2.15.0';
+
+// Helper: Encrypt Plex token for storage (same encryption as Jellyfin)
+function encryptPlexToken(token) {
+  if (!token) return null;
+  const key = JWT_SECRET.slice(0, 32).padEnd(32, '0');
+  let encrypted = '';
+  for (let i = 0; i < token.length; i++) {
+    encrypted += String.fromCharCode(token.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return Buffer.from(encrypted, 'binary').toString('base64');
+}
+
+// Helper: Decrypt Plex token
+function decryptPlexToken(encrypted) {
+  if (!encrypted) return null;
+  const key = JWT_SECRET.slice(0, 32).padEnd(32, '0');
+  const token = Buffer.from(encrypted, 'base64').toString('binary');
+  let decrypted = '';
+  for (let i = 0; i < token.length; i++) {
+    decrypted += String.fromCharCode(token.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return decrypted;
+}
+
+// Helper: Get Plex request headers
+function getPlexHeaders(accessToken = null) {
+  const headers = {
+    'Accept': 'application/json',
+    'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
+    'X-Plex-Product': PLEX_PRODUCT,
+    'X-Plex-Version': PLEX_VERSION,
+  };
+  if (accessToken) {
+    headers['X-Plex-Token'] = accessToken;
+  }
+  return headers;
+}
+
+// Helper: Make authenticated request to Plex server
+async function plexRequest(serverUrl, path, accessToken, options = {}) {
+  const url = new URL(path, serverUrl);
+  const response = await fetch(url.toString(), {
+    ...options,
+    headers: {
+      ...getPlexHeaders(accessToken),
+      ...(options.headers || {}),
+    },
+  });
+  return response;
+}
+
+// ---- Plex OAuth Flow ----
+
+// Request PIN from plex.tv for OAuth flow
+app.post('/api/plex/auth/pin', authenticateToken, plexLimiter, async (req, res) => {
+  try {
+    const response = await fetch('https://plex.tv/api/v2/pins', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
+        'X-Plex-Product': PLEX_PRODUCT,
+        'X-Plex-Version': PLEX_VERSION,
+      },
+      body: 'strong=true',
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('Plex PIN request failed:', text);
+      return res.status(response.status).json({ error: 'Failed to request PIN from Plex' });
+    }
+
+    const data = await response.json();
+    res.json({
+      pinId: data.id,
+      code: data.code,
+      authUrl: `https://app.plex.tv/auth#?clientID=${PLEX_CLIENT_IDENTIFIER}&code=${data.code}&context%5Bdevice%5D%5Bproduct%5D=${encodeURIComponent(PLEX_PRODUCT)}`,
+    });
+  } catch (err) {
+    console.error('Plex PIN request error:', err);
+    res.status(500).json({ error: 'Failed to request PIN from Plex' });
+  }
+});
+
+// Poll PIN status to get auth token
+app.get('/api/plex/auth/pin/:pinId', authenticateToken, plexLimiter, async (req, res) => {
+  const { pinId } = req.params;
+
+  try {
+    const response = await fetch(`https://plex.tv/api/v2/pins/${pinId}`, {
+      headers: {
+        'Accept': 'application/json',
+        'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to check PIN status' });
+    }
+
+    const data = await response.json();
+
+    if (data.authToken) {
+      // User has authenticated, get their user info
+      const userResponse = await fetch('https://plex.tv/api/v2/user', {
+        headers: getPlexHeaders(data.authToken),
+      });
+
+      let plexUser = null;
+      if (userResponse.ok) {
+        plexUser = await userResponse.json();
+      }
+
+      res.json({
+        authenticated: true,
+        authToken: data.authToken,
+        plexUserId: plexUser?.id?.toString() || null,
+        username: plexUser?.username || null,
+      });
+    } else {
+      res.json({ authenticated: false });
+    }
+  } catch (err) {
+    console.error('Plex PIN check error:', err);
+    res.status(500).json({ error: 'Failed to check PIN status' });
+  }
+});
+
+// Get available servers after OAuth authentication
+app.get('/api/plex/auth/servers', authenticateToken, plexLimiter, async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).json({ error: 'Token is required' });
+  }
+
+  try {
+    // Get resources (servers) from plex.tv
+    const response = await fetch('https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1', {
+      headers: getPlexHeaders(token),
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch servers' });
+    }
+
+    const resources = await response.json();
+
+    // Filter to only Plex Media Server instances that are owned
+    const servers = resources
+      .filter(r => r.provides === 'server' && r.owned)
+      .map(server => {
+        // Find the best connection - prefer local, then relay, then remote
+        const connections = server.connections || [];
+        const localConn = connections.find(c => c.local && !c.relay);
+        const remoteConn = connections.find(c => !c.local && !c.relay);
+        const relayConn = connections.find(c => c.relay);
+        const bestConn = localConn || remoteConn || relayConn || connections[0];
+
+        return {
+          name: server.name,
+          machineIdentifier: server.clientIdentifier,
+          accessToken: server.accessToken,
+          connection: bestConn ? {
+            uri: bestConn.uri,
+            local: bestConn.local,
+            relay: bestConn.relay,
+          } : null,
+        };
+      })
+      .filter(s => s.connection); // Only include servers with valid connections
+
+    res.json({ servers });
+  } catch (err) {
+    console.error('Plex servers fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch servers' });
+  }
+});
+
+// ---- Plex Connection Management ----
+
+// Get user's Plex connections
+app.get('/api/plex/connections', authenticateToken, (req, res) => {
+  try {
+    // Check if method exists (table may not be created yet)
+    if (typeof db.getPlexConnectionsByUser !== 'function') {
+      return res.json({ connections: [] });
+    }
+    const connections = db.getPlexConnectionsByUser(req.user.userId);
+    // Don't expose access tokens to client
+    const safeConnections = (connections || []).map(c => ({
+      id: c.id,
+      serverUrl: c.serverUrl,
+      serverName: c.serverName,
+      plexUserId: c.plexUserId,
+      machineIdentifier: c.machineIdentifier,
+      status: c.status,
+      lastConnected: c.lastConnected,
+      createdAt: c.createdAt,
+    }));
+    res.json({ connections: safeConnections });
+  } catch (err) {
+    console.error('Error fetching Plex connections:', err);
+    // If table doesn't exist yet, return empty array
+    if (err.message && err.message.includes('no such table')) {
+      return res.json({ connections: [] });
+    }
+    res.status(500).json({ error: 'Failed to fetch connections' });
+  }
+});
+
+// Add new Plex connection (from OAuth or direct token)
+app.post('/api/plex/connections', authenticateToken, plexLimiter, async (req, res) => {
+  const { serverUrl, accessToken, serverName, machineIdentifier, plexUserId } = req.body;
+
+  if (!serverUrl || !accessToken) {
+    return res.status(400).json({ error: 'Server URL and access token are required' });
+  }
+
+  // Validate and normalize server URL
+  let normalizedUrl;
+  try {
+    normalizedUrl = new URL(serverUrl);
+    normalizedUrl = normalizedUrl.origin; // Strip path
+  } catch {
+    return res.status(400).json({ error: 'Invalid server URL' });
+  }
+
+  try {
+    // Test the connection
+    const testResponse = await plexRequest(normalizedUrl, '/', accessToken);
+
+    if (!testResponse.ok) {
+      return res.status(401).json({ error: 'Invalid Plex credentials. Could not connect to server.' });
+    }
+
+    // Get server info if not provided
+    let finalServerName = serverName;
+    let finalMachineId = machineIdentifier;
+
+    if (!finalServerName || !finalMachineId) {
+      const infoResponse = await plexRequest(normalizedUrl, '/identity', accessToken);
+      if (infoResponse.ok) {
+        const info = await infoResponse.json();
+        const container = info.MediaContainer || info;
+        finalServerName = finalServerName || container.friendlyName || 'Plex Server';
+        finalMachineId = finalMachineId || container.machineIdentifier;
+      }
+    }
+
+    // Check for existing connection to this server
+    const existingConnections = db.getPlexConnectionsByUser(req.user.userId);
+    const existing = existingConnections.find(c => c.serverUrl === normalizedUrl);
+
+    if (existing) {
+      // Update existing connection
+      db.updatePlexConnection(existing.id, {
+        accessToken: encryptPlexToken(accessToken),
+        serverName: finalServerName,
+        machineIdentifier: finalMachineId,
+        plexUserId: plexUserId,
+      });
+      db.touchPlexConnection(existing.id);
+
+      return res.json({
+        connection: {
+          id: existing.id,
+          serverUrl: normalizedUrl,
+          serverName: finalServerName,
+          plexUserId: plexUserId,
+          machineIdentifier: finalMachineId,
+          status: 'active',
+        },
+        updated: true,
+      });
+    }
+
+    // Create new connection
+    const connection = db.createPlexConnection({
+      userId: req.user.userId,
+      serverUrl: normalizedUrl,
+      accessToken: encryptPlexToken(accessToken),
+      plexUserId: plexUserId,
+      serverName: finalServerName || 'Plex Server',
+      machineIdentifier: finalMachineId,
+    });
+
+    res.json({
+      connection: {
+        id: connection.id,
+        serverUrl: connection.serverUrl,
+        serverName: connection.serverName,
+        plexUserId: connection.plexUserId,
+        machineIdentifier: connection.machineIdentifier,
+        status: connection.status,
+        createdAt: connection.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error('Plex connection error:', err);
+    res.status(500).json({ error: 'Failed to connect to Plex server' });
+  }
+});
+
+// Test Plex connection
+app.post('/api/plex/connections/:id/test', authenticateToken, plexLimiter, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    if (!db.userOwnsPlexConnection(req.user.userId, id)) {
+      return res.status(403).json({ error: 'Not your connection' });
+    }
+
+    const connection = db.getPlexConnection(id);
+    if (!connection) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    const accessToken = decryptPlexToken(connection.accessToken);
+    const response = await plexRequest(connection.serverUrl, '/identity', accessToken);
+
+    if (!response.ok) {
+      return res.status(400).json({ error: 'Connection test failed', status: response.status });
+    }
+
+    db.touchPlexConnection(id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Plex connection test error:', err);
+    res.status(500).json({ error: 'Connection test failed' });
+  }
+});
+
+// Delete Plex connection
+app.delete('/api/plex/connections/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  if (!db.userOwnsPlexConnection(req.user.userId, id)) {
+    return res.status(403).json({ error: 'Not your connection' });
+  }
+
+  const success = db.deletePlexConnection(id);
+  if (success) {
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'Connection not found' });
+  }
+});
+
+// ---- Plex Library & Items ----
+
+// Get library sections
+app.get('/api/plex/library/:connectionId', authenticateToken, plexLimiter, async (req, res) => {
+  const { connectionId } = req.params;
+
+  try {
+    if (!db.userOwnsPlexConnection(req.user.userId, connectionId)) {
+      return res.status(403).json({ error: 'Not your connection' });
+    }
+
+    const connection = db.getPlexConnection(connectionId);
+    if (!connection) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    const accessToken = decryptPlexToken(connection.accessToken);
+    const response = await plexRequest(connection.serverUrl, '/library/sections', accessToken);
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch library sections' });
+    }
+
+    const data = await response.json();
+    const container = data.MediaContainer || data;
+
+    const sections = (container.Directory || []).map(section => ({
+      key: section.key,
+      title: section.title,
+      type: section.type, // movie, show, artist, photo
+      art: section.art,
+      thumb: section.composite,
+    }));
+
+    db.touchPlexConnection(connectionId);
+    res.json({ sections });
+  } catch (err) {
+    console.error('Plex library fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch library' });
+  }
+});
+
+// Get items in a library section or search
+app.get('/api/plex/items/:connectionId', authenticateToken, plexLimiter, async (req, res) => {
+  const { connectionId } = req.params;
+  const { sectionKey, parentRatingKey, searchTerm, type, limit = 50 } = req.query;
+
+  try {
+    if (!db.userOwnsPlexConnection(req.user.userId, connectionId)) {
+      return res.status(403).json({ error: 'Not your connection' });
+    }
+
+    const connection = db.getPlexConnection(connectionId);
+    if (!connection) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    const accessToken = decryptPlexToken(connection.accessToken);
+    let path;
+
+    if (searchTerm) {
+      // Search across library
+      path = `/search?query=${encodeURIComponent(searchTerm)}`;
+      if (sectionKey) {
+        path += `&sectionId=${sectionKey}`;
+      }
+    } else if (parentRatingKey) {
+      // Get children of an item (seasons of a show, episodes of a season)
+      path = `/library/metadata/${parentRatingKey}/children`;
+    } else if (sectionKey) {
+      // Get items in a section
+      const typeParam = type ? `&type=${type}` : '';
+      path = `/library/sections/${sectionKey}/all?${typeParam}`;
+    } else {
+      return res.status(400).json({ error: 'sectionKey, parentRatingKey, or searchTerm is required' });
+    }
+
+    const response = await plexRequest(connection.serverUrl, path, accessToken);
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch items' });
+    }
+
+    const data = await response.json();
+    const container = data.MediaContainer || data;
+
+    // Handle both search results and direct listings
+    const metadata = container.Metadata || container.Hub?.flatMap(h => h.Metadata || []) || [];
+
+    const items = metadata.slice(0, Math.min(parseInt(limit), 100)).map(item => ({
+      ratingKey: item.ratingKey,
+      key: item.key,
+      title: item.title,
+      type: item.type, // movie, show, season, episode, track, album, artist
+      year: item.year,
+      summary: item.summary,
+      thumb: item.thumb,
+      art: item.art,
+      duration: item.duration, // in milliseconds
+      parentTitle: item.parentTitle, // Season name for episodes
+      grandparentTitle: item.grandparentTitle, // Show name for episodes
+      index: item.index, // Episode number
+      parentIndex: item.parentIndex, // Season number
+      viewCount: item.viewCount,
+      leafCount: item.leafCount, // Episode count for shows/seasons
+    }));
+
+    db.touchPlexConnection(connectionId);
+    res.json({ items, totalSize: container.size || items.length });
+  } catch (err) {
+    console.error('Plex items fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch items' });
+  }
+});
+
+// Get single item details
+app.get('/api/plex/item/:connectionId/:ratingKey', authenticateToken, plexLimiter, async (req, res) => {
+  const { connectionId, ratingKey } = req.params;
+
+  try {
+    if (!db.userOwnsPlexConnection(req.user.userId, connectionId)) {
+      return res.status(403).json({ error: 'Not your connection' });
+    }
+
+    const connection = db.getPlexConnection(connectionId);
+    if (!connection) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    const accessToken = decryptPlexToken(connection.accessToken);
+    const response = await plexRequest(connection.serverUrl, `/library/metadata/${ratingKey}`, accessToken);
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch item' });
+    }
+
+    const data = await response.json();
+    const container = data.MediaContainer || data;
+    const item = (container.Metadata || [])[0];
+
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    // Get media info
+    const media = item.Media?.[0] || {};
+    const part = media.Part?.[0] || {};
+    const streams = part.Stream || [];
+
+    res.json({
+      item: {
+        ratingKey: item.ratingKey,
+        key: item.key,
+        title: item.title,
+        type: item.type,
+        year: item.year,
+        summary: item.summary,
+        thumb: item.thumb,
+        art: item.art,
+        duration: item.duration,
+        parentTitle: item.parentTitle,
+        grandparentTitle: item.grandparentTitle,
+        index: item.index,
+        parentIndex: item.parentIndex,
+        contentRating: item.contentRating,
+        rating: item.rating,
+        media: {
+          videoCodec: media.videoCodec,
+          audioCodec: media.audioCodec,
+          container: media.container,
+          width: media.width,
+          height: media.height,
+          bitrate: media.bitrate,
+        },
+        streams: streams.map(s => ({
+          streamType: s.streamType, // 1=video, 2=audio, 3=subtitle
+          codec: s.codec,
+          language: s.language,
+          languageCode: s.languageCode,
+        })),
+      },
+    });
+  } catch (err) {
+    console.error('Plex item fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch item' });
+  }
+});
+
+// ---- Plex Streaming ----
+
+// Get stream info and proxied URL for playback
+app.get('/api/plex/stream/:connectionId/:ratingKey', authenticateToken, plexLimiter, async (req, res) => {
+  const { connectionId, ratingKey } = req.params;
+
+  try {
+    if (!db.userOwnsPlexConnection(req.user.userId, connectionId)) {
+      return res.status(403).json({ error: 'Not your connection' });
+    }
+
+    const connection = db.getPlexConnection(connectionId);
+    if (!connection) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    const accessToken = decryptPlexToken(connection.accessToken);
+
+    // First get the item to find the media key
+    const itemResponse = await plexRequest(connection.serverUrl, `/library/metadata/${ratingKey}`, accessToken);
+
+    if (!itemResponse.ok) {
+      return res.status(itemResponse.status).json({ error: 'Failed to fetch item info' });
+    }
+
+    const itemData = await itemResponse.json();
+    const container = itemData.MediaContainer || itemData;
+    const item = (container.Metadata || [])[0];
+
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    // Get the media part key
+    const media = item.Media?.[0];
+    const part = media?.Part?.[0];
+
+    if (!part) {
+      return res.status(404).json({ error: 'No playable media found' });
+    }
+
+    db.touchPlexConnection(connectionId);
+
+    // Check if file is browser-compatible (MP4/M4V with H264)
+    const fileContainer = media?.container?.toLowerCase();
+    const videoCodec = media?.videoCodec?.toLowerCase();
+    const isBrowserCompatible =
+      (fileContainer === 'mp4' || fileContainer === 'm4v' || fileContainer === 'mov') &&
+      (videoCodec === 'h264' || videoCodec === 'avc1');
+
+    if (isBrowserCompatible) {
+      // Direct stream through Cortex proxy (avoids CORS issues)
+      res.json({
+        streamUrl: `/api/plex/video/${connectionId}/${ratingKey}`,
+        duration: item.duration,
+        title: item.title,
+        type: item.type,
+        container: media?.container,
+        videoCodec: media?.videoCodec,
+        audioCodec: media?.audioCodec,
+      });
+    } else {
+      // Needs transcoding - check if Plex can transcode, then return HLS URL
+      console.log(`Plex stream: ${fileContainer}/${videoCodec} needs transcoding`);
+
+      const decisionUrl = `${connection.serverUrl}/video/:/transcode/universal/decision?` +
+        `path=${encodeURIComponent(`/library/metadata/${ratingKey}`)}` +
+        `&mediaIndex=0&partIndex=0` +
+        `&protocol=hls` +
+        `&fastSeek=1` +
+        `&directPlay=0&directStream=0` +
+        `&subtitleSize=100&audioBoost=100` +
+        `&location=lan` +
+        `&session=cortex-${Date.now()}` +
+        `&X-Plex-Platform=Chrome` +
+        `&X-Plex-Client-Identifier=${PLEX_CLIENT_IDENTIFIER}` +
+        `&X-Plex-Token=${accessToken}`;
+
+      const decisionResponse = await fetch(decisionUrl, {
+        headers: getPlexHeaders(accessToken),
+      });
+
+      if (!decisionResponse.ok) {
+        return res.status(400).json({
+          error: `Cannot play ${fileContainer.toUpperCase()} format. Plex transcoding unavailable.`
+        });
+      }
+
+      const decisionData = await decisionResponse.json();
+      const mediaContainer = decisionData.MediaContainer || decisionData;
+      const generalCode = mediaContainer.generalDecisionCode;
+
+      if (generalCode === 2000) {
+        return res.status(400).json({
+          error: `This ${fileContainer.toUpperCase()} file cannot be played. Your Plex server doesn't support transcoding. Try MP4/H264 format or enable transcoding in Plex.`
+        });
+      }
+
+      // Plex approved transcoding - return HLS URL for client to use with hls.js
+      const sessionId = `cortex-${Date.now()}`;
+      const hlsUrl = `${connection.serverUrl}/video/:/transcode/universal/start.m3u8?` +
+        `path=${encodeURIComponent(`/library/metadata/${ratingKey}`)}` +
+        `&mediaIndex=0&partIndex=0` +
+        `&offset=0` +
+        `&protocol=hls` +
+        `&copyts=1` +
+        `&fastSeek=1` +
+        `&directPlay=0&directStream=0` +
+        `&videoQuality=100` +
+        `&videoResolution=1920x1080` +
+        `&maxVideoBitrate=8000` +
+        `&subtitleSize=100&audioBoost=100` +
+        `&location=lan` +
+        `&addDebugOverlay=0` +
+        `&autoAdjustQuality=0` +
+        `&directStreamAudio=0` +
+        `&mediaBufferSize=102400` +
+        `&session=${sessionId}` +
+        `&X-Plex-Platform=Chrome` +
+        `&X-Plex-Product=Cortex` +
+        `&X-Plex-Client-Identifier=${PLEX_CLIENT_IDENTIFIER}` +
+        `&X-Plex-Token=${accessToken}`;
+
+      console.log('Plex: Returning HLS URL for transcoded stream');
+
+      res.json({
+        streamUrl: hlsUrl,
+        format: 'hls',
+        needsHlsPlayer: true,
+        duration: item.duration,
+        title: item.title,
+        type: item.type,
+        container: media?.container,
+        videoCodec: media?.videoCodec,
+        audioCodec: media?.audioCodec,
+        sessionId,
+      });
+    }
+  } catch (err) {
+    console.error('Plex stream URL error:', err);
+    res.status(500).json({ error: 'Failed to get stream URL' });
+  }
+});
+
+// Proxy video stream from Plex server (direct playback only)
+// Transcoding is handled via HLS in /api/plex/stream endpoint
+app.get('/api/plex/video/:connectionId/:ratingKey', async (req, res) => {
+  const { connectionId, ratingKey } = req.params;
+  const { token } = req.query;
+
+  try {
+    // Support both authenticated requests and token-based requests (for video src)
+    let userId;
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        userId = decoded.userId;
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    } else if (req.headers.authorization) {
+      try {
+        const authToken = req.headers.authorization.replace('Bearer ', '');
+        const decoded = jwt.verify(authToken, JWT_SECRET);
+        userId = decoded.userId;
+      } catch {
+        return res.status(401).json({ error: 'Invalid authorization' });
+      }
+    } else {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const connection = db.getPlexConnection(connectionId);
+    if (!connection) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    // Verify user owns connection
+    if (connection.userId !== userId) {
+      return res.status(403).json({ error: 'Not your connection' });
+    }
+
+    const accessToken = decryptPlexToken(connection.accessToken);
+
+    // Get item info to find the media part
+    const itemResponse = await plexRequest(connection.serverUrl, `/library/metadata/${ratingKey}`, accessToken);
+    if (!itemResponse.ok) {
+      return res.status(itemResponse.status).json({ error: 'Failed to fetch item' });
+    }
+
+    const itemData = await itemResponse.json();
+    const mediaContainer = itemData.MediaContainer || itemData;
+    const item = (mediaContainer.Metadata || [])[0];
+
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const media = item.Media?.[0];
+    const part = media?.Part?.[0];
+
+    if (!part) {
+      return res.status(404).json({ error: 'No playable media found' });
+    }
+
+    // Check if file is browser-compatible (MP4/M4V with H264)
+    const fileContainer = media?.container?.toLowerCase();
+    const videoCodec = media?.videoCodec?.toLowerCase();
+    const isBrowserCompatible =
+      (fileContainer === 'mp4' || fileContainer === 'm4v' || fileContainer === 'mov') &&
+      (videoCodec === 'h264' || videoCodec === 'avc1');
+
+    if (!isBrowserCompatible) {
+      // Non-compatible files should use /api/plex/stream which returns HLS URL
+      return res.status(400).json({
+        error: `This ${fileContainer?.toUpperCase() || 'video'} file requires transcoding. Use the stream endpoint instead.`
+      });
+    }
+
+    // Direct stream URL
+    const videoUrl = `${connection.serverUrl}${part.key}?X-Plex-Token=${accessToken}`;
+
+    // Handle range requests for seeking
+    const rangeHeader = req.headers.range;
+    const fetchHeaders = getPlexHeaders(accessToken);
+    if (rangeHeader) {
+      fetchHeaders['Range'] = rangeHeader;
+    }
+
+    const videoResponse = await fetch(videoUrl, {
+      headers: fetchHeaders,
+    });
+
+    if (!videoResponse.ok && videoResponse.status !== 206) {
+      const errorText = await videoResponse.text().catch(() => '');
+      console.error('Plex video stream error:', videoResponse.status, errorText.substring(0, 100));
+      return res.status(videoResponse.status).json({ error: 'Failed to stream video' });
+    }
+
+    // Forward response headers
+    const contentType = videoResponse.headers.get('content-type') || 'video/mp4';
+    const contentLength = videoResponse.headers.get('content-length');
+    const contentRange = videoResponse.headers.get('content-range');
+    const acceptRanges = videoResponse.headers.get('accept-ranges');
+
+    res.set('Content-Type', contentType);
+    if (contentLength) res.set('Content-Length', contentLength);
+    if (contentRange) res.set('Content-Range', contentRange);
+    if (acceptRanges) res.set('Accept-Ranges', acceptRanges);
+    res.status(videoResponse.status);
+
+    // Pipe the video stream to the response
+    const { Readable } = await import('stream');
+    const nodeStream = Readable.fromWeb(videoResponse.body);
+    nodeStream.pipe(res);
+
+    // Handle client disconnect
+    req.on('close', () => {
+      nodeStream.destroy();
+    });
+
+  } catch (err) {
+    console.error('Plex video proxy error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to stream video' });
+    }
+  }
+});
+
+// Proxy thumbnail from Plex server
+app.get('/api/plex/thumbnail/:connectionId/:ratingKey', async (req, res) => {
+  const { connectionId, ratingKey } = req.params;
+  const { width = 300, height = 450, token } = req.query;
+
+  try {
+    // Support both authenticated requests and token-based requests (for img src)
+    let userId;
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        userId = decoded.userId;
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    } else if (req.headers.authorization) {
+      try {
+        const authToken = req.headers.authorization.replace('Bearer ', '');
+        const decoded = jwt.verify(authToken, JWT_SECRET);
+        userId = decoded.userId;
+      } catch {
+        return res.status(401).json({ error: 'Invalid authorization' });
+      }
+    } else {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Verify user owns the connection or is in a wave that has this media shared
+    const connection = db.getPlexConnection(connectionId);
+    if (!connection) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    // Allow access if user owns connection
+    const ownsConnection = connection.userId === userId;
+
+    // Also allow if this media is shared in a wave the user participates in
+    // (This enables viewing thumbnails for media shared by others)
+    if (!ownsConnection) {
+      // For now, allow if the connection exists (media was shared intentionally)
+      // A more restrictive check could verify wave participation
+    }
+
+    const accessToken = decryptPlexToken(connection.accessToken);
+
+    // Build thumbnail URL - Plex uses /photo/:/transcode for resizing
+    const thumbUrl = new URL(`${connection.serverUrl}/photo/:/transcode`);
+    thumbUrl.searchParams.set('url', `/library/metadata/${ratingKey}/thumb`);
+    thumbUrl.searchParams.set('width', width);
+    thumbUrl.searchParams.set('height', height);
+    thumbUrl.searchParams.set('minSize', '1');
+    thumbUrl.searchParams.set('upscale', '1');
+    thumbUrl.searchParams.set('X-Plex-Token', accessToken);
+
+    const response = await fetch(thumbUrl.toString());
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch thumbnail' });
+    }
+
+    // Forward the image with proper headers
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.error('Plex thumbnail error:', err);
+    res.status(500).json({ error: 'Failed to fetch thumbnail' });
   }
 });
 

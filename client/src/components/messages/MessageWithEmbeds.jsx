@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { API_URL } from '../../config/constants.js';
 import { detectEmbedUrls, EMBED_PLATFORMS } from '../../utils/embed.js';
 import JellyfinEmbed from '../media/JellyfinEmbed.jsx';
+import PlexEmbed from '../media/PlexEmbed.jsx';
 
 // Single embed component with click-to-load
 const RichEmbed = ({ embed, autoLoad = false }) => {
@@ -519,6 +520,16 @@ const MessageWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [],
             duration={embed.duration}
             overview={embed.overview}
             canStartWatchParty={false}
+          />
+        ) : embed.platform === 'plex' ? (
+          <PlexEmbed
+            key={`plex-${embed.connectionId}-${embed.ratingKey}-${index}`}
+            connectionId={embed.connectionId}
+            ratingKey={embed.ratingKey}
+            name={embed.name}
+            type={embed.type}
+            duration={embed.duration}
+            summary={embed.summary}
           />
         ) : (
           <RichEmbed key={`${embed.platform}-${embed.contentId}-${index}`} embed={embed} autoLoad={autoLoadEmbeds} />

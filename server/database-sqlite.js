@@ -1475,6 +1475,40 @@ export class DatabaseSQLite {
 
       console.log('✅ Jellyfin integration tables created');
     }
+
+    // v2.15.0 - Plex Integration: Connection management with OAuth support
+    const plexConnectionsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='plex_connections'
+    `).get();
+
+    if (!plexConnectionsExists) {
+      console.log('📝 Adding Plex integration tables (v2.15.0)...');
+
+      this.db.exec(`
+        -- Plex user connections (encrypted tokens)
+        CREATE TABLE IF NOT EXISTS plex_connections (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          server_url TEXT NOT NULL,
+          access_token TEXT,
+          plex_user_id TEXT,
+          server_name TEXT,
+          machine_identifier TEXT,
+          status TEXT DEFAULT 'active',
+          last_connected TEXT,
+          created_at TEXT NOT NULL,
+          UNIQUE(user_id, server_url)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_plex_connections_user
+        ON plex_connections(user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_plex_connections_status
+        ON plex_connections(status);
+      `);
+
+      console.log('✅ Plex integration tables created');
+    }
   }
 
   prepareStatements() {
@@ -8445,6 +8479,120 @@ export class DatabaseSQLite {
       DELETE FROM jellyfin_feed_imports WHERE connection_id = ?
     `).run(connectionId);
     return result.changes;
+  }
+
+  // ============ Plex Integration Methods (v2.15.0) ============
+
+  /**
+   * Add a Plex server connection for a user
+   */
+  createPlexConnection({ userId, serverUrl, accessToken, plexUserId, serverName, machineIdentifier }) {
+    const id = `plex-${uuidv4()}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO plex_connections (id, user_id, server_url, access_token, plex_user_id, server_name, machine_identifier, status, last_connected, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    `).run(id, userId, serverUrl, accessToken, plexUserId, serverName, machineIdentifier, now, now);
+
+    return this.getPlexConnection(id);
+  }
+
+  /**
+   * Get a Plex connection by ID
+   */
+  getPlexConnection(connectionId) {
+    const row = this.db.prepare(`
+      SELECT * FROM plex_connections WHERE id = ?
+    `).get(connectionId);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      serverUrl: row.server_url,
+      accessToken: row.access_token,
+      plexUserId: row.plex_user_id,
+      serverName: row.server_name,
+      machineIdentifier: row.machine_identifier,
+      status: row.status,
+      lastConnected: row.last_connected,
+      createdAt: row.created_at,
+    };
+  }
+
+  /**
+   * Get all Plex connections for a user
+   */
+  getPlexConnectionsByUser(userId) {
+    const rows = this.db.prepare(`
+      SELECT * FROM plex_connections
+      WHERE user_id = ? AND status = 'active'
+      ORDER BY created_at DESC
+    `).all(userId);
+
+    return rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      serverUrl: row.server_url,
+      accessToken: row.access_token,
+      plexUserId: row.plex_user_id,
+      serverName: row.server_name,
+      machineIdentifier: row.machine_identifier,
+      status: row.status,
+      lastConnected: row.last_connected,
+      createdAt: row.created_at,
+    }));
+  }
+
+  /**
+   * Update Plex connection
+   */
+  updatePlexConnection(connectionId, updates) {
+    const allowedFields = ['access_token', 'plex_user_id', 'server_name', 'machine_identifier', 'status', 'last_connected'];
+    const sets = [];
+    const values = [];
+
+    for (const [key, value] of Object.entries(updates)) {
+      const dbKey = key.replace(/([A-Z])/g, '_$1').toLowerCase(); // camelCase to snake_case
+      if (allowedFields.includes(dbKey)) {
+        sets.push(`${dbKey} = ?`);
+        values.push(value);
+      }
+    }
+
+    if (sets.length === 0) return false;
+
+    values.push(connectionId);
+    this.db.prepare(`UPDATE plex_connections SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    return true;
+  }
+
+  /**
+   * Update connection last_connected timestamp
+   */
+  touchPlexConnection(connectionId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`UPDATE plex_connections SET last_connected = ? WHERE id = ?`).run(now, connectionId);
+  }
+
+  /**
+   * Delete a Plex connection
+   */
+  deletePlexConnection(connectionId) {
+    const result = this.db.prepare(`DELETE FROM plex_connections WHERE id = ?`).run(connectionId);
+    return result.changes > 0;
+  }
+
+  /**
+   * Verify user owns a Plex connection (for auth checks)
+   */
+  userOwnsPlexConnection(userId, connectionId) {
+    const row = this.db.prepare(`
+      SELECT id FROM plex_connections WHERE id = ? AND user_id = ?
+    `).get(connectionId, userId);
+    return !!row;
   }
 
   // ============ Video Feed Methods (v2.8.0) ============
