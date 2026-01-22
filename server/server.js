@@ -7049,14 +7049,14 @@ function decryptJellyfinToken(encrypted) {
   return decrypted;
 }
 
-// Helper: Make authenticated request to Jellyfin server
+/// Helper: Make authenticated request to Jellyfin server
 async function jellyfinRequest(serverUrl, path, accessToken, options = {}) {
   const url = new URL(path, serverUrl);
   const response = await fetch(url.toString(), {
     ...options,
     headers: {
       'Accept': 'application/json',
-      'X-Emby-Authorization': `MediaBrowser Client="Cortex", Device="Server", DeviceId="cortex-server", Version="2.14.0", Token="${accessToken}"`,
+      'X-Emby-Token': accessToken,
       ...(options.headers || {}),
     },
   });
@@ -7568,7 +7568,7 @@ app.get('/api/jellyfin/thumbnail/:connectionId/:itemId', async (req, res) => {
     const imageUrl = `${connection.serverUrl}/Items/${itemId}/Images/${type}?maxWidth=${maxWidth}`;
     const response = await fetch(imageUrl, {
       headers: {
-        'X-Emby-Authorization': `MediaBrowser Client="Cortex", Device="Server", DeviceId="cortex-server", Version="2.14.0", Token="${accessToken}"`,
+        'X-Emby-Token': accessToken,
       },
     });
 
