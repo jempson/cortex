@@ -7473,9 +7473,9 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
     // Use direct video stream with transcoding to MP4 H.264
-    // MediaSourceId is typically the same as ItemId for single-source videos
-    // Use Static=false to force transcoding, which gives us a browser-compatible format
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream?api_key=${encodeURIComponent(accessToken)}&Static=false&Container=mp4&VideoCodec=h264&AudioCodec=aac&VideoBitRate=2000000&AudioBitRate=128000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&StartTimeTicks=0`;
+    // Force transcoding with H.264 Baseline profile for maximum compatibility
+    // Use .mp4 extension to hint format to Jellyfin
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&Static=false&Container=mp4&VideoCodec=h264&AudioCodec=aac&VideoBitRate=2000000&AudioBitRate=128000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&StartTimeTicks=0&Profile=Baseline&Level=30&CopyTimestamps=false&EnableSubtitlesInManifest=false&SubtitleMethod=Encode`;
 
     console.log(`[Jellyfin] Proxying transcoded stream for item: ${itemId}`);
 
@@ -7484,7 +7484,9 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
     });
 
     const contentType = streamResponse.headers.get('content-type');
-    console.log(`[Jellyfin] Stream response: ${streamResponse.status}, type: ${contentType}`);
+    const contentLength = streamResponse.headers.get('content-length');
+    const transferEncoding = streamResponse.headers.get('transfer-encoding');
+    console.log(`[Jellyfin] Stream response: ${streamResponse.status}, type: ${contentType}, length: ${contentLength}, transfer: ${transferEncoding}`);
 
     if (!streamResponse.ok) {
       const errorText = await streamResponse.text();
