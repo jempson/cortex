@@ -6051,6 +6051,14 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
       scrollSpeed: validScrollSpeeds.includes(req.body.crawlBar.scrollSpeed) ? req.body.crawlBar.scrollSpeed : (existingCrawlBar.scrollSpeed || 'normal'),
     };
   }
+  // Handle videoFeed preferences (v2.8.0)
+  if (req.body.videoFeed && typeof req.body.videoFeed === 'object') {
+    const existingVideoFeed = user.preferences?.videoFeed || {};
+    updates.videoFeed = {
+      showInFeed: typeof req.body.videoFeed.showInFeed === 'boolean' ? req.body.videoFeed.showInFeed : (existingVideoFeed.showInFeed ?? true),
+      autoplay: typeof req.body.videoFeed.autoplay === 'boolean' ? req.body.videoFeed.autoplay : (existingVideoFeed.autoplay ?? true),
+    };
+  }
 
   // Use the dedicated method that works with both JSON and SQLite
   const updatedPreferences = db.updateUserPreferences(req.user.userId, updates);
