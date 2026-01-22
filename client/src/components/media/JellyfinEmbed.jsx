@@ -25,7 +25,7 @@ const JellyfinEmbed = ({
   const [playing, setPlaying] = useState(false);
   const [videoError, setVideoError] = useState(null);
   const [debugLog, setDebugLog] = useState([]);
-  const [showDebug, setShowDebug] = useState(true); // Show debug by default for testing
+  const [showDebug, setShowDebug] = useState(false); // Hidden by default
   const [directStreamUrl, setDirectStreamUrl] = useState(null);
   const [loadingStream, setLoadingStream] = useState(false);
 
