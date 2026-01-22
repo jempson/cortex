@@ -7473,7 +7473,9 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
     // Build stream URL - use static stream for direct playback
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream?static=true&api_key=${accessToken}`;
+    // URL-encode the token in case it contains special characters
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream?static=true&api_key=${encodeURIComponent(accessToken)}`;
+    console.log(`[Jellyfin] Fetching stream from: ${connection.serverUrl}/Videos/${itemId}/stream`);
 
     // Build headers to forward - include Range for seeking support
     const fetchHeaders = {
@@ -7491,8 +7493,10 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
       headers: fetchHeaders,
     });
 
+    console.log(`[Jellyfin] Stream response: ${streamResponse.status} ${streamResponse.statusText}, content-type: ${streamResponse.headers.get('content-type')}`);
+
     if (!streamResponse.ok && streamResponse.status !== 206) {
-      console.error('Jellyfin stream response not ok:', streamResponse.status);
+      console.error('Jellyfin stream response not ok:', streamResponse.status, await streamResponse.text());
       return res.status(streamResponse.status).json({ error: 'Failed to get stream from Jellyfin' });
     }
 
