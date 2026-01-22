@@ -1,7 +1,7 @@
 # Cortex - Outstanding Features & Future Roadmap
 
-**Last Updated:** January 7, 2026
-**Current Version:** v2.2.2
+**Last Updated:** January 22, 2026
+**Current Version:** v2.14.0
 
 This document tracks planned but not-yet-implemented features for future releases.
 
@@ -197,6 +197,43 @@ These features require significant architectural changes:
 - Federation Statistics: Cross-server analytics
 - Relay Servers: Message delivery through intermediaries
 
+### TTRPG (Table Top Role Playing Games)
+Full-featured TTRPG support for running campaigns directly in Cortex.
+
+**Dice Rolling:**
+- Inline dice notation (e.g., `/roll 2d20+5`, `/roll 4d6kh3`)
+- Support for all standard dice (d4, d6, d8, d10, d12, d20, d100)
+- Advantage/disadvantage, keep highest/lowest
+- Dice roll history and statistics
+- Secret GM rolls
+
+**Interactive Maps:**
+- Upload and share battle maps
+- Token placement and movement
+- Fog of war / line of sight
+- Grid overlay (square/hex)
+- Real-time synchronized movement for all players
+
+**Character Database:**
+- Character sheet storage and management
+- Support for multiple game systems
+- Track HP, stats, inventory, abilities
+- Share character sheets with party members
+- Character portrait uploads
+
+**Rules Database:**
+- Built-in rules for open source RPG systems:
+  - D&D 5e SRD (Open Gaming License)
+  - Pathfinder (OGL)
+  - Fate Core/Accelerated (Creative Commons)
+  - Dungeon World (Creative Commons)
+  - Call of Cthulhu (Basic Roleplaying OGL)
+  - OpenD6 (Open Gaming License)
+  - OSRIC (OGL)
+- Searchable rules reference
+- Quick lookup during gameplay
+- Homebrew rules support
+
 ---
 
 ## Priority Matrix
@@ -208,6 +245,7 @@ These features require significant architectural changes:
 | E2E Encryption | Medium | High | High | Backlog |
 | Webhooks | Low | Medium | Medium | Backlog |
 | Voice Messages | Low | High | Medium | Backlog |
+| TTRPG System | Low | Very High | High | Backlog |
 
 ---
 
