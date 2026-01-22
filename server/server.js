@@ -7472,10 +7472,10 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Redirect to Jellyfin's direct stream URL
-    // This lets the browser handle the connection directly, bypassing proxy buffering issues
-    // Use MP4 with H.264 Baseline profile for maximum iOS compatibility
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&Static=false&Container=mp4&VideoCodec=h264&AudioCodec=aac&VideoBitRate=2000000&AudioBitRate=128000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&Profile=Baseline&Level=30`;
+    // Try WebM with VP9 which is designed for web streaming
+    // Also generate a PlaySessionId which Jellyfin may require for transcoding
+    const playSessionId = `cortex-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.webm?api_key=${encodeURIComponent(accessToken)}&Static=false&Container=webm&VideoCodec=vp9&AudioCodec=opus&VideoBitRate=2000000&AudioBitRate=128000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&PlaySessionId=${playSessionId}`;
 
     console.log(`[Jellyfin] Redirecting to stream: ${streamUrl.replace(accessToken, '***')}`);
 
