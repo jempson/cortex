@@ -7472,14 +7472,14 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Build stream URL - redirect to Jellyfin for direct playback
-    // This lets the browser handle the video stream directly
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream?api_key=${encodeURIComponent(accessToken)}&Container=mp4&VideoCodec=h264&AudioCodec=aac&TranscodingMaxAudioChannels=2`;
+    // Return the direct Jellyfin stream URL for client to use
+    // This avoids CORS issues by letting the client make the request directly
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream?api_key=${encodeURIComponent(accessToken)}&Container=mp4&VideoCodec=h264&AudioCodec=aac`;
 
-    console.log(`[Jellyfin] Redirecting to stream: ${connection.serverUrl}/Videos/${itemId}/stream`);
+    console.log(`[Jellyfin] Returning stream URL for: ${connection.serverUrl}/Videos/${itemId}/stream`);
 
-    // Redirect to Jellyfin stream URL directly
-    res.redirect(streamUrl);
+    // Return URL for client to use directly
+    res.json({ streamUrl });
   } catch (err) {
     console.error('Jellyfin stream error:', err);
     res.status(500).json({ error: 'Failed to get stream' });

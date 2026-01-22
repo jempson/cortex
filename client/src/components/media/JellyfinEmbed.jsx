@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { API_URL } from '../../config/constants.js';
 import { storage } from '../../utils/storage.js';
 
@@ -24,6 +24,8 @@ const JellyfinEmbed = ({
   const [showOverview, setShowOverview] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [videoError, setVideoError] = useState(null);
+  const [directStreamUrl, setDirectStreamUrl] = useState(null);
+  const [loadingStream, setLoadingStream] = useState(false);
 
   const formatDuration = (ticks) => {
     if (!ticks) return null;
@@ -39,7 +41,27 @@ const JellyfinEmbed = ({
   // Include token in URL since <img src> and <video src> can't pass auth headers
   const token = storage.getToken();
   const thumbnailUrl = `${API_URL}/jellyfin/thumbnail/${connectionId}/${itemId}?type=Primary&maxWidth=300${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-  const streamUrl = `${API_URL}/jellyfin/stream/${connectionId}/${itemId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+
+  // Fetch direct stream URL when playing starts
+  useEffect(() => {
+    if (playing && !directStreamUrl && !loadingStream) {
+      setLoadingStream(true);
+      fetch(`${API_URL}/jellyfin/stream/${connectionId}/${itemId}?token=${encodeURIComponent(token)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.streamUrl) {
+            setDirectStreamUrl(data.streamUrl);
+          } else {
+            setVideoError('Failed to get stream URL');
+          }
+        })
+        .catch(err => {
+          console.error('Failed to get stream URL:', err);
+          setVideoError('Failed to get stream URL');
+        })
+        .finally(() => setLoadingStream(false));
+    }
+  }, [playing, connectionId, itemId, token, directStreamUrl, loadingStream]);
 
   const getTypeIcon = () => {
     switch (type) {
@@ -74,25 +96,41 @@ const JellyfinEmbed = ({
         {playing ? (
           /* Inline video player */
           <>
-            <video
-              src={streamUrl}
-              controls
-              autoPlay
-              style={{
+            {loadingStream ? (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 width: '100%',
                 height: '100%',
                 background: '#000',
-              }}
-              onError={(e) => {
-                console.error('Video error:', e);
-                setVideoError('Failed to play video. Try opening in new tab.');
-              }}
-            />
+                color: '#fff',
+                fontSize: '0.9rem',
+              }}>
+                Loading stream...
+              </div>
+            ) : directStreamUrl ? (
+              <video
+                src={directStreamUrl}
+                controls
+                autoPlay
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  background: '#000',
+                }}
+                onError={(e) => {
+                  console.error('Video error:', e);
+                  setVideoError('Failed to play video. Format may not be supported.');
+                }}
+              />
+            ) : null}
             {/* Close button */}
             <button
               onClick={() => {
                 setPlaying(false);
                 setVideoError(null);
+                setDirectStreamUrl(null);
               }}
               style={{
                 position: 'absolute',
