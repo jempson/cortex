@@ -7472,83 +7472,27 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // First, get item info to obtain the mediaSourceId (required for HLS)
-    // Use X-Emby-Token header for authentication
-    const itemInfoUrl = `${connection.serverUrl}/Items/${itemId}`;
-    console.log(`[Jellyfin] Fetching item info for: ${itemId}`);
+    // Use direct video stream with transcoding to MP4 H.264
+    // MediaSourceId is typically the same as ItemId for single-source videos
+    // Use Static=false to force transcoding, which gives us a browser-compatible format
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream?api_key=${encodeURIComponent(accessToken)}&Static=false&Container=mp4&VideoCodec=h264&AudioCodec=aac&VideoBitRate=2000000&AudioBitRate=128000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&StartTimeTicks=0`;
 
-    const itemInfoResponse = await fetch(itemInfoUrl, {
-      headers: {
-        'X-Emby-Token': accessToken,
-      }
-    });
-
-    if (!itemInfoResponse.ok) {
-      const errorText = await itemInfoResponse.text();
-      console.error(`[Jellyfin] Item info error (${itemInfoResponse.status}): ${errorText}`);
-      return res.status(itemInfoResponse.status).json({ error: 'Failed to get item info' });
-    }
-
-    const itemInfo = await itemInfoResponse.json();
-    // For videos, the MediaSourceId is typically the same as the ItemId
-    // Or we can get it from MediaSources if available
-    const mediaSourceId = itemInfo.MediaSources?.[0]?.Id || itemId;
-
-    console.log(`[Jellyfin] Item: ${itemInfo.Name}, Type: ${itemInfo.Type}, MediaSourceId: ${mediaSourceId}`);
-
-    // Use HLS (HTTP Live Streaming) which is natively supported on iOS/Safari
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/master.m3u8?api_key=${encodeURIComponent(accessToken)}&MediaSourceId=${mediaSourceId}&VideoCodec=h264&AudioCodec=aac&AudioBitRate=128000&VideoBitRate=2000000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&SegmentLength=6&MinSegments=1`;
-
-    console.log(`[Jellyfin] Proxying HLS stream for item: ${itemId}`);
+    console.log(`[Jellyfin] Proxying transcoded stream for item: ${itemId}`);
 
     const streamResponse = await fetch(streamUrl, {
       headers: { 'Accept': '*/*' }
     });
 
-    console.log(`[Jellyfin] HLS response: ${streamResponse.status}, type: ${streamResponse.headers.get('content-type')}`);
+    const contentType = streamResponse.headers.get('content-type');
+    console.log(`[Jellyfin] Stream response: ${streamResponse.status}, type: ${contentType}`);
 
     if (!streamResponse.ok) {
       const errorText = await streamResponse.text();
-      console.error(`[Jellyfin] HLS error response: ${errorText}`);
+      console.error(`[Jellyfin] Stream error: ${errorText}`);
       return res.status(streamResponse.status).json({ error: 'Failed to get stream' });
     }
 
-    const contentType = streamResponse.headers.get('content-type');
-
-    // For HLS, we need to rewrite the playlist URLs to go through our proxy
-    if (contentType?.includes('mpegurl') || contentType?.includes('m3u8')) {
-      let playlist = await streamResponse.text();
-
-      // Construct our API base URL from the request
-      const apiBaseUrl = `${req.protocol}://${req.get('host')}/api`;
-
-      // Rewrite segment URLs to go through our proxy
-      // Jellyfin returns relative URLs like "hls1/main/0.ts" or absolute URLs
-      playlist = playlist.replace(/^(?!#)(.+\.ts.*)$/gm, (match) => {
-        // If it's a relative URL, make it absolute through our API
-        if (!match.startsWith('http')) {
-          return `${apiBaseUrl}/jellyfin/hls-segment/${connectionId}/${itemId}/${encodeURIComponent(match)}?token=${encodeURIComponent(req.query.token)}`;
-        }
-        return match;
-      });
-
-      // Also handle sub-playlists (like index.m3u8)
-      playlist = playlist.replace(/^(?!#)(.+\.m3u8.*)$/gm, (match) => {
-        if (!match.startsWith('http')) {
-          return `${apiBaseUrl}/jellyfin/hls-playlist/${connectionId}/${itemId}/${encodeURIComponent(match)}?token=${encodeURIComponent(req.query.token)}`;
-        }
-        return match;
-      });
-
-      console.log(`[Jellyfin] Rewritten HLS playlist:\n${playlist.substring(0, 500)}...`);
-
-      res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Cache-Control', 'no-cache');
-      return res.send(playlist);
-    }
-
-    // For non-playlist responses, just pipe through
+    // Pipe the transcoded stream to the client
     res.setHeader('Content-Type', contentType || 'video/mp4');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cache-Control', 'no-cache');
