@@ -25,6 +25,8 @@ const JellyfinEmbed = ({
   const [playing, setPlaying] = useState(false);
   const [videoError, setVideoError] = useState(null);
   const [directStreamUrl, setDirectStreamUrl] = useState(null);
+  const [webPlayerUrl, setWebPlayerUrl] = useState(null);
+  const [jellyfinServerUrl, setJellyfinServerUrl] = useState(null);
   const [loadingStream, setLoadingStream] = useState(false);
 
   const formatDuration = (ticks) => {
@@ -51,6 +53,8 @@ const JellyfinEmbed = ({
         .then(data => {
           if (data.streamUrl) {
             setDirectStreamUrl(data.streamUrl);
+            setWebPlayerUrl(data.webPlayerUrl);
+            setJellyfinServerUrl(data.serverUrl);
           } else {
             setVideoError('Failed to get stream URL');
           }
@@ -158,13 +162,31 @@ const JellyfinEmbed = ({
                 bottom: '8px',
                 left: '8px',
                 right: '8px',
-                background: 'rgba(255,100,100,0.9)',
+                background: 'rgba(0,0,0,0.9)',
                 color: '#fff',
-                padding: '8px',
+                padding: '12px',
                 fontSize: '0.75rem',
                 borderRadius: '4px',
+                textAlign: 'center',
               }}>
-                {videoError}
+                <div style={{ marginBottom: '8px' }}>{videoError}</div>
+                {jellyfinServerUrl && (
+                  <button
+                    onClick={() => window.open(`${jellyfinServerUrl}/web/index.html#!/details?id=${itemId}`, '_blank')}
+                    style={{
+                      padding: '8px 16px',
+                      background: 'var(--accent-purple)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    Open in Jellyfin
+                  </button>
+                )}
               </div>
             )}
           </>

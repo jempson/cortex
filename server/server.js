@@ -7472,14 +7472,15 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Use .mp4 extension to force MP4 container output
-    // This triggers Jellyfin's transcoding to browser-compatible format
+    // Return both the direct stream URL and the web player URL
+    // Let the client try direct playback first, fall back to web player
     const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&VideoCodec=h264&AudioCodec=aac&AudioBitRate=128000&VideoBitRate=3000000`;
+    const webPlayerUrl = `${connection.serverUrl}/web/index.html#!/details?id=${itemId}&serverId=${connection.jellyfinUserId}`;
 
-    console.log(`[Jellyfin] Returning MP4 stream URL for: ${connection.serverUrl}/Videos/${itemId}/stream.mp4`);
+    console.log(`[Jellyfin] Returning stream URLs for item: ${itemId}`);
 
-    // Return URL for client to use directly
-    res.json({ streamUrl });
+    // Return URLs for client to use
+    res.json({ streamUrl, webPlayerUrl, serverUrl: connection.serverUrl });
   } catch (err) {
     console.error('Jellyfin stream error:', err);
     res.status(500).json({ error: 'Failed to get stream' });
