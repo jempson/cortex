@@ -1396,6 +1396,85 @@ export class DatabaseSQLite {
 
       console.log('✅ Custom themes tables created');
     }
+
+    // v2.14.0 - Jellyfin Integration: Connection management, watch parties, and feed imports
+    const jellyfinConnectionsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='jellyfin_connections'
+    `).get();
+
+    if (!jellyfinConnectionsExists) {
+      console.log('📝 Adding Jellyfin integration tables (v2.14.0)...');
+
+      this.db.exec(`
+        -- Jellyfin user connections (encrypted tokens)
+        CREATE TABLE IF NOT EXISTS jellyfin_connections (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          server_url TEXT NOT NULL,
+          access_token TEXT,
+          jellyfin_user_id TEXT,
+          server_name TEXT,
+          status TEXT DEFAULT 'active',
+          last_connected TEXT,
+          created_at TEXT NOT NULL,
+          UNIQUE(user_id, server_url)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_jellyfin_connections_user
+        ON jellyfin_connections(user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_jellyfin_connections_status
+        ON jellyfin_connections(status);
+
+        -- Watch party sessions for synchronized playback
+        CREATE TABLE IF NOT EXISTS watch_parties (
+          id TEXT PRIMARY KEY,
+          wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+          host_user_id TEXT NOT NULL REFERENCES users(id),
+          jellyfin_connection_id TEXT NOT NULL REFERENCES jellyfin_connections(id),
+          jellyfin_item_id TEXT NOT NULL,
+          media_title TEXT,
+          media_type TEXT,
+          status TEXT DEFAULT 'active',
+          playback_position INTEGER DEFAULT 0,
+          is_playing INTEGER DEFAULT 0,
+          last_sync_at TEXT,
+          created_at TEXT NOT NULL,
+          ended_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_watch_parties_wave
+        ON watch_parties(wave_id);
+
+        CREATE INDEX IF NOT EXISTS idx_watch_parties_status
+        ON watch_parties(status);
+
+        CREATE INDEX IF NOT EXISTS idx_watch_parties_host
+        ON watch_parties(host_user_id);
+
+        -- Video feed imports from Jellyfin
+        CREATE TABLE IF NOT EXISTS jellyfin_feed_imports (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          connection_id TEXT NOT NULL REFERENCES jellyfin_connections(id) ON DELETE CASCADE,
+          jellyfin_item_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          thumbnail_url TEXT,
+          duration_ticks INTEGER,
+          media_type TEXT DEFAULT 'Video',
+          imported_at TEXT NOT NULL,
+          UNIQUE(user_id, jellyfin_item_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_jellyfin_feed_imports_user
+        ON jellyfin_feed_imports(user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_jellyfin_feed_imports_connection
+        ON jellyfin_feed_imports(connection_id);
+      `);
+
+      console.log('✅ Jellyfin integration tables created');
+    }
   }
 
   prepareStatements() {
@@ -8000,6 +8079,372 @@ export class DatabaseSQLite {
       SELECT * FROM bot_wave_keys WHERE bot_id = ? AND wave_id = ?
       ORDER BY key_version DESC LIMIT 1
     `).get(botId, waveId);
+  }
+
+  // ============ Jellyfin Integration Methods (v2.14.0) ============
+
+  /**
+   * Add a Jellyfin server connection for a user
+   */
+  createJellyfinConnection({ userId, serverUrl, accessToken, jellyfinUserId, serverName }) {
+    const id = `jfconn-${uuidv4()}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO jellyfin_connections (id, user_id, server_url, access_token, jellyfin_user_id, server_name, status, last_connected, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    `).run(id, userId, serverUrl, accessToken, jellyfinUserId, serverName, now, now);
+
+    return this.getJellyfinConnection(id);
+  }
+
+  /**
+   * Get a Jellyfin connection by ID
+   */
+  getJellyfinConnection(connectionId) {
+    const row = this.db.prepare(`
+      SELECT * FROM jellyfin_connections WHERE id = ?
+    `).get(connectionId);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      serverUrl: row.server_url,
+      accessToken: row.access_token,
+      jellyfinUserId: row.jellyfin_user_id,
+      serverName: row.server_name,
+      status: row.status,
+      lastConnected: row.last_connected,
+      createdAt: row.created_at,
+    };
+  }
+
+  /**
+   * Get all Jellyfin connections for a user
+   */
+  getJellyfinConnectionsByUser(userId) {
+    const rows = this.db.prepare(`
+      SELECT * FROM jellyfin_connections
+      WHERE user_id = ? AND status = 'active'
+      ORDER BY created_at DESC
+    `).all(userId);
+
+    return rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      serverUrl: row.server_url,
+      accessToken: row.access_token,
+      jellyfinUserId: row.jellyfin_user_id,
+      serverName: row.server_name,
+      status: row.status,
+      lastConnected: row.last_connected,
+      createdAt: row.created_at,
+    }));
+  }
+
+  /**
+   * Update Jellyfin connection
+   */
+  updateJellyfinConnection(connectionId, updates) {
+    const allowedFields = ['access_token', 'jellyfin_user_id', 'server_name', 'status', 'last_connected'];
+    const sets = [];
+    const values = [];
+
+    for (const [key, value] of Object.entries(updates)) {
+      const dbKey = key.replace(/([A-Z])/g, '_$1').toLowerCase(); // camelCase to snake_case
+      if (allowedFields.includes(dbKey)) {
+        sets.push(`${dbKey} = ?`);
+        values.push(value);
+      }
+    }
+
+    if (sets.length === 0) return false;
+
+    values.push(connectionId);
+    this.db.prepare(`UPDATE jellyfin_connections SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    return true;
+  }
+
+  /**
+   * Update connection last_connected timestamp
+   */
+  touchJellyfinConnection(connectionId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`UPDATE jellyfin_connections SET last_connected = ? WHERE id = ?`).run(now, connectionId);
+  }
+
+  /**
+   * Delete a Jellyfin connection
+   */
+  deleteJellyfinConnection(connectionId) {
+    const result = this.db.prepare(`DELETE FROM jellyfin_connections WHERE id = ?`).run(connectionId);
+    return result.changes > 0;
+  }
+
+  /**
+   * Verify user owns a Jellyfin connection (for auth checks)
+   */
+  userOwnsJellyfinConnection(userId, connectionId) {
+    const row = this.db.prepare(`
+      SELECT id FROM jellyfin_connections WHERE id = ? AND user_id = ?
+    `).get(connectionId, userId);
+    return !!row;
+  }
+
+  // ---- Watch Party Methods ----
+
+  /**
+   * Create a watch party
+   */
+  createWatchParty({ waveId, hostUserId, jellyfinConnectionId, jellyfinItemId, mediaTitle, mediaType }) {
+    const id = `wp-${uuidv4()}`;
+    const now = new Date().toISOString();
+
+    // End any existing active party in this wave
+    this.db.prepare(`
+      UPDATE watch_parties SET status = 'ended', ended_at = ?
+      WHERE wave_id = ? AND status = 'active'
+    `).run(now, waveId);
+
+    this.db.prepare(`
+      INSERT INTO watch_parties (id, wave_id, host_user_id, jellyfin_connection_id, jellyfin_item_id, media_title, media_type, status, playback_position, is_playing, last_sync_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 0, 0, ?, ?)
+    `).run(id, waveId, hostUserId, jellyfinConnectionId, jellyfinItemId, mediaTitle, mediaType, now, now);
+
+    return this.getWatchParty(id);
+  }
+
+  /**
+   * Get a watch party by ID
+   */
+  getWatchParty(partyId) {
+    const row = this.db.prepare(`
+      SELECT wp.*, u.handle as host_handle, u.display_name as host_name, u.avatar as host_avatar,
+             jc.server_url as jellyfin_server_url
+      FROM watch_parties wp
+      LEFT JOIN users u ON wp.host_user_id = u.id
+      LEFT JOIN jellyfin_connections jc ON wp.jellyfin_connection_id = jc.id
+      WHERE wp.id = ?
+    `).get(partyId);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      waveId: row.wave_id,
+      hostUserId: row.host_user_id,
+      hostHandle: row.host_handle,
+      hostName: row.host_name,
+      hostAvatar: row.host_avatar,
+      jellyfinConnectionId: row.jellyfin_connection_id,
+      jellyfinServerUrl: row.jellyfin_server_url,
+      jellyfinItemId: row.jellyfin_item_id,
+      mediaTitle: row.media_title,
+      mediaType: row.media_type,
+      status: row.status,
+      playbackPosition: row.playback_position,
+      isPlaying: row.is_playing === 1,
+      lastSyncAt: row.last_sync_at,
+      createdAt: row.created_at,
+      endedAt: row.ended_at,
+    };
+  }
+
+  /**
+   * Get active watch party for a wave
+   */
+  getActiveWatchPartyForWave(waveId) {
+    const row = this.db.prepare(`
+      SELECT wp.*, u.handle as host_handle, u.display_name as host_name, u.avatar as host_avatar,
+             jc.server_url as jellyfin_server_url, jc.access_token as jellyfin_access_token
+      FROM watch_parties wp
+      LEFT JOIN users u ON wp.host_user_id = u.id
+      LEFT JOIN jellyfin_connections jc ON wp.jellyfin_connection_id = jc.id
+      WHERE wp.wave_id = ? AND wp.status = 'active'
+    `).get(waveId);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      waveId: row.wave_id,
+      hostUserId: row.host_user_id,
+      hostHandle: row.host_handle,
+      hostName: row.host_name,
+      hostAvatar: row.host_avatar,
+      jellyfinConnectionId: row.jellyfin_connection_id,
+      jellyfinServerUrl: row.jellyfin_server_url,
+      jellyfinAccessToken: row.jellyfin_access_token,
+      jellyfinItemId: row.jellyfin_item_id,
+      mediaTitle: row.media_title,
+      mediaType: row.media_type,
+      status: row.status,
+      playbackPosition: row.playback_position,
+      isPlaying: row.is_playing === 1,
+      lastSyncAt: row.last_sync_at,
+      createdAt: row.created_at,
+    };
+  }
+
+  /**
+   * Get all active watch parties for waves the user participates in
+   */
+  getActiveWatchPartiesForUser(userId) {
+    const rows = this.db.prepare(`
+      SELECT wp.*, u.handle as host_handle, u.display_name as host_name, u.avatar as host_avatar
+      FROM watch_parties wp
+      LEFT JOIN users u ON wp.host_user_id = u.id
+      INNER JOIN wave_participants wpart ON wp.wave_id = wpart.wave_id
+      WHERE wpart.user_id = ? AND wp.status = 'active'
+    `).all(userId);
+
+    return rows.map(row => ({
+      id: row.id,
+      waveId: row.wave_id,
+      hostUserId: row.host_user_id,
+      hostHandle: row.host_handle,
+      hostName: row.host_name,
+      hostAvatar: row.host_avatar,
+      jellyfinItemId: row.jellyfin_item_id,
+      mediaTitle: row.media_title,
+      mediaType: row.media_type,
+      status: row.status,
+      playbackPosition: row.playback_position,
+      isPlaying: row.is_playing === 1,
+      lastSyncAt: row.last_sync_at,
+      createdAt: row.created_at,
+    }));
+  }
+
+  /**
+   * Update watch party playback state
+   */
+  updateWatchPartyPlayback(partyId, { playbackPosition, isPlaying }) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE watch_parties SET playback_position = ?, is_playing = ?, last_sync_at = ?
+      WHERE id = ? AND status = 'active'
+    `).run(playbackPosition, isPlaying ? 1 : 0, now, partyId);
+  }
+
+  /**
+   * End a watch party
+   */
+  endWatchParty(partyId) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE watch_parties SET status = 'ended', ended_at = ?
+      WHERE id = ? AND status = 'active'
+    `).run(now, partyId);
+    return result.changes > 0;
+  }
+
+  /**
+   * Check if user is host of a watch party
+   */
+  isWatchPartyHost(partyId, userId) {
+    const row = this.db.prepare(`
+      SELECT id FROM watch_parties WHERE id = ? AND host_user_id = ?
+    `).get(partyId, userId);
+    return !!row;
+  }
+
+  // ---- Jellyfin Feed Import Methods ----
+
+  /**
+   * Import a Jellyfin video to the feed
+   */
+  createJellyfinFeedImport({ userId, connectionId, jellyfinItemId, title, thumbnailUrl, durationTicks, mediaType }) {
+    const id = `jfimport-${uuidv4()}`;
+    const now = new Date().toISOString();
+
+    // Use INSERT OR REPLACE to update existing imports
+    this.db.prepare(`
+      INSERT OR REPLACE INTO jellyfin_feed_imports (id, user_id, connection_id, jellyfin_item_id, title, thumbnail_url, duration_ticks, media_type, imported_at)
+      VALUES (
+        COALESCE((SELECT id FROM jellyfin_feed_imports WHERE user_id = ? AND jellyfin_item_id = ?), ?),
+        ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `).run(userId, jellyfinItemId, id, userId, connectionId, jellyfinItemId, title, thumbnailUrl, durationTicks, mediaType || 'Video', now);
+
+    return this.getJellyfinFeedImport(userId, jellyfinItemId);
+  }
+
+  /**
+   * Get a specific Jellyfin feed import
+   */
+  getJellyfinFeedImport(userId, jellyfinItemId) {
+    const row = this.db.prepare(`
+      SELECT fi.*, jc.server_url, jc.access_token
+      FROM jellyfin_feed_imports fi
+      LEFT JOIN jellyfin_connections jc ON fi.connection_id = jc.id
+      WHERE fi.user_id = ? AND fi.jellyfin_item_id = ?
+    `).get(userId, jellyfinItemId);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      connectionId: row.connection_id,
+      jellyfinItemId: row.jellyfin_item_id,
+      title: row.title,
+      thumbnailUrl: row.thumbnail_url,
+      durationTicks: row.duration_ticks,
+      mediaType: row.media_type,
+      serverUrl: row.server_url,
+      accessToken: row.access_token,
+      importedAt: row.imported_at,
+    };
+  }
+
+  /**
+   * Get all Jellyfin feed imports for a user
+   */
+  getJellyfinFeedImportsByUser(userId) {
+    const rows = this.db.prepare(`
+      SELECT fi.*, jc.server_url, jc.server_name
+      FROM jellyfin_feed_imports fi
+      LEFT JOIN jellyfin_connections jc ON fi.connection_id = jc.id
+      WHERE fi.user_id = ?
+      ORDER BY fi.imported_at DESC
+    `).all(userId);
+
+    return rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      connectionId: row.connection_id,
+      jellyfinItemId: row.jellyfin_item_id,
+      title: row.title,
+      thumbnailUrl: row.thumbnail_url,
+      durationTicks: row.duration_ticks,
+      mediaType: row.media_type,
+      serverUrl: row.server_url,
+      serverName: row.server_name,
+      importedAt: row.imported_at,
+    }));
+  }
+
+  /**
+   * Delete a Jellyfin feed import
+   */
+  deleteJellyfinFeedImport(importId, userId) {
+    const result = this.db.prepare(`
+      DELETE FROM jellyfin_feed_imports WHERE id = ? AND user_id = ?
+    `).run(importId, userId);
+    return result.changes > 0;
+  }
+
+  /**
+   * Delete all feed imports for a connection (when connection is deleted)
+   */
+  deleteJellyfinFeedImportsByConnection(connectionId) {
+    const result = this.db.prepare(`
+      DELETE FROM jellyfin_feed_imports WHERE connection_id = ?
+    `).run(connectionId);
+    return result.changes;
   }
 
   // ============ Video Feed Methods (v2.8.0) ============

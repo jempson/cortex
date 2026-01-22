@@ -134,15 +134,49 @@ const VideoFeedView = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goToNext, goToPrevious]);
 
-  // Scroll to current video when index changes
+  // Scroll to current video when index changes (only for programmatic navigation)
+  const isScrollingRef = useRef(false);
   useEffect(() => {
-    if (videoRefs.current[currentIndex]) {
+    if (videoRefs.current[currentIndex] && !isScrollingRef.current) {
       videoRefs.current[currentIndex].scrollIntoView({
         behavior: 'smooth',
         block: 'center',
       });
     }
   }, [currentIndex]);
+
+  // IntersectionObserver to detect which video is visible during manual scrolling
+  // This ensures currentIndex stays in sync and only one video plays at a time
+  useEffect(() => {
+    const options = {
+      root: containerRef.current?.querySelector('[style*="overflowY"]') || containerRef.current,
+      rootMargin: '0px',
+      threshold: 0.6, // Video must be 60% visible to become active
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const index = videoRefs.current.findIndex(ref => ref === entry.target);
+          if (index !== -1 && index !== currentIndex) {
+            isScrollingRef.current = true;
+            setCurrentIndex(index);
+            // Reset scroll flag after a short delay
+            setTimeout(() => {
+              isScrollingRef.current = false;
+            }, 100);
+          }
+        }
+      });
+    }, options);
+
+    // Observe all video containers
+    videoRefs.current.forEach((ref) => {
+      if (ref) observer.observe(ref);
+    });
+
+    return () => observer.disconnect();
+  }, [videos.length, currentIndex]);
 
   // Track video views for recommendation algorithm (v2.10.0)
   // Mark video as viewed after 2 seconds of watching
