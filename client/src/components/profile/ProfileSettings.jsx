@@ -24,6 +24,7 @@ import HandleRequestsList from '../admin/HandleRequestsList.jsx';
 import BotsAdminPanel from '../admin/BotsAdminPanel.jsx';
 import ThemeCustomizationModal from '../settings/ThemeCustomizationModal.jsx';
 import JellyfinConnectionManager from '../media/JellyfinConnectionManager.jsx';
+import PlexConnectionManager from '../media/PlexConnectionManager.jsx';
 
 const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, federationRequestsRefresh }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
@@ -1726,15 +1727,20 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         </div>
       </CollapsibleSection>
 
-      {/* Jellyfin Integration (v2.14.0) */}
+      {/* Media Server Integration (v2.14.0 Jellyfin, v2.15.0 Plex) */}
       <CollapsibleSection title="📺 MEDIA SERVERS" isOpen={openSection === 'jellyfin'} onToggle={() => toggleSection('jellyfin')} isMobile={isMobile}>
         <JellyfinConnectionManager
           fetchAPI={fetchAPI}
           showToast={showToast}
           isMobile={isMobile}
         />
+        <PlexConnectionManager
+          fetchAPI={fetchAPI}
+          showToast={showToast}
+          isMobile={isMobile}
+        />
         <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', padding: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
-          ℹ️ Connect your Jellyfin or Emby media server to share content in waves and host watch parties.
+          ℹ️ Connect your Jellyfin, Emby, or Plex media server to share content in waves.
         </div>
       </CollapsibleSection>
 

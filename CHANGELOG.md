@@ -93,6 +93,81 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.15.0] - 2026-01-22
+
+### Added
+
+#### Plex Media Server Integration
+Connect Plex servers to share content in waves, complementing the existing Jellyfin support.
+
+**Features:**
+- **OAuth Authentication**: Sign in with Plex account for automatic server discovery
+  - Secure PIN-based OAuth flow via plex.tv
+  - Server selection after authentication
+  - Direct token entry as alternative for advanced users
+
+- **Media Server Connections**: Manage Plex server connections in profile settings
+  - Multiple server support
+  - Connection testing
+  - Encrypted token storage (same security as Jellyfin)
+
+- **Media Browser**: Browse and share content from connected Plex servers
+  - Library section navigation (Movies, TV Shows, Music, Photos)
+  - Search functionality
+  - Season/episode navigation for TV series
+  - Thumbnail display via proxied requests
+
+- **Plex Embeds**: Rich media cards in messages with Plex orange accent (#e5a00d)
+  - Automatic metadata display (title, year, duration, type)
+  - Poster thumbnails with fallback handling
+  - Summary/description toggle
+
+- **Video Streaming**: Full playback support in browser
+  - Direct play for browser-compatible formats (MP4/M4V/MOV with H264)
+  - HLS transcoding via hls.js for incompatible formats (MKV, HEVC, etc.)
+  - Automatic format detection - no user configuration needed
+  - Proxied streaming through Cortex to avoid CORS issues
+  - Requires Plex server with transcoding enabled for non-MP4 files
+
+**New Components:**
+- `PlexConnectionManager.jsx` - Server connection settings with OAuth flow
+- `PlexBrowserModal.jsx` - Media library browser
+- `PlexEmbed.jsx` - Embedded media card with HLS video player
+
+**New Dependencies:**
+- `hls.js` - HLS video playback for transcoded Plex streams
+
+**Server Endpoints:**
+- `POST /api/plex/auth/pin` - Request OAuth PIN from plex.tv
+- `GET /api/plex/auth/pin/:pinId` - Poll PIN status for auth completion
+- `GET /api/plex/auth/servers` - List user's available Plex servers
+- `GET/POST/DELETE /api/plex/connections` - Connection management
+- `POST /api/plex/connections/:id/test` - Test connection
+- `GET /api/plex/library/:connectionId` - Get library sections
+- `GET /api/plex/items/:connectionId` - Browse/search items
+- `GET /api/plex/item/:connectionId/:ratingKey` - Get item details
+- `GET /api/plex/stream/:connectionId/:ratingKey` - Get stream info (direct URL or HLS)
+- `GET /api/plex/video/:connectionId/:ratingKey` - Proxy direct video stream
+- `GET /api/plex/thumbnail/:connectionId/:ratingKey` - Proxy thumbnail
+
+**Database Schema:**
+- `plex_connections` - User's Plex server connections
+  - Stores encrypted access tokens
+  - Tracks machine identifier for unique server identification
+  - OAuth-sourced or direct token entry
+
+**Embed URL Format:**
+```
+cortex://plex/{connectionId}/{ratingKey}?name={name}&type={type}&duration={ms}&summary={text}
+```
+
+**Configuration:**
+```bash
+RATE_LIMIT_PLEX_MAX=60          # Max Plex API requests per minute (default: 60)
+```
+
+---
+
 ## [2.14.0] - 2026-01-21
 
 ### Added

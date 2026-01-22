@@ -20,6 +20,8 @@ import MediaRecorder from '../media/MediaRecorder.jsx';
 import CameraCapture from '../media/CameraCapture.jsx';
 import JellyfinBrowserModal from '../media/JellyfinBrowserModal.jsx';
 import { createJellyfinUrl } from '../media/JellyfinEmbed.jsx';
+import PlexBrowserModal from '../media/PlexBrowserModal.jsx';
+import { createPlexUrl } from '../media/PlexEmbed.jsx';
 import WatchPartyBanner from '../media/WatchPartyBanner.jsx';
 import { storage } from '../../utils/storage.js';
 
@@ -78,6 +80,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const [showCameraCapture, setShowCameraCapture] = useState(false); // Camera capture for image upload (v2.7.0)
   const [showJellyfinBrowser, setShowJellyfinBrowser] = useState(false); // Jellyfin media browser (v2.14.0)
   const [jellyfinConnections, setJellyfinConnections] = useState([]); // User's Jellyfin connections
+  const [showPlexBrowser, setShowPlexBrowser] = useState(false); // Plex media browser (v2.15.0)
+  const [plexConnections, setPlexConnections] = useState([]); // User's Plex connections
 
   // E2EE Migration state
   const [encryptionStatus, setEncryptionStatus] = useState(null); // { state, progress, participantsWithE2EE, totalParticipants }
@@ -115,6 +119,20 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }
     };
     loadJellyfinConnections();
+  }, [fetchAPI]);
+
+  // Load Plex connections (v2.15.0)
+  useEffect(() => {
+    const loadPlexConnections = async () => {
+      try {
+        const data = await fetchAPI('/plex/connections');
+        setPlexConnections(data.connections || []);
+      } catch (err) {
+        // Silently fail - user may not have Plex feature enabled
+        console.debug('Plex connections not available:', err.message);
+      }
+    };
+    loadPlexConnections();
   }, [fetchAPI]);
 
   const playbackRef = useRef(null);
@@ -2584,6 +2602,26 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 JF
               </button>
             )}
+            {/* Plex media button (v2.15.0) */}
+            {plexConnections.length > 0 && (
+              <button
+                onClick={() => setShowPlexBrowser(true)}
+                style={{
+                  padding: isMobile ? '8px 10px' : '8px 10px',
+                  minHeight: isMobile ? '38px' : '32px',
+                  background: showPlexBrowser ? '#e5a00d20' : 'transparent',
+                  border: `1px solid ${showPlexBrowser ? '#e5a00d' : 'var(--border-subtle)'}`,
+                  color: '#e5a00d',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: isMobile ? '0.7rem' : '0.65rem',
+                  fontWeight: 700,
+                }}
+                title="Share Plex Media"
+              >
+                PX
+              </button>
+            )}
           </div>
           {/* Spacer */}
           <div style={{ flex: 1 }} />
@@ -2669,6 +2707,29 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           fetchAPI={fetchAPI}
           isMobile={isMobile}
           connections={jellyfinConnections}
+        />
+      )}
+
+      {showPlexBrowser && (
+        <PlexBrowserModal
+          isOpen={showPlexBrowser}
+          onClose={() => setShowPlexBrowser(false)}
+          onSelect={(media) => {
+            // Create embed URL and add to message
+            const embedUrl = createPlexUrl({
+              connectionId: media.connectionId,
+              ratingKey: media.ratingKey,
+              name: media.name,
+              type: media.type,
+              duration: media.duration,
+              summary: media.summary,
+            });
+            setNewMessage(prev => prev + (prev.trim() ? ' ' : '') + embedUrl);
+            setShowPlexBrowser(false);
+          }}
+          fetchAPI={fetchAPI}
+          isMobile={isMobile}
+          connections={plexConnections}
         />
       )}
 
