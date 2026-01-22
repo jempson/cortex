@@ -93,6 +93,27 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.15.1] - 2026-01-22
+
+### Changed
+
+#### Compact Mobile Input UI
+Streamlined the message input action buttons for better mobile usability.
+
+- **Combined Photo Button**: Merged "Upload Image" and "Take Photo" into a single 📷 button with dropdown
+- **Action Overflow Menu**: Added ⋮ menu containing less-common actions (Record Audio, Record Video, Share Plex)
+- **Primary Actions**: GIF and Photo buttons remain as primary quick-access actions
+- **Fixed Send Button**: Prevented send button from wrapping to second row on narrow screens
+- **Removed Jellyfin**: Disabled Jellyfin integration from WaveView (Plex is now the primary media server)
+
+### Fixed
+
+#### Audio Recording Upload
+Fixed audio recordings failing to play with 404 errors.
+
+- **Root Cause**: Storage module was saving audio files to `data/media/` but the serving endpoint looked in `uploads/media/`
+- **Fix**: Aligned `storage.mediaDir` to use `uploads/media/` matching the server's `MEDIA_DIR` constant
+
 ## [2.15.0] - 2026-01-22
 
 ### Added
