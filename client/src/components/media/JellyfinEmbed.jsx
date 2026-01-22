@@ -26,6 +26,8 @@ const JellyfinEmbed = ({
   const [videoError, setVideoError] = useState(null);
   const [debugLog, setDebugLog] = useState([]);
   const [showDebug, setShowDebug] = useState(true); // Show debug by default for testing
+  const [directStreamUrl, setDirectStreamUrl] = useState(null);
+  const [loadingStream, setLoadingStream] = useState(false);
 
   const addDebug = (msg) => {
     const time = new Date().toLocaleTimeString();
@@ -46,7 +48,33 @@ const JellyfinEmbed = ({
   // Include token in URL since <img src> and <video src> can't pass auth headers
   const token = storage.getToken();
   const thumbnailUrl = `${API_URL}/jellyfin/thumbnail/${connectionId}/${itemId}?type=Primary&maxWidth=300${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-  const streamUrl = `${API_URL}/jellyfin/stream/${connectionId}/${itemId}?token=${encodeURIComponent(token)}`;
+
+  // Fetch direct stream URL from server
+  const startPlayback = async () => {
+    setLoadingStream(true);
+    setVideoError(null);
+    setDebugLog([]);
+    addDebug('Fetching stream URL...');
+
+    try {
+      const response = await fetch(`${API_URL}/jellyfin/stream/${connectionId}/${itemId}?token=${encodeURIComponent(token)}`);
+      const data = await response.json();
+
+      if (data.streamUrl) {
+        addDebug('Got direct stream URL');
+        setDirectStreamUrl(data.streamUrl);
+        setPlaying(true);
+      } else if (data.error) {
+        addDebug(`ERROR: ${data.error}`);
+        setVideoError(data.error);
+      }
+    } catch (err) {
+      addDebug(`ERROR: ${err.message}`);
+      setVideoError('Failed to get stream URL');
+    } finally {
+      setLoadingStream(false);
+    }
+  };
 
   const getTypeIcon = () => {
     switch (type) {
@@ -82,7 +110,7 @@ const JellyfinEmbed = ({
           /* Inline video player */
           <>
             <video
-              src={streamUrl}
+              src={directStreamUrl}
               controls
               autoPlay
               playsInline
@@ -123,6 +151,7 @@ const JellyfinEmbed = ({
               onClick={() => {
                 setPlaying(false);
                 setVideoError(null);
+                setDirectStreamUrl(null);
               }}
               style={{
                 position: 'absolute',
@@ -244,9 +273,10 @@ const JellyfinEmbed = ({
                 if (onPlay) {
                   onPlay({ connectionId, itemId, name, type });
                 } else {
-                  setPlaying(true);
+                  startPlayback();
                 }
               }}
+              disabled={loadingStream}
               style={{
                 position: 'absolute',
                 top: '50%',
