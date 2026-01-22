@@ -66,7 +66,7 @@ class StorageProvider {
 
     if (this.provider === 'local') {
       this.uploadsDir = path.join(process.cwd(), 'uploads');
-      this.mediaDir = path.join(process.cwd(), 'data', 'media');
+      this.mediaDir = path.join(this.uploadsDir, 'media'); // Match server's MEDIA_DIR
 
       // Ensure directories exist
       [this.uploadsDir, this.mediaDir,
