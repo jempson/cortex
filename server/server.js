@@ -7472,39 +7472,167 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Use MP4 container with H.264/AAC - most compatible format for browsers
-    // Use fragmented MP4 (fMP4) for better streaming support
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&Container=mp4&VideoCodec=h264&AudioCodec=aac&AudioBitRate=128000&VideoBitRate=2000000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&SegmentContainer=mp4&MinSegments=1&BreakOnNonKeyFrames=true`;
+    // Use HLS (HTTP Live Streaming) which is natively supported on iOS/Safari
+    // Firefox on iPad uses WebKit engine so it supports HLS
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/master.m3u8?api_key=${encodeURIComponent(accessToken)}&VideoCodec=h264&AudioCodec=aac&AudioBitRate=128000&VideoBitRate=2000000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&SegmentLength=6&MinSegments=1`;
 
-    console.log(`[Jellyfin] Proxying MP4 stream for item: ${itemId}`);
+    console.log(`[Jellyfin] Proxying HLS stream for item: ${itemId}`);
+    console.log(`[Jellyfin] HLS URL: ${streamUrl.replace(accessToken, '***')}`);
 
-    // Don't forward range requests for transcoded streams - Jellyfin can't seek in live transcode
-    // Just fetch the full stream and let it play from the start
     const streamResponse = await fetch(streamUrl, {
       headers: { 'Accept': '*/*' }
     });
 
-    console.log(`[Jellyfin] Stream response: ${streamResponse.status}, type: ${streamResponse.headers.get('content-type')}`);
+    console.log(`[Jellyfin] HLS response: ${streamResponse.status}, type: ${streamResponse.headers.get('content-type')}`);
 
     if (!streamResponse.ok) {
       const errorText = await streamResponse.text();
-      console.error(`[Jellyfin] Stream error response: ${errorText}`);
+      console.error(`[Jellyfin] HLS error response: ${errorText}`);
       return res.status(streamResponse.status).json({ error: 'Failed to get stream' });
     }
 
-    // Set headers for streaming
-    const jellyfinContentType = streamResponse.headers.get('content-type');
-    res.setHeader('Content-Type', jellyfinContentType || 'video/mp4');
+    const contentType = streamResponse.headers.get('content-type');
+
+    // For HLS, we need to rewrite the playlist URLs to go through our proxy
+    if (contentType?.includes('mpegurl') || contentType?.includes('m3u8')) {
+      let playlist = await streamResponse.text();
+
+      // Construct our API base URL from the request
+      const apiBaseUrl = `${req.protocol}://${req.get('host')}/api`;
+
+      // Rewrite segment URLs to go through our proxy
+      // Jellyfin returns relative URLs like "hls1/main/0.ts" or absolute URLs
+      playlist = playlist.replace(/^(?!#)(.+\.ts.*)$/gm, (match) => {
+        // If it's a relative URL, make it absolute through our API
+        if (!match.startsWith('http')) {
+          return `${apiBaseUrl}/jellyfin/hls-segment/${connectionId}/${itemId}/${encodeURIComponent(match)}?token=${encodeURIComponent(req.query.token)}`;
+        }
+        return match;
+      });
+
+      // Also handle sub-playlists (like index.m3u8)
+      playlist = playlist.replace(/^(?!#)(.+\.m3u8.*)$/gm, (match) => {
+        if (!match.startsWith('http')) {
+          return `${apiBaseUrl}/jellyfin/hls-playlist/${connectionId}/${itemId}/${encodeURIComponent(match)}?token=${encodeURIComponent(req.query.token)}`;
+        }
+        return match;
+      });
+
+      console.log(`[Jellyfin] Rewritten HLS playlist:\n${playlist.substring(0, 500)}...`);
+
+      res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'no-cache');
+      return res.send(playlist);
+    }
+
+    // For non-playlist responses, just pipe through
+    res.setHeader('Content-Type', contentType || 'video/mp4');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Accept-Ranges', 'none'); // Indicate we don't support range requests for transcoded streams
     res.setHeader('Cache-Control', 'no-cache');
 
-    // Pipe the stream
     const readable = Readable.fromWeb(streamResponse.body);
     readable.pipe(res);
   } catch (err) {
     console.error('Jellyfin stream error:', err);
     res.status(500).json({ error: 'Failed to get stream' });
+  }
+});
+
+// Proxy HLS sub-playlist (e.g., index.m3u8, main.m3u8)
+app.get('/api/jellyfin/hls-playlist/:connectionId/:itemId/:playlist', async (req, res) => {
+  const { connectionId, itemId, playlist } = req.params;
+  const { token } = req.query;
+
+  // Authenticate
+  let userId = null;
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded.userId;
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  }
+  if (!userId) return res.status(401).json({ error: 'Authentication required' });
+
+  const connection = db.getJellyfinConnection(connectionId);
+  if (!connection) return res.status(404).json({ error: 'Connection not found' });
+
+  try {
+    const accessToken = decryptJellyfinToken(connection.accessToken);
+    const playlistUrl = `${connection.serverUrl}/Videos/${itemId}/${decodeURIComponent(playlist)}?api_key=${encodeURIComponent(accessToken)}`;
+
+    console.log(`[Jellyfin] Fetching HLS sub-playlist: ${playlist}`);
+
+    const response = await fetch(playlistUrl);
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to get playlist' });
+    }
+
+    let playlistContent = await response.text();
+
+    // Construct our API base URL from the request
+    const apiBaseUrl = `${req.protocol}://${req.get('host')}/api`;
+
+    // Rewrite segment URLs
+    playlistContent = playlistContent.replace(/^(?!#)(.+\.ts.*)$/gm, (match) => {
+      if (!match.startsWith('http')) {
+        return `${apiBaseUrl}/jellyfin/hls-segment/${connectionId}/${itemId}/${encodeURIComponent(match)}?token=${encodeURIComponent(token)}`;
+      }
+      return match;
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(playlistContent);
+  } catch (err) {
+    console.error('Jellyfin HLS playlist error:', err);
+    res.status(500).json({ error: 'Failed to get playlist' });
+  }
+});
+
+// Proxy HLS segment (.ts files)
+app.get('/api/jellyfin/hls-segment/:connectionId/:itemId/:segment', async (req, res) => {
+  const { connectionId, itemId, segment } = req.params;
+  const { token } = req.query;
+
+  // Authenticate
+  let userId = null;
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded.userId;
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  }
+  if (!userId) return res.status(401).json({ error: 'Authentication required' });
+
+  const connection = db.getJellyfinConnection(connectionId);
+  if (!connection) return res.status(404).json({ error: 'Connection not found' });
+
+  try {
+    const accessToken = decryptJellyfinToken(connection.accessToken);
+    const segmentUrl = `${connection.serverUrl}/Videos/${itemId}/${decodeURIComponent(segment)}?api_key=${encodeURIComponent(accessToken)}`;
+
+    console.log(`[Jellyfin] Fetching HLS segment: ${segment}`);
+
+    const response = await fetch(segmentUrl);
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to get segment' });
+    }
+
+    res.setHeader('Content-Type', 'video/mp2t');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'max-age=3600'); // Cache segments
+
+    const readable = Readable.fromWeb(response.body);
+    readable.pipe(res);
+  } catch (err) {
+    console.error('Jellyfin HLS segment error:', err);
+    res.status(500).json({ error: 'Failed to get segment' });
   }
 });
 
