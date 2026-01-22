@@ -7472,9 +7472,9 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Build stream URL - use static stream for direct playback
+    // Build stream URL - request transcoding to browser-compatible format
     // URL-encode the token in case it contains special characters
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream?static=true&api_key=${encodeURIComponent(accessToken)}`;
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&VideoCodec=h264&AudioCodec=aac&Container=mp4`;
     console.log(`[Jellyfin] Fetching stream from: ${connection.serverUrl}/Videos/${itemId}/stream`);
 
     // Build headers to forward - include Range for seeking support
