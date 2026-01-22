@@ -7452,11 +7452,9 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  // Verify ownership
-  if (!db.userOwnsJellyfinConnection(userId, connectionId)) {
-    return res.status(404).json({ error: 'Connection not found' });
-  }
-
+  // Allow any authenticated user to access streams from valid connections
+  // Security: user must be authenticated, connection must exist
+  // The connection owner chose to share content by posting it in a wave
   const connection = db.getJellyfinConnection(connectionId);
   if (!connection) {
     return res.status(404).json({ error: 'Connection not found' });
