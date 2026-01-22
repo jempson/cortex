@@ -7472,23 +7472,27 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Proxy the video stream from Jellyfin
-    // Request transcoding to browser-compatible format
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&VideoCodec=h264&AudioCodec=aac&AudioBitRate=128000&VideoBitRate=3000000&TranscodingMaxAudioChannels=2`;
+    // Try WebM format which has better browser streaming support
+    // Use VP8 video codec and Vorbis audio - widely supported in browsers
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.webm?api_key=${encodeURIComponent(accessToken)}&Container=webm&VideoCodec=vp8&AudioCodec=vorbis&AudioBitRate=128000&VideoBitRate=2000000&MaxWidth=1280&MaxHeight=720`;
 
-    console.log(`[Jellyfin] Proxying stream for item: ${itemId}`);
+    console.log(`[Jellyfin] Proxying WebM stream for item: ${itemId}`);
+    console.log(`[Jellyfin] Stream URL: ${streamUrl.replace(accessToken, '***')}`);
 
     // Build headers to forward
     const fetchHeaders = { 'Accept': '*/*' };
     if (req.headers.range) {
       fetchHeaders['Range'] = req.headers.range;
+      console.log(`[Jellyfin] Range request: ${req.headers.range}`);
     }
 
     const streamResponse = await fetch(streamUrl, { headers: fetchHeaders });
 
-    console.log(`[Jellyfin] Stream response: ${streamResponse.status}, type: ${streamResponse.headers.get('content-type')}`);
+    console.log(`[Jellyfin] Stream response: ${streamResponse.status}, type: ${streamResponse.headers.get('content-type')}, length: ${streamResponse.headers.get('content-length')}`);
 
     if (!streamResponse.ok && streamResponse.status !== 206) {
+      const errorText = await streamResponse.text();
+      console.error(`[Jellyfin] Stream error response: ${errorText}`);
       return res.status(streamResponse.status).json({ error: 'Failed to get stream' });
     }
 
@@ -7498,7 +7502,7 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
     const acceptRanges = streamResponse.headers.get('accept-ranges');
     const contentRange = streamResponse.headers.get('content-range');
 
-    res.setHeader('Content-Type', contentType || 'video/mp4');
+    res.setHeader('Content-Type', contentType || 'video/webm');
     if (contentLength) res.setHeader('Content-Length', contentLength);
     if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
     if (contentRange) res.setHeader('Content-Range', contentRange);
