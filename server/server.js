@@ -7472,10 +7472,11 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Try WebM with VP9 which is designed for web streaming
-    // Also generate a PlaySessionId which Jellyfin may require for transcoding
+    // Try WebM with VP8/Vorbis - the classic WebM codec combination
+    // VP8 is older and more widely supported than VP9
+    // Lower bitrate to reduce buffering/decode issues
     const playSessionId = `cortex-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.webm?api_key=${encodeURIComponent(accessToken)}&Static=false&Container=webm&VideoCodec=vp9&AudioCodec=opus&VideoBitRate=2000000&AudioBitRate=128000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&PlaySessionId=${playSessionId}`;
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.webm?api_key=${encodeURIComponent(accessToken)}&Static=false&Container=webm&VideoCodec=vp8&AudioCodec=vorbis&VideoBitRate=1500000&AudioBitRate=96000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&PlaySessionId=${playSessionId}`;
 
     console.log(`[Jellyfin] Redirecting to stream: ${streamUrl.replace(accessToken, '***')}`);
 
