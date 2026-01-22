@@ -7472,11 +7472,11 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
   try {
     const accessToken = decryptJellyfinToken(connection.accessToken);
 
-    // Try WebM format which has better browser streaming support
-    // Use VP8 video codec and Vorbis audio - widely supported in browsers
-    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.webm?api_key=${encodeURIComponent(accessToken)}&Container=webm&VideoCodec=vp8&AudioCodec=vorbis&AudioBitRate=128000&VideoBitRate=2000000&MaxWidth=1280&MaxHeight=720`;
+    // Use MP4 container with H.264/AAC - most compatible format for browsers
+    // Use fragmented MP4 (fMP4) for better streaming support
+    const streamUrl = `${connection.serverUrl}/Videos/${itemId}/stream.mp4?api_key=${encodeURIComponent(accessToken)}&Container=mp4&VideoCodec=h264&AudioCodec=aac&AudioBitRate=128000&VideoBitRate=2000000&MaxWidth=1280&MaxHeight=720&TranscodingMaxAudioChannels=2&SegmentContainer=mp4&MinSegments=1&BreakOnNonKeyFrames=true`;
 
-    console.log(`[Jellyfin] Proxying WebM stream for item: ${itemId}`);
+    console.log(`[Jellyfin] Proxying MP4 stream for item: ${itemId}`);
 
     // Don't forward range requests for transcoded streams - Jellyfin can't seek in live transcode
     // Just fetch the full stream and let it play from the start
@@ -7492,11 +7492,12 @@ app.get('/api/jellyfin/stream/:connectionId/:itemId', async (req, res) => {
       return res.status(streamResponse.status).json({ error: 'Failed to get stream' });
     }
 
-    // Set headers for streaming - no Content-Length since it's a live transcode
-    const contentType = streamResponse.headers.get('content-type');
-    res.setHeader('Content-Type', contentType || 'video/webm');
+    // Set headers for streaming
+    const jellyfinContentType = streamResponse.headers.get('content-type');
+    res.setHeader('Content-Type', jellyfinContentType || 'video/mp4');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Transfer-Encoding', 'chunked');
+    res.setHeader('Accept-Ranges', 'none'); // Indicate we don't support range requests for transcoded streams
+    res.setHeader('Cache-Control', 'no-cache');
 
     // Pipe the stream
     const readable = Readable.fromWeb(streamResponse.body);
