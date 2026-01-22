@@ -78,15 +78,31 @@ const JellyfinEmbed = ({
               src={streamUrl}
               controls
               autoPlay
+              playsInline
+              preload="auto"
               style={{
                 width: '100%',
                 height: '100%',
                 background: '#000',
               }}
               onError={(e) => {
-                console.error('Video error:', e);
-                setVideoError('Failed to play video. Format may not be supported.');
+                console.error('Video error:', e.target.error);
+                const error = e.target.error;
+                let msg = 'Failed to play video.';
+                if (error) {
+                  switch (error.code) {
+                    case 1: msg = 'Video loading aborted.'; break;
+                    case 2: msg = 'Network error while loading video.'; break;
+                    case 3: msg = 'Video decoding error. Format may not be supported.'; break;
+                    case 4: msg = 'Video format not supported by browser.'; break;
+                    default: msg = `Video error: ${error.message || 'Unknown error'}`;
+                  }
+                }
+                setVideoError(msg);
               }}
+              onLoadStart={() => console.log('Video loading started')}
+              onCanPlay={() => console.log('Video can play')}
+              onStalled={() => console.log('Video stalled - buffering')}
             />
             {/* Close button */}
             <button
