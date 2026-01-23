@@ -397,22 +397,33 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       m.is_unread && m.author_id !== currentUser?.id
     );
 
-    setTimeout(() => {
+    // Use requestAnimationFrame to ensure DOM is painted before scrolling
+    requestAnimationFrame(() => {
       const container = messagesRef.current;
       if (!container) return;
 
-      if (firstUnreadPing) {
-        // Scroll to first unread ping
-        const pingElement = container.querySelector(`[data-message-id="${firstUnreadPing.id}"]`);
-        if (pingElement) {
-          pingElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          return;
+      const scrollToTarget = () => {
+        if (firstUnreadPing) {
+          const pingElement = container.querySelector(`[data-message-id="${firstUnreadPing.id}"]`);
+          if (pingElement) {
+            // Use instant scroll first to ensure we reach the target
+            pingElement.scrollIntoView({ behavior: 'instant', block: 'start' });
+            // Then verify position after images/content may have loaded
+            setTimeout(() => {
+              if (messagesRef.current) {
+                pingElement.scrollIntoView({ behavior: 'instant', block: 'start' });
+              }
+            }, 300);
+            return;
+          }
         }
-      }
+        // No unread pings or element not found - scroll to bottom
+        container.scrollTop = container.scrollHeight;
+      };
 
-      // No unread pings or element not found - scroll to bottom
-      container.scrollTop = container.scrollHeight;
-    }, 100);
+      // Small delay to let React finish rendering message components
+      setTimeout(scrollToTarget, 50);
+    });
   }, [waveData, loading, currentUser?.id]);
 
   // Scroll to specific ping when navigating from notification
@@ -435,21 +446,36 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     // Wait for render to complete, with multiple retries
     let retryCount = 0;
     const maxRetries = 5;
-    const retryDelay = 200;
+    const retryDelay = 150;
 
     const scrollToTarget = () => {
       const element = document.querySelector(`[data-message-id="${scrollToMessageId}"]`);
       if (element) {
         console.log(`✅ Found ping ${scrollToMessageId} in DOM, scrolling...`);
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Use instant scroll first to ensure we reach the target immediately
+        element.scrollIntoView({ behavior: 'instant', block: 'center' });
+
         // Brief highlight effect
         element.style.transition = 'background-color 0.3s, outline 0.3s';
         element.style.backgroundColor = 'var(--accent-amber)20';
         element.style.outline = '2px solid var(--accent-amber)';
+
+        // Verify scroll position after content (images, embeds) may have loaded
+        // This corrects for lazy-loaded content changing the layout
+        setTimeout(() => {
+          element.scrollIntoView({ behavior: 'instant', block: 'center' });
+        }, 200);
+
+        // Second verification for slower-loading content
+        setTimeout(() => {
+          element.scrollIntoView({ behavior: 'instant', block: 'center' });
+        }, 500);
+
         setTimeout(() => {
           element.style.backgroundColor = '';
           element.style.outline = '';
         }, 1500);
+
         // Clear the target
         onScrollToMessageComplete?.();
       } else if (retryCount < maxRetries) {
@@ -464,8 +490,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }
     };
 
-    // Delay to allow React to render the messages
-    setTimeout(scrollToTarget, 100);
+    // Use requestAnimationFrame for better timing with React render cycle
+    requestAnimationFrame(() => {
+      setTimeout(scrollToTarget, 50);
+    });
   }, [scrollToMessageId, waveData, loading, onScrollToMessageComplete]);
 
   // Mark wave as read when user scrolls to bottom or views unread messages

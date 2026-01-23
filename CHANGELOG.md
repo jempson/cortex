@@ -93,6 +93,21 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.15.3] - 2026-01-23
+
+### Fixed
+
+#### Wave Scroll Position Accuracy
+Fixed scrolling not reaching the exact target message when opening waves or clicking notifications.
+
+- **Root Cause**: Scroll position was calculated before lazy-loaded images and embeds finished loading, causing content height to change mid-scroll
+- **Symptoms**: Opening a wave with unread messages would scroll "close but not quite" to the first unread; clicking a notification would land near but not at the target message
+- **Fix**:
+  1. Changed from `behavior: 'smooth'` to `behavior: 'instant'` for initial scroll to prevent animation interruption
+  2. Added verification scrolls at 200ms and 500ms after initial scroll to correct for lazy-loaded content
+  3. Use `requestAnimationFrame` for better timing with React render cycle
+  4. Reduced retry delay from 200ms to 150ms for faster DOM detection
+
 ## [2.15.2] - 2026-01-23
 
 ### Fixed
