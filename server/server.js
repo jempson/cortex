@@ -10101,6 +10101,7 @@ function buildWebhookPayload(platform, message, wave) {
   const authorName = message.sender_name || 'Unknown';
   const baseUrl = process.env.BASE_URL || `https://${FEDERATION_NODE_NAME || 'cortex.local'}`;
   const authorAvatar = message.sender_avatar_url ? `${baseUrl}${message.sender_avatar_url}` : null;
+  const messageUrl = `${baseUrl}/?wave=${wave.id}&ping=${message.id}`;
 
   switch (platform) {
     case 'discord':
@@ -10108,14 +10109,16 @@ function buildWebhookPayload(platform, message, wave) {
         username: 'Cortex',
         embeds: [{
           title: wave.title,
+          url: messageUrl, // Makes title clickable
           description: content,
           color: 0xffd23f, // Amber
           author: {
             name: authorName,
+            url: baseUrl, // Link to Cortex
             icon_url: authorAvatar
           },
           timestamp: message.created_at,
-          footer: { text: 'Cortex' }
+          footer: { text: 'Cortex', icon_url: `${baseUrl}/icons/icon-192.png` }
         }]
       };
 
@@ -10127,9 +10130,13 @@ function buildWebhookPayload(platform, message, wave) {
           color: '#ffd23f',
           author_name: authorName,
           author_icon: authorAvatar,
+          author_link: baseUrl,
           title: wave.title,
+          title_link: messageUrl, // Link to message
           text: content,
-          ts: Math.floor(new Date(message.created_at).getTime() / 1000)
+          ts: Math.floor(new Date(message.created_at).getTime() / 1000),
+          footer: 'Cortex',
+          footer_icon: `${baseUrl}/icons/icon-192.png`
         }]
       };
 
@@ -10144,15 +10151,21 @@ function buildWebhookPayload(platform, message, wave) {
           activitySubtitle: wave.title,
           activityImage: authorAvatar,
           text: content
+        }],
+        potentialAction: [{
+          '@type': 'OpenUri',
+          name: 'View in Cortex',
+          targets: [{ os: 'default', uri: messageUrl }]
         }]
       };
 
     default: // generic
       return {
         event: 'new_message',
-        wave: { id: wave.id, title: wave.title },
+        wave: { id: wave.id, title: wave.title, url: `${baseUrl}/?wave=${wave.id}` },
         message: {
           id: message.id,
+          url: messageUrl,
           content,
           author: {
             id: message.author_id,
