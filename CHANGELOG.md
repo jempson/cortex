@@ -93,6 +93,26 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.15.2] - 2026-01-23
+
+### Fixed
+
+#### Push Notification Flooding
+Fixed push notifications flooding in all at once after a user has been offline for a period of time.
+
+- **Root Cause**: Push notifications were sent for every message regardless of connection state, with no debouncing
+- **Two-Part Fix**:
+  1. **Offline-only**: Push notifications now only sent to users without an active WebSocket connection
+  2. **Debouncing**: Only one push notification per user per 5-minute window (configurable via `PUSH_DEBOUNCE_MINUTES`)
+- **Behavior**: First message while offline triggers a notification; subsequent messages in the debounce window are silent (user sees full unread count on app open)
+- **Debounce Reset**: When user connects via WebSocket, debounce timer resets so they get a fresh notification on next offline period
+
+**Configuration:**
+```bash
+# In .env - minutes between push notifications per user (default: 5)
+PUSH_DEBOUNCE_MINUTES=5
+```
+
 ## [2.15.1] - 2026-01-22
 
 ### Changed
