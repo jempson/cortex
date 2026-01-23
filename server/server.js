@@ -115,6 +115,11 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   console.log('⚠️  Web Push disabled: Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in .env');
 }
 
+// Push notification debounce settings
+// Only send one push notification per user per debounce window to prevent flooding
+const PUSH_DEBOUNCE_MINUTES = parseInt(process.env.PUSH_DEBOUNCE_MINUTES) || 5;
+const lastPushSent = new Map(); // userId -> timestamp
+
 // Federation configuration
 const FEDERATION_ENABLED = process.env.FEDERATION_ENABLED === 'true';
 const FEDERATION_NODE_NAME = process.env.FEDERATION_NODE_NAME || null;
@@ -15921,6 +15926,8 @@ wss.on('connection', (ws, req) => {
           if (!clients.has(userId)) clients.set(userId, new Set());
           clients.get(userId).add(ws);
           db.updateUserStatus(userId, 'online');
+          // Clear push debounce so user gets fresh notification on next offline period
+          lastPushSent.delete(userId);
           ws.send(JSON.stringify({ type: 'auth_success', userId }));
         } catch (err) {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'Invalid token' }));
@@ -16546,12 +16553,18 @@ function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs 
       }
     }
 
-    // Always send push notification if payload provided (for backgrounded PWAs)
-    // The service worker will show the notification even if the app is in background
-    // On Android PWA, WebSocket may stay connected but app is not in foreground
-    // Push notifications are the only reliable way to alert backgrounded users
-    if (pushPayload) {
-      sendPushNotification(userId, pushPayload);
+    // Only send push notification to offline users (no active WebSocket)
+    // Debounce: only send one push per user per PUSH_DEBOUNCE_MINUTES window
+    // This prevents notification flooding when user has been offline
+    if (pushPayload && !isConnected) {
+      const now = Date.now();
+      const lastPush = lastPushSent.get(userId);
+      const debounceMs = PUSH_DEBOUNCE_MINUTES * 60 * 1000;
+
+      if (!lastPush || (now - lastPush) > debounceMs) {
+        sendPushNotification(userId, pushPayload);
+        lastPushSent.set(userId, now);
+      }
     }
   }
 }
