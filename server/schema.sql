@@ -841,6 +841,40 @@ CREATE TABLE IF NOT EXISTS bot_wave_keys (
 CREATE INDEX IF NOT EXISTS idx_bot_wave_keys_bot ON bot_wave_keys(bot_id);
 CREATE INDEX IF NOT EXISTS idx_bot_wave_keys_wave ON bot_wave_keys(wave_id);
 
+-- ============ Outgoing Webhooks (v2.15.5) ============
+
+-- Wave webhooks: Auto-forward messages to external services (Discord, Slack, etc.)
+CREATE TABLE IF NOT EXISTS wave_webhooks (
+    id TEXT PRIMARY KEY,                      -- webhook-{uuid}
+    wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,                       -- Display name (e.g., "Discord Updates")
+    url TEXT NOT NULL,                        -- Webhook URL (must be HTTPS)
+    platform TEXT DEFAULT 'generic',          -- discord, slack, teams, generic
+    enabled INTEGER DEFAULT 1,
+
+    -- Filtering options
+    include_bot_messages INTEGER DEFAULT 1,   -- Forward bot messages?
+    include_encrypted INTEGER DEFAULT 0,      -- Forward encrypted (shows "[Encrypted]")?
+
+    -- Rate limiting
+    cooldown_seconds INTEGER DEFAULT 0,       -- Min seconds between webhook calls
+    last_triggered_at TEXT,
+
+    -- Stats & debugging
+    total_sent INTEGER DEFAULT 0,
+    total_errors INTEGER DEFAULT 0,
+    last_error TEXT,
+    last_error_at TEXT,
+
+    -- Metadata
+    created_by TEXT REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_wave_webhooks_wave ON wave_webhooks(wave_id);
+CREATE INDEX IF NOT EXISTS idx_wave_webhooks_enabled ON wave_webhooks(enabled);
+
 -- ============ Full-Text Search ============
 
 -- FTS5 virtual table for ping content search (formerly droplets_fts)

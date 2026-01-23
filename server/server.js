@@ -9881,6 +9881,9 @@ app.post('/api/bot/ping', authenticateBotToken, botLimiter, (req, res) => {
       data: ping,
     });
 
+    // Trigger outgoing webhooks (async, non-blocking)
+    triggerWaveWebhooks(waveId, { ...ping, isBot: true }, wave);
+
     // Log activity (use bot owner's user ID to satisfy FK constraint)
     if (db.logActivity) {
       db.logActivity(req.bot.owner_user_id, 'bot_create_ping', 'ping', ping.id, {
@@ -10068,6 +10071,9 @@ app.post('/api/webhooks/:botId/:webhookSecret', express.json({ limit: '50kb' }),
     broadcastToWave(waveId, { type: 'new_droplet', data: ping });
     broadcastToWave(waveId, { type: 'new_message', data: ping });
 
+    // Trigger outgoing webhooks (async, non-blocking)
+    triggerWaveWebhooks(waveId, { ...ping, isBot: true }, wave);
+
     // Log activity (use bot owner's user ID to satisfy FK constraint)
     if (db.logActivity) {
       db.logActivity(bot.owner_user_id, 'webhook_ping', 'ping', ping.id, {
@@ -10082,6 +10088,340 @@ app.post('/api/webhooks/:botId/:webhookSecret', express.json({ limit: '50kb' }),
   } catch (err) {
     console.error('Webhook error:', err);
     res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// ============ Outgoing Webhooks (v2.15.5) ============
+
+/**
+ * Build platform-specific webhook payload
+ */
+function buildWebhookPayload(platform, message, wave) {
+  const content = message.encrypted ? '[Encrypted message]' : (message.content || '').replace(/<[^>]*>/g, '').substring(0, 2000);
+  const authorName = message.sender_name || 'Unknown';
+  const baseUrl = process.env.BASE_URL || `https://${FEDERATION_NODE_NAME || 'cortex.local'}`;
+  const authorAvatar = message.sender_avatar_url ? `${baseUrl}${message.sender_avatar_url}` : null;
+
+  switch (platform) {
+    case 'discord':
+      return {
+        username: 'Cortex',
+        embeds: [{
+          title: wave.title,
+          description: content,
+          color: 0xffd23f, // Amber
+          author: {
+            name: authorName,
+            icon_url: authorAvatar
+          },
+          timestamp: message.created_at,
+          footer: { text: 'Cortex' }
+        }]
+      };
+
+    case 'slack':
+      return {
+        username: 'Cortex',
+        attachments: [{
+          fallback: `${authorName} in ${wave.title}: ${content.substring(0, 100)}`,
+          color: '#ffd23f',
+          author_name: authorName,
+          author_icon: authorAvatar,
+          title: wave.title,
+          text: content,
+          ts: Math.floor(new Date(message.created_at).getTime() / 1000)
+        }]
+      };
+
+    case 'teams':
+      return {
+        '@type': 'MessageCard',
+        '@context': 'http://schema.org/extensions',
+        themeColor: 'ffd23f',
+        summary: `${authorName} in ${wave.title}`,
+        sections: [{
+          activityTitle: authorName,
+          activitySubtitle: wave.title,
+          activityImage: authorAvatar,
+          text: content
+        }]
+      };
+
+    default: // generic
+      return {
+        event: 'new_message',
+        wave: { id: wave.id, title: wave.title },
+        message: {
+          id: message.id,
+          content,
+          author: {
+            id: message.author_id,
+            name: authorName,
+            handle: message.sender_handle
+          },
+          createdAt: message.created_at
+        }
+      };
+  }
+}
+
+/**
+ * Send webhook request with timeout
+ */
+async function sendWebhookRequest(webhook, payload) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+  try {
+    const response = await fetch(webhook.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    db.recordWebhookSuccess(webhook.id);
+    return { success: true };
+  } catch (err) {
+    clearTimeout(timeout);
+    const errorMsg = err.name === 'AbortError' ? 'Request timeout' : err.message;
+    db.recordWebhookError(webhook.id, errorMsg);
+    throw err;
+  }
+}
+
+/**
+ * Trigger all enabled webhooks for a wave
+ * Called after a message is created
+ */
+async function triggerWaveWebhooks(waveId, message, wave) {
+  try {
+    const webhooks = db.getEnabledWaveWebhooks(waveId);
+    if (!webhooks || webhooks.length === 0) return;
+
+    for (const webhook of webhooks) {
+      // Skip bot messages if configured
+      if (message.isBot && !webhook.includeBotMessages) continue;
+
+      // Skip encrypted messages if configured
+      if (message.encrypted && !webhook.includeEncrypted) continue;
+
+      // Check cooldown
+      if (webhook.cooldownSeconds > 0 && webhook.lastTriggeredAt) {
+        const elapsed = (Date.now() - new Date(webhook.lastTriggeredAt).getTime()) / 1000;
+        if (elapsed < webhook.cooldownSeconds) continue;
+      }
+
+      // Build platform-specific payload
+      const payload = buildWebhookPayload(webhook.platform, message, wave);
+
+      // Send async (don't block message creation)
+      sendWebhookRequest(webhook, payload).catch(err => {
+        console.error(`Outgoing webhook ${webhook.id} failed:`, err.message);
+      });
+    }
+  } catch (err) {
+    console.error('Webhook trigger error:', err);
+  }
+}
+
+/**
+ * List webhooks for a wave
+ */
+app.get('/api/waves/:waveId/webhooks', authenticateToken, (req, res) => {
+  try {
+    const waveId = sanitizeInput(req.params.waveId);
+    const wave = db.getWave(waveId);
+
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Check permission: wave creator or admin
+    const user = db.findUserById(req.user.userId);
+    if (wave.creatorId !== req.user.userId && !hasRole(user, ROLES.ADMIN)) {
+      return res.status(403).json({ error: 'Only wave creator or admin can manage webhooks' });
+    }
+
+    const webhooks = db.getWaveWebhooks(waveId);
+    // Mask webhook URLs for security (show only domain)
+    const maskedWebhooks = webhooks.map(w => ({
+      ...w,
+      url: w.url.replace(/(https?:\/\/[^\/]+).*/, '$1/***')
+    }));
+
+    res.json({ webhooks: maskedWebhooks });
+  } catch (err) {
+    console.error('List webhooks error:', err);
+    res.status(500).json({ error: 'Failed to list webhooks' });
+  }
+});
+
+/**
+ * Create a webhook for a wave
+ */
+app.post('/api/waves/:waveId/webhooks', authenticateToken, (req, res) => {
+  try {
+    const waveId = sanitizeInput(req.params.waveId);
+    const wave = db.getWave(waveId);
+
+    if (!wave) {
+      return res.status(404).json({ error: 'Wave not found' });
+    }
+
+    // Check permission: wave creator or admin
+    const user = db.findUserById(req.user.userId);
+    if (wave.creatorId !== req.user.userId && !hasRole(user, ROLES.ADMIN)) {
+      return res.status(403).json({ error: 'Only wave creator or admin can manage webhooks' });
+    }
+
+    const { name, url, platform, includeBotMessages, includeEncrypted, cooldownSeconds } = req.body;
+
+    if (!name || !url) {
+      return res.status(400).json({ error: 'Name and URL are required' });
+    }
+
+    // Validate URL (must be HTTPS, except localhost for testing)
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.protocol !== 'https:' && !parsedUrl.hostname.includes('localhost')) {
+        return res.status(400).json({ error: 'Webhook URL must use HTTPS' });
+      }
+    } catch {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    // Limit webhooks per wave
+    const existing = db.getWaveWebhooks(waveId);
+    if (existing.length >= 5) {
+      return res.status(400).json({ error: 'Maximum 5 webhooks per wave' });
+    }
+
+    const webhook = db.createWaveWebhook({
+      waveId,
+      name: sanitizeInput(name),
+      url,
+      platform: ['discord', 'slack', 'teams', 'generic'].includes(platform) ? platform : 'generic',
+      includeBotMessages: includeBotMessages !== false,
+      includeEncrypted: !!includeEncrypted,
+      cooldownSeconds: Math.max(0, Math.min(3600, parseInt(cooldownSeconds) || 0)),
+      createdBy: req.user.userId
+    });
+
+    res.status(201).json({ webhook: { ...webhook, url: webhook.url.replace(/(https?:\/\/[^\/]+).*/, '$1/***') } });
+  } catch (err) {
+    console.error('Create webhook error:', err);
+    res.status(500).json({ error: 'Failed to create webhook' });
+  }
+});
+
+/**
+ * Update a webhook
+ */
+app.put('/api/webhooks/:webhookId', authenticateToken, (req, res) => {
+  try {
+    const webhookId = sanitizeInput(req.params.webhookId);
+    const webhook = db.getWaveWebhook(webhookId);
+
+    if (!webhook) {
+      return res.status(404).json({ error: 'Webhook not found' });
+    }
+
+    const wave = db.getWave(webhook.waveId);
+    const user = db.findUserById(req.user.userId);
+    if (wave?.creatorId !== req.user.userId && !hasRole(user, ROLES.ADMIN)) {
+      return res.status(403).json({ error: 'Only wave creator or admin can manage webhooks' });
+    }
+
+    const updates = {};
+    if (req.body.name !== undefined) updates.name = sanitizeInput(req.body.name);
+    if (req.body.enabled !== undefined) updates.enabled = req.body.enabled;
+    if (req.body.includeBotMessages !== undefined) updates.includeBotMessages = req.body.includeBotMessages;
+    if (req.body.includeEncrypted !== undefined) updates.includeEncrypted = req.body.includeEncrypted;
+    if (req.body.cooldownSeconds !== undefined) updates.cooldownSeconds = Math.max(0, Math.min(3600, parseInt(req.body.cooldownSeconds) || 0));
+
+    const updated = db.updateWaveWebhook(webhookId, updates);
+    res.json({ webhook: { ...updated, url: updated.url.replace(/(https?:\/\/[^\/]+).*/, '$1/***') } });
+  } catch (err) {
+    console.error('Update webhook error:', err);
+    res.status(500).json({ error: 'Failed to update webhook' });
+  }
+});
+
+/**
+ * Delete a webhook
+ */
+app.delete('/api/webhooks/:webhookId', authenticateToken, (req, res) => {
+  try {
+    const webhookId = sanitizeInput(req.params.webhookId);
+    const webhook = db.getWaveWebhook(webhookId);
+
+    if (!webhook) {
+      return res.status(404).json({ error: 'Webhook not found' });
+    }
+
+    const wave = db.getWave(webhook.waveId);
+    const user = db.findUserById(req.user.userId);
+    if (wave?.creatorId !== req.user.userId && !hasRole(user, ROLES.ADMIN)) {
+      return res.status(403).json({ error: 'Only wave creator or admin can manage webhooks' });
+    }
+
+    db.deleteWaveWebhook(webhookId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete webhook error:', err);
+    res.status(500).json({ error: 'Failed to delete webhook' });
+  }
+});
+
+/**
+ * Test a webhook
+ */
+app.post('/api/webhooks/:webhookId/test', authenticateToken, async (req, res) => {
+  try {
+    const webhookId = sanitizeInput(req.params.webhookId);
+    const webhook = db.getWaveWebhook(webhookId);
+
+    if (!webhook) {
+      return res.status(404).json({ error: 'Webhook not found' });
+    }
+
+    const wave = db.getWave(webhook.waveId);
+    const user = db.findUserById(req.user.userId);
+    if (wave?.creatorId !== req.user.userId && !hasRole(user, ROLES.ADMIN)) {
+      return res.status(403).json({ error: 'Only wave creator or admin can test webhooks' });
+    }
+
+    // Send test message
+    const testMessage = {
+      id: 'test-message',
+      content: 'This is a test message from Cortex webhook configuration.',
+      sender_name: user.displayName || user.handle,
+      sender_handle: user.handle,
+      sender_avatar_url: user.avatarUrl,
+      author_id: user.id,
+      created_at: new Date().toISOString(),
+      encrypted: false,
+      isBot: false
+    };
+
+    const payload = buildWebhookPayload(webhook.platform, testMessage, wave);
+
+    try {
+      await sendWebhookRequest(webhook, payload);
+      res.json({ success: true, message: 'Test message sent successfully' });
+    } catch (err) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  } catch (err) {
+    console.error('Test webhook error:', err);
+    res.status(500).json({ error: 'Failed to test webhook' });
   }
 });
 
@@ -15220,6 +15560,9 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
   // Also broadcast legacy event for backward compatibility
   broadcastToWave(waveId, { type: 'new_message', data: droplet });
 
+  // Trigger outgoing webhooks (async, non-blocking)
+  triggerWaveWebhooks(waveId, droplet, wave);
+
   // Federation: Send droplet to federated nodes
   if (FEDERATION_ENABLED && (wave.federationState === 'origin' || wave.federationState === 'participant')) {
     const ourIdentity = db.getServerIdentity();
@@ -15569,6 +15912,10 @@ app.post('/api/messages', authenticateToken, deprecatedEndpoint, (req, res) => {
     null,
     req.user.userId // Exclude sender from push notifications
   );
+
+  // Trigger outgoing webhooks (async, non-blocking)
+  triggerWaveWebhooks(waveId, message, wave);
+
   res.status(201).json(message);
 });
 
