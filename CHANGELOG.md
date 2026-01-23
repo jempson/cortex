@@ -93,6 +93,37 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.15.5] - 2026-01-23
+
+### Added
+
+#### Outgoing Webhooks
+Auto-forward wave messages to external services like Discord, Slack, and Microsoft Teams.
+
+**Features:**
+- Configure webhooks per wave (up to 5 per wave)
+- Platform-specific formatting: Discord embeds, Slack attachments, Teams cards, or generic JSON
+- Filter options: include/exclude bot messages, include/exclude encrypted messages
+- Cooldown support to prevent flooding
+- Test webhook functionality before saving
+- Stats tracking: total sent, errors, last triggered
+
+**API Endpoints:**
+- `GET /api/waves/:waveId/webhooks` - List webhooks for a wave
+- `POST /api/waves/:waveId/webhooks` - Create a webhook
+- `PUT /api/webhooks/:webhookId` - Update a webhook
+- `DELETE /api/webhooks/:webhookId` - Delete a webhook
+- `POST /api/webhooks/:webhookId/test` - Send test message
+
+**Discord Setup:**
+1. In Discord: Server Settings → Integrations → Webhooks → New Webhook
+2. Copy the webhook URL
+3. In Cortex: Wave Settings → Webhooks → Add Webhook
+4. Select "Discord" platform, paste URL, save
+
+**Database:**
+- New `wave_webhooks` table for storing webhook configurations
+
 ## [2.15.4] - 2026-01-23
 
 ### Added

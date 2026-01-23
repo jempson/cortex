@@ -11,6 +11,21 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
   const [title, setTitle] = useState(wave?.title || '');
   const [decrypting, setDecrypting] = useState(false);
 
+  // Webhooks state
+  const [webhooks, setWebhooks] = useState([]);
+  const [loadingWebhooks, setLoadingWebhooks] = useState(false);
+  const [showAddWebhook, setShowAddWebhook] = useState(false);
+  const [editingWebhook, setEditingWebhook] = useState(null);
+  const [testingWebhook, setTestingWebhook] = useState(null);
+
+  // New webhook form state
+  const [webhookName, setWebhookName] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookPlatform, setWebhookPlatform] = useState('discord');
+  const [webhookIncludeBots, setWebhookIncludeBots] = useState(true);
+
+  const isWaveCreator = wave?.createdBy === currentUserId || wave?.creatorId === currentUserId;
+
   useEffect(() => {
     if (wave) {
       setPrivacy(wave.privacy);
@@ -18,6 +33,88 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
       setTitle(wave.title);
     }
   }, [wave]);
+
+  // Fetch webhooks when modal opens (only for wave creator)
+  useEffect(() => {
+    if (isOpen && wave && isWaveCreator) {
+      setLoadingWebhooks(true);
+      fetchAPI(`/waves/${wave.id}/webhooks`)
+        .then(data => setWebhooks(data.webhooks || []))
+        .catch(err => console.error('Failed to load webhooks:', err))
+        .finally(() => setLoadingWebhooks(false));
+    }
+  }, [isOpen, wave?.id, isWaveCreator]);
+
+  const resetWebhookForm = () => {
+    setWebhookName('');
+    setWebhookUrl('');
+    setWebhookPlatform('discord');
+    setWebhookIncludeBots(true);
+    setShowAddWebhook(false);
+    setEditingWebhook(null);
+  };
+
+  const handleAddWebhook = async () => {
+    if (!webhookName.trim() || !webhookUrl.trim()) {
+      showToast('Name and URL are required', 'error');
+      return;
+    }
+
+    try {
+      const data = await fetchAPI(`/waves/${wave.id}/webhooks`, {
+        method: 'POST',
+        body: {
+          name: webhookName,
+          url: webhookUrl,
+          platform: webhookPlatform,
+          includeBotMessages: webhookIncludeBots,
+        },
+      });
+      setWebhooks([...webhooks, data.webhook]);
+      showToast('Webhook created', 'success');
+      resetWebhookForm();
+    } catch (err) {
+      showToast(err.message || 'Failed to create webhook', 'error');
+    }
+  };
+
+  const handleUpdateWebhook = async (webhookId, updates) => {
+    try {
+      const data = await fetchAPI(`/webhooks/${webhookId}`, {
+        method: 'PUT',
+        body: updates,
+      });
+      setWebhooks(webhooks.map(w => w.id === webhookId ? data.webhook : w));
+      if (updates.enabled !== undefined) {
+        showToast(updates.enabled ? 'Webhook enabled' : 'Webhook disabled', 'success');
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to update webhook', 'error');
+    }
+  };
+
+  const handleDeleteWebhook = async (webhookId) => {
+    if (!window.confirm('Delete this webhook?')) return;
+    try {
+      await fetchAPI(`/webhooks/${webhookId}`, { method: 'DELETE' });
+      setWebhooks(webhooks.filter(w => w.id !== webhookId));
+      showToast('Webhook deleted', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to delete webhook', 'error');
+    }
+  };
+
+  const handleTestWebhook = async (webhookId) => {
+    setTestingWebhook(webhookId);
+    try {
+      await fetchAPI(`/webhooks/${webhookId}/test`, { method: 'POST' });
+      showToast('Test message sent!', 'success');
+    } catch (err) {
+      showToast(err.message || 'Test failed', 'error');
+    } finally {
+      setTestingWebhook(null);
+    }
+  };
 
   if (!isOpen || !wave) return null;
 
@@ -232,6 +329,180 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
                 </div>
               </div>
             </button>
+          </div>
+        )}
+
+        {/* Outgoing Webhooks - Only show for wave creator */}
+        {isWaveCreator && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+              OUTGOING WEBHOOKS
+              <span style={{ color: 'var(--text-muted)', marginLeft: '8px', fontWeight: 'normal' }}>
+                ({webhooks.length}/5)
+              </span>
+            </div>
+
+            {loadingWebhooks ? (
+              <div style={{ color: 'var(--text-muted)', padding: '10px', background: 'var(--bg-elevated)' }}>
+                Loading webhooks...
+              </div>
+            ) : (
+              <>
+                {/* Webhook List */}
+                {webhooks.map(webhook => (
+                  <div key={webhook.id} style={{
+                    padding: '10px 12px', marginBottom: '8px',
+                    background: webhook.enabled ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+                    border: `1px solid ${webhook.enabled ? 'var(--border-subtle)' : 'var(--border-dim)'}`,
+                    opacity: webhook.enabled ? 1 : 0.6,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.9rem' }}>
+                          {webhook.platform === 'discord' ? '💬' : webhook.platform === 'slack' ? '📱' : webhook.platform === 'teams' ? '👥' : '🔗'}
+                        </span>
+                        <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{webhook.name}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button
+                          onClick={() => handleTestWebhook(webhook.id)}
+                          disabled={testingWebhook === webhook.id || !webhook.enabled}
+                          title="Send test message"
+                          style={{
+                            padding: '4px 8px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
+                            color: 'var(--text-dim)', cursor: testingWebhook === webhook.id ? 'wait' : 'pointer', fontSize: '0.75rem',
+                          }}
+                        >
+                          {testingWebhook === webhook.id ? '...' : 'Test'}
+                        </button>
+                        <button
+                          onClick={() => handleUpdateWebhook(webhook.id, { enabled: !webhook.enabled })}
+                          title={webhook.enabled ? 'Disable' : 'Enable'}
+                          style={{
+                            padding: '4px 8px', background: webhook.enabled ? 'var(--accent-green)20' : 'var(--bg-surface)',
+                            border: `1px solid ${webhook.enabled ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                            color: webhook.enabled ? 'var(--accent-green)' : 'var(--text-dim)', cursor: 'pointer', fontSize: '0.75rem',
+                          }}
+                        >
+                          {webhook.enabled ? 'On' : 'Off'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteWebhook(webhook.id)}
+                          title="Delete webhook"
+                          style={{
+                            padding: '4px 8px', background: 'var(--bg-surface)', border: '1px solid var(--accent-red)',
+                            color: 'var(--accent-red)', cursor: 'pointer', fontSize: '0.75rem',
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                      {webhook.platform.charAt(0).toUpperCase() + webhook.platform.slice(1)} • {webhook.url}
+                      {webhook.totalSent > 0 && ` • ${webhook.totalSent} sent`}
+                      {webhook.totalErrors > 0 && <span style={{ color: 'var(--accent-red)' }}> • {webhook.totalErrors} errors</span>}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Add Webhook Form */}
+                {showAddWebhook ? (
+                  <div style={{ padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--accent-purple)', marginBottom: '8px' }}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <input
+                        type="text"
+                        placeholder="Webhook name (e.g., Discord Updates)"
+                        value={webhookName}
+                        onChange={(e) => setWebhookName(e.target.value)}
+                        style={{
+                          width: '100%', padding: '8px', boxSizing: 'border-box',
+                          background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
+                          color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'inherit',
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: '8px' }}>
+                      <select
+                        value={webhookPlatform}
+                        onChange={(e) => setWebhookPlatform(e.target.value)}
+                        style={{
+                          width: '100%', padding: '8px', boxSizing: 'border-box',
+                          background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
+                          color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'inherit',
+                        }}
+                      >
+                        <option value="discord">Discord</option>
+                        <option value="slack">Slack</option>
+                        <option value="teams">Microsoft Teams</option>
+                        <option value="generic">Generic (JSON)</option>
+                      </select>
+                    </div>
+                    <div style={{ marginBottom: '8px' }}>
+                      <input
+                        type="url"
+                        placeholder="Webhook URL (https://...)"
+                        value={webhookUrl}
+                        onChange={(e) => setWebhookUrl(e.target.value)}
+                        style={{
+                          width: '100%', padding: '8px', boxSizing: 'border-box',
+                          background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
+                          color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'inherit',
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                        <input
+                          type="checkbox"
+                          checked={webhookIncludeBots}
+                          onChange={(e) => setWebhookIncludeBots(e.target.checked)}
+                        />
+                        Include bot messages
+                      </label>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={resetWebhookForm}
+                        style={{
+                          flex: 1, padding: '8px', background: 'transparent',
+                          border: '1px solid var(--border-subtle)', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '0.85rem',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleAddWebhook}
+                        style={{
+                          flex: 1, padding: '8px', background: 'var(--accent-purple)20',
+                          border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)', cursor: 'pointer', fontSize: '0.85rem',
+                        }}
+                      >
+                        Add Webhook
+                      </button>
+                    </div>
+                  </div>
+                ) : webhooks.length < 5 && (
+                  <button
+                    onClick={() => setShowAddWebhook(true)}
+                    style={{
+                      width: '100%', padding: '10px', textAlign: 'left',
+                      background: 'var(--bg-elevated)', border: '1px dashed var(--border-subtle)',
+                      color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace',
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                    }}
+                  >
+                    <span>+</span> Add webhook (Discord, Slack, etc.)
+                  </button>
+                )}
+
+                {webhooks.length === 0 && !showAddWebhook && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Auto-forward messages to Discord, Slack, or other services
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
