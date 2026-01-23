@@ -1509,6 +1509,40 @@ export class DatabaseSQLite {
 
       console.log('✅ Plex integration tables created');
     }
+
+    // v2.15.5 - Outgoing Webhooks: Auto-forward messages to Discord, Slack, etc.
+    const webhooksTableExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='wave_webhooks'
+    `).get();
+
+    if (!webhooksTableExists) {
+      console.log('📝 Adding outgoing webhooks table (v2.15.5)...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS wave_webhooks (
+          id TEXT PRIMARY KEY,
+          wave_id TEXT NOT NULL REFERENCES waves(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          url TEXT NOT NULL,
+          platform TEXT DEFAULT 'generic',
+          enabled INTEGER DEFAULT 1,
+          include_bot_messages INTEGER DEFAULT 1,
+          include_encrypted INTEGER DEFAULT 0,
+          cooldown_seconds INTEGER DEFAULT 0,
+          last_triggered_at TEXT,
+          total_sent INTEGER DEFAULT 0,
+          total_errors INTEGER DEFAULT 0,
+          last_error TEXT,
+          last_error_at TEXT,
+          created_by TEXT REFERENCES users(id),
+          created_at TEXT NOT NULL,
+          updated_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_wave_webhooks_wave ON wave_webhooks(wave_id);
+        CREATE INDEX IF NOT EXISTS idx_wave_webhooks_enabled ON wave_webhooks(enabled);
+      `);
+      console.log('✅ Outgoing webhooks table created');
+    }
   }
 
   prepareStatements() {
@@ -8113,6 +8147,130 @@ export class DatabaseSQLite {
       SELECT * FROM bot_wave_keys WHERE bot_id = ? AND wave_id = ?
       ORDER BY key_version DESC LIMIT 1
     `).get(botId, waveId);
+  }
+
+  // ============ Outgoing Webhooks (v2.15.5) ============
+
+  /**
+   * Create a new outgoing webhook for a wave
+   */
+  createWaveWebhook({ waveId, name, url, platform = 'generic', includeBotMessages = true, includeEncrypted = false, cooldownSeconds = 0, createdBy }) {
+    const id = `webhook-${uuidv4()}`;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO wave_webhooks (id, wave_id, name, url, platform, enabled, include_bot_messages, include_encrypted, cooldown_seconds, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+    `).run(id, waveId, name, url, platform, includeBotMessages ? 1 : 0, includeEncrypted ? 1 : 0, cooldownSeconds, createdBy, now);
+
+    return this.getWaveWebhook(id);
+  }
+
+  /**
+   * Get a webhook by ID
+   */
+  getWaveWebhook(webhookId) {
+    const row = this.db.prepare(`SELECT * FROM wave_webhooks WHERE id = ?`).get(webhookId);
+    if (!row) return null;
+    return this._formatWebhook(row);
+  }
+
+  /**
+   * Get all webhooks for a wave
+   */
+  getWaveWebhooks(waveId) {
+    const rows = this.db.prepare(`
+      SELECT * FROM wave_webhooks WHERE wave_id = ? ORDER BY created_at ASC
+    `).all(waveId);
+    return rows.map(row => this._formatWebhook(row));
+  }
+
+  /**
+   * Get all enabled webhooks for a wave
+   */
+  getEnabledWaveWebhooks(waveId) {
+    const rows = this.db.prepare(`
+      SELECT * FROM wave_webhooks WHERE wave_id = ? AND enabled = 1 ORDER BY created_at ASC
+    `).all(waveId);
+    return rows.map(row => this._formatWebhook(row));
+  }
+
+  /**
+   * Update a webhook
+   */
+  updateWaveWebhook(webhookId, updates) {
+    const allowedFields = ['name', 'url', 'platform', 'enabled', 'include_bot_messages', 'include_encrypted', 'cooldown_seconds'];
+    const sets = [];
+    const values = [];
+
+    for (const [key, value] of Object.entries(updates)) {
+      const dbKey = key.replace(/([A-Z])/g, '_$1').toLowerCase(); // camelCase to snake_case
+      if (allowedFields.includes(dbKey)) {
+        sets.push(`${dbKey} = ?`);
+        values.push(typeof value === 'boolean' ? (value ? 1 : 0) : value);
+      }
+    }
+
+    if (sets.length === 0) return this.getWaveWebhook(webhookId);
+
+    sets.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(webhookId);
+
+    this.db.prepare(`UPDATE wave_webhooks SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    return this.getWaveWebhook(webhookId);
+  }
+
+  /**
+   * Delete a webhook
+   */
+  deleteWaveWebhook(webhookId) {
+    this.db.prepare(`DELETE FROM wave_webhooks WHERE id = ?`).run(webhookId);
+  }
+
+  /**
+   * Record successful webhook trigger
+   */
+  recordWebhookSuccess(webhookId) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE wave_webhooks SET total_sent = total_sent + 1, last_triggered_at = ? WHERE id = ?
+    `).run(now, webhookId);
+  }
+
+  /**
+   * Record webhook error
+   */
+  recordWebhookError(webhookId, errorMessage) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE wave_webhooks SET total_errors = total_errors + 1, last_error = ?, last_error_at = ? WHERE id = ?
+    `).run(errorMessage, now, webhookId);
+  }
+
+  /**
+   * Format webhook row to object
+   */
+  _formatWebhook(row) {
+    return {
+      id: row.id,
+      waveId: row.wave_id,
+      name: row.name,
+      url: row.url,
+      platform: row.platform,
+      enabled: !!row.enabled,
+      includeBotMessages: !!row.include_bot_messages,
+      includeEncrypted: !!row.include_encrypted,
+      cooldownSeconds: row.cooldown_seconds,
+      lastTriggeredAt: row.last_triggered_at,
+      totalSent: row.total_sent,
+      totalErrors: row.total_errors,
+      lastError: row.last_error,
+      lastErrorAt: row.last_error_at,
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
   }
 
   // ============ Jellyfin Integration Methods (v2.14.0) ============
