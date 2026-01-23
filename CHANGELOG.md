@@ -93,6 +93,18 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.15.6] - 2026-01-23
+
+### Improved
+
+#### Outgoing Webhook Links
+Webhook messages now include clickable links back to Cortex.
+
+- **Discord**: Wave title links to the message, author links to Cortex, footer includes Cortex icon
+- **Slack**: Wave title links to the message, author links to Cortex, footer with Cortex branding
+- **Teams**: "View in Cortex" action button added
+- **Generic**: Added `url` fields for wave and message
+
 ## [2.15.5] - 2026-01-23
 
 ### Added
