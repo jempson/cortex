@@ -93,6 +93,16 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.15.4] - 2026-01-23
+
+### Added
+
+#### New Quick Reactions
+Added three new emoji reactions to the quick reaction picker:
+- 🖕 Middle finger
+- 😮 Surprised
+- 🤦 Facepalm
+
 ## [2.15.3] - 2026-01-23
 
 ### Fixed
