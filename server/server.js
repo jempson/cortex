@@ -6335,6 +6335,67 @@ app.post('/api/push/test', authenticateToken, async (req, res) => {
   res.json({ success: true, sent, total: subscriptions.length });
 });
 
+// ============ Expo Push Notifications (Mobile App) ============
+
+// Register Expo push token (for mobile apps)
+app.post('/api/push/register', authenticateToken, (req, res) => {
+  const { token, type, platform, deviceName, deviceId } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ error: 'Push token is required' });
+  }
+
+  // Validate it's an Expo push token format
+  if (!token.startsWith('ExponentPushToken[') && !token.startsWith('ExpoPushToken[')) {
+    return res.status(400).json({ error: 'Invalid Expo push token format' });
+  }
+
+  try {
+    // Store as a push subscription with type='expo'
+    db.addPushSubscription(req.user.userId, {
+      endpoint: token,  // Use token as endpoint for Expo
+      keys: {
+        type: type || 'expo',
+        platform: platform || 'unknown',
+        deviceName: deviceName || 'Mobile Device',
+        deviceId: deviceId || null
+      }
+    });
+
+    console.log(`📱 Expo push token registered for user ${req.user.userId}: ${token.substring(0, 30)}...`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to register Expo push token:', error);
+    res.status(500).json({ error: 'Failed to register push token' });
+  }
+});
+
+// Unregister Expo push token
+app.post('/api/push/unregister', authenticateToken, (req, res) => {
+  const { token } = req.body;
+
+  try {
+    if (token) {
+      // Remove specific token
+      db.removePushSubscription(req.user.userId, token);
+      console.log(`📱 Expo push token unregistered for user ${req.user.userId}`);
+    } else {
+      // Remove all Expo tokens for this user (tokens starting with Expo)
+      const subs = db.getPushSubscriptions(req.user.userId);
+      for (const sub of subs) {
+        if (sub.endpoint?.startsWith('ExponentPushToken[') || sub.endpoint?.startsWith('ExpoPushToken[')) {
+          db.removePushSubscription(req.user.userId, sub.endpoint);
+        }
+      }
+      console.log(`📱 All Expo push tokens unregistered for user ${req.user.userId}`);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to unregister Expo push token:', error);
+    res.status(500).json({ error: 'Failed to unregister push token' });
+  }
+});
+
 // Admin handle request management (admin only)
 app.get('/api/admin/handle-requests', authenticateToken, (req, res) => {
   const user = db.findUserById(req.user.userId);
