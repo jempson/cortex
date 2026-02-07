@@ -8467,10 +8467,8 @@ app.get('/api/plex/stream/:connectionId/:ratingKey', authenticateToken, plexLimi
   const { connectionId, ratingKey } = req.params;
 
   try {
-    if (!db.userOwnsPlexConnection(req.user.userId, connectionId)) {
-      return res.status(403).json({ error: 'Not your connection' });
-    }
-
+    // Allow any authenticated user to stream - connection IDs are only shared via message embeds
+    // The connection owner controls what gets shared by embedding content in messages
     const connection = db.getPlexConnection(connectionId);
     if (!connection) {
       return res.status(404).json({ error: 'Connection not found' });
@@ -8637,11 +8635,7 @@ app.get('/api/plex/video/:connectionId/:ratingKey', async (req, res) => {
       return res.status(404).json({ error: 'Connection not found' });
     }
 
-    // Verify user owns connection
-    if (connection.userId !== userId) {
-      return res.status(403).json({ error: 'Not your connection' });
-    }
-
+    // Allow any authenticated user to stream - connection IDs are only shared via message embeds
     const accessToken = decryptPlexToken(connection.accessToken);
 
     // Get item info to find the media part
