@@ -4072,7 +4072,8 @@ app.use('/uploads', (req, res, next) => {
 // ============ Auth Middleware ============
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  // Support both Authorization header and query string token (for media streaming)
+  const token = (authHeader && authHeader.split(' ')[1]) || req.query.token;
   if (!token) return res.status(401).json({ error: 'Authentication required' });
 
   jwt.verify(token, JWT_SECRET, (err, decoded) => {
