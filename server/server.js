@@ -17030,23 +17030,21 @@ function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs 
       }
     }
 
-    // Only send push notification to offline users (no active WebSocket)
+    // Send push notification to mobile devices regardless of WebSocket connection
+    // Users expect mobile notifications even when web app is open
     // Debounce: only send one push per user per PUSH_DEBOUNCE_MINUTES window
-    // This prevents notification flooding when user has been offline
-    if (pushPayload && !isConnected) {
+    if (pushPayload) {
       const now = Date.now();
       const lastPush = lastPushSent.get(userId);
       const debounceMs = PUSH_DEBOUNCE_MINUTES * 60 * 1000;
 
       if (!lastPush || (now - lastPush) > debounceMs) {
-        console.log(`📱 Sending push notification to offline user ${userId}`);
+        console.log(`📱 Sending push notification to user ${userId} (wsConnected: ${isConnected})`);
         sendPushNotification(userId, pushPayload);
         lastPushSent.set(userId, now);
       } else {
         console.log(`📱 Push debounced for user ${userId} (last push ${Math.round((now - lastPush) / 1000)}s ago)`);
       }
-    } else if (pushPayload && isConnected) {
-      console.log(`📱 Skipping push for user ${userId} - connected via WebSocket`);
     }
   }
 }
