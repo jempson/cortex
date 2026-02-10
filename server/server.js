@@ -15613,10 +15613,12 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
     ? 'Encrypted message'
     : content.replace(/<[^>]*>/g, '').substring(0, 100);
   const pushPayload = {
+    type: 'message',
     title: `New droplet in ${wave.title}`,
     body: `${senderName}: ${contentPreview}${!req.body.encrypted && content.length > 100 ? '...' : ''}`,
     url: `/?wave=${waveId}`,
     waveId,
+    messageId: droplet.id,
     dropletId: droplet.id,
     encrypted: !!req.body.encrypted
   };
@@ -15970,11 +15972,12 @@ app.post('/api/messages', authenticateToken, deprecatedEndpoint, (req, res) => {
   const senderName = message.sender_name || db.findUserById(req.user.userId)?.displayName || 'Someone';
   const contentPreview = content.replace(/<[^>]*>/g, '').substring(0, 100);
   const pushPayload = {
+    type: 'message',
     title: `New message in ${wave.title}`,
     body: `${senderName}: ${contentPreview}${content.length > 100 ? '...' : ''}`,
     url: `/?wave=${waveId}`,
     waveId,
-    messageId: message.id // Include messageId for unique notification tags
+    messageId: message.id
   };
 
   // Broadcast to connected users and send push to offline users
@@ -16951,10 +16954,12 @@ async function sendPushNotification(userId, payload) {
       }));
 
     if (messages.length > 0) {
+      console.log(`📱 Sending ${messages.length} Expo push notification(s) to user ${userId}`);
       try {
         const chunks = expo.chunkPushNotifications(messages);
         for (const chunk of chunks) {
           const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+          console.log(`📱 Expo response:`, JSON.stringify(ticketChunk));
 
           // Check for errors and clean up invalid tokens
           ticketChunk.forEach((ticket, index) => {
@@ -17028,17 +17033,20 @@ function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs 
       }
     }
 
-    // Only send push notification to offline users (no active WebSocket)
+    // Send push notification to mobile devices regardless of WebSocket connection
+    // Users expect mobile notifications even when web app is open
     // Debounce: only send one push per user per PUSH_DEBOUNCE_MINUTES window
-    // This prevents notification flooding when user has been offline
-    if (pushPayload && !isConnected) {
+    if (pushPayload) {
       const now = Date.now();
       const lastPush = lastPushSent.get(userId);
       const debounceMs = PUSH_DEBOUNCE_MINUTES * 60 * 1000;
 
       if (!lastPush || (now - lastPush) > debounceMs) {
+        console.log(`📱 Sending push notification to user ${userId} (wsConnected: ${isConnected})`);
         sendPushNotification(userId, pushPayload);
         lastPushSent.set(userId, now);
+      } else {
+        console.log(`📱 Push debounced for user ${userId} (last push ${Math.round((now - lastPush) / 1000)}s ago)`);
       }
     }
   }
