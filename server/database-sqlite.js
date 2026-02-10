@@ -3583,6 +3583,9 @@ export class DatabaseSQLite {
 
     const params = [userId, userId, ...userCrewIds];
 
+    // Exclude profile waves (video feed profile waves should not appear in wave list)
+    sql += ' AND (w.is_profile_wave IS NULL OR w.is_profile_wave = 0)';
+
     // When showArchived=true, return ONLY archived waves
     // When showArchived=false, return ONLY non-archived waves
     if (showArchived) {
@@ -3677,6 +3680,9 @@ export class DatabaseSQLite {
     `;
 
     const params = [userId, userId, ...userCrewIds];
+
+    // Exclude profile waves (video feed profile waves should not appear in wave list)
+    sql += ' AND (w.is_profile_wave IS NULL OR w.is_profile_wave = 0)';
 
     if (showArchived) {
       sql += ' AND wp.archived = 1';
