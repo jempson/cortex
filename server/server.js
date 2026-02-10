@@ -16951,10 +16951,12 @@ async function sendPushNotification(userId, payload) {
       }));
 
     if (messages.length > 0) {
+      console.log(`📱 Sending ${messages.length} Expo push notification(s) to user ${userId}`);
       try {
         const chunks = expo.chunkPushNotifications(messages);
         for (const chunk of chunks) {
           const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+          console.log(`📱 Expo response:`, JSON.stringify(ticketChunk));
 
           // Check for errors and clean up invalid tokens
           ticketChunk.forEach((ticket, index) => {
@@ -17037,9 +17039,14 @@ function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs 
       const debounceMs = PUSH_DEBOUNCE_MINUTES * 60 * 1000;
 
       if (!lastPush || (now - lastPush) > debounceMs) {
+        console.log(`📱 Sending push notification to offline user ${userId}`);
         sendPushNotification(userId, pushPayload);
         lastPushSent.set(userId, now);
+      } else {
+        console.log(`📱 Push debounced for user ${userId} (last push ${Math.round((now - lastPush) / 1000)}s ago)`);
       }
+    } else if (pushPayload && isConnected) {
+      console.log(`📱 Skipping push for user ${userId} - connected via WebSocket`);
     }
   }
 }
