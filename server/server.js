@@ -16,6 +16,7 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import sharp from 'sharp';
 import webpush from 'web-push';
+import { Expo } from 'expo-server-sdk';
 import crypto from 'crypto';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
@@ -114,6 +115,9 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 } else {
   console.log('⚠️  Web Push disabled: Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in .env');
 }
+
+// Initialize Expo push notification client for mobile apps
+const expo = new Expo();
 
 // Push notification debounce settings
 // Only send one push notification per user per debounce window to prevent flooding
@@ -16913,27 +16917,82 @@ function broadcastToWave(waveId, message, excludeWs = null) {
 
 // Send push notification to a user who isn't connected via WebSocket
 async function sendPushNotification(userId, payload) {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
-
   const subscriptions = db.getPushSubscriptions(userId);
   if (subscriptions.length === 0) return;
 
-  const payloadString = JSON.stringify(payload);
+  // Separate Expo tokens from web push subscriptions
+  const expoTokens = [];
+  const webPushSubs = [];
 
   for (const sub of subscriptions) {
-    try {
-      await webpush.sendNotification({
-        endpoint: sub.endpoint,
-        keys: sub.keys
-      }, payloadString);
-    } catch (error) {
-      // Clean up invalid subscriptions (expired, VAPID mismatch, or endpoint issues)
-      if (error.statusCode === 410 || error.statusCode === 404 || error.statusCode === 401 ||
-          error.message?.includes('unexpected response code')) {
-        db.removeExpiredPushSubscription(sub.endpoint);
-        console.log(`🔕 Removed invalid push subscription (${error.statusCode || error.message})`);
-      } else {
-        console.error('Push notification error:', error.statusCode, error.message);
+    if (sub.endpoint?.startsWith('ExponentPushToken[') || sub.endpoint?.startsWith('ExpoPushToken[')) {
+      expoTokens.push(sub);
+    } else if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+      webPushSubs.push(sub);
+    }
+  }
+
+  // Send to Expo (mobile) tokens
+  if (expoTokens.length > 0) {
+    const messages = expoTokens
+      .filter(sub => Expo.isExpoPushToken(sub.endpoint))
+      .map(sub => ({
+        to: sub.endpoint,
+        sound: 'default',
+        title: payload.title || 'Cortex',
+        body: payload.body || payload.message || '',
+        data: {
+          type: payload.type,
+          waveId: payload.waveId,
+          messageId: payload.messageId,
+          senderId: payload.senderId,
+          senderHandle: payload.senderHandle,
+        },
+      }));
+
+    if (messages.length > 0) {
+      try {
+        const chunks = expo.chunkPushNotifications(messages);
+        for (const chunk of chunks) {
+          const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+
+          // Check for errors and clean up invalid tokens
+          ticketChunk.forEach((ticket, index) => {
+            if (ticket.status === 'error') {
+              console.error(`📱 Expo push error: ${ticket.message}`);
+              if (ticket.details?.error === 'DeviceNotRegistered') {
+                const token = messages[index].to;
+                db.removeExpiredPushSubscription(token);
+                console.log(`📱 Removed invalid Expo token: ${token.substring(0, 30)}...`);
+              }
+            }
+          });
+        }
+      } catch (error) {
+        console.error('📱 Expo push notification error:', error.message);
+      }
+    }
+  }
+
+  // Send to web push subscriptions
+  if (webPushSubs.length > 0) {
+    const payloadString = JSON.stringify(payload);
+
+    for (const sub of webPushSubs) {
+      try {
+        await webpush.sendNotification({
+          endpoint: sub.endpoint,
+          keys: sub.keys
+        }, payloadString);
+      } catch (error) {
+        // Clean up invalid subscriptions (expired, VAPID mismatch, or endpoint issues)
+        if (error.statusCode === 410 || error.statusCode === 404 || error.statusCode === 401 ||
+            error.message?.includes('unexpected response code')) {
+          db.removeExpiredPushSubscription(sub.endpoint);
+          console.log(`🔕 Removed invalid web push subscription (${error.statusCode || error.message})`);
+        } else {
+          console.error('Web push notification error:', error.statusCode, error.message);
+        }
       }
     }
   }
