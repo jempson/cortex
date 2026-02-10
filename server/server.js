@@ -15613,10 +15613,12 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
     ? 'Encrypted message'
     : content.replace(/<[^>]*>/g, '').substring(0, 100);
   const pushPayload = {
+    type: 'message',
     title: `New droplet in ${wave.title}`,
     body: `${senderName}: ${contentPreview}${!req.body.encrypted && content.length > 100 ? '...' : ''}`,
     url: `/?wave=${waveId}`,
     waveId,
+    messageId: droplet.id,
     dropletId: droplet.id,
     encrypted: !!req.body.encrypted
   };
@@ -15970,11 +15972,12 @@ app.post('/api/messages', authenticateToken, deprecatedEndpoint, (req, res) => {
   const senderName = message.sender_name || db.findUserById(req.user.userId)?.displayName || 'Someone';
   const contentPreview = content.replace(/<[^>]*>/g, '').substring(0, 100);
   const pushPayload = {
+    type: 'message',
     title: `New message in ${wave.title}`,
     body: `${senderName}: ${contentPreview}${content.length > 100 ? '...' : ''}`,
     url: `/?wave=${waveId}`,
     waveId,
-    messageId: message.id // Include messageId for unique notification tags
+    messageId: message.id
   };
 
   // Broadcast to connected users and send push to offline users
