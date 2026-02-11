@@ -11369,10 +11369,10 @@ app.post('/api/admin/maintenance/migrate-emails', authenticateToken, (req, res) 
 
     // Log the action
     if (db.logModerationAction) {
-      db.logModerationAction(admin.id, 'email_migration', 'system', null, `Migrated ${result.migrated} users, ${result.errors} errors`);
+      db.logModerationAction(admin.id, 'email_migration', 'system', 'bulk', `Migrated ${result.migrated} users, ${result.errors} errors`);
     }
     if (db.logActivity) {
-      db.logActivity(req.user.userId, 'admin_email_migration', 'system', null, { ...getRequestMeta(req), ...result });
+      db.logActivity(req.user.userId, 'admin_email_migration', 'system', 'bulk', { ...getRequestMeta(req), ...result });
     }
 
     console.log(`Admin ${admin.handle} triggered email migration: ${result.migrated} migrated, ${result.errors} errors`);

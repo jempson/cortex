@@ -2158,9 +2158,11 @@ export class DatabaseSQLite {
     const emailEncryption = encryptEmail(row.email);
 
     if (emailEncryption) {
-      // Full migration: hash + encrypt, clear plaintext
+      // Full migration: hash + encrypt
+      // Note: We keep plaintext email for backwards compatibility with existing NOT NULL constraints
+      // A future schema migration can clear it after ALTER TABLE removes the constraint
       this.db.prepare(`
-        UPDATE users SET email_hash = ?, email_encrypted = ?, email_iv = ?, email = NULL
+        UPDATE users SET email_hash = ?, email_encrypted = ?, email_iv = ?
         WHERE id = ?
       `).run(emailHash, emailEncryption.encrypted, emailEncryption.iv, userId);
     } else {
