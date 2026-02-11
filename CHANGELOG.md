@@ -93,6 +93,67 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.16.1] - 2026-02-11
+
+### Fixed
+
+#### Push Notification Navigation
+- Push notifications now include `type` field to enable proper navigation on mobile
+- Tapping a notification navigates to the correct wave and scrolls to the message
+- Fixed notifications not being sent when user has WebSocket connection open
+
+### Changed
+
+#### Push Notification Behavior
+- Push notifications now sent regardless of WebSocket connection status
+- Previously only sent when user was offline (no WebSocket)
+- Ensures mobile users always receive notifications even with web app open
+- Added `PUSH_DEBOUNCE_MINUTES` environment variable (default: 5)
+
+## [2.16.0] - 2026-02-10
+
+### Added
+
+#### Mobile App Support (React Native)
+Full server-side support for the Cortex mobile app (cortex-mobile).
+
+**Push Notifications (Expo):**
+- `POST /api/push/register` - Register device for push notifications
+- `DELETE /api/push/register` - Unregister push token
+- Uses Expo Server SDK for cross-platform push (FCM for Android, APNs for iOS)
+- Notifications for new messages, mentions, wave invites, contact requests
+- Deep linking support (`cortex://wave/:id/message/:id`)
+
+**Database:**
+- New `expo_push_tokens` table for storing device tokens
+
+**Dependencies:**
+- Added `expo-server-sdk` v3.15.0 (compatible with Node 18)
+
+#### Profile Wave Hiding
+Profile waves (used for video feed standalone posts) are now hidden from the main wave list.
+
+**Details:**
+- Profile waves have `is_profile_wave = 1` flag
+- Filtered from `getWavesForUser` and `getWavesForUserMinimal` queries
+- Keeps wave list clean for normal conversations
+- Profile waves still accessible via video feed
+
+#### Plex Media Streaming Authorization
+- Any authenticated user can now stream Plex media from embeds
+- Previously required being a Plex server owner
+- Uses query string token authentication for media URLs
+
+### Technical
+
+**Files Modified:**
+- `server/server.js` - Push notification endpoints, profile wave filtering
+- `server/database-sqlite.js` - expo_push_tokens table, profile wave filters
+- `server/package.json` - Added expo-server-sdk dependency
+
+**Documentation:**
+- `docs/MOBILE-APP-STATUS.md` - Mobile app implementation status
+
 ## [2.15.6] - 2026-01-23
 
 ### Improved
