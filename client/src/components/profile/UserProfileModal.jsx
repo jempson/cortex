@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { LOADING } from '../../../messages.js';
 import { GlowText, Avatar } from '../ui/SimpleComponents.jsx';
 
-const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, showToast, contacts, blockedUsers, mutedUsers, onAddContact, onBlock, onMute, onFollow, onUnfollow, isMobile }) => {
+const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, showToast, contacts, blockedUsers, mutedUsers, onAddContact, onBlock, onMute, onFollow, onUnfollow, onNavigateToWave, isMobile }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [videos, setVideos] = useState([]);
+  const [loadingVideos, setLoadingVideos] = useState(false);
 
   useEffect(() => {
     if (isOpen && userId) {
       setLoading(true);
+      setVideos([]);
       fetchAPI(`/users/${userId}/profile`)
         .then(data => setProfile(data))
         .catch(err => {
@@ -18,6 +21,17 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
         .finally(() => setLoading(false));
     }
   }, [isOpen, userId, fetchAPI, showToast]);
+
+  // Load user's profile videos when profile is loaded
+  useEffect(() => {
+    if (profile?.handle && !profile.isRemote) {
+      setLoadingVideos(true);
+      fetchAPI(`/users/${profile.handle}/videos?limit=6`)
+        .then(data => setVideos(data.videos || []))
+        .catch(err => console.error('Failed to load videos:', err))
+        .finally(() => setLoadingVideos(false));
+    }
+  }, [profile?.handle, profile?.isRemote, fetchAPI]);
 
   if (!isOpen) return null;
 
@@ -93,6 +107,61 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
                 <div style={{ color: 'var(--text-primary)', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                   {profile.bio}
                 </div>
+              </div>
+            )}
+
+            {/* Profile Videos section */}
+            {!profile.isRemote && (
+              <div style={{
+                marginBottom: '20px', padding: '16px',
+                background: 'var(--bg-elevated)', border: '1px solid var(--bg-hover)',
+              }}>
+                <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '12px' }}>
+                  VIDEOS {videos.length > 0 && `(${videos.length})`}
+                </div>
+                {loadingVideos ? (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Loading videos...</div>
+                ) : videos.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                    {videos.map(video => (
+                      <div
+                        key={video.id}
+                        onClick={() => {
+                          if (onNavigateToWave && video.wave_id) {
+                            onClose();
+                            onNavigateToWave(video.wave_id, video.id);
+                          }
+                        }}
+                        style={{
+                          aspectRatio: '9/16',
+                          background: 'var(--bg-base)',
+                          border: '1px solid var(--border-subtle)',
+                          cursor: onNavigateToWave ? 'pointer' : 'default',
+                          overflow: 'hidden',
+                          position: 'relative',
+                        }}
+                      >
+                        {video.media_url && (
+                          <video
+                            src={video.media_url}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            muted
+                            preload="metadata"
+                          />
+                        )}
+                        <div style={{
+                          position: 'absolute', bottom: '4px', right: '4px',
+                          background: 'rgba(0,0,0,0.7)', padding: '2px 4px',
+                          fontSize: '0.6rem', color: '#fff',
+                        }}>
+                          {video.media_duration ? `${Math.floor(video.media_duration / 60)}:${String(Math.floor(video.media_duration % 60)).padStart(2, '0')}` : '▶'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No videos posted yet</div>
+                )}
               </div>
             )}
 
