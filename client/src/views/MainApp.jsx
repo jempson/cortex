@@ -1418,6 +1418,19 @@ function MainApp({ sharePingId }) {
             showToastMsg(e.message || 'Failed to unfollow user', 'error');
           }
         }}
+        onNavigateToWave={(waveId, scrollToMessageId) => {
+          const wave = waves.find(w => w.id === waveId);
+          if (wave) {
+            setSelectedWave(wave);
+            setActiveView('waves');
+          } else {
+            // Wave not in list (profile wave), fetch and navigate
+            fetchAPI(`/waves/${waveId}`).then(waveData => {
+              setSelectedWave({ id: waveData.id, title: waveData.title, scrollToMessageId });
+              setActiveView('waves');
+            }).catch(() => showToastMsg('Failed to open wave', 'error'));
+          }
+        }}
         isMobile={isMobile}
       />
 
