@@ -6663,6 +6663,65 @@ app.delete('/api/contacts/:id', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
+// ============ Encrypted Contacts (v2.18.0 - Privacy Hardening Phase 2) ============
+
+// Get encrypted contacts blob
+app.get('/api/contacts/encrypted', authenticateToken, (req, res) => {
+  const encrypted = db.getEncryptedContacts(req.user.userId);
+  if (!encrypted) {
+    return res.json({ encrypted: false });
+  }
+  res.json({
+    encrypted: true,
+    encryptedData: encrypted.encryptedData,
+    nonce: encrypted.nonce,
+    version: encrypted.version,
+    updatedAt: encrypted.updatedAt,
+  });
+});
+
+// Save encrypted contacts blob
+app.put('/api/contacts/encrypted', authenticateToken, (req, res) => {
+  const { encryptedData, nonce, expectedVersion } = req.body;
+
+  if (!encryptedData || !nonce) {
+    return res.status(400).json({ error: 'encryptedData and nonce are required' });
+  }
+
+  // Basic validation - data should be base64
+  try {
+    Buffer.from(encryptedData, 'base64');
+    Buffer.from(nonce, 'base64');
+  } catch (err) {
+    return res.status(400).json({ error: 'Invalid base64 encoding' });
+  }
+
+  const result = db.saveEncryptedContacts(
+    req.user.userId,
+    encryptedData,
+    nonce,
+    expectedVersion ?? null
+  );
+
+  if (!result.success) {
+    return res.status(409).json({ error: result.error, version: result.version });
+  }
+
+  res.json({ success: true, version: result.version });
+});
+
+// Check encrypted contacts migration status
+app.get('/api/contacts/encrypted/status', authenticateToken, (req, res) => {
+  const hasEncrypted = db.hasEncryptedContacts(req.user.userId);
+  const plaintextContacts = db.getContactsForUser(req.user.userId);
+
+  res.json({
+    hasEncryptedContacts: hasEncrypted,
+    plaintextContactCount: plaintextContacts.length,
+    needsMigration: !hasEncrypted && plaintextContacts.length > 0,
+  });
+});
+
 // ============ Contact Request Routes ============
 // Send a contact request
 app.post('/api/contacts/request', authenticateToken, (req, res) => {

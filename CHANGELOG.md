@@ -93,6 +93,40 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.18.0] - 2026-02-11
+
+### Added
+
+#### Privacy Hardening Phase 2: Encrypted Contacts
+
+**Encrypted Contact Lists** - Contact lists are now encrypted client-side with the user's E2EE key. The server stores an encrypted blob it cannot read, protecting the user's social graph from database breaches.
+
+**Technical Details:**
+- New `encrypted_contacts` database table stores encrypted contact blob per user
+- Contact encryption uses AES-256-GCM derived from user's ECDH keypair (self-derivation)
+- New crypto functions: `encryptContactList()`, `decryptContactList()`, `deriveContactsKey()`
+- E2EE context methods: `getEncryptedContacts()`, `saveEncryptedContacts()`, `migrateContactsToEncrypted()`
+- Migration endpoint to check status: `GET /api/contacts/encrypted/status`
+
+**API Endpoints:**
+- `GET /api/contacts/encrypted` - Retrieve encrypted contacts blob
+- `PUT /api/contacts/encrypted` - Save encrypted contacts blob (with optimistic locking)
+- `GET /api/contacts/encrypted/status` - Check migration status
+
+**Migration Path:**
+- Existing plaintext contacts remain functional during transition
+- Users with E2EE enabled can migrate their contacts via the client
+- Both encrypted and plaintext contacts coexist for backward compatibility
+
+**Files Changed:**
+- `server/schema.sql` - Added `encrypted_contacts` table
+- `server/database-sqlite.js` - Added encrypted contacts methods and migration
+- `server/server.js` - Added encrypted contacts API endpoints
+- `client/crypto.js` - Added contact list encryption/decryption functions
+- `client/e2ee-context.jsx` - Added encrypted contacts management
+
+---
+
 ## [2.17.1] - 2026-02-11
 
 ### Fixed

@@ -157,7 +157,7 @@ ALTER TABLE group_invitations RENAME TO crew_invitations;
 
 E2EE protects message content, but metadata can reveal just as much. If someone gains database access, they shouldn't be able to "connect the dots" - who talks to whom, when, or how often. Our privacy claims must match our actual security posture.
 
-### Current State (After v2.17.0)
+### Current State (After v2.18.0)
 
 | Data Point | Current State | Risk Level |
 |------------|---------------|------------|
@@ -167,13 +167,14 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 | Timestamps | ✅ Rounded (15-min activity, 5-min sessions) | **Low** - Protected |
 | Session data | ✅ 30-day auto-cleanup | **Low** - Protected |
 | Activity logs | ✅ 30-day auto-cleanup | **Low** - Protected |
+| Contact lists | ✅ Client-encrypted blob (v2.18.0) | **Low** - Protected |
 | User → Wave relationships | Visible in DB | **High** - Shows who talks to whom |
-| Contact lists | Stored per-user | **High** - Social graph exposed |
+| Crew membership | Stored per-user | **High** - Group associations exposed |
 | Push subscriptions | Tied to user IDs | **Medium** - Device correlation |
 | Avatars | Stored with user ID | **Low** - Potential recognition |
 
-**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps
-**What's still exposed:** Social graph (wave participation, contacts, crews)
+**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps, contact lists
+**What's still exposed:** Social graph (wave participation, crews)
 
 ### Implementation Progress
 
@@ -187,8 +188,8 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 - ✅ Auto-cleanup old sessions (30 days default)
 - ✅ Admin endpoints for migration and status
 
-**Phase 2: Encrypted Metadata** (Future)
-- Encrypt contact lists (only user can decrypt their own)
+**Phase 2: Encrypted Metadata** 🔄 IN PROGRESS (v2.18.0)
+- ✅ Encrypt contact lists (only user can decrypt their own)
 - Encrypt wave participation lists
 - Server knows wave exists, but not who's in it
 - Encrypted push subscription mapping
@@ -222,6 +223,7 @@ SESSION_MAX_AGE_DAYS=30
 - [x] Database breach reveals no plaintext emails (v2.17.0)
 - [x] IPs cannot identify specific users (v2.17.0)
 - [x] Cannot correlate activity patterns via precise timestamps (v2.17.0)
+- [x] Contact lists encrypted, server cannot read them (v2.18.0)
 - [ ] Cannot determine who is in which wave from DB alone
 - [ ] Cannot reconstruct social graph from DB
 - [ ] Privacy policy accurately reflects actual protections
