@@ -505,7 +505,7 @@ const FocusView = ({
         }}
       >
         {filteredPings.map((msg) => (
-          <Ping
+          <Message
             key={msg.id}
             message={msg}
             onReply={handleReply}
