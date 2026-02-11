@@ -93,6 +93,79 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.17.1] - 2026-02-11
+
+### Fixed
+
+#### Email Migration Constraint Error
+- Fixed NOT NULL constraint error when migrating existing databases
+- Keep plaintext email during migration for backwards compatibility
+- Hash and encrypted columns populated alongside existing plaintext
+- Fixed null target_id in moderation log for bulk operations
+
+---
+
+## [2.17.0] - 2026-02-11
+
+### Added
+
+#### Privacy Hardening: Metadata Protection
+Comprehensive privacy hardening to protect user metadata beyond E2EE message content.
+
+**Email Protection:**
+- SHA-256 hash for lookup (login, registration uniqueness)
+- AES-256-GCM encryption for password reset recovery
+- New users automatically get protected email storage
+- Migration endpoint for existing users
+
+**IP Anonymization:**
+- IPs truncated to /24 subnet (IPv4) or /48 (IPv6)
+- Applied to session tracking and activity logs
+- Prevents precise location identification
+
+**User-Agent Truncation:**
+- Reduced to "Browser/OS" format only (e.g., "Chrome/Windows")
+- Prevents device fingerprinting
+
+**Timestamp Rounding:**
+- Activity log timestamps rounded to 15-minute intervals
+- Session timestamps rounded to 5-minute intervals
+- Reduces timing analysis attack surface
+
+**Retention Policies:**
+- Activity logs auto-deleted after 30 days (configurable)
+- Sessions enforced max age of 30 days (configurable)
+- Cleanup job runs every 6 hours
+
+**Admin Endpoints:**
+- `POST /api/admin/maintenance/migrate-emails` - Migrate existing users
+- `GET /api/admin/maintenance/privacy-status` - View protection stats
+
+**Environment Variables:**
+- `EMAIL_ENCRYPTION_KEY` - 32-byte hex key for AES-256
+- `ACTIVITY_LOG_RETENTION_DAYS` - Default 30
+- `SESSION_MAX_AGE_DAYS` - Default 30
+
+### Technical
+
+**Files Modified:**
+- `server/schema.sql` - Added email_hash, email_encrypted, email_iv columns
+- `server/database-sqlite.js` - Email hash/encrypt functions, migration methods
+- `server/server.js` - Privacy utilities, anonymization, admin endpoints
+- `server/.env.example` - Documented new environment variables
+
+---
+
+## [2.16.2] - 2026-02-11
+
+### Fixed
+
+#### FocusView Reference Error
+- Fixed `ReferenceError: Ping is not defined` when using focus view to reply
+- Changed `<Ping>` to `<Message>` component (refactoring artifact)
+
+---
+
 ## [2.16.1] - 2026-02-11
 
 ### Fixed

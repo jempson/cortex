@@ -157,92 +157,73 @@ ALTER TABLE group_invitations RENAME TO crew_invitations;
 
 E2EE protects message content, but metadata can reveal just as much. If someone gains database access, they shouldn't be able to "connect the dots" - who talks to whom, when, or how often. Our privacy claims must match our actual security posture.
 
-### Current State (Honest Assessment)
+### Current State (After v2.17.0)
 
 | Data Point | Current State | Risk Level |
 |------------|---------------|------------|
-| Email addresses | Stored plaintext | **High** - Identifies real users |
+| Email addresses | ✅ Hashed + Encrypted | **Low** - Protected |
+| IP addresses | ✅ Anonymized to /24 subnet | **Low** - Protected |
+| User-Agent | ✅ Truncated to Browser/OS | **Low** - Protected |
+| Timestamps | ✅ Rounded (15-min activity, 5-min sessions) | **Low** - Protected |
+| Session data | ✅ 30-day auto-cleanup | **Low** - Protected |
+| Activity logs | ✅ 30-day auto-cleanup | **Low** - Protected |
 | User → Wave relationships | Visible in DB | **High** - Shows who talks to whom |
 | Contact lists | Stored per-user | **High** - Social graph exposed |
-| Timestamps | All activity timestamped | **Medium** - Activity patterns |
-| Session data | IP, device info stored | **Medium** - Identity correlation |
 | Push subscriptions | Tied to user IDs | **Medium** - Device correlation |
 | Avatars | Stored with user ID | **Low** - Potential recognition |
 
-**What's protected:** Message content (E2EE)
-**What's exposed:** Everything else
+**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps
+**What's still exposed:** Social graph (wave participation, contacts, crews)
 
-### Proposed Improvements
+### Implementation Progress
 
-**Phase 1: Data Minimization**
-- Remove email requirement (invite-code registration option)
-- Hash emails if kept (for password reset only)
-- Reduce session data retention
-- No IP logging (or hash + auto-expire)
-- Shorter timestamp precision (day vs millisecond)
+**Phase 1: Data Minimization** ✅ COMPLETED (v2.17.0)
+- ✅ Hash emails (SHA-256 for lookup)
+- ✅ Encrypt emails (AES-256-GCM for password reset)
+- ✅ Anonymize IPs (truncate to /24 subnet)
+- ✅ Truncate User-Agent (Browser/OS only)
+- ✅ Round timestamps (15-min for activity, 5-min for sessions)
+- ✅ Auto-cleanup activity logs (30 days default)
+- ✅ Auto-cleanup old sessions (30 days default)
+- ✅ Admin endpoints for migration and status
 
-**Phase 2: Encrypted Metadata**
+**Phase 2: Encrypted Metadata** (Future)
 - Encrypt contact lists (only user can decrypt their own)
 - Encrypt wave participation lists
 - Server knows wave exists, but not who's in it
 - Encrypted push subscription mapping
 
-**Phase 3: Social Graph Protection**
-- Wave IDs are random, not sequential
+**Phase 3: Social Graph Protection** (Future)
+- Wave IDs are random, not sequential (already done)
 - No global user directory (must know handle to find)
 - Rate-limited handle lookups
 - Encrypted crew membership lists
 
-**Phase 4: Plausible Deniability**
+**Phase 4: Plausible Deniability** (Future)
 - Hidden waves (don't appear in lists)
 - Decoy traffic for federation
 - Can't prove user is in a wave without their key
 
-### Technical Approaches
+### Environment Variables (v2.17.0)
 
-**Option A: Client-Side Encryption of Metadata**
-- Contact lists encrypted with user's E2EE key
-- Wave participant lists encrypted with wave key
-- Server stores blobs, can't read contents
-- Pro: True zero-knowledge
-- Con: Complex key management, search limitations
+```bash
+EMAIL_ENCRYPTION_KEY=<32-byte-hex>  # openssl rand -hex 32
+ACTIVITY_LOG_RETENTION_DAYS=30
+SESSION_MAX_AGE_DAYS=30
+```
 
-**Option B: Hashed/Pseudonymous References**
-- User IDs replaced with per-wave pseudonyms
-- Same user has different ID in each wave
-- Server can't correlate across waves
-- Pro: Simpler than full encryption
-- Con: Patterns might still leak
+### Admin Endpoints (v2.17.0)
 
-**Option C: Hybrid Approach**
-- Encrypt high-value metadata (contacts, wave membership)
-- Hash medium-value data (emails, IPs)
-- Minimize or delete low-value data
-- Pro: Balanced complexity vs protection
-- Con: Partial protection
-
-### Privacy Claims We Could Make (After Implementation)
-
-**Before (Now):**
-> "Your messages are end-to-end encrypted"
-
-**After (Goal):**
-> "Even we can't see who you talk to, when, or how often. Your social graph is yours alone."
-
-### Questions to Resolve
-
-1. Do we require email at all? Invite codes + handle could be enough
-2. How do we handle password reset without email?
-3. Can we do encrypted search (for finding old messages)?
-4. Federation complicates this - how do we protect metadata across ports?
-5. What's the right balance between usability and privacy?
+- `POST /api/admin/maintenance/migrate-emails` - Migrate existing users to encrypted email
+- `GET /api/admin/maintenance/privacy-status` - View privacy protection stats
 
 ### Success Criteria
 
-- [ ] Database breach reveals no plaintext emails
+- [x] Database breach reveals no plaintext emails (v2.17.0)
+- [x] IPs cannot identify specific users (v2.17.0)
+- [x] Cannot correlate activity patterns via precise timestamps (v2.17.0)
 - [ ] Cannot determine who is in which wave from DB alone
 - [ ] Cannot reconstruct social graph from DB
-- [ ] Cannot correlate activity patterns to users
 - [ ] Privacy policy accurately reflects actual protections
 
 ---
