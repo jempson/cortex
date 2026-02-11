@@ -438,6 +438,7 @@ function getSessionDuration(requestedDuration) {
 }
 
 // Create a session record for a token
+// Uses privacy-hardened IP/UA (v2.16.0)
 function createSession(userId, token, req) {
   if (!SESSION_TRACKING_ENABLED || !db.hasSessionTable || !db.hasSessionTable()) {
     return null;
@@ -446,14 +447,23 @@ function createSession(userId, token, req) {
     const tokenHash = hashToken(token);
     const decoded = jwt.decode(token);
     const expiresAt = new Date(decoded.exp * 1000).toISOString();
-    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'Unknown';
+
+    // Privacy hardening: anonymize IP and truncate UA
+    const rawIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'Unknown';
+    const rawUserAgent = req.headers['user-agent'] || 'Unknown';
+    const anonIp = anonymizeIP(rawIp) || 'Unknown';
+    const truncatedUA = truncateUserAgent(rawUserAgent);
+
+    // Round session creation time to 5-minute intervals for privacy
+    const createdAt = roundTimestamp(new Date(), 5);
 
     return db.createSession({
       userId,
       tokenHash,
-      deviceInfo: req.headers['user-agent'] || 'Unknown',
-      ipAddress,
-      expiresAt
+      deviceInfo: truncatedUA,
+      ipAddress: anonIp,
+      expiresAt,
+      createdAt  // Pass rounded timestamp
     });
   } catch (err) {
     console.error('[Session] Failed to create session:', err.message);
@@ -583,8 +593,191 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
-// Get request metadata for activity logging
+// ============ Privacy Hardening Utilities (v2.16.0) ============
+
+// Email encryption key (required for email protection)
+const EMAIL_ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || null;
+const IP_HASH_SALT = process.env.IP_HASH_SALT || 'cortex-ip-salt-default';
+
+// Activity log retention (days)
+const ACTIVITY_LOG_RETENTION_DAYS = parseInt(process.env.ACTIVITY_LOG_RETENTION_DAYS || '30', 10);
+const SESSION_MAX_AGE_DAYS = parseInt(process.env.SESSION_MAX_AGE_DAYS || '30', 10);
+
+// Validate email encryption key in production
+if (!EMAIL_ENCRYPTION_KEY) {
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('⚠️  WARNING: EMAIL_ENCRYPTION_KEY not set. Email addresses will not be encrypted.');
+    console.warn('   Generate a key with: openssl rand -hex 32');
+  }
+} else if (EMAIL_ENCRYPTION_KEY.length !== 64) {
+  console.error('FATAL: EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters)');
+  process.exit(1);
+} else {
+  console.log('🔐 Email encryption enabled');
+}
+
+/**
+ * Anonymize IP address by truncating to subnet
+ * IPv4: /24 subnet (xxx.xxx.xxx.0)
+ * IPv6: /48 subnet (xxxx:xxxx:xxxx::)
+ * @param {string} ip - Full IP address
+ * @returns {string|null} Anonymized IP or null if invalid
+ */
+function anonymizeIP(ip) {
+  if (!ip || typeof ip !== 'string') return null;
+
+  // Clean up IP (remove port, whitespace)
+  ip = ip.trim().split(':').slice(0, -1).join(':') || ip.trim();
+
+  // IPv4: truncate to /24 (last octet becomes 0)
+  const ipv4Match = ip.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/);
+  if (ipv4Match) {
+    return ipv4Match[1] + '.0';
+  }
+
+  // IPv6: truncate to /48 (keep first 3 hextets)
+  const ipv6Match = ip.match(/^([0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}):/);
+  if (ipv6Match) {
+    return ipv6Match[1] + '::';
+  }
+
+  // Handle IPv4-mapped IPv6 (::ffff:192.168.1.1)
+  const mappedV4Match = ip.match(/::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/i);
+  if (mappedV4Match) {
+    return '::ffff:' + mappedV4Match[1] + '.0';
+  }
+
+  // Unknown format - return null for safety
+  return null;
+}
+
+/**
+ * Truncate User-Agent to browser family + OS only
+ * Prevents device fingerprinting while preserving useful debug info
+ * @param {string} ua - Full User-Agent string
+ * @returns {string} Truncated format: "Browser/OS"
+ */
+function truncateUserAgent(ua) {
+  if (!ua || typeof ua !== 'string') return 'Unknown/Unknown';
+
+  // Detect browser (order matters - check specific before generic)
+  let browser = 'Unknown';
+  if (/Edg(e|A|iOS)?/i.test(ua)) browser = 'Edge';
+  else if (/OPR|Opera/i.test(ua)) browser = 'Opera';
+  else if (/Firefox/i.test(ua)) browser = 'Firefox';
+  else if (/Chrome/i.test(ua)) browser = 'Chrome';
+  else if (/Safari/i.test(ua)) browser = 'Safari';
+  else if (/MSIE|Trident/i.test(ua)) browser = 'IE';
+
+  // Detect OS
+  let os = 'Unknown';
+  if (/Windows/i.test(ua)) os = 'Windows';
+  else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
+  else if (/Mac/i.test(ua)) os = 'macOS';
+  else if (/Android/i.test(ua)) os = 'Android';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+  else if (/CrOS/i.test(ua)) os = 'ChromeOS';
+
+  return `${browser}/${os}`;
+}
+
+/**
+ * Round timestamp to interval for privacy (reduces timing analysis)
+ * @param {Date|string} date - Date to round
+ * @param {number} minutes - Interval in minutes (default: 15)
+ * @returns {string} ISO string rounded to interval
+ */
+function roundTimestamp(date, minutes = 15) {
+  const d = date instanceof Date ? date : new Date(date);
+  const ms = minutes * 60 * 1000;
+  return new Date(Math.floor(d.getTime() / ms) * ms).toISOString();
+}
+
+/**
+ * Hash email for lookup (deterministic)
+ * @param {string} email - Email address
+ * @returns {string} SHA-256 hash (hex)
+ */
+function hashEmail(email) {
+  if (!email) return null;
+  const normalized = email.toLowerCase().trim();
+  return crypto.createHash('sha256').update(normalized).digest('hex');
+}
+
+/**
+ * Encrypt email for storage (for password reset)
+ * @param {string} email - Email address to encrypt
+ * @returns {{encrypted: string, iv: string}|null} Encrypted data or null if no key
+ */
+function encryptEmail(email) {
+  if (!EMAIL_ENCRYPTION_KEY || !email) return null;
+
+  try {
+    const key = Buffer.from(EMAIL_ENCRYPTION_KEY, 'hex');
+    const iv = crypto.randomBytes(12); // AES-GCM uses 12-byte IV
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+
+    let encrypted = cipher.update(email.toLowerCase().trim(), 'utf8', 'base64');
+    encrypted += cipher.final('base64');
+    const authTag = cipher.getAuthTag();
+
+    // Combine ciphertext + auth tag
+    const combined = Buffer.concat([Buffer.from(encrypted, 'base64'), authTag]).toString('base64');
+
+    return {
+      encrypted: combined,
+      iv: iv.toString('base64')
+    };
+  } catch (err) {
+    console.error('Email encryption error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Decrypt email for password reset
+ * @param {string} encrypted - Base64 encrypted email (ciphertext + auth tag)
+ * @param {string} iv - Base64 initialization vector
+ * @returns {string|null} Decrypted email or null on error
+ */
+function decryptEmail(encrypted, iv) {
+  if (!EMAIL_ENCRYPTION_KEY || !encrypted || !iv) return null;
+
+  try {
+    const key = Buffer.from(EMAIL_ENCRYPTION_KEY, 'hex');
+    const ivBuffer = Buffer.from(iv, 'base64');
+    const combined = Buffer.from(encrypted, 'base64');
+
+    // Split ciphertext and auth tag (auth tag is last 16 bytes)
+    const authTag = combined.slice(-16);
+    const ciphertext = combined.slice(0, -16);
+
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(ciphertext, undefined, 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  } catch (err) {
+    console.error('Email decryption error:', err.message);
+    return null;
+  }
+}
+
+// Get request metadata for activity logging (with privacy protection)
 function getRequestMeta(req) {
+  const rawIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.connection?.remoteAddress;
+  const rawUserAgent = req.headers['user-agent'] || 'Unknown';
+
+  return {
+    ip: anonymizeIP(rawIp) || 'Unknown',
+    userAgent: truncateUserAgent(rawUserAgent)
+  };
+}
+
+// Get raw request metadata (for internal use where full data is needed)
+function getRequestMetaRaw(req) {
   return {
     ip: req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.connection?.remoteAddress,
     userAgent: req.headers['user-agent'] || 'Unknown'
@@ -4533,6 +4726,13 @@ app.post('/api/auth/forgot-password', passwordResetLimiter, async (req, res) => 
       return successResponse();
     }
 
+    // Get decrypted email for sending (v2.16.0 privacy hardening)
+    const decryptedEmail = db.getDecryptedEmail ? db.getDecryptedEmail(user.id) : user.email;
+    if (!decryptedEmail || decryptedEmail.startsWith('[protected:')) {
+      console.error('Cannot send password reset: email not available for user', user.id);
+      return successResponse(); // Still return success to prevent enumeration
+    }
+
     // Generate secure random token (64 bytes = 128 hex chars)
     const token = crypto.randomBytes(64).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -4544,12 +4744,12 @@ app.post('/api/auth/forgot-password', passwordResetLimiter, async (req, res) => 
     const origin = req.headers.origin || process.env.CLIENT_URL || `http://localhost:${process.env.CLIENT_PORT || 3000}`;
     const resetUrl = `${origin}/reset-password?token=${token}`;
 
-    // Send email
-    const result = await emailService.sendPasswordResetEmail(user.email, token, resetUrl);
+    // Send email using decrypted address
+    const result = await emailService.sendPasswordResetEmail(decryptedEmail, token, resetUrl);
     if (!result.success) {
-      console.error(`Failed to send password reset email to ${user.email}:`, result.error);
+      console.error(`Failed to send password reset email:`, result.error);
     } else {
-      console.log(`Password reset email sent to ${user.email}`);
+      console.log(`Password reset email sent successfully`);
     }
 
     return successResponse();
@@ -10973,7 +11173,14 @@ app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, r
 
     // Clear account lockouts
     db.clearFailedLogins(targetUser.handle);
-    if (targetUser.email) db.clearFailedLogins(targetUser.email);
+
+    // Get decrypted email for lockout clearing and email sending (v2.16.0)
+    const decryptedEmail = db.getDecryptedEmail ? db.getDecryptedEmail(targetUserId) : targetUser.email;
+    const hasValidEmail = decryptedEmail && !decryptedEmail.startsWith('[protected:');
+
+    if (hasValidEmail) {
+      db.clearFailedLogins(decryptedEmail);
+    }
 
     // Log the action
     if (db.logModerationAction) {
@@ -10981,17 +11188,17 @@ app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, r
     }
 
     // Log activity
-    if (db.logActivity) db.logActivity(req.user.userId, 'admin_password_reset', 'user', targetUserId, { ...getRequestMeta(req), emailSent: shouldSendEmail && targetUser.email });
+    if (db.logActivity) db.logActivity(req.user.userId, 'admin_password_reset', 'user', targetUserId, { ...getRequestMeta(req), emailSent: shouldSendEmail && hasValidEmail });
 
     // Optionally send email with temporary password
     let emailSent = false;
-    if (shouldSendEmail && targetUser.email) {
+    if (shouldSendEmail && hasValidEmail) {
       const emailService = getEmailService();
       if (emailService.isConfigured()) {
-        const emailResult = await emailService.sendTempPasswordEmail(targetUser.email, tempPassword, admin.displayName || admin.handle);
+        const emailResult = await emailService.sendTempPasswordEmail(decryptedEmail, tempPassword, admin.displayName || admin.handle);
         emailSent = emailResult.success;
         if (!emailSent) {
-          console.warn(`Failed to send temp password email to ${targetUser.email}: ${emailResult.error}`);
+          console.warn(`Failed to send temp password email: ${emailResult.error}`);
         }
       }
     }
@@ -11143,6 +11350,76 @@ app.put('/api/admin/users/:id/role', authenticateToken, (req, res) => {
   } catch (err) {
     console.error('Admin change role error:', err);
     res.status(500).json({ error: 'Failed to change user role' });
+  }
+});
+
+// ============ Privacy Maintenance Endpoints (v2.16.0) ============
+
+// Migrate user emails to hashed/encrypted format (admin only)
+app.post('/api/admin/maintenance/migrate-emails', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    if (!db.migrateAllUserEmails) {
+      return res.status(501).json({ error: 'Email migration not available' });
+    }
+
+    const result = db.migrateAllUserEmails();
+
+    // Log the action
+    if (db.logModerationAction) {
+      db.logModerationAction(admin.id, 'email_migration', 'system', 'bulk', `Migrated ${result.migrated} users, ${result.errors} errors`);
+    }
+    if (db.logActivity) {
+      db.logActivity(req.user.userId, 'admin_email_migration', 'system', 'bulk', { ...getRequestMeta(req), ...result });
+    }
+
+    console.log(`Admin ${admin.handle} triggered email migration: ${result.migrated} migrated, ${result.errors} errors`);
+
+    res.json({
+      success: true,
+      migrated: result.migrated,
+      errors: result.errors,
+      message: result.errors > 0
+        ? `Migrated ${result.migrated} users, ${result.errors} errors (check server logs)`
+        : `Successfully migrated ${result.migrated} users to encrypted email storage`
+    });
+  } catch (err) {
+    console.error('Email migration error:', err);
+    res.status(500).json({ error: 'Failed to migrate emails' });
+  }
+});
+
+// Get privacy status/stats (admin only)
+app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    // Count users with/without email protection
+    const totalUsers = db.db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    const usersWithEmailHash = db.db.prepare('SELECT COUNT(*) as count FROM users WHERE email_hash IS NOT NULL').get().count;
+    const usersWithPlainEmail = db.db.prepare('SELECT COUNT(*) as count FROM users WHERE email IS NOT NULL AND email_hash IS NULL').get().count;
+    const usersWithEncryptedEmail = db.db.prepare('SELECT COUNT(*) as count FROM users WHERE email_encrypted IS NOT NULL').get().count;
+
+    res.json({
+      totalUsers,
+      emailProtection: {
+        hashed: usersWithEmailHash,
+        encrypted: usersWithEncryptedEmail,
+        plaintext: usersWithPlainEmail,
+        migrationNeeded: usersWithPlainEmail
+      },
+      config: {
+        emailEncryptionEnabled: !!EMAIL_ENCRYPTION_KEY,
+        activityLogRetentionDays: ACTIVITY_LOG_RETENTION_DAYS,
+        sessionMaxAgeDays: SESSION_MAX_AGE_DAYS
+      }
+    });
+  } catch (err) {
+    console.error('Privacy status error:', err);
+    res.status(500).json({ error: 'Failed to get privacy status' });
   }
 });
 
@@ -16616,33 +16893,7 @@ if (FEDERATION_ENABLED) {
   }, 24 * 60 * 60 * 1000); // Daily
 }
 
-// Activity log cleanup (90-day retention)
-const ACTIVITY_LOG_RETENTION_DAYS = parseInt(process.env.ACTIVITY_LOG_RETENTION_DAYS) || 90;
-if (db.cleanupOldActivityLogs) {
-  // Run cleanup daily
-  setInterval(() => {
-    try {
-      const deleted = db.cleanupOldActivityLogs(ACTIVITY_LOG_RETENTION_DAYS);
-      if (deleted > 0) {
-        console.log(`🧹 Cleaned ${deleted} old activity log entries (>${ACTIVITY_LOG_RETENTION_DAYS} days)`);
-      }
-    } catch (err) {
-      console.error('Activity log cleanup error:', err);
-    }
-  }, 24 * 60 * 60 * 1000); // Daily
-
-  // Also run once on startup after a delay
-  setTimeout(() => {
-    try {
-      const deleted = db.cleanupOldActivityLogs(ACTIVITY_LOG_RETENTION_DAYS);
-      if (deleted > 0) {
-        console.log(`🧹 Startup cleanup: removed ${deleted} old activity log entries`);
-      }
-    } catch (err) {
-      console.error('Activity log startup cleanup error:', err);
-    }
-  }, 60000); // 1 minute after startup
-}
+// Activity log cleanup is now handled by the privacy retention job in the server startup section (v2.16.0)
 
 // ============ Notification Creation Helpers ============
 
@@ -17092,4 +17343,30 @@ server.listen(PORT, () => {
     }, SESSION_CLEANUP_INTERVAL);
     console.log('📱 Session management enabled (cleanup every hour)');
   }
+
+  // Start privacy retention cleanup job (v2.16.0)
+  // Runs every 6 hours to clean up old activity logs and enforce session max age
+  const RETENTION_CLEANUP_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+  setInterval(() => {
+    try {
+      // Clean up old activity log entries
+      if (db.cleanupOldActivityLogs) {
+        const activityCleaned = db.cleanupOldActivityLogs(ACTIVITY_LOG_RETENTION_DAYS);
+        if (activityCleaned > 0) {
+          console.log(`🧹 Cleaned up ${activityCleaned} old activity log entries (>${ACTIVITY_LOG_RETENTION_DAYS} days)`);
+        }
+      }
+
+      // Enforce maximum session age (beyond normal expiry)
+      if (db.cleanupOldSessions) {
+        const sessionsCleaned = db.cleanupOldSessions(SESSION_MAX_AGE_DAYS);
+        if (sessionsCleaned > 0) {
+          console.log(`🧹 Cleaned up ${sessionsCleaned} sessions older than ${SESSION_MAX_AGE_DAYS} days`);
+        }
+      }
+    } catch (err) {
+      console.error('Privacy retention cleanup error:', err.message);
+    }
+  }, RETENTION_CLEANUP_INTERVAL);
+  console.log(`🔐 Privacy retention enabled (activity: ${ACTIVITY_LOG_RETENTION_DAYS}d, sessions: ${SESSION_MAX_AGE_DAYS}d)`);
 });

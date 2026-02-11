@@ -17,8 +17,98 @@ import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import sanitizeHtml from 'sanitize-html';
+import crypto from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ============ Privacy Hardening: Email Encryption (v2.16.0) ============
+// These functions mirror those in server.js but are needed here for database operations
+
+const EMAIL_ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || null;
+
+/**
+ * Hash email for lookup (deterministic)
+ * @param {string} email - Email address
+ * @returns {string|null} SHA-256 hash (hex)
+ */
+function hashEmail(email) {
+  if (!email) return null;
+  const normalized = email.toLowerCase().trim();
+  return crypto.createHash('sha256').update(normalized).digest('hex');
+}
+
+/**
+ * Encrypt email for storage (for password reset)
+ * @param {string} email - Email address to encrypt
+ * @returns {{encrypted: string, iv: string}|null} Encrypted data or null if no key
+ */
+function encryptEmail(email) {
+  if (!EMAIL_ENCRYPTION_KEY || !email) return null;
+
+  try {
+    const key = Buffer.from(EMAIL_ENCRYPTION_KEY, 'hex');
+    const iv = crypto.randomBytes(12); // AES-GCM uses 12-byte IV
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+
+    let encrypted = cipher.update(email.toLowerCase().trim(), 'utf8', 'base64');
+    encrypted += cipher.final('base64');
+    const authTag = cipher.getAuthTag();
+
+    // Combine ciphertext + auth tag
+    const combined = Buffer.concat([Buffer.from(encrypted, 'base64'), authTag]).toString('base64');
+
+    return {
+      encrypted: combined,
+      iv: iv.toString('base64')
+    };
+  } catch (err) {
+    console.error('Email encryption error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Decrypt email for password reset
+ * @param {string} encrypted - Base64 encrypted email (ciphertext + auth tag)
+ * @param {string} iv - Base64 initialization vector
+ * @returns {string|null} Decrypted email or null on error
+ */
+function decryptEmail(encrypted, iv) {
+  if (!EMAIL_ENCRYPTION_KEY || !encrypted || !iv) return null;
+
+  try {
+    const key = Buffer.from(EMAIL_ENCRYPTION_KEY, 'hex');
+    const ivBuffer = Buffer.from(iv, 'base64');
+    const combined = Buffer.from(encrypted, 'base64');
+
+    // Split ciphertext and auth tag (auth tag is last 16 bytes)
+    const authTag = combined.slice(-16);
+    const ciphertext = combined.slice(0, -16);
+
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(ciphertext, undefined, 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  } catch (err) {
+    console.error('Email decryption error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Round timestamp to interval for privacy (reduces timing analysis)
+ * @param {Date|string} date - Date to round
+ * @param {number} minutes - Interval in minutes (default: 15)
+ * @returns {string} ISO string rounded to interval
+ */
+function roundTimestamp(date, minutes = 15) {
+  const d = date instanceof Date ? date : new Date(date);
+  const ms = minutes * 60 * 1000;
+  return new Date(Math.floor(d.getTime() / ms) * ms).toISOString();
+}
 
 // ============ Security: Input Sanitization ============
 const sanitizeMessageOptions = {
@@ -1543,18 +1633,43 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Outgoing webhooks table created');
     }
+
+    // v2.16.0 - Privacy Hardening: Email hash/encryption columns
+    const emailHashColumn = this.db.prepare(`
+      SELECT name FROM pragma_table_info('users') WHERE name = 'email_hash'
+    `).get();
+
+    if (!emailHashColumn) {
+      console.log('📝 Adding email privacy columns (v2.16.0)...');
+      this.db.exec(`
+        ALTER TABLE users ADD COLUMN email_hash TEXT;
+        ALTER TABLE users ADD COLUMN email_encrypted TEXT;
+        ALTER TABLE users ADD COLUMN email_iv TEXT;
+      `);
+
+      // Create unique index on email_hash (allowing nulls for migration)
+      this.db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_hash ON users(email_hash)
+        WHERE email_hash IS NOT NULL;
+      `);
+
+      console.log('✅ Email privacy columns added');
+      console.log('   Run email migration to populate email_hash/email_encrypted from existing emails');
+    }
   }
 
   prepareStatements() {
     // User statements
     this.stmts = {
+      // Handle lookup - supports both handle and email (via hash or legacy plaintext)
       findUserByHandle: this.db.prepare(`
-        SELECT * FROM users WHERE handle = ? COLLATE NOCASE OR email = ? COLLATE NOCASE
+        SELECT * FROM users WHERE handle = ? COLLATE NOCASE OR email = ? COLLATE NOCASE OR email_hash = ?
       `),
       findUserById: this.db.prepare('SELECT * FROM users WHERE id = ?'),
+      // New users get email_hash, email_encrypted, email_iv instead of plaintext email
       insertUser: this.db.prepare(`
-        INSERT INTO users (id, handle, email, password_hash, display_name, avatar, avatar_url, bio, node_name, status, is_admin, role, created_at, last_seen, last_handle_change, preferences)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (id, handle, email, email_hash, email_encrypted, email_iv, password_hash, display_name, avatar, avatar_url, bio, node_name, status, is_admin, role, created_at, last_seen, last_handle_change, preferences)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `),
       updateUser: this.db.prepare(`
         UPDATE users SET handle = ?, email = ?, display_name = ?, avatar = ?, avatar_url = ?, bio = ?, node_name = ?, status = ?, is_admin = ?, role = ?, last_seen = ?, last_handle_change = ?, preferences = ?
@@ -1569,6 +1684,8 @@ export class DatabaseSQLite {
         WHERE id != ? AND (handle LIKE ? OR display_name LIKE ?)
         LIMIT 10
       `),
+      // Find user by email hash (for login/lookup)
+      findUserByEmailHash: this.db.prepare('SELECT * FROM users WHERE email_hash = ?'),
     };
   }
 
@@ -1674,10 +1791,22 @@ export class DatabaseSQLite {
     if (!row) return null;
     // Determine role: use role column if present, otherwise derive from is_admin for backward compat
     const role = row.role || (row.is_admin === 1 ? 'admin' : 'user');
+
+    // For email, prefer decrypted email if encrypted, else legacy plaintext, else masked hash
+    let email = row.email; // Legacy plaintext
+    if (!email && row.email_encrypted && row.email_iv) {
+      email = decryptEmail(row.email_encrypted, row.email_iv);
+    }
+    // If still no email (decryption failed or no encryption key), use a masked placeholder
+    if (!email && row.email_hash) {
+      email = `[protected:${row.email_hash.substring(0, 8)}...]`;
+    }
+
     return {
       id: row.id,
       handle: row.handle,
-      email: row.email,
+      email: email,
+      emailHash: row.email_hash,  // For lookup purposes (not exposed to client)
       passwordHash: row.password_hash,
       displayName: row.display_name,
       avatar: row.avatar,
@@ -1704,7 +1833,12 @@ export class DatabaseSQLite {
   findUserByHandle(handle) {
     if (!handle) return null;
     const sanitized = handle.toLowerCase().trim();
-    const row = this.stmts.findUserByHandle.get(sanitized, sanitized);
+
+    // Check if input looks like an email (contains @)
+    // If so, also compute email hash for lookup
+    const emailHash = sanitized.includes('@') ? hashEmail(sanitized) : null;
+
+    const row = this.stmts.findUserByHandle.get(sanitized, sanitized, emailHash);
     return this.rowToUser(row);
   }
 
@@ -1735,10 +1869,17 @@ export class DatabaseSQLite {
     const isFirstUser = this.stmts.countUsers.get().count === 0;
     const role = isFirstUser ? 'admin' : 'user';
 
+    // Privacy hardening (v2.16.0): Hash and encrypt email
+    const emailHash = hashEmail(userData.email);
+    const emailEncryption = encryptEmail(userData.email);
+
     const user = {
       id: userData.id,
       handle: userData.handle,
-      email: userData.email,
+      email: emailEncryption ? null : userData.email, // Only store plaintext if no encryption key
+      emailHash: emailHash,
+      emailEncrypted: emailEncryption?.encrypted || null,
+      emailIv: emailEncryption?.iv || null,
       passwordHash: userData.passwordHash,
       displayName: userData.displayName,
       avatar: userData.avatar || '?',
@@ -1756,7 +1897,8 @@ export class DatabaseSQLite {
     };
 
     this.stmts.insertUser.run(
-      user.id, user.handle, user.email, user.passwordHash, user.displayName,
+      user.id, user.handle, user.email, user.emailHash, user.emailEncrypted, user.emailIv,
+      user.passwordHash, user.displayName,
       user.avatar, user.avatarUrl, user.bio, user.nodeName, user.status,
       user.isAdmin ? 1 : 0, user.role, user.createdAt, user.lastSeen, user.lastHandleChange,
       JSON.stringify(user.preferences)
@@ -1961,14 +2103,102 @@ export class DatabaseSQLite {
   // ============ Password Reset Methods ============
 
   /**
-   * Find user by email address
+   * Find user by email address (supports both hashed and legacy plaintext)
    * @param {string} email - Email address
    * @returns {Object|null} User object or null
    */
   findUserByEmail(email) {
-    const row = this.db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email);
+    if (!email) return null;
+
+    // First try email hash lookup (v2.16.0+)
+    const emailHash = hashEmail(email);
+    let row = this.db.prepare('SELECT * FROM users WHERE email_hash = ?').get(emailHash);
+
+    // Fall back to legacy plaintext lookup (for unmigrated users)
+    if (!row) {
+      row = this.db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email);
+    }
+
     if (!row) return null;
     return this.rowToUser(row);
+  }
+
+  /**
+   * Get decrypted email for a user (for password reset emails)
+   * @param {string} userId - User ID
+   * @returns {string|null} Decrypted email or null if not available
+   */
+  getDecryptedEmail(userId) {
+    const row = this.db.prepare(`
+      SELECT email, email_encrypted, email_iv FROM users WHERE id = ?
+    `).get(userId);
+
+    if (!row) return null;
+
+    // Try decrypting from encrypted storage first
+    if (row.email_encrypted && row.email_iv) {
+      const decrypted = decryptEmail(row.email_encrypted, row.email_iv);
+      if (decrypted) return decrypted;
+    }
+
+    // Fall back to legacy plaintext email
+    return row.email || null;
+  }
+
+  /**
+   * Migrate existing user's plaintext email to hashed/encrypted format
+   * @param {string} userId - User ID to migrate
+   * @returns {boolean} Success
+   */
+  migrateUserEmail(userId) {
+    const row = this.db.prepare('SELECT id, email FROM users WHERE id = ? AND email IS NOT NULL AND email_hash IS NULL').get(userId);
+    if (!row || !row.email) return false;
+
+    const emailHash = hashEmail(row.email);
+    const emailEncryption = encryptEmail(row.email);
+
+    if (emailEncryption) {
+      // Full migration: hash + encrypt
+      // Note: We keep plaintext email for backwards compatibility with existing NOT NULL constraints
+      // A future schema migration can clear it after ALTER TABLE removes the constraint
+      this.db.prepare(`
+        UPDATE users SET email_hash = ?, email_encrypted = ?, email_iv = ?
+        WHERE id = ?
+      `).run(emailHash, emailEncryption.encrypted, emailEncryption.iv, userId);
+    } else {
+      // Partial migration: hash only (no encryption key configured)
+      this.db.prepare(`
+        UPDATE users SET email_hash = ? WHERE id = ?
+      `).run(emailHash, userId);
+    }
+
+    return true;
+  }
+
+  /**
+   * Migrate all users' emails to hashed/encrypted format (batch operation)
+   * @returns {{migrated: number, errors: number}}
+   */
+  migrateAllUserEmails() {
+    const users = this.db.prepare(`
+      SELECT id, email FROM users WHERE email IS NOT NULL AND email_hash IS NULL
+    `).all();
+
+    let migrated = 0;
+    let errors = 0;
+
+    for (const user of users) {
+      try {
+        if (this.migrateUserEmail(user.id)) {
+          migrated++;
+        }
+      } catch (err) {
+        console.error(`Failed to migrate email for user ${user.id}:`, err.message);
+        errors++;
+      }
+    }
+
+    return { migrated, errors };
   }
 
   /**
@@ -2364,20 +2594,23 @@ export class DatabaseSQLite {
     return result.changes;
   }
 
-  // ============ Activity Log Methods ============
+  // ============ Activity Log Methods (updated v2.16.0 for privacy) ============
 
   /**
    * Log an activity event
+   * IP and userAgent in metadata should be pre-anonymized by caller (v2.16.0)
+   * Timestamps are rounded to 15-minute intervals for privacy
    * @param {string|null} userId - User ID (null for anonymous actions)
    * @param {string} actionType - Type of action (login, logout, password_change, etc.)
    * @param {string|null} resourceType - Type of resource (user, wave, droplet, etc.)
    * @param {string|null} resourceId - ID of the affected resource
-   * @param {Object} metadata - Additional context (ip, userAgent, etc.)
+   * @param {Object} metadata - Additional context (ip, userAgent, etc.) - should be anonymized
    * @returns {string} Activity log entry ID
    */
   logActivity(userId, actionType, resourceType = null, resourceId = null, metadata = {}) {
     const id = `act-${uuidv4()}`;
-    const now = new Date().toISOString();
+    // Round timestamp to 15-minute intervals for privacy
+    const timestamp = roundTimestamp(new Date(), 15);
 
     this.db.prepare(`
       INSERT INTO activity_log (id, user_id, action_type, resource_type, resource_id, ip_address, user_agent, metadata, created_at)
@@ -2391,7 +2624,7 @@ export class DatabaseSQLite {
       metadata.ip || null,
       metadata.userAgent || null,
       JSON.stringify(metadata),
-      now
+      timestamp
     );
 
     return id;
@@ -7086,19 +7319,20 @@ export class DatabaseSQLite {
     return allSubscribers.filter(sub => sub.categories.includes(category));
   }
 
-  // ============ Session Management (v1.18.0) ============
+  // ============ Session Management (v1.18.0, updated v2.16.0 for privacy) ============
 
   // Create a new session
-  createSession({ userId, tokenHash, deviceInfo, ipAddress, expiresAt }) {
+  // deviceInfo and ipAddress should be pre-anonymized by caller (v2.16.0)
+  createSession({ userId, tokenHash, deviceInfo, ipAddress, expiresAt, createdAt }) {
     const id = `sess-${uuidv4()}`;
-    const now = new Date().toISOString();
+    const timestamp = createdAt || new Date().toISOString();
 
     this.db.prepare(`
       INSERT INTO user_sessions (id, user_id, token_hash, device_info, ip_address, created_at, last_active, expires_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, userId, tokenHash, deviceInfo || 'Unknown', ipAddress || 'Unknown', now, now, expiresAt);
+    `).run(id, userId, tokenHash, deviceInfo || 'Unknown', ipAddress || 'Unknown', timestamp, timestamp, expiresAt);
 
-    return { id, userId, tokenHash, deviceInfo, ipAddress, createdAt: now, lastActive: now, expiresAt, revoked: false };
+    return { id, userId, tokenHash, deviceInfo, ipAddress, createdAt: timestamp, lastActive: timestamp, expiresAt, revoked: false };
   }
 
   // Get session by token hash
@@ -7203,6 +7437,21 @@ export class DatabaseSQLite {
     return result.changes;
   }
 
+  /**
+   * Cleanup sessions older than maxAgeDays (v2.16.0 privacy hardening)
+   * Enforces maximum session age regardless of expiry time
+   * @param {number} maxAgeDays - Maximum age in days (default: 30)
+   * @returns {number} Number of sessions deleted
+   */
+  cleanupOldSessions(maxAgeDays = 30) {
+    const cutoffDate = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
+    const result = this.db.prepare(`
+      DELETE FROM user_sessions
+      WHERE created_at < ?
+    `).run(cutoffDate);
+    return result.changes;
+  }
+
   // Check if session table exists (for graceful degradation)
   hasSessionTable() {
     try {
@@ -7213,6 +7462,20 @@ export class DatabaseSQLite {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Cleanup activity log entries older than retentionDays (v2.16.0 privacy hardening)
+   * @param {number} retentionDays - Maximum age in days (default: 30)
+   * @returns {number} Number of entries deleted
+   */
+  cleanupOldActivityLogs(retentionDays = 30) {
+    const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const result = this.db.prepare(`
+      DELETE FROM activity_log
+      WHERE created_at < ?
+    `).run(cutoffDate);
+    return result.changes;
   }
 
   // ============ User Data Export (v1.18.0 GDPR Compliance) ============

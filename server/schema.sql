@@ -10,7 +10,10 @@
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     handle TEXT UNIQUE NOT NULL COLLATE NOCASE,
-    email TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    email TEXT COLLATE NOCASE,                    -- Legacy: plaintext email (will be migrated)
+    email_hash TEXT,                              -- SHA-256(lowercase(email)) for lookup
+    email_encrypted TEXT,                         -- AES-256-GCM encrypted email for password reset
+    email_iv TEXT,                                -- AES-GCM initialization vector (12 bytes, base64)
     password_hash TEXT NOT NULL,
     display_name TEXT NOT NULL,
     avatar TEXT NOT NULL DEFAULT '?',
@@ -410,6 +413,7 @@ CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_version ON wave_encryption_k
 -- User lookups
 CREATE INDEX IF NOT EXISTS idx_users_handle ON users(handle);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_hash ON users(email_hash);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
