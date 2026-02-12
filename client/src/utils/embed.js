@@ -15,12 +15,14 @@ export const EMBED_PLATFORMS = {
 };
 
 // URL patterns for detecting embeddable content (mirrors server)
+// Note: YouTube patterns capture video ID; playlist ID is extracted separately via URL parsing
 export const EMBED_URL_PATTERNS = {
   youtube: [
-    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/i,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?[^\s]*v=([a-zA-Z0-9_-]{11})/i,  // watch with video (may have list param)
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/i,
     /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/i,
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/playlist\?[^\s]*list=([a-zA-Z0-9_-]+)/i,  // playlist-only URL (v2.19.0)
   ],
   vimeo: [
     /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/i,
@@ -127,8 +129,32 @@ export function detectEmbedUrls(text) {
 
           // Generate embed URLs
           if (platform === 'youtube') {
-            embed.embedUrl = `https://www.youtube.com/embed/${embed.contentId}?rel=0`;
-            embed.thumbnail = `https://img.youtube.com/vi/${embed.contentId}/hqdefault.jpg`;
+            // Extract playlist ID from URL if present (v2.19.0)
+            const playlistMatch = url.match(/[?&]list=([a-zA-Z0-9_-]+)/i);
+            const playlistId = playlistMatch ? playlistMatch[1] : null;
+
+            // Check if this is a playlist-only URL (contentId is the playlist ID)
+            const isPlaylistOnly = url.includes('/playlist?');
+
+            if (isPlaylistOnly) {
+              // Playlist-only URL: use videoseries embed
+              embed.playlistId = embed.contentId;
+              embed.contentId = null;
+              embed.embedUrl = `https://www.youtube.com/embed/videoseries?list=${embed.playlistId}&rel=0`;
+              // Use a generic playlist thumbnail (first video thumbnail not easily available)
+              embed.thumbnail = null;
+              embed.isPlaylist = true;
+            } else if (playlistId) {
+              // Video URL with playlist context
+              embed.playlistId = playlistId;
+              embed.embedUrl = `https://www.youtube.com/embed/${embed.contentId}?list=${playlistId}&rel=0`;
+              embed.thumbnail = `https://img.youtube.com/vi/${embed.contentId}/hqdefault.jpg`;
+              embed.isPlaylist = true;
+            } else {
+              // Regular video URL
+              embed.embedUrl = `https://www.youtube.com/embed/${embed.contentId}?rel=0`;
+              embed.thumbnail = `https://img.youtube.com/vi/${embed.contentId}/hqdefault.jpg`;
+            }
           } else if (platform === 'vimeo') {
             embed.embedUrl = `https://player.vimeo.com/video/${embed.contentId}`;
           } else if (platform === 'spotify') {
