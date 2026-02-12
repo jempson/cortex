@@ -403,6 +403,17 @@ CREATE TABLE IF NOT EXISTS user_recovery_keys (
     created_at TEXT NOT NULL
 );
 
+-- Encrypted contact lists (v2.18.0 - Phase 2 Privacy Hardening)
+-- User's contact list stored as encrypted blob, only they can decrypt
+CREATE TABLE IF NOT EXISTS encrypted_contacts (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    encrypted_data TEXT NOT NULL,          -- Base64 AES-256-GCM encrypted JSON contact list
+    nonce TEXT NOT NULL,                   -- Base64 AES-GCM nonce (12 bytes)
+    version INTEGER DEFAULT 1,             -- Incremented on each update for conflict detection
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 -- E2EE indexes
 CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_wave ON wave_encryption_keys(wave_id);
 CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_user ON wave_encryption_keys(user_id);

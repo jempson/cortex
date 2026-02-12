@@ -922,6 +922,128 @@ export function E2EEProvider({ children, token, API_URL }) {
     }
   }, [privateKey, publicKeyBase64, fetchAPI]);
 
+  // ============ Encrypted Contacts (v2.18.0) ============
+
+  // Get encrypted contacts from server and decrypt
+  const getEncryptedContacts = useCallback(async () => {
+    if (!privateKey || !publicKey) {
+      throw new Error('E2EE not unlocked');
+    }
+
+    try {
+      const res = await fetchAPI('/contacts/encrypted');
+      if (!res.ok) {
+        throw new Error('Failed to fetch encrypted contacts');
+      }
+
+      const data = await res.json();
+
+      if (!data.encrypted) {
+        return { contacts: null, needsMigration: true };
+      }
+
+      // Decrypt the contact list
+      const contacts = await crypto.decryptContactList(
+        data.encryptedData,
+        data.nonce,
+        privateKey,
+        publicKey
+      );
+
+      return {
+        contacts,
+        version: data.version,
+        updatedAt: data.updatedAt,
+        needsMigration: false
+      };
+    } catch (err) {
+      console.error('Get encrypted contacts error:', err);
+      throw err;
+    }
+  }, [privateKey, publicKey, fetchAPI]);
+
+  // Encrypt and save contacts to server
+  const saveEncryptedContacts = useCallback(async (contacts, expectedVersion = null) => {
+    if (!privateKey || !publicKey) {
+      throw new Error('E2EE not unlocked');
+    }
+
+    try {
+      // Encrypt the contact list
+      const { encryptedData, nonce } = await crypto.encryptContactList(
+        contacts,
+        privateKey,
+        publicKey
+      );
+
+      // Save to server
+      const res = await fetchAPI('/contacts/encrypted', {
+        method: 'PUT',
+        body: JSON.stringify({
+          encryptedData,
+          nonce,
+          expectedVersion
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to save encrypted contacts');
+      }
+
+      const data = await res.json();
+      return { success: true, version: data.version };
+    } catch (err) {
+      console.error('Save encrypted contacts error:', err);
+      throw err;
+    }
+  }, [privateKey, publicKey, fetchAPI]);
+
+  // Get migration status for encrypted contacts
+  const getContactsMigrationStatus = useCallback(async () => {
+    try {
+      const res = await fetchAPI('/contacts/encrypted/status');
+      if (!res.ok) {
+        throw new Error('Failed to get contacts migration status');
+      }
+      return await res.json();
+    } catch (err) {
+      console.error('Get contacts migration status error:', err);
+      throw err;
+    }
+  }, [fetchAPI]);
+
+  // Migrate existing plaintext contacts to encrypted storage
+  const migrateContactsToEncrypted = useCallback(async () => {
+    if (!privateKey || !publicKey) {
+      throw new Error('E2EE not unlocked');
+    }
+
+    try {
+      // Fetch current plaintext contacts
+      const res = await fetchAPI('/contacts');
+      if (!res.ok) {
+        throw new Error('Failed to fetch contacts for migration');
+      }
+
+      const plaintextContacts = await res.json();
+
+      if (plaintextContacts.length === 0) {
+        // No contacts to migrate, just create empty encrypted storage
+        return await saveEncryptedContacts([]);
+      }
+
+      // Encrypt and save the contacts
+      const result = await saveEncryptedContacts(plaintextContacts);
+
+      console.log(`E2EE: Migrated ${plaintextContacts.length} contacts to encrypted storage`);
+      return result;
+    } catch (err) {
+      console.error('Migrate contacts to encrypted error:', err);
+      throw err;
+    }
+  }, [privateKey, publicKey, fetchAPI, saveEncryptedContacts]);
+
   // ============ Context Value ============
   const value = {
     // Status
@@ -964,6 +1086,12 @@ export function E2EEProvider({ children, token, API_URL }) {
     // Audio operations (v2.3.0)
     encryptAudioChunk,
     decryptAudioChunk,
+
+    // Encrypted contacts (v2.18.0)
+    getEncryptedContacts,
+    saveEncryptedContacts,
+    getContactsMigrationStatus,
+    migrateContactsToEncrypted,
 
     // Crypto availability check
     isCryptoAvailable: crypto.isCryptoAvailable()

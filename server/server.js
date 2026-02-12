@@ -6646,7 +6646,7 @@ app.post('/api/contacts', authenticateToken, (req, res) => {
   const contact = db.findUserByHandle(handle);
   if (!contact) return res.status(404).json({ error: 'User not found' });
   if (contact.id === req.user.userId) return res.status(400).json({ error: 'Cannot add yourself' });
-  
+
   if (!db.addContact(req.user.userId, contact.id)) {
     return res.status(409).json({ error: 'Contact already exists' });
   }
@@ -6656,6 +6656,67 @@ app.post('/api/contacts', authenticateToken, (req, res) => {
   });
 });
 
+// ============ Encrypted Contacts (v2.18.0 - Privacy Hardening Phase 2) ============
+// NOTE: These routes MUST come before /api/contacts/:id to avoid route param matching
+
+// Get encrypted contacts blob
+app.get('/api/contacts/encrypted', authenticateToken, (req, res) => {
+  const encrypted = db.getEncryptedContacts(req.user.userId);
+  if (!encrypted) {
+    return res.json({ encrypted: false });
+  }
+  res.json({
+    encrypted: true,
+    encryptedData: encrypted.encryptedData,
+    nonce: encrypted.nonce,
+    version: encrypted.version,
+    updatedAt: encrypted.updatedAt,
+  });
+});
+
+// Save encrypted contacts blob
+app.put('/api/contacts/encrypted', authenticateToken, (req, res) => {
+  const { encryptedData, nonce, expectedVersion } = req.body;
+
+  if (!encryptedData || !nonce) {
+    return res.status(400).json({ error: 'encryptedData and nonce are required' });
+  }
+
+  // Basic validation - data should be base64
+  try {
+    Buffer.from(encryptedData, 'base64');
+    Buffer.from(nonce, 'base64');
+  } catch (err) {
+    return res.status(400).json({ error: 'Invalid base64 encoding' });
+  }
+
+  const result = db.saveEncryptedContacts(
+    req.user.userId,
+    encryptedData,
+    nonce,
+    expectedVersion ?? null
+  );
+
+  if (!result.success) {
+    return res.status(409).json({ error: result.error, version: result.version });
+  }
+
+  res.json({ success: true, version: result.version });
+});
+
+// Check encrypted contacts migration status
+app.get('/api/contacts/encrypted/status', authenticateToken, (req, res) => {
+  const hasEncrypted = db.hasEncryptedContacts(req.user.userId);
+  const plaintextContacts = db.getContactsForUser(req.user.userId);
+
+  res.json({
+    hasEncryptedContacts: hasEncrypted,
+    plaintextContactCount: plaintextContacts.length,
+    needsMigration: !hasEncrypted && plaintextContacts.length > 0,
+  });
+});
+
+// Delete contact - must come AFTER /api/contacts/encrypted routes
 app.delete('/api/contacts/:id', authenticateToken, (req, res) => {
   if (!db.removeContact(req.user.userId, sanitizeInput(req.params.id))) {
     return res.status(404).json({ error: 'Contact not found' });
