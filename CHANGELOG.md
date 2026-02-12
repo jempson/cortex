@@ -93,6 +93,113 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.18.0] - 2026-02-11
+
+### Added
+
+#### Privacy Hardening Phase 2: Encrypted Contacts
+
+**Encrypted Contact Lists** - Contact lists are now encrypted client-side with the user's E2EE key. The server stores an encrypted blob it cannot read, protecting the user's social graph from database breaches.
+
+**Technical Details:**
+- New `encrypted_contacts` database table stores encrypted contact blob per user
+- Contact encryption uses AES-256-GCM derived from user's ECDH keypair (self-derivation)
+- New crypto functions: `encryptContactList()`, `decryptContactList()`, `deriveContactsKey()`
+- E2EE context methods: `getEncryptedContacts()`, `saveEncryptedContacts()`, `migrateContactsToEncrypted()`
+- Migration endpoint to check status: `GET /api/contacts/encrypted/status`
+
+**API Endpoints:**
+- `GET /api/contacts/encrypted` - Retrieve encrypted contacts blob
+- `PUT /api/contacts/encrypted` - Save encrypted contacts blob (with optimistic locking)
+- `GET /api/contacts/encrypted/status` - Check migration status
+
+**Migration Path:**
+- Existing plaintext contacts remain functional during transition
+- Users with E2EE enabled can migrate their contacts via the client
+- Both encrypted and plaintext contacts coexist for backward compatibility
+
+**Files Changed:**
+- `server/schema.sql` - Added `encrypted_contacts` table
+- `server/database-sqlite.js` - Added encrypted contacts methods and migration
+- `server/server.js` - Added encrypted contacts API endpoints
+- `client/crypto.js` - Added contact list encryption/decryption functions
+- `client/e2ee-context.jsx` - Added encrypted contacts management
+
+---
+
+## [2.17.1] - 2026-02-11
+
+### Fixed
+
+#### Email Migration Constraint Error
+- Fixed NOT NULL constraint error when migrating existing databases
+- Keep plaintext email during migration for backwards compatibility
+- Hash and encrypted columns populated alongside existing plaintext
+- Fixed null target_id in moderation log for bulk operations
+
+---
+
+## [2.17.0] - 2026-02-11
+
+### Added
+
+#### Privacy Hardening: Metadata Protection
+Comprehensive privacy hardening to protect user metadata beyond E2EE message content.
+
+**Email Protection:**
+- SHA-256 hash for lookup (login, registration uniqueness)
+- AES-256-GCM encryption for password reset recovery
+- New users automatically get protected email storage
+- Migration endpoint for existing users
+
+**IP Anonymization:**
+- IPs truncated to /24 subnet (IPv4) or /48 (IPv6)
+- Applied to session tracking and activity logs
+- Prevents precise location identification
+
+**User-Agent Truncation:**
+- Reduced to "Browser/OS" format only (e.g., "Chrome/Windows")
+- Prevents device fingerprinting
+
+**Timestamp Rounding:**
+- Activity log timestamps rounded to 15-minute intervals
+- Session timestamps rounded to 5-minute intervals
+- Reduces timing analysis attack surface
+
+**Retention Policies:**
+- Activity logs auto-deleted after 30 days (configurable)
+- Sessions enforced max age of 30 days (configurable)
+- Cleanup job runs every 6 hours
+
+**Admin Endpoints:**
+- `POST /api/admin/maintenance/migrate-emails` - Migrate existing users
+- `GET /api/admin/maintenance/privacy-status` - View protection stats
+
+**Environment Variables:**
+- `EMAIL_ENCRYPTION_KEY` - 32-byte hex key for AES-256
+- `ACTIVITY_LOG_RETENTION_DAYS` - Default 30
+- `SESSION_MAX_AGE_DAYS` - Default 30
+
+### Technical
+
+**Files Modified:**
+- `server/schema.sql` - Added email_hash, email_encrypted, email_iv columns
+- `server/database-sqlite.js` - Email hash/encrypt functions, migration methods
+- `server/server.js` - Privacy utilities, anonymization, admin endpoints
+- `server/.env.example` - Documented new environment variables
+
+---
+
+## [2.16.2] - 2026-02-11
+
+### Fixed
+
+#### FocusView Reference Error
+- Fixed `ReferenceError: Ping is not defined` when using focus view to reply
+- Changed `<Ping>` to `<Message>` component (refactoring artifact)
+
+---
+
 ## [2.16.1] - 2026-02-11
 
 ### Fixed

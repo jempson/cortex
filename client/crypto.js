@@ -692,3 +692,77 @@ export async function decryptFromSession(encryptedBase64, sessionKey) {
   const decoder = new TextDecoder();
   return decoder.decode(decrypted);
 }
+
+// ============ Contact List Encryption (v2.18.0) ============
+
+/**
+ * Derive an encryption key from user's private key for encrypting local data
+ * Uses the private key to derive a stable symmetric key for encrypting contacts, etc.
+ * @param {CryptoKey} privateKey - User's ECDH private key
+ * @param {CryptoKey} publicKey - User's ECDH public key (for self-derivation)
+ * @returns {Promise<CryptoKey>} - AES-256-GCM key
+ */
+export async function deriveContactsKey(privateKey, publicKey) {
+  // Derive a shared key with self (ECDH with own keypair)
+  // This creates a stable, deterministic key based on the keypair
+  return crypto.subtle.deriveKey(
+    {
+      name: 'ECDH',
+      public: publicKey
+    },
+    privateKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+/**
+ * Encrypt a contact list
+ * @param {Array} contacts - Array of contact objects
+ * @param {CryptoKey} privateKey - User's ECDH private key
+ * @param {CryptoKey} publicKey - User's ECDH public key
+ * @returns {Promise<{encryptedData: string, nonce: string}>}
+ */
+export async function encryptContactList(contacts, privateKey, publicKey) {
+  const encoder = new TextEncoder();
+  const contactsKey = await deriveContactsKey(privateKey, publicKey);
+  const nonce = generateNonce();
+
+  const plaintext = JSON.stringify(contacts);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce },
+    contactsKey,
+    encoder.encode(plaintext)
+  );
+
+  return {
+    encryptedData: base64Encode(ciphertext),
+    nonce: base64Encode(nonce)
+  };
+}
+
+/**
+ * Decrypt a contact list
+ * @param {string} encryptedDataBase64 - Base64 encrypted contact list
+ * @param {string} nonceBase64 - Base64 nonce
+ * @param {CryptoKey} privateKey - User's ECDH private key
+ * @param {CryptoKey} publicKey - User's ECDH public key
+ * @returns {Promise<Array>} - Decrypted contact array
+ */
+export async function decryptContactList(encryptedDataBase64, nonceBase64, privateKey, publicKey) {
+  const decoder = new TextDecoder();
+  const contactsKey = await deriveContactsKey(privateKey, publicKey);
+
+  const ciphertext = base64Decode(encryptedDataBase64);
+  const nonce = base64Decode(nonceBase64);
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: nonce },
+    contactsKey,
+    ciphertext
+  );
+
+  const jsonString = decoder.decode(decrypted);
+  return JSON.parse(jsonString);
+}

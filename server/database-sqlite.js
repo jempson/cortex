@@ -1656,6 +1656,26 @@ export class DatabaseSQLite {
       console.log('✅ Email privacy columns added');
       console.log('   Run email migration to populate email_hash/email_encrypted from existing emails');
     }
+
+    // v2.18.0 - Privacy Hardening Phase 2: Encrypted contacts table
+    const encryptedContactsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='encrypted_contacts'
+    `).get();
+
+    if (!encryptedContactsExists) {
+      console.log('📝 Creating encrypted_contacts table (v2.18.0)...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS encrypted_contacts (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          encrypted_data TEXT NOT NULL,
+          nonce TEXT NOT NULL,
+          version INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+      console.log('✅ Encrypted contacts table created');
+    }
   }
 
   prepareStatements() {
@@ -9235,6 +9255,87 @@ export class DatabaseSQLite {
       hasMore,
       nextCursor: hasMore && videos.length > 0 ? videos[videos.length - 1].id : null,
     };
+  }
+
+  // === Encrypted Contacts Methods (v2.18.0 - Phase 2 Privacy Hardening) ===
+
+  /**
+   * Get encrypted contacts blob for a user
+   * @param {string} userId
+   * @returns {{ encryptedData: string, nonce: string, version: number } | null}
+   */
+  getEncryptedContacts(userId) {
+    const row = this.db.prepare(`
+      SELECT encrypted_data, nonce, version, updated_at
+      FROM encrypted_contacts
+      WHERE user_id = ?
+    `).get(userId);
+
+    if (!row) return null;
+
+    return {
+      encryptedData: row.encrypted_data,
+      nonce: row.nonce,
+      version: row.version,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  /**
+   * Save encrypted contacts blob for a user
+   * @param {string} userId
+   * @param {string} encryptedData - Base64 encrypted contact list
+   * @param {string} nonce - Base64 AES-GCM nonce
+   * @param {number} expectedVersion - For optimistic locking (optional)
+   * @returns {{ success: boolean, version: number, error?: string }}
+   */
+  saveEncryptedContacts(userId, encryptedData, nonce, expectedVersion = null) {
+    const now = new Date().toISOString();
+
+    // Check if record exists
+    const existing = this.db.prepare('SELECT version FROM encrypted_contacts WHERE user_id = ?').get(userId);
+
+    if (existing) {
+      // Optimistic locking check
+      if (expectedVersion !== null && existing.version !== expectedVersion) {
+        return { success: false, version: existing.version, error: 'Version conflict - contacts were modified elsewhere' };
+      }
+
+      const newVersion = existing.version + 1;
+      this.db.prepare(`
+        UPDATE encrypted_contacts
+        SET encrypted_data = ?, nonce = ?, version = ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(encryptedData, nonce, newVersion, now, userId);
+
+      return { success: true, version: newVersion };
+    } else {
+      // Insert new record
+      this.db.prepare(`
+        INSERT INTO encrypted_contacts (user_id, encrypted_data, nonce, version, created_at, updated_at)
+        VALUES (?, ?, ?, 1, ?, ?)
+      `).run(userId, encryptedData, nonce, now, now);
+
+      return { success: true, version: 1 };
+    }
+  }
+
+  /**
+   * Delete encrypted contacts for a user (for account deletion)
+   * @param {string} userId
+   */
+  deleteEncryptedContacts(userId) {
+    this.db.prepare('DELETE FROM encrypted_contacts WHERE user_id = ?').run(userId);
+  }
+
+  /**
+   * Check if user has migrated to encrypted contacts
+   * @param {string} userId
+   * @returns {boolean}
+   */
+  hasEncryptedContacts(userId) {
+    const row = this.db.prepare('SELECT 1 FROM encrypted_contacts WHERE user_id = ?').get(userId);
+    return !!row;
   }
 
   // Placeholder for JSON compatibility - not needed with SQLite
