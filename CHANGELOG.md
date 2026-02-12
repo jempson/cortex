@@ -93,6 +93,30 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.19.0] - 2026-02-12
+
+### Added
+
+#### YouTube Playlist Embed Support
+
+YouTube playlist URLs now embed inline instead of opening in a new window.
+
+**Supported URL formats:**
+- `youtube.com/watch?v=VIDEO&list=PLAYLIST` - Video with playlist context (shows playlist navigation)
+- `youtube.com/playlist?list=PLAYLIST` - Playlist-only URL (starts from first video)
+
+**Technical Details:**
+- Updated URL regex patterns to capture playlist parameter
+- New `isPlaylist` and `playlistId` properties on embed objects
+- Playlist-only URLs use YouTube's `videoseries` embed format
+- Video+playlist URLs include `list=` parameter in embed iframe
+
+**Files Changed:**
+- `client/src/utils/embed.js` - Updated patterns and embed URL generation
+- `server/server.js` - Updated EMBED_PATTERNS and detectEmbedUrls()
+
+---
+
 ## [2.18.0] - 2026-02-11
 
 ### Added

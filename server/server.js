@@ -851,13 +851,24 @@ function detectAndEmbedMedia(content) {
 const EMBED_PATTERNS = {
   youtube: {
     patterns: [
-      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/i,
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?[^\s]*v=([a-zA-Z0-9_-]{11})/i,  // watch with video (may have list param)
       /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/i,
       /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/i,
       /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i,
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/playlist\?[^\s]*list=([a-zA-Z0-9_-]+)/i,  // playlist-only URL (v2.19.0)
     ],
-    embedUrl: (id) => `https://www.youtube.com/embed/${id}`,
-    thumbnail: (id) => `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+    embedUrl: (id, playlistId) => {
+      if (!id && playlistId) {
+        // Playlist-only: use videoseries
+        return `https://www.youtube.com/embed/videoseries?list=${playlistId}`;
+      } else if (playlistId) {
+        // Video with playlist context
+        return `https://www.youtube.com/embed/${id}?list=${playlistId}`;
+      }
+      // Regular video
+      return `https://www.youtube.com/embed/${id}`;
+    },
+    thumbnail: (id) => id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null,
   },
   vimeo: {
     patterns: [
@@ -1435,13 +1446,31 @@ function detectEmbedUrls(content) {
             embed.contentType = match[1]; // track, album, playlist, etc.
             embed.contentId = match[2];
             embed.embedUrl = config.embedUrl(match[1], match[2]);
+          } else if (platform === 'youtube') {
+            // YouTube playlist support (v2.19.0)
+            const playlistMatch = url.match(/[?&]list=([a-zA-Z0-9_-]+)/i);
+            const playlistId = playlistMatch ? playlistMatch[1] : null;
+            const isPlaylistOnly = url.includes('/playlist?');
+
+            if (isPlaylistOnly) {
+              // Playlist-only URL: contentId captured is the playlist ID
+              embed.playlistId = match[1];
+              embed.contentId = null;
+              embed.isPlaylist = true;
+            } else if (playlistId) {
+              // Video with playlist context
+              embed.playlistId = playlistId;
+              embed.isPlaylist = true;
+            }
+
+            embed.embedUrl = config.embedUrl(embed.contentId, embed.playlistId);
           } else if (config.embedUrl && typeof config.embedUrl === 'function') {
             embed.embedUrl = config.embedUrl(match[1]);
           }
 
           // Add thumbnail for YouTube
           if (platform === 'youtube' && config.thumbnail) {
-            embed.thumbnail = config.thumbnail(match[1]);
+            embed.thumbnail = config.thumbnail(embed.contentId);
           }
 
           // Flag if oEmbed is available
@@ -1469,8 +1498,10 @@ function generateEmbedHtml(embed) {
 
   switch (platform) {
     case 'youtube':
+      // Add rel=0 only if not already in URL (playlist URLs may have query params)
+      const ytSrc = embedUrl.includes('?') ? `${embedUrl}&rel=0` : `${embedUrl}?rel=0`;
       return `<iframe
-        src="${embedUrl}?rel=0"
+        src="${ytSrc}"
         width="560" height="315"
         frameborder="0"
         sandbox="${sandbox}"
@@ -1479,7 +1510,7 @@ function generateEmbedHtml(embed) {
         loading="lazy"
         class="rich-embed youtube-embed"
         data-platform="youtube"
-        data-content-id="${contentId}"
+        data-content-id="${contentId || embed.playlistId || ''}"
       ></iframe>`;
 
     case 'vimeo':
