@@ -31,6 +31,7 @@ import { useVoiceCall } from '../hooks/useVoiceCall.js';
 import { initializeCustomTheme, applyCustomTheme, removeCustomTheme, getCurrentCustomTheme } from '../hooks/useTheme.js';
 import DockedCallWindow from '../components/calls/DockedCallWindow.jsx';
 import WatchPartyPlayer from '../components/media/WatchPartyPlayer.jsx';
+import HolidayEffectsOverlay from '../components/effects/HolidayEffectsOverlay.jsx';
 
 function MainApp({ sharePingId }) {
   const { user, token, logout, updateUser } = useAuth();
@@ -980,6 +981,7 @@ function MainApp({ sharePingId }) {
       display: 'flex', flexDirection: 'column',
     }}>
       <ScanLines enabled={scanLinesEnabled} />
+      <HolidayEffectsOverlay enabled={user?.preferences?.holidayEffects !== false} />
       <style>{`
         .message-media {
           max-width: 100%;
