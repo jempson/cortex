@@ -6646,7 +6646,7 @@ app.post('/api/contacts', authenticateToken, (req, res) => {
   const contact = db.findUserByHandle(handle);
   if (!contact) return res.status(404).json({ error: 'User not found' });
   if (contact.id === req.user.userId) return res.status(400).json({ error: 'Cannot add yourself' });
-  
+
   if (!db.addContact(req.user.userId, contact.id)) {
     return res.status(409).json({ error: 'Contact already exists' });
   }
@@ -6656,14 +6656,8 @@ app.post('/api/contacts', authenticateToken, (req, res) => {
   });
 });
 
-app.delete('/api/contacts/:id', authenticateToken, (req, res) => {
-  if (!db.removeContact(req.user.userId, sanitizeInput(req.params.id))) {
-    return res.status(404).json({ error: 'Contact not found' });
-  }
-  res.json({ success: true });
-});
-
 // ============ Encrypted Contacts (v2.18.0 - Privacy Hardening Phase 2) ============
+// NOTE: These routes MUST come before /api/contacts/:id to avoid route param matching
 
 // Get encrypted contacts blob
 app.get('/api/contacts/encrypted', authenticateToken, (req, res) => {
@@ -6720,6 +6714,14 @@ app.get('/api/contacts/encrypted/status', authenticateToken, (req, res) => {
     plaintextContactCount: plaintextContacts.length,
     needsMigration: !hasEncrypted && plaintextContacts.length > 0,
   });
+});
+
+// Delete contact - must come AFTER /api/contacts/encrypted routes
+app.delete('/api/contacts/:id', authenticateToken, (req, res) => {
+  if (!db.removeContact(req.user.userId, sanitizeInput(req.params.id))) {
+    return res.status(404).json({ error: 'Contact not found' });
+  }
+  res.json({ success: true });
 });
 
 // ============ Contact Request Routes ============
