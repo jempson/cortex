@@ -25,6 +25,7 @@ import { Readable } from 'stream';
 import { DatabaseSQLite } from './database-sqlite.js';
 import { getEmailService } from './email-service.js';
 import { storage } from './storage.js';
+import * as waveParticipationCrypto from './lib/wave-participation-crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -4194,9 +4195,43 @@ class Database {
 const db = USE_SQLITE ? new DatabaseSQLite() : new Database();
 if (USE_SQLITE) {
   console.log('🗄️  Using SQLite database');
+  // Initialize wave participation cache (v2.21.0 - Privacy Hardening)
+  waveParticipationCrypto.initializeCache(db).then(stats => {
+    console.log(`🔐 Wave participation cache initialized: ${stats.waveCount} waves, ${stats.participantCount} mappings`);
+  }).catch(err => {
+    console.error('Failed to initialize wave participation cache:', err.message);
+  });
 } else {
   console.log('📁 Using JSON file storage');
 }
+
+// Wave participation helpers - use crypto cache for SQLite, fallback to db methods for JSON (v2.21.0)
+const participation = {
+  isParticipant: (waveId, userId) => USE_SQLITE
+    ? waveParticipationCrypto.isParticipant(waveId, userId)
+    : db.isWaveParticipant(waveId, userId),
+  getWaveParticipants: (waveId) => USE_SQLITE
+    ? waveParticipationCrypto.getWaveParticipants(waveId)
+    : db.getWaveParticipants(waveId).map(p => p.id),
+  addParticipant: (waveId, userId, options) => {
+    if (USE_SQLITE) {
+      return waveParticipationCrypto.addParticipant(waveId, userId, options);
+    }
+    return db.addWaveParticipant(waveId, userId);
+  },
+  removeParticipant: (waveId, userId) => {
+    if (USE_SQLITE) {
+      return waveParticipationCrypto.removeParticipant(waveId, userId);
+    }
+    return db.removeWaveParticipant(waveId, userId);
+  },
+  syncWaveFromDb: (waveId) => {
+    if (USE_SQLITE) {
+      waveParticipationCrypto.syncWaveFromDb(waveId);
+    }
+    // No-op for JSON storage
+  }
+};
 
 // ============ Express App ============
 const app = express();
@@ -6457,7 +6492,7 @@ app.get('/api/waves/:id/notifications', authenticateToken, (req, res) => {
   }
 
   // Verify user is a participant
-  if (!db.isWaveParticipant(req.params.id, req.user.userId)) {
+  if (!participation.isParticipant(req.params.id, req.user.userId)) {
     return res.status(403).json({ error: 'Not a participant in this wave' });
   }
 
@@ -6473,7 +6508,7 @@ app.put('/api/waves/:id/notifications', authenticateToken, (req, res) => {
   }
 
   // Verify user is a participant
-  if (!db.isWaveParticipant(req.params.id, req.user.userId)) {
+  if (!participation.isParticipant(req.params.id, req.user.userId)) {
     return res.status(403).json({ error: 'Not a participant in this wave' });
   }
 
@@ -11486,6 +11521,30 @@ app.post('/api/admin/maintenance/migrate-emails', authenticateToken, (req, res) 
   }
 });
 
+// Migrate wave participation to encrypted storage (admin only) - v2.21.0
+app.post('/api/admin/maintenance/migrate-wave-participants', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const result = waveParticipationCrypto.migrateToEncrypted();
+
+    if (result.success) {
+      console.log(`✅ Admin ${admin.handle} migrated ${result.migratedWaves} waves to encrypted participation storage`);
+      res.json({
+        success: true,
+        migratedWaves: result.migratedWaves,
+        message: `Migrated ${result.migratedWaves} waves to encrypted storage`
+      });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  } catch (err) {
+    console.error('Wave participation migration error:', err);
+    res.status(500).json({ error: 'Failed to migrate wave participation data' });
+  }
+});
+
 // Get privacy status/stats (admin only)
 app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) => {
   try {
@@ -11498,6 +11557,11 @@ app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) =
     const usersWithPlainEmail = db.db.prepare('SELECT COUNT(*) as count FROM users WHERE email IS NOT NULL AND email_hash IS NULL').get().count;
     const usersWithEncryptedEmail = db.db.prepare('SELECT COUNT(*) as count FROM users WHERE email_encrypted IS NOT NULL').get().count;
 
+    // Wave participation protection stats (v2.21.0)
+    const participationStats = waveParticipationCrypto.getCacheStats();
+    const encryptedWavesCount = db.db.prepare('SELECT COUNT(*) as count FROM wave_participants_encrypted').get()?.count || 0;
+    const totalWaves = db.db.prepare('SELECT COUNT(DISTINCT wave_id) as count FROM wave_participants').get()?.count || 0;
+
     res.json({
       totalUsers,
       emailProtection: {
@@ -11506,8 +11570,15 @@ app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) =
         plaintext: usersWithPlainEmail,
         migrationNeeded: usersWithPlainEmail
       },
+      waveParticipation: {
+        totalWaves,
+        encryptedWaves: encryptedWavesCount,
+        cacheStats: participationStats,
+        migrationNeeded: participationStats.encryptionEnabled ? (totalWaves - encryptedWavesCount) : 0
+      },
       config: {
         emailEncryptionEnabled: !!EMAIL_ENCRYPTION_KEY,
+        waveParticipationEncryptionEnabled: participationStats.encryptionEnabled,
         activityLogRetentionDays: ACTIVITY_LOG_RETENTION_DAYS,
         sessionMaxAgeDays: SESSION_MAX_AGE_DAYS
       }
@@ -12863,8 +12934,8 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
           }
         }
 
-        // Add local user as participant
-        db.addWaveParticipant(localWave.id, invitedUser.id);
+        // Add local user as participant - use crypto module for cache synchronization (v2.21.0)
+        participation.addParticipant(localWave.id, invitedUser.id);
 
         // Track that this node is participating
         db.addWaveFederationNode(localWave.id, sourceNode.nodeName);
@@ -13856,6 +13927,11 @@ app.post('/api/profile/videos/:id/reply', authenticateToken, (req, res) => {
       return res.status(400).json({ error: result.error });
     }
 
+    // Sync participation cache after wave creation (v2.21.0)
+    if (result.wave?.id && !result.existingWave) {
+      participation.syncWaveFromDb(result.wave.id);
+    }
+
     // Notify video author if it's a new conversation
     if (!result.existingWave && result.videoAuthorId !== userId) {
       // Create notification for video author
@@ -14398,6 +14474,9 @@ app.post('/api/waves', authenticateToken, async (req, res) => {
     participants: localParticipantIds,
     encrypted,
   });
+
+  // Sync participation cache after wave creation (v2.21.0)
+  participation.syncWaveFromDb(wave.id);
 
   // E2EE: Store wave keys if encrypted
   if (encrypted && keyDistribution && Array.isArray(keyDistribution)) {
@@ -14942,7 +15021,7 @@ app.put('/api/waves/:waveId/category', authenticateToken, (req, res) => {
       return res.status(404).json({ error: 'Wave not found' });
     }
 
-    const isParticipant = db.isWaveParticipant(waveId, req.user.userId);
+    const isParticipant = participation.isParticipant(waveId, req.user.userId);
     if (!isParticipant && wave.privacy !== 'public') {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -14993,7 +15072,7 @@ app.put('/api/waves/:waveId/pin', authenticateToken, (req, res) => {
       return res.status(404).json({ error: 'Wave not found' });
     }
 
-    const isParticipant = db.isWaveParticipant(waveId, req.user.userId);
+    const isParticipant = participation.isParticipant(waveId, req.user.userId);
     if (!isParticipant && wave.privacy !== 'public') {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -15342,7 +15421,7 @@ app.post('/api/waves/:id/participants', authenticateToken, async (req, res) => {
   }
 
   // Check if requester is a participant
-  if (!db.isWaveParticipant(waveId, req.user.userId)) {
+  if (!participation.isParticipant(waveId, req.user.userId)) {
     return res.status(403).json({ error: 'You must be a participant to add others' });
   }
 
@@ -15353,12 +15432,12 @@ app.post('/api/waves/:id/participants', authenticateToken, async (req, res) => {
   }
 
   // Check if already a participant
-  if (db.isWaveParticipant(waveId, userId)) {
+  if (participation.isParticipant(waveId, userId)) {
     return res.status(400).json({ error: 'User is already a participant' });
   }
 
-  // Add participant
-  const added = db.addWaveParticipant(waveId, userId);
+  // Add participant - use crypto module for cache synchronization (v2.21.0)
+  const added = participation.addParticipant(waveId, userId);
   if (!added) {
     return res.status(500).json({ error: 'Failed to add participant' });
   }
@@ -15448,12 +15527,12 @@ app.delete('/api/waves/:id/participants/:userId', authenticateToken, async (req,
   }
 
   // Check if target is a participant
-  if (!db.isWaveParticipant(waveId, userId)) {
+  if (!participation.isParticipant(waveId, userId)) {
     return res.status(400).json({ error: 'User is not a participant' });
   }
 
-  // Remove participant
-  const removed = db.removeWaveParticipant(waveId, userId);
+  // Remove participant - use crypto module for cache synchronization (v2.21.0)
+  const removed = participation.removeParticipant(waveId, userId);
   if (!removed) {
     return res.status(500).json({ error: 'Failed to remove participant' });
   }
@@ -15940,10 +16019,10 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
   const canAccess = db.canAccessWave(waveId, req.user.userId);
   if (!canAccess) return res.status(403).json({ error: 'Access denied' });
 
-  // Auto-join public waves
-  const isParticipant = db.isWaveParticipant(waveId, req.user.userId);
+  // Auto-join public waves - use crypto module for cache synchronization (v2.21.0)
+  const isParticipant = participation.isParticipant(waveId, req.user.userId);
   if (!isParticipant && wave.privacy === 'public') {
-    db.addWaveParticipant(waveId, req.user.userId);
+    participation.addParticipant(waveId, req.user.userId);
   }
 
   // E2EE: encrypted content is base64 and may be longer than plaintext
@@ -16253,6 +16332,11 @@ app.post('/api/droplets/:id/ripple', authenticateToken, (req, res) => {
     return res.status(400).json({ error: result.error });
   }
 
+  // Sync participation cache after breakout wave creation (v2.21.0)
+  if (result.newWave?.id) {
+    participation.syncWaveFromDb(result.newWave.id);
+  }
+
   // Broadcast to original wave that a droplet was rippled
   broadcastToWave(result.originalWaveId, {
     type: 'droplet_rippled',
@@ -16317,10 +16401,10 @@ app.post('/api/messages', authenticateToken, deprecatedEndpoint, (req, res) => {
   const canAccess = db.canAccessWave(waveId, req.user.userId);
   if (!canAccess) return res.status(403).json({ error: 'Access denied' });
 
-  // Auto-join public waves
-  const isParticipant = db.isWaveParticipant(waveId, req.user.userId);
+  // Auto-join public waves - use crypto module for cache synchronization (v2.21.0)
+  const isParticipant = participation.isParticipant(waveId, req.user.userId);
   if (!isParticipant && wave.privacy === 'public') {
-    db.addWaveParticipant(waveId, req.user.userId);
+    participation.addParticipant(waveId, req.user.userId);
   }
 
   if (content.length > 10000) return res.status(400).json({ error: 'Message too long' });
@@ -17234,8 +17318,8 @@ function broadcastToWave(waveId, message, excludeWs = null) {
   // Get all users who should receive this
   let recipients = new Set();
 
-  // Direct participants
-  db.getWaveParticipants(waveId).forEach(p => recipients.add(p.id));
+  // Direct participants - use in-memory cache for privacy (v2.21.0)
+  participation.getWaveParticipants(waveId).forEach(userId => recipients.add(userId));
 
   // For group waves, all group members
   if (wave.privacy === 'group' && wave.groupId) {
@@ -17357,8 +17441,8 @@ function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs 
   // Get all users who should receive this
   let recipients = new Set();
 
-  // Direct participants
-  db.getWaveParticipants(waveId).forEach(p => recipients.add(p.id));
+  // Direct participants - use in-memory cache for privacy (v2.21.0)
+  participation.getWaveParticipants(waveId).forEach(userId => recipients.add(userId));
 
   // For group waves, all group members
   if (wave.privacy === 'group' && wave.groupId) {

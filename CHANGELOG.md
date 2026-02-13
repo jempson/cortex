@@ -93,6 +93,83 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.21.0] - 2026-02-13
+
+### Added
+
+#### Privacy Hardening Phase 2: Encrypted Wave Participation
+
+Wave participation data is now encrypted at rest to protect social graphs from database breaches.
+
+**Problem Solved:**
+- Previously, the `wave_participants` table stored plaintext `user_id → wave_id` mappings
+- A database breach could reveal who talks to whom, group associations, and communication patterns
+- Goal: "Cannot determine who is in which wave from DB alone"
+
+**Architecture:**
+```
+Database (at rest)          Server Runtime (in memory)
+┌─────────────────────┐     ┌─────────────────────────┐
+│ wave_participants   │     │ participantCache Map    │
+│ ─────────────────── │     │ ─────────────────────── │
+│ wave_id (encrypted) │ ──► │ waveId → Set<userId>    │
+│ participant_blob    │     │ userId → Set<waveId>    │
+│ (AES-256-GCM)       │     └─────────────────────────┘
+└─────────────────────┘
+```
+
+**How It Works:**
+1. **Storage:** Each wave has an encrypted `participant_blob` containing user IDs
+2. **Server startup:** Decrypt all blobs into in-memory cache
+3. **Runtime:** All lookups use memory cache (no DB queries for routing)
+4. **Writes:** Update memory cache AND encrypted blob in DB
+5. **Key management:** Server-side encryption key from `WAVE_PARTICIPATION_KEY` env var
+
+**New Environment Variable:**
+```bash
+WAVE_PARTICIPATION_KEY=<32-byte-hex>  # openssl rand -hex 32
+```
+
+**Server Functionality Unchanged:**
+- WebSocket message routing (`broadcastToWave()`)
+- Push notifications
+- Access control (`canAccessWave()`)
+- Read receipts
+- Federation
+
+**Migration:**
+1. Set `WAVE_PARTICIPATION_KEY` environment variable
+2. Restart server (encrypted table auto-created)
+3. Open Admin Panel → Privacy & Encryption → Click "MIGRATE" button
+4. Or use API: `POST /api/admin/maintenance/migrate-wave-participants`
+
+#### Privacy & Encryption Admin Dashboard
+
+New admin panel showing encryption status for all data types with one-click migration:
+
+| Data Type | Status | Action |
+|-----------|--------|--------|
+| Email addresses | 45/50 migrated | [Migrate 5] |
+| Wave participation | 0/31 migrated | [Migrate All] |
+| Contact lists | Client-side | — |
+
+**Features:**
+- Shows encryption key configuration status for each data type
+- Displays migration progress (encrypted vs plaintext counts)
+- One-click migrate buttons for pending data
+- In-memory cache statistics
+- Environment variable hints when keys not configured
+
+**Files Changed:**
+- `server/lib/wave-participation-crypto.js` - NEW - Encryption/decryption + cache management
+- `server/database-sqlite.js` - New `wave_participants_encrypted` table schema
+- `server/server.js` - Cache initialization, routing uses cache, admin endpoints
+- `server/schema.sql` - New table definition
+- `client/src/components/admin/PrivacyDashboard.jsx` - NEW - Admin UI for encryption status/migration
+- `client/src/components/profile/ProfileSettings.jsx` - Added Privacy Dashboard to admin panel
+
+---
+
 ## [2.19.0] - 2026-02-12
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "cortex-client",
-  "version": "2.20.1",
+  "version": "2.21.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port 3000",

@@ -255,57 +255,40 @@ Allow users to pause and drag the crawl bar backwards to see or click on content
 
 ---
 
-## Holiday Theme System
+## ✅ Holiday Theme System (COMPLETED in v2.20.0)
 
-**Priority:** Low - Enhancement / Nice-to-have
+**Status:** Implemented in v2.20.0 (February 2026)
 
 ### Summary
-Add a calendaring system that automatically applies special visual themes and effects during holidays, creating a festive atmosphere for users.
+Automatic holiday-themed visual effects that display during major holidays, creating a festive atmosphere for users.
 
-### Motivation
-Holidays are times when users naturally want to celebrate and share with their communities. Having the interface reflect these moments creates delight and strengthens the sense of community within Cortex.
+### Implementation
 
-### Proposed Features
+**Supported Holidays:**
+| Holiday | Dates | Effect | Colors |
+|---------|-------|--------|--------|
+| New Year's | Dec 31 - Jan 2 | Fireworks | Gold, White, Silver |
+| Valentine's | Feb 12-15 | Floating Hearts | Pink, Deep Pink |
+| St. Patrick's | Mar 15-18 | Shamrocks | Green, Lime, Gold |
+| Easter | Variable ±2 days | Pastel Overlay | Light Pink, Sky Blue |
+| Independence Day | Jul 3-5 | Fireworks | Red, White, Blue |
+| Halloween | Oct 28 - Nov 1 | Bats/Ghosts | Orange, Purple |
+| Thanksgiving | 4th Thu Nov ±2 | Autumn Leaves | Chocolate, Orange |
+| Christmas | Dec 20-26 | Snow | Red, Green, Gold |
+| Hanukkah | Variable (8 days) | Candle Glow | Blue, White, Gold |
 
-**Core: Holiday Detection & Themes**
-- Holiday configuration with dates, duration, and associated theme
-- Automatic theme activation during holiday windows
-- Holiday-specific color palettes using existing CSS variable system
-- Graceful fallback to user's normal theme outside holiday periods
+**Features:**
+- Auto-detect holidays based on current date
+- CSS-based GPU-accelerated animations (20-50 particles)
+- User preference toggle in Display Preferences (enabled by default)
+- Respects `prefers-reduced-motion` automatically
+- Lightweight, non-blocking overlay with `pointer-events: none`
+- Midnight transition detection for date boundary changes
 
-**Visual Enhancements**
-- Animated effects (snowfall, confetti, floating hearts, etc.)
-- Holiday-themed scanline overlays or glow effects
-- Special app icon/favicon during holidays (PWA)
-
-**Content Features**
-- Holiday greeting displayed in crawl bar
-- Limited-time emoji or reaction packs
-- Holiday-themed notification sounds (optional)
-
-**Admin Controls**
-- Manage holidays via Admin Panel (add/edit/remove)
-- Upload custom assets for holiday effects
-- Enable/disable holidays server-wide
-- Support for recurring annual and one-time events
-
-**User Preferences**
-- Option to disable holiday themes (accessibility/preference)
-- Holiday theme preview in settings
-
-### Example Holidays
-| Holiday | Date(s) | Theme | Effects |
-|---------|---------|-------|---------|
-| New Year | Jan 1-2 | Gold/silver accents | Confetti |
-| Valentine's Day | Feb 14 | Pink/red accents | Floating hearts |
-| Halloween | Oct 31 | Orange/purple accents | Spooky glow |
-| Christmas | Dec 24-26 | Red/green accents | Snowfall |
-
-### Technical Notes
-- Leverages existing CSS variable theme system
-- Holiday config stored in database (`holidays` table)
-- Client checks active holiday on load and via WebSocket updates
-- Effects rendered via CSS animations or canvas overlay
+**Files Created:**
+- `client/src/config/holidays.js` - Holiday definitions and date calculations
+- `client/src/components/effects/HolidayEffectsOverlay.jsx` - Main orchestrator
+- `client/src/components/effects/effects/*.jsx` - 8 effect components
 
 ---
 
