@@ -6285,6 +6285,9 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   if (typeof req.body.scanLines === 'boolean') {
     updates.scanLines = req.body.scanLines;
   }
+  if (typeof req.body.holidayEffects === 'boolean') {
+    updates.holidayEffects = req.body.holidayEffects;
+  }
   if (typeof req.body.autoFocusDroplets === 'boolean') {
     updates.autoFocusDroplets = req.body.autoFocusDroplets;
   }
