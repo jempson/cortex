@@ -1,6 +1,6 @@
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-export const VERSION = '2.20.1';
+export const VERSION = '2.21.0';
 
 // Auto-detect production vs development
 export const isProduction = window.location.hostname !== 'localhost';
