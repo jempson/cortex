@@ -372,12 +372,12 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
               <>
                 <div style={{ backgroundColor: 'var(--overlay-amber)', padding: '12px', borderRadius: '4px', marginBottom: '16px', border: '1px solid var(--accent-amber)' }}>
                   <p style={{ color: 'var(--accent-amber)', fontSize: '12px', margin: 0 }}>
-                    <strong>System Update:</strong> Cortex now uses your login password for encryption.
-                    Since you set up E2EE before this change, please enter your <strong>original encryption passphrase</strong> to unlock.
+                    <strong>Password Mismatch:</strong> Your encryption keys are protected with a different password than your current login password.
+                    This can happen if you recently changed or reset your password.
                   </p>
                 </div>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '13px' }}>
-                  After unlocking, go to Profile Settings and change your password to sync your encryption with your login.
+                  Enter your <strong>previous password</strong> to unlock, or use your <strong>recovery key</strong> if you don't remember it.
                 </p>
               </>
             ) : (
@@ -388,13 +388,13 @@ export function PassphraseUnlockModal({ onUnlock, onRecover, onLogout, isLoading
 
             <form onSubmit={handleUnlock}>
               <label style={{ color: 'var(--text-secondary)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                {showMigrationNotice ? 'Original Encryption Passphrase' : 'Password'}
+                {showMigrationNotice ? 'Previous Password' : 'Password'}
               </label>
               <input
                 type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
-                placeholder={showMigrationNotice ? "Enter your original passphrase" : "Enter your login password"}
+                placeholder={showMigrationNotice ? "Enter your previous password" : "Enter your login password"}
                 style={inputStyle}
                 autoComplete="current-password"
                 autoFocus
