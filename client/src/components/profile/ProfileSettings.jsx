@@ -582,11 +582,14 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       if (e2ee.isUnlocked && e2ee.reencryptWithPassword) {
         try {
           await e2ee.reencryptWithPassword(newPassword);
-          showToast('Password and encryption updated', 'success');
+          showToast('Password and encryption keys updated', 'success');
         } catch (e2eeErr) {
           console.error('E2EE re-encryption failed:', e2eeErr);
           showToast('Password changed, but encryption update failed. You may need to use your recovery key on next login.', 'error');
         }
+      } else if (e2ee.isE2EEEnabled) {
+        // E2EE is enabled but not unlocked - warn user
+        showToast('Password changed. Note: E2EE keys were not updated. Use your recovery key to unlock E2EE.', 'info');
       } else {
         showToast(SUCCESS.passwordChanged, 'success');
       }
@@ -760,6 +763,29 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       <CollapsibleSection title="🔒 SECURITY" isOpen={openSection === 'security'} onToggle={() => toggleSection('security')} isMobile={isMobile} accentColor="var(--accent-orange)">
         {/* Change Password Sub-section */}
         <CollapsibleSection title="CHANGE PASSWORD" isOpen={openSecuritySection === 'password'} onToggle={() => toggleSecuritySection('password')} isMobile={isMobile}>
+          {/* E2EE Warning: Show when E2EE is enabled but not unlocked */}
+          {e2ee.isE2EEEnabled && !e2ee.isUnlocked && (
+            <div style={{
+              marginBottom: '16px',
+              padding: '12px',
+              background: 'var(--accent-orange)15',
+              border: '1px solid var(--accent-orange)',
+              borderRadius: '4px'
+            }}>
+              <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px' }}>
+                ⚠️ E2EE Not Unlocked
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                Your end-to-end encryption is not currently unlocked. If you change your password now, your E2EE keys will remain encrypted with your <strong>old password</strong>.
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                To update your E2EE keys with your new password, please unlock E2EE first by entering your current password in the E2EE unlock prompt.
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontStyle: 'italic' }}>
+                If you proceed without unlocking, you will need to use your E2EE recovery key after changing your password.
+              </div>
+            </div>
+          )}
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>CURRENT PASSWORD</label>
             <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={inputStyle} />
