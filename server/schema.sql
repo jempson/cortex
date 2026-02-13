@@ -414,6 +414,15 @@ CREATE TABLE IF NOT EXISTS encrypted_contacts (
     updated_at TEXT NOT NULL
 );
 
+-- Encrypted wave participation (v2.21.0 - Privacy Hardening)
+-- Participant lists encrypted so DB dump cannot reveal social graph
+CREATE TABLE IF NOT EXISTS wave_participants_encrypted (
+    wave_id TEXT PRIMARY KEY,
+    participant_blob TEXT NOT NULL,        -- AES-256-GCM encrypted JSON array of user IDs
+    iv TEXT NOT NULL,                      -- Base64 initialization vector (12 bytes)
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+);
+
 -- E2EE indexes
 CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_wave ON wave_encryption_keys(wave_id);
 CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_user ON wave_encryption_keys(user_id);

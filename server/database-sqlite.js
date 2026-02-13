@@ -1676,6 +1676,25 @@ export class DatabaseSQLite {
       `);
       console.log('✅ Encrypted contacts table created');
     }
+
+    // v2.21.0 - Privacy Hardening: Encrypted wave participation table
+    const encryptedParticipantsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='wave_participants_encrypted'
+    `).get();
+
+    if (!encryptedParticipantsExists) {
+      console.log('📝 Creating wave_participants_encrypted table (v2.21.0)...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS wave_participants_encrypted (
+          wave_id TEXT PRIMARY KEY,
+          participant_blob TEXT NOT NULL,
+          iv TEXT NOT NULL,
+          updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+        );
+      `);
+      console.log('✅ Encrypted wave participants table created');
+      console.log('   Run migration endpoint to encrypt existing participation data');
+    }
   }
 
   prepareStatements() {

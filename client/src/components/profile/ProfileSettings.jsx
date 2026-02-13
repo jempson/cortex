@@ -22,6 +22,7 @@ import AlertSubscriptionsPanel from '../admin/AlertSubscriptionsPanel.jsx';
 import FederationAdminPanel from '../admin/FederationAdminPanel.jsx';
 import HandleRequestsList from '../admin/HandleRequestsList.jsx';
 import BotsAdminPanel from '../admin/BotsAdminPanel.jsx';
+import PrivacyDashboard from '../admin/PrivacyDashboard.jsx';
 import ThemeCustomizationModal from '../settings/ThemeCustomizationModal.jsx';
 import JellyfinConnectionManager from '../media/JellyfinConnectionManager.jsx';
 import PlexConnectionManager from '../media/PlexConnectionManager.jsx';
@@ -2036,6 +2037,9 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
               {/* Bots Admin Panel (v2.1.0) */}
               <BotsAdminPanel fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'bots'} onToggle={() => toggleAdminSection('bots')} />
+
+              {/* Privacy & Encryption Dashboard (v2.21.0) */}
+              <PrivacyDashboard fetchAPI={fetchAPI} showToast={showToast} isMobile={isMobile} isOpen={openAdminSection === 'privacy'} onToggle={() => toggleAdminSection('privacy')} />
             </div>
           )}
         </CollapsibleSection>
