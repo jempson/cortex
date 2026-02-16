@@ -7,7 +7,17 @@ import MessageWithEmbeds from './MessageWithEmbeds.jsx';
 import AudioPlayer from '../media/AudioPlayer.jsx';
 import VideoPlayer from '../media/VideoPlayer.jsx';
 
-const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, onReact, onMessageClick, participants = [], contacts = [], onShowProfile, onReport, onFocus, onBurst, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusMessages = false, fetchAPI }) => {
+// Helper to extract first line from content for collapsed view (v2.23.0)
+const getFirstLine = (content) => {
+  if (!content) return '';
+  // Strip HTML tags
+  const text = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  // Truncate to ~60 chars
+  if (text.length <= 60) return text;
+  return text.substring(0, 57) + '...';
+};
+
+const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, onCancelEdit, editingMessageId, editContent, setEditContent, currentUserId, highlightId, playbackIndex, collapsed, onToggleCollapse, isMobile, contentCollapsed = {}, onToggleContentCollapse, onReact, onMessageClick, participants = [], contacts = [], onShowProfile, onReport, onFocus, onBurst, onShare, wave, onNavigateToWave, currentWaveId, unreadCountsByWave = {}, autoFocusMessages = false, fetchAPI }) => {
   const config = PRIVACY_LEVELS[message.privacy] || PRIVACY_LEVELS.private;
   const isHighlighted = highlightId === message.id;
   const isVisible = playbackIndex === null || message._index <= playbackIndex;
@@ -47,6 +57,18 @@ const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
     }, 0);
   };
   const unreadChildCount = isCollapsed && hasChildren ? countUnreadChildren(message.children) : 0;
+
+  // Content collapse detection (v2.23.0)
+  const isLongMessage = React.useMemo(() => {
+    if (message.deleted) return false;
+    if (message.media_type === 'audio' || message.media_type === 'video') return true;
+    if (!message.content) return false;
+    if (message.content.length > 150) return true;
+    if (message.content.includes('<img')) return true;
+    return false;
+  }, [message.content, message.media_type, message.deleted]);
+
+  const isContentCollapsed = contentCollapsed[message.id];
 
   const quickReactions = ['👍', '☝️', '❤️', '😂', '🎉', '🤔', '👏', '😢', '🖕', '😮', '🤦'];
 
@@ -157,12 +179,32 @@ const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                   color: 'var(--text-dim)', cursor: 'pointer', fontSize: isMobile ? '0.85rem' : '0.7rem',
                 }}>↵</button>
               )}
-              {/* Collapse/Expand */}
+              {/* Collapse/Expand Thread */}
               {hasChildren && (
-                <button onClick={() => onToggleCollapse(message.id)} title={isCollapsed ? 'Expand' : 'Collapse'} style={{
+                <button onClick={() => onToggleCollapse(message.id)} title={isCollapsed ? 'Expand thread' : 'Collapse thread'} style={{
                   padding: isMobile ? '8px 10px' : '2px 4px', background: 'transparent', border: 'none',
                   color: 'var(--accent-amber)', cursor: 'pointer', fontSize: isMobile ? '0.8rem' : '0.65rem',
                 }}>{isCollapsed ? `▶${totalChildCount}` : '▼'}</button>
+              )}
+              {/* Collapse/Expand Content (v2.23.0) */}
+              {isLongMessage && onToggleContentCollapse && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleContentCollapse(message.id);
+                  }}
+                  title={isContentCollapsed ? 'Expand message' : 'Collapse message'}
+                  style={{
+                    padding: isMobile ? '8px 10px' : '2px 4px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--accent-teal)',
+                    cursor: 'pointer',
+                    fontSize: isMobile ? '0.8rem' : '0.65rem',
+                  }}
+                >
+                  {isContentCollapsed ? '◀' : '◆'}
+                </button>
               )}
 
               {/* Three-dot menu for additional actions */}
@@ -452,6 +494,38 @@ const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
           >
             [Message deleted]
           </div>
+        ) : isContentCollapsed ? (
+          /* Collapsed content view (v2.23.0) */
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleContentCollapse?.(message.id);
+            }}
+            style={{
+              cursor: 'pointer',
+              color: 'var(--text-muted)',
+              fontSize: isMobile ? '0.85rem' : '0.8rem',
+              marginBottom: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 8px',
+              background: 'var(--bg-hover)',
+              borderRadius: '4px',
+            }}
+          >
+            <span style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              flex: 1,
+            }}>
+              {getFirstLine(message.content)}
+            </span>
+            {message.media_type === 'audio' && <span title="Audio">🎵</span>}
+            {message.media_type === 'video' && <span title="Video">🎬</span>}
+            {message.content?.includes('<img') && <span title="Image">🖼️</span>}
+          </div>
         ) : (
           <div
             onClick={(e) => {
@@ -578,7 +652,9 @@ const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
                 onEdit={onEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
                 editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
                 currentUserId={currentUserId} highlightId={highlightId} playbackIndex={playbackIndex} collapsed={collapsed}
-                onToggleCollapse={onToggleCollapse} isMobile={isMobile} onReact={onReact} onMessageClick={onMessageClick}
+                onToggleCollapse={onToggleCollapse} isMobile={isMobile}
+                contentCollapsed={contentCollapsed} onToggleContentCollapse={onToggleContentCollapse}
+                onReact={onReact} onMessageClick={onMessageClick}
                 participants={participants} contacts={contacts} onShowProfile={onShowProfile} onReport={onReport}
                 onFocus={onFocus} onBurst={onBurst} onShare={onShare} wave={wave} onNavigateToWave={onNavigateToWave} currentWaveId={currentWaveId}
                 unreadCountsByWave={unreadCountsByWave} autoFocusMessages={autoFocusMessages} fetchAPI={fetchAPI} />
