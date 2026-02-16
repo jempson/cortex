@@ -12,17 +12,15 @@ import AutumnLeaves from './effects/AutumnLeaves.jsx';
 import CandleGlow from './effects/CandleGlow.jsx';
 
 /**
- * Holiday Effects Overlay (v2.20.0)
+ * Holiday Effects Overlay (v2.20.0, fixed v2.22.1)
  *
  * Main orchestrator component for holiday visual effects.
  * - Checks for active holiday on mount and at midnight
  * - Applies holiday CSS variables to document root
- * - Respects prefers-reduced-motion media query
  * - Renders appropriate effect component
  */
 const HolidayEffectsOverlay = ({ enabled = true }) => {
   const [activeHoliday, setActiveHoliday] = useState(null);
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   // Check for active holiday
   const checkHoliday = useCallback(() => {
@@ -41,17 +39,6 @@ const HolidayEffectsOverlay = ({ enabled = true }) => {
       document.documentElement.style.removeProperty('--holiday-color-3');
       document.documentElement.style.removeProperty('--holiday-name');
     }
-  }, []);
-
-  // Check prefers-reduced-motion
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setPrefersReducedMotion(mediaQuery.matches);
-
-    const handler = (e) => setPrefersReducedMotion(e.matches);
-    mediaQuery.addEventListener('change', handler);
-
-    return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
   // Initial check and midnight check setup
@@ -84,8 +71,8 @@ const HolidayEffectsOverlay = ({ enabled = true }) => {
     };
   }, []);
 
-  // Don't render if disabled, no active holiday, or user prefers reduced motion
-  if (!enabled || !activeHoliday || prefersReducedMotion) {
+  // Don't render if disabled or no active holiday
+  if (!enabled || !activeHoliday) {
     return null;
   }
 
@@ -112,7 +99,7 @@ const HolidayEffectsOverlay = ({ enabled = true }) => {
         position: 'fixed',
         inset: 0,
         pointerEvents: 'none',
-        zIndex: 999,
+        zIndex: 9999,
         overflow: 'hidden'
       }}
     >
