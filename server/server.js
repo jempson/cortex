@@ -26,6 +26,7 @@ import { DatabaseSQLite } from './database-sqlite.js';
 import { getEmailService } from './email-service.js';
 import { storage } from './storage.js';
 import * as waveParticipationCrypto from './lib/wave-participation-crypto.js';
+import * as pushSubscriptionCrypto from './lib/push-subscription-crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -4201,6 +4202,12 @@ if (USE_SQLITE) {
   }).catch(err => {
     console.error('Failed to initialize wave participation cache:', err.message);
   });
+  // Initialize push subscription cache (v2.22.0 - Privacy Hardening)
+  pushSubscriptionCrypto.initializeCache(db).then(stats => {
+    console.log(`🔐 Push subscription cache initialized: ${stats.userCount} users, ${stats.subscriptionCount} subscriptions`);
+  }).catch(err => {
+    console.error('Failed to initialize push subscription cache:', err.message);
+  });
 } else {
   console.log('📁 Using JSON file storage');
 }
@@ -4230,6 +4237,37 @@ const participation = {
       waveParticipationCrypto.syncWaveFromDb(waveId);
     }
     // No-op for JSON storage
+  }
+};
+
+// Push subscription helpers - use crypto cache for SQLite, fallback to db methods for JSON (v2.22.0)
+const pushSubs = {
+  getSubscriptions: (userId) => USE_SQLITE && process.env.PUSH_SUBSCRIPTION_KEY
+    ? pushSubscriptionCrypto.getSubscriptions(userId)
+    : db.getPushSubscriptions(userId),
+  addSubscription: (userId, subscription) => {
+    if (USE_SQLITE && process.env.PUSH_SUBSCRIPTION_KEY) {
+      return pushSubscriptionCrypto.addSubscription(userId, subscription);
+    }
+    return db.addPushSubscription(userId, subscription);
+  },
+  removeSubscription: (userId, endpoint) => {
+    if (USE_SQLITE && process.env.PUSH_SUBSCRIPTION_KEY) {
+      return pushSubscriptionCrypto.removeSubscription(userId, endpoint);
+    }
+    return db.removePushSubscription(userId, endpoint);
+  },
+  removeAllSubscriptions: (userId) => {
+    if (USE_SQLITE && process.env.PUSH_SUBSCRIPTION_KEY) {
+      return pushSubscriptionCrypto.removeAllSubscriptions(userId);
+    }
+    return db.removeAllPushSubscriptions(userId);
+  },
+  removeByEndpoint: (endpoint) => {
+    if (USE_SQLITE && process.env.PUSH_SUBSCRIPTION_KEY) {
+      return pushSubscriptionCrypto.removeByEndpoint(endpoint);
+    }
+    return db.removeExpiredPushSubscription(endpoint);
   }
 };
 
@@ -6547,7 +6585,7 @@ app.post('/api/push/subscribe', authenticateToken, (req, res) => {
 
   try {
     console.log(`🔔 Adding push subscription for user ${req.user.userId}, endpoint: ${subscription.endpoint.substring(0, 60)}...`);
-    db.addPushSubscription(req.user.userId, subscription);
+    pushSubs.addSubscription(req.user.userId, subscription);
     console.log(`✅ Push subscription added for user ${req.user.userId}`);
     res.json({ success: true });
   } catch (error) {
@@ -6561,11 +6599,11 @@ app.delete('/api/push/subscribe', authenticateToken, (req, res) => {
   const { endpoint } = req.body;
   if (!endpoint) {
     // Remove all subscriptions for this user
-    db.removeAllPushSubscriptions(req.user.userId);
+    pushSubs.removeAllSubscriptions(req.user.userId);
     console.log(`🔕 All push subscriptions removed for user ${req.user.userId}`);
   } else {
     // Remove specific subscription
-    db.removePushSubscription(req.user.userId, endpoint);
+    pushSubs.removeSubscription(req.user.userId, endpoint);
     console.log(`🔕 Push subscription removed for user ${req.user.userId}`);
   }
   res.json({ success: true });
@@ -6577,7 +6615,7 @@ app.post('/api/push/test', authenticateToken, async (req, res) => {
     return res.status(501).json({ error: 'Push notifications not configured' });
   }
 
-  const subscriptions = db.getPushSubscriptions(req.user.userId);
+  const subscriptions = pushSubs.getSubscriptions(req.user.userId);
   if (subscriptions.length === 0) {
     return res.status(400).json({ error: 'No push subscriptions found' });
   }
@@ -6601,7 +6639,7 @@ app.post('/api/push/test', authenticateToken, async (req, res) => {
       console.error('Push notification failed:', error.statusCode);
       if (error.statusCode === 410 || error.statusCode === 404) {
         // Subscription expired or invalid
-        db.removeExpiredPushSubscription(sub.endpoint);
+        pushSubs.removeByEndpoint(sub.endpoint);
       }
     }
   }
@@ -6626,7 +6664,7 @@ app.post('/api/push/register', authenticateToken, (req, res) => {
 
   try {
     // Store as a push subscription with type='expo'
-    db.addPushSubscription(req.user.userId, {
+    pushSubs.addSubscription(req.user.userId, {
       endpoint: token,  // Use token as endpoint for Expo
       keys: {
         type: type || 'expo',
@@ -6651,14 +6689,14 @@ app.post('/api/push/unregister', authenticateToken, (req, res) => {
   try {
     if (token) {
       // Remove specific token
-      db.removePushSubscription(req.user.userId, token);
+      pushSubs.removeSubscription(req.user.userId, token);
       console.log(`📱 Expo push token unregistered for user ${req.user.userId}`);
     } else {
       // Remove all Expo tokens for this user (tokens starting with Expo)
-      const subs = db.getPushSubscriptions(req.user.userId);
+      const subs = pushSubs.getSubscriptions(req.user.userId);
       for (const sub of subs) {
         if (sub.endpoint?.startsWith('ExponentPushToken[') || sub.endpoint?.startsWith('ExpoPushToken[')) {
-          db.removePushSubscription(req.user.userId, sub.endpoint);
+          pushSubs.removeSubscription(req.user.userId, sub.endpoint);
         }
       }
       console.log(`📱 All Expo push tokens unregistered for user ${req.user.userId}`);
@@ -11545,6 +11583,31 @@ app.post('/api/admin/maintenance/migrate-wave-participants', authenticateToken, 
   }
 });
 
+// Migrate push subscriptions to encrypted storage (admin only) - v2.22.0
+app.post('/api/admin/maintenance/migrate-push-subscriptions', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const result = pushSubscriptionCrypto.migrateToEncrypted();
+
+    if (result.success) {
+      console.log(`✅ Admin ${admin.handle} migrated ${result.migratedUsers} users (${result.migratedSubscriptions} subscriptions) to encrypted push subscription storage`);
+      res.json({
+        success: true,
+        migratedUsers: result.migratedUsers,
+        migratedSubscriptions: result.migratedSubscriptions,
+        message: `Migrated ${result.migratedUsers} users with ${result.migratedSubscriptions} push subscriptions to encrypted storage`
+      });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  } catch (err) {
+    console.error('Push subscription migration error:', err);
+    res.status(500).json({ error: 'Failed to migrate push subscription data' });
+  }
+});
+
 // Get privacy status/stats (admin only)
 app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) => {
   try {
@@ -11562,6 +11625,12 @@ app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) =
     const encryptedWavesCount = db.db.prepare('SELECT COUNT(*) as count FROM wave_participants_encrypted').get()?.count || 0;
     const totalWaves = db.db.prepare('SELECT COUNT(DISTINCT wave_id) as count FROM wave_participants').get()?.count || 0;
 
+    // Push subscription protection stats (v2.22.0)
+    const pushSubStats = pushSubscriptionCrypto.getStats();
+    const encryptedPushSubsCount = db.db.prepare('SELECT COUNT(*) as count FROM push_subscriptions_encrypted').get()?.count || 0;
+    const totalPushSubUsers = db.db.prepare('SELECT COUNT(DISTINCT user_id) as count FROM push_subscriptions').get()?.count || 0;
+    const totalPushSubs = db.db.prepare('SELECT COUNT(*) as count FROM push_subscriptions').get()?.count || 0;
+
     res.json({
       totalUsers,
       emailProtection: {
@@ -11576,9 +11645,17 @@ app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) =
         cacheStats: participationStats,
         migrationNeeded: participationStats.encryptionEnabled ? (totalWaves - encryptedWavesCount) : 0
       },
+      pushSubscriptions: {
+        totalUsers: totalPushSubUsers,
+        totalSubscriptions: totalPushSubs,
+        encryptedUsers: encryptedPushSubsCount,
+        cacheStats: pushSubStats,
+        migrationNeeded: pushSubStats.encryptionEnabled ? (totalPushSubUsers - encryptedPushSubsCount) : 0
+      },
       config: {
         emailEncryptionEnabled: !!EMAIL_ENCRYPTION_KEY,
         waveParticipationEncryptionEnabled: participationStats.encryptionEnabled,
+        pushSubscriptionEncryptionEnabled: pushSubStats.encryptionEnabled,
         activityLogRetentionDays: ACTIVITY_LOG_RETENTION_DAYS,
         sessionMaxAgeDays: SESSION_MAX_AGE_DAYS
       }
@@ -17350,7 +17427,7 @@ function broadcastToWave(waveId, message, excludeWs = null) {
 
 // Send push notification to a user who isn't connected via WebSocket
 async function sendPushNotification(userId, payload) {
-  const subscriptions = db.getPushSubscriptions(userId);
+  const subscriptions = pushSubs.getSubscriptions(userId);
   if (subscriptions.length === 0) return;
 
   // Separate Expo tokens from web push subscriptions
@@ -17397,7 +17474,7 @@ async function sendPushNotification(userId, payload) {
               console.error(`📱 Expo push error: ${ticket.message}`);
               if (ticket.details?.error === 'DeviceNotRegistered') {
                 const token = messages[index].to;
-                db.removeExpiredPushSubscription(token);
+                pushSubs.removeByEndpoint(token);
                 console.log(`📱 Removed invalid Expo token: ${token.substring(0, 30)}...`);
               }
             }
@@ -17423,7 +17500,7 @@ async function sendPushNotification(userId, payload) {
         // Clean up invalid subscriptions (expired, VAPID mismatch, or endpoint issues)
         if (error.statusCode === 410 || error.statusCode === 404 || error.statusCode === 401 ||
             error.message?.includes('unexpected response code')) {
-          db.removeExpiredPushSubscription(sub.endpoint);
+          pushSubs.removeByEndpoint(sub.endpoint);
           console.log(`🔕 Removed invalid web push subscription (${error.statusCode || error.message})`);
         } else {
           console.error('Web push notification error:', error.statusCode, error.message);
