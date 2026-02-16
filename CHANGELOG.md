@@ -5,6 +5,38 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.23.0] - 2026-02-16
+
+### Added
+
+#### Collapsible Messages
+
+Allow users to collapse long messages to compact single-line previews for better mobile scrolling.
+
+**Key Features:**
+- Messages meeting any of these criteria show a collapse toggle button:
+  - Text content > 3 lines (~150 characters)
+  - Contains audio or video media
+  - Contains embedded images (detected via `<img>` in content)
+- Collapsed view shows:
+  - First line of text (truncated to ~60 characters)
+  - Media indicators: 🎵 (audio), 🎬 (video), 🖼️ (image)
+  - Tap/click anywhere on collapsed view to expand
+- Collapse button (◆/◀) in message header actions, separate from thread collapse (▼/▶)
+- Wave menu options:
+  - "Collapse All Messages" - collapse all collapsible messages in wave
+  - "Expand All Messages" - expand all collapsed messages
+- Settings option: "Auto-collapse Long Messages" in Display Preferences
+  - When enabled, collapsible messages start collapsed on wave load
+- Collapse state persisted to localStorage per wave
+
+**Files Modified:**
+- `client/src/components/waves/WaveView.jsx` - contentCollapsed state, toggle functions, wave menu options, auto-collapse effect
+- `client/src/components/messages/Message.jsx` - isLongMessage detection, collapsed view, collapse button, getFirstLine helper
+- `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preference toggle
+
+---
+
 ## [Unreleased]
 
 ### Planned Features
@@ -66,32 +98,6 @@ Automatically apply festive themes and visual effects on holidays.
 - `client/src/views/MainApp.jsx` - Integrate holiday effect wrapper
 - `client/src/components/profile/ProfileSettings.jsx` - Add holiday opt-out toggle
 - `client/index.html` - Add holiday theme CSS variables
-
-#### Collapsible Pings
-Minimize long pings and media to improve scrolling on mobile.
-
-**Key Features:**
-- Tap to collapse any ping to a compact preview:
-  - Shows sender avatar + name
-  - First line/sentence of content (truncated with "...")
-  - Media indicator icon for audio/video (not full player)
-- Tap collapsed ping to expand back to full view
-- Collapse button on long pings (threshold: 4+ lines or contains media)
-- "Collapse All" / "Expand All" option in wave menu
-- Remember collapse state during session
-- Auto-collapse option in settings (always collapse media, collapse long pings)
-
-**UI Behavior:**
-- Collapsed ping shows subtle "collapsed" styling (slightly dimmed, compact height)
-- Smooth expand/collapse animation
-- Collapsed media shows thumbnail + duration badge instead of full player
-- Thread replies remain expandable separately from parent collapse
-
-**Files to create/modify:**
-- `client/src/components/droplets/Droplet.jsx` - Add collapse state and compact render mode
-- `client/src/components/droplets/CollapsedDroplet.jsx` - NEW - Compact ping display
-- `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
-- `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
 ## [2.22.0] - 2026-02-16
 
