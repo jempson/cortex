@@ -25,22 +25,22 @@ const HeartsEffect = ({ colors = ['#FF69B4', '#FF1493', '#FFC0CB'] }) => {
   const keyframes = useMemo(() => `
     @keyframes float-up {
       0% {
-        transform: translateY(100vh) translateX(0) scale(0.5);
+        transform: translateY(0) translateX(0) scale(0.5);
         opacity: 0;
       }
-      10% {
+      5% {
         opacity: 1;
-        transform: translateY(90vh) translateX(calc(var(--sway) * 0.3)) scale(0.8);
+        transform: translateY(-5vh) translateX(calc(var(--sway) * 0.2)) scale(0.8);
       }
       50% {
-        transform: translateY(50vh) translateX(calc(var(--sway) * -0.5)) scale(1);
+        transform: translateY(-55vh) translateX(calc(var(--sway) * -0.5)) scale(1);
       }
       90% {
         opacity: 1;
-        transform: translateY(10vh) translateX(calc(var(--sway) * 0.3)) scale(0.9);
+        transform: translateY(-100vh) translateX(calc(var(--sway) * 0.3)) scale(0.9);
       }
       100% {
-        transform: translateY(-10vh) translateX(0) scale(0.5);
+        transform: translateY(-110vh) translateX(0) scale(0.5);
         opacity: 0;
       }
     }
