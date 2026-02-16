@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 /**
- * Privacy & Encryption Dashboard (v2.21.0)
+ * Privacy & Encryption Dashboard (v2.22.0)
  *
  * Admin panel showing encryption status for all encryptable data types
  * with one-click migration buttons.
@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [migrating, setMigrating] = useState(null); // 'emails' | 'participation' | null
+  const [migrating, setMigrating] = useState(null); // 'emails' | 'participation' | 'pushSubs' | null
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -50,6 +50,18 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       loadStatus(); // Refresh stats
     } catch (err) {
       showToast(err.message || 'Participation migration failed', 'error');
+    }
+    setMigrating(null);
+  };
+
+  const handleMigratePushSubscriptions = async () => {
+    setMigrating('pushSubs');
+    try {
+      const data = await fetchAPI('/admin/maintenance/migrate-push-subscriptions', { method: 'POST' });
+      showToast(data.message || `Migrated ${data.migratedSubscriptions} push subscriptions`, 'success');
+      loadStatus(); // Refresh stats
+    } catch (err) {
+      showToast(err.message || 'Push subscription migration failed', 'error');
     }
     setMigrating(null);
   };
@@ -232,6 +244,52 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
                 )}
               </div>
 
+              {/* Push Subscriptions Encryption (v2.22.0) */}
+              <div style={cardStyle}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ flex: 1, minWidth: '200px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '1rem' }}>🔔</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Push Subscriptions</span>
+                      {statusBadge(status.config?.pushSubscriptionEncryptionEnabled, status.config?.pushSubscriptionEncryptionEnabled ? 'KEY SET' : 'NO KEY')}
+                    </div>
+                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={labelStyle}>Users</div>
+                        <div style={valueStyle}>{status.pushSubscriptions?.totalUsers || 0}</div>
+                      </div>
+                      <div>
+                        <div style={labelStyle}>Subscriptions</div>
+                        <div style={valueStyle}>{status.pushSubscriptions?.totalSubscriptions || 0}</div>
+                      </div>
+                      <div>
+                        <div style={labelStyle}>Encrypted</div>
+                        <div style={valueStyle}>{status.pushSubscriptions?.encryptedUsers || 0}</div>
+                      </div>
+                      <div>
+                        <div style={labelStyle}>Pending</div>
+                        <div style={{ ...valueStyle, color: status.pushSubscriptions?.migrationNeeded > 0 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
+                          {status.pushSubscriptions?.migrationNeeded || 0}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ alignSelf: 'center' }}>
+                    {migrateButton(
+                      handleMigratePushSubscriptions,
+                      !status.config?.pushSubscriptionEncryptionEnabled,
+                      migrating === 'pushSubs',
+                      status.pushSubscriptions?.migrationNeeded || 0
+                    )}
+                  </div>
+                </div>
+                {!status.config?.pushSubscriptionEncryptionEnabled && (
+                  <div style={{ marginTop: '8px', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                    Set PUSH_SUBSCRIPTION_KEY to enable
+                  </div>
+                )}
+              </div>
+
               {/* Contacts (client-side encrypted) */}
               <div style={cardStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -245,13 +303,25 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
               </div>
 
               {/* Cache Stats */}
-              {status.waveParticipation?.cacheStats && (
+              {(status.waveParticipation?.cacheStats || status.pushSubscriptions?.cacheStats) && (
                 <div style={{ marginTop: '16px', padding: '12px', background: 'var(--bg-surface)', border: '1px dashed var(--border-subtle)' }}>
                   <div style={{ ...labelStyle, marginBottom: '8px' }}>IN-MEMORY CACHE</div>
                   <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-                    <span>Waves: {status.waveParticipation.cacheStats.waveCount}</span>
-                    <span>Users: {status.waveParticipation.cacheStats.userCount}</span>
-                    <span>Mappings: {status.waveParticipation.cacheStats.totalMappings}</span>
+                    {status.waveParticipation?.cacheStats && (
+                      <>
+                        <span>Waves: {status.waveParticipation.cacheStats.waveCount}</span>
+                        <span>Participants: {status.waveParticipation.cacheStats.userCount}</span>
+                        <span>Mappings: {status.waveParticipation.cacheStats.totalMappings}</span>
+                      </>
+                    )}
+                    {status.pushSubscriptions?.cacheStats && (
+                      <>
+                        <span style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: '12px' }}>
+                          Push Users: {status.pushSubscriptions.cacheStats.userCount}
+                        </span>
+                        <span>Push Subs: {status.pushSubscriptions.cacheStats.subscriptionCount}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               )}

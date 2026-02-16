@@ -168,13 +168,13 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 | Session data | ✅ 30-day auto-cleanup | **Low** - Protected |
 | Activity logs | ✅ 30-day auto-cleanup | **Low** - Protected |
 | Contact lists | ✅ Client-encrypted blob (v2.18.0) | **Low** - Protected |
-| User → Wave relationships | Visible in DB | **High** - Shows who talks to whom |
+| User → Wave relationships | ✅ Encrypted at rest (v2.21.0) | **Low** - Protected |
 | Crew membership | Stored per-user | **High** - Group associations exposed |
 | Push subscriptions | Tied to user IDs | **Medium** - Device correlation |
 | Avatars | Stored with user ID | **Low** - Potential recognition |
 
-**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps, contact lists
-**What's still exposed:** Social graph (wave participation, crews)
+**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps, contact lists, wave participation
+**What's still exposed:** Crew membership, push subscriptions
 
 ### Implementation Progress
 

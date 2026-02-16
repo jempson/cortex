@@ -93,6 +93,54 @@ Minimize long pings and media to improve scrolling on mobile.
 - `client/src/components/waves/WaveView.jsx` - Collapse all/expand all actions
 - `client/src/components/profile/ProfileSettings.jsx` - Auto-collapse preferences
 
+## [2.22.0] - 2026-02-16
+
+### Added
+
+#### Privacy Hardening Phase 3: Encrypted Push Subscriptions
+
+Push subscription data is now encrypted at rest so database dumps cannot correlate users to devices.
+
+**Problem Solved:**
+- Database breach no longer reveals which user has which push endpoint
+- Device correlation across sessions is prevented
+- Push endpoint fingerprinting is mitigated
+
+**Architecture:**
+- Same pattern as wave participation encryption (v2.21.0)
+- Database stores encrypted subscription blobs per user, keyed by SHA-256 hash of user ID
+- Server maintains in-memory cache for runtime operations
+- All lookups use memory cache, writes update both cache and encrypted DB
+
+**New Files:**
+- `server/lib/push-subscription-crypto.js` - Encryption/decryption + cache management
+
+**Database Changes:**
+- New `push_subscriptions_encrypted` table with `user_hash`, `subscriptions_blob`, `iv`, `updated_at`
+
+**Environment Variable:**
+```bash
+PUSH_SUBSCRIPTION_KEY=<32-byte-hex>  # openssl rand -hex 32
+```
+
+**Admin Features:**
+- Migration endpoint: `POST /api/admin/maintenance/migrate-push-subscriptions`
+- Privacy Dashboard updated with push subscription encryption status card
+- One-click migration from plaintext to encrypted storage
+
+**How It Works:**
+1. Server startup: Decrypt all blobs into in-memory cache
+2. Runtime: All lookups use memory cache (fast O(1) access)
+3. Writes: Update memory cache AND encrypted blob in DB
+4. Endpoint cleanup: Reverse lookup (endpoint → userId) in cache for expired subscription removal
+
+### Changed
+
+- Privacy Dashboard now shows push subscription encryption status with migrate button
+- Cache stats section shows both wave participation and push subscription cache statistics
+
+---
+
 ## [2.21.0] - 2026-02-13
 
 ### Added

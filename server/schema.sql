@@ -574,6 +574,15 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON push_subscriptions(endpoint);
 
+-- Encrypted push subscriptions (v2.22.0 - Privacy Hardening)
+-- User's push subscriptions stored as encrypted blob
+CREATE TABLE IF NOT EXISTS push_subscriptions_encrypted (
+    user_hash TEXT PRIMARY KEY,           -- SHA-256 of user_id (for deduplication)
+    subscriptions_blob TEXT NOT NULL,     -- AES-256-GCM encrypted JSON array
+    iv TEXT NOT NULL,                     -- Base64 initialization vector (12 bytes)
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+);
+
 -- Notification lookups
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, read) WHERE read = 0;
