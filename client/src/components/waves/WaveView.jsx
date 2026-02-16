@@ -43,6 +43,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       return {};
     }
   });
+  // Content collapse state (v2.23.0 - for message body, separate from thread collapse)
+  const [contentCollapsed, setContentCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`farhold_content_collapsed_${wave.id}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackIndex, setPlaybackIndex] = useState(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -279,6 +288,57 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     showToast('All threads expanded', 'success');
   };
 
+  // Content collapse functions (v2.23.0)
+  const toggleContentCollapse = (messageId) => {
+    setContentCollapsed(prev => {
+      const next = { ...prev, [messageId]: !prev[messageId] };
+      try {
+        localStorage.setItem(`farhold_content_collapsed_${wave.id}`, JSON.stringify(next));
+      } catch (e) {
+        console.error('Failed to save content collapse state:', e);
+      }
+      return next;
+    });
+  };
+
+  // Helper to check if a message is collapsible (long text, audio, video, or images)
+  const isMessageCollapsible = (msg) => {
+    if (msg.deleted) return false;
+    if (msg.media_type === 'audio' || msg.media_type === 'video') return true;
+    if (!msg.content) return false;
+    if (msg.content.length > 150) return true;
+    if (msg.content.includes('<img')) return true;
+    return false;
+  };
+
+  const collapseAllContent = () => {
+    const newContentCollapsed = {};
+    const checkMessage = (msg) => {
+      if (isMessageCollapsible(msg)) {
+        newContentCollapsed[msg.id] = true;
+      }
+      msg.children?.forEach(checkMessage);
+    };
+    (waveData?.messages || []).forEach(checkMessage);
+    setContentCollapsed(newContentCollapsed);
+    try {
+      localStorage.setItem(`farhold_content_collapsed_${wave.id}`, JSON.stringify(newContentCollapsed));
+    } catch (e) {
+      console.error('Failed to save content collapse state:', e);
+    }
+    showToast('All messages collapsed', 'success');
+  };
+
+  const expandAllContent = () => {
+    setContentCollapsed({});
+    try {
+      localStorage.setItem(`farhold_content_collapsed_${wave.id}`, JSON.stringify({}));
+    } catch (e) {
+      console.error('Failed to save content collapse state:', e);
+    }
+    showToast('All messages expanded', 'success');
+  };
+
   // Share ping to external platforms
   const handleSharePing = async (ping) => {
     const shareUrl = `${window.location.origin}/share/${ping.id}`;
@@ -495,6 +555,33 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       setTimeout(scrollToTarget, 50);
     });
   }, [scrollToMessageId, waveData, loading, onScrollToMessageComplete]);
+
+  // Auto-collapse messages when preference enabled (v2.23.0)
+  const hasAutoCollapsedRef = useRef(false);
+  useEffect(() => {
+    // Only run once per wave load when auto-collapse is enabled
+    if (!waveData || !currentUser?.preferences?.autoCollapseMessages || hasAutoCollapsedRef.current) return;
+    hasAutoCollapsedRef.current = true;
+
+    const autoCollapsed = {};
+    const checkMessage = (msg) => {
+      if (isMessageCollapsible(msg)) {
+        autoCollapsed[msg.id] = true;
+      }
+      msg.children?.forEach(checkMessage);
+    };
+    (waveData.messages || []).forEach(checkMessage);
+
+    if (Object.keys(autoCollapsed).length > 0) {
+      // Merge with any existing saved state (user's manual changes take precedence)
+      setContentCollapsed(prev => ({ ...autoCollapsed, ...prev }));
+    }
+  }, [waveData, currentUser?.preferences?.autoCollapseMessages]);
+
+  // Reset auto-collapse flag when switching waves
+  useEffect(() => {
+    hasAutoCollapsedRef.current = false;
+  }, [wave.id]);
 
   // Mark wave as read when user scrolls to bottom or views unread messages
   useEffect(() => {
@@ -1617,6 +1704,50 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                     </div>
                   )}
 
+                  {/* Collapse/Expand All Messages (v2.23.0) */}
+                  <div
+                    onClick={() => {
+                      collapseAllContent();
+                      setShowWaveMenu(false);
+                    }}
+                    style={{
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      color: 'var(--text-primary)',
+                      background: 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span>▼</span>
+                    <span>Collapse All Messages</span>
+                  </div>
+                  <div
+                    onClick={() => {
+                      expandAllContent();
+                      setShowWaveMenu(false);
+                    }}
+                    style={{
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      color: 'var(--text-primary)',
+                      background: 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span>▶</span>
+                    <span>Expand All Messages</span>
+                  </div>
+
                   {/* Settings (creator only) */}
                   {waveData.can_edit && (
                     <>
@@ -2171,6 +2302,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             editingMessageId={editingMessageId} editContent={editContent} setEditContent={setEditContent}
             currentUserId={currentUser?.id} highlightId={replyingTo?.id} playbackIndex={playbackIndex}
             collapsed={collapsed} onToggleCollapse={toggleThreadCollapse} isMobile={isMobile}
+            contentCollapsed={contentCollapsed} onToggleContentCollapse={toggleContentCollapse}
             onReact={handleReaction} onMessageClick={handleMessageClick} participants={participants}
             contacts={contacts} onShowProfile={onShowProfile} onReport={handleReportMessage}
             onFocus={onFocusPing ? (ping) => onFocusPing(wave.id, ping) : undefined}

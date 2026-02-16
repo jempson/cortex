@@ -6364,6 +6364,12 @@ app.put('/api/profile/preferences', authenticateToken, (req, res) => {
   if (typeof req.body.autoFocusDroplets === 'boolean') {
     updates.autoFocusDroplets = req.body.autoFocusDroplets;
   }
+  if (typeof req.body.autoFocusMessages === 'boolean') {
+    updates.autoFocusMessages = req.body.autoFocusMessages;
+  }
+  if (typeof req.body.autoCollapseMessages === 'boolean') {
+    updates.autoCollapseMessages = req.body.autoCollapseMessages;
+  }
   // Handle crawlBar preferences
   if (req.body.crawlBar && typeof req.body.crawlBar === 'object') {
     const existingCrawlBar = user.preferences?.crawlBar || {};
