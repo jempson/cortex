@@ -1695,6 +1695,25 @@ export class DatabaseSQLite {
       console.log('✅ Encrypted wave participants table created');
       console.log('   Run migration endpoint to encrypt existing participation data');
     }
+
+    // v2.22.0 - Privacy Hardening: Encrypted push subscriptions table
+    const encryptedPushSubsExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='push_subscriptions_encrypted'
+    `).get();
+
+    if (!encryptedPushSubsExists) {
+      console.log('📝 Creating push_subscriptions_encrypted table (v2.22.0)...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS push_subscriptions_encrypted (
+          user_hash TEXT PRIMARY KEY,
+          subscriptions_blob TEXT NOT NULL,
+          iv TEXT NOT NULL,
+          updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+        );
+      `);
+      console.log('✅ Encrypted push subscriptions table created');
+      console.log('   Run migration endpoint to encrypt existing push subscription data');
+    }
   }
 
   prepareStatements() {
