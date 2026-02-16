@@ -188,11 +188,11 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 - ✅ Auto-cleanup old sessions (30 days default)
 - ✅ Admin endpoints for migration and status
 
-**Phase 2: Encrypted Metadata** 🔄 IN PROGRESS (v2.18.0)
-- ✅ Encrypt contact lists (only user can decrypt their own)
-- Encrypt wave participation lists
-- Server knows wave exists, but not who's in it
-- Encrypted push subscription mapping
+**Phase 2: Encrypted Metadata** ✅ COMPLETED (v2.18.0 - v2.21.0)
+- ✅ Encrypt contact lists (only user can decrypt their own) (v2.18.0)
+- ✅ Encrypt wave participation lists (v2.21.0)
+- ✅ Server uses in-memory cache at runtime, DB stores encrypted blobs
+- Encrypted push subscription mapping (future)
 
 **Phase 3: Social Graph Protection** (Future)
 - Wave IDs are random, not sequential (already done)
@@ -205,18 +205,20 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 - Decoy traffic for federation
 - Can't prove user is in a wave without their key
 
-### Environment Variables (v2.17.0)
+### Environment Variables (v2.17.0 - v2.21.0)
 
 ```bash
-EMAIL_ENCRYPTION_KEY=<32-byte-hex>  # openssl rand -hex 32
+EMAIL_ENCRYPTION_KEY=<32-byte-hex>       # openssl rand -hex 32 (v2.17.0)
+WAVE_PARTICIPATION_KEY=<32-byte-hex>     # openssl rand -hex 32 (v2.21.0)
 ACTIVITY_LOG_RETENTION_DAYS=30
 SESSION_MAX_AGE_DAYS=30
 ```
 
-### Admin Endpoints (v2.17.0)
+### Admin Endpoints (v2.17.0 - v2.21.0)
 
-- `POST /api/admin/maintenance/migrate-emails` - Migrate existing users to encrypted email
-- `GET /api/admin/maintenance/privacy-status` - View privacy protection stats
+- `POST /api/admin/maintenance/migrate-emails` - Migrate existing users to encrypted email (v2.17.0)
+- `POST /api/admin/maintenance/migrate-wave-participants` - Migrate wave participation to encrypted storage (v2.21.0)
+- `GET /api/admin/maintenance/privacy-status` - View privacy protection stats (includes email, participation, contacts)
 
 ### Success Criteria
 
@@ -224,8 +226,8 @@ SESSION_MAX_AGE_DAYS=30
 - [x] IPs cannot identify specific users (v2.17.0)
 - [x] Cannot correlate activity patterns via precise timestamps (v2.17.0)
 - [x] Contact lists encrypted, server cannot read them (v2.18.0)
-- [ ] Cannot determine who is in which wave from DB alone
-- [ ] Cannot reconstruct social graph from DB
+- [x] Cannot determine who is in which wave from DB alone (v2.21.0)
+- [x] Cannot reconstruct social graph from DB (v2.21.0)
 - [ ] Privacy policy accurately reflects actual protections
 
 ---
