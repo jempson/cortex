@@ -169,12 +169,12 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 | Activity logs | ✅ 30-day auto-cleanup | **Low** - Protected |
 | Contact lists | ✅ Client-encrypted blob (v2.18.0) | **Low** - Protected |
 | User → Wave relationships | ✅ Encrypted at rest (v2.21.0) | **Low** - Protected |
+| Push subscriptions | ✅ Encrypted at rest (v2.22.0) | **Low** - Protected |
 | Crew membership | Stored per-user | **High** - Group associations exposed |
-| Push subscriptions | Tied to user IDs | **Medium** - Device correlation |
 | Avatars | Stored with user ID | **Low** - Potential recognition |
 
-**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps, contact lists, wave participation
-**What's still exposed:** Crew membership, push subscriptions
+**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps, contact lists, wave participation, push subscriptions
+**What's still exposed:** Crew membership
 
 ### Implementation Progress
 
@@ -188,11 +188,11 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 - ✅ Auto-cleanup old sessions (30 days default)
 - ✅ Admin endpoints for migration and status
 
-**Phase 2: Encrypted Metadata** ✅ COMPLETED (v2.18.0 - v2.21.0)
+**Phase 2: Encrypted Metadata** ✅ COMPLETED (v2.18.0 - v2.22.0)
 - ✅ Encrypt contact lists (only user can decrypt their own) (v2.18.0)
 - ✅ Encrypt wave participation lists (v2.21.0)
+- ✅ Encrypt push subscriptions (v2.22.0)
 - ✅ Server uses in-memory cache at runtime, DB stores encrypted blobs
-- Encrypted push subscription mapping (future)
 
 **Phase 3: Social Graph Protection** (Future)
 - Wave IDs are random, not sequential (already done)

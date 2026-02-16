@@ -60,45 +60,6 @@ Save media recordings locally when offline and automatically upload when back on
 - `client/src/utils/drafts.js` - NEW - IndexedDB storage layer for drafts
 - `client/src/components/ui/DraftsPanel.jsx` - NEW - Draft management UI
 
-#### Holiday Calendar System
-Automatically apply festive themes and visual effects on holidays.
-
-**Supported Holidays:**
-- New Year's Day (Jan 1) - Fireworks effect, celebration theme
-- Valentine's Day (Feb 14) - Floating hearts effect, pink/red theme
-- St. Patrick's Day (Mar 17) - Shamrock effect, green theme
-- Easter (variable) - Pastel theme
-- Independence Day (Jul 4) - Red/white/blue theme, fireworks
-- Halloween (Oct 31) - Spooky orange/purple theme, bat/ghost effects
-- Thanksgiving (4th Thu Nov) - Autumn colors theme
-- Christmas (Dec 25) - Snow effect, red/green theme
-- Hanukkah (variable) - Blue/silver theme, candle glow effect
-
-**Key Features:**
-- Auto-detect holidays based on user's timezone
-- Theme changes: Override current theme with holiday colors
-- Visual effects: CSS/Canvas animations (snow falling, hearts floating, etc.)
-- Holiday-specific reactions temporarily added to picker
-- User preference: "Enable holiday themes" toggle (opt-out)
-- Effects respect reduced-motion preference
-
-**Proposed Implementation:**
-- Client-side date detection with timezone awareness
-- Holiday definitions in `client/src/config/holidays.js`
-- Effect components in `client/src/components/effects/`
-- User preference stored in profile settings
-- Graceful degradation (effects disabled on low-power mode)
-
-**Files to create/modify:**
-- `client/src/config/holidays.js` - NEW - Holiday definitions and date calculations
-- `client/src/components/effects/SnowEffect.jsx` - NEW - Falling snow animation
-- `client/src/components/effects/HeartsEffect.jsx` - NEW - Floating hearts animation
-- `client/src/components/effects/FireworksEffect.jsx` - NEW - Fireworks animation
-- `client/src/components/effects/HolidayEffectWrapper.jsx` - NEW - Effect orchestrator
-- `client/src/views/MainApp.jsx` - Integrate holiday effect wrapper
-- `client/src/components/profile/ProfileSettings.jsx` - Add holiday opt-out toggle
-- `client/index.html` - Add holiday theme CSS variables
-
 ## [2.22.0] - 2026-02-16
 
 ### Added
