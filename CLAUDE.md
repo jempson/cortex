@@ -241,9 +241,11 @@ GIF_PROVIDER=tenor  # giphy, tenor, or both
 TENOR_API_KEY=your-key
 GIPHY_API_KEY=your-key
 
-# Privacy Encryption (v2.17.0 - v2.21.0)
+# Privacy Encryption (v2.17.0 - v2.24.0)
 EMAIL_ENCRYPTION_KEY=<32-byte-hex>       # openssl rand -hex 32
 WAVE_PARTICIPATION_KEY=<32-byte-hex>     # openssl rand -hex 32
+PUSH_SUBSCRIPTION_KEY=<32-byte-hex>      # openssl rand -hex 32
+CREW_MEMBERSHIP_KEY=<32-byte-hex>        # openssl rand -hex 32
 
 # Push Notifications
 VAPID_PUBLIC_KEY=...
