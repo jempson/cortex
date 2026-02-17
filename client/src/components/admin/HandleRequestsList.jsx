@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError } from '../../../messages.js';
 
 const HandleRequestsList = ({ fetchAPI, showToast, isMobile, isOpen: controlledIsOpen, onToggle }) => {
   // Support both controlled (isOpen/onToggle props) and uncontrolled modes
@@ -17,7 +18,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile, isOpen: controlledI
       const data = await fetchAPI('/admin/handle-requests');
       setRequests(data);
     } catch (err) {
-      showToast(err.message || 'Failed to load requests', 'error');
+      showToast(err.message || formatError('Failed to load requests'), 'error');
     }
     setLoading(false);
   };
@@ -34,7 +35,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile, isOpen: controlledI
       showToast('Handle change approved', 'success');
       loadRequests();
     } catch (err) {
-      showToast(err.message || 'Failed to approve', 'error');
+      showToast(err.message || formatError('Failed to approve'), 'error');
     }
   };
 
@@ -48,7 +49,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile, isOpen: controlledI
       showToast('Handle change rejected', 'success');
       loadRequests();
     } catch (err) {
-      showToast(err.message || 'Failed to reject', 'error');
+      showToast(err.message || formatError('Failed to reject'), 'error');
     }
   };
 

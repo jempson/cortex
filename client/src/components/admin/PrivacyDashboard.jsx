@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { formatError } from '../../../messages.js';
 
 /**
  * Privacy & Encryption Dashboard (v2.24.0)
@@ -18,7 +19,7 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       setStatus(data);
     } catch (err) {
       if (!err.message?.includes('401')) {
-        showToast(err.message || 'Failed to load privacy status', 'error');
+        showToast(err.message || formatError('Failed to load privacy status'), 'error');
       }
     }
     setLoading(false);
@@ -37,7 +38,7 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       showToast(data.message || `Migrated ${data.migrated} emails`, 'success');
       loadStatus(); // Refresh stats
     } catch (err) {
-      showToast(err.message || 'Email migration failed', 'error');
+      showToast(err.message || formatError('Email migration failed'), 'error');
     }
     setMigrating(null);
   };
@@ -49,7 +50,7 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       showToast(data.message || `Migrated ${data.migratedWaves} waves`, 'success');
       loadStatus(); // Refresh stats
     } catch (err) {
-      showToast(err.message || 'Participation migration failed', 'error');
+      showToast(err.message || formatError('Participation migration failed'), 'error');
     }
     setMigrating(null);
   };
@@ -61,7 +62,7 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       showToast(data.message || `Migrated ${data.migratedSubscriptions} push subscriptions`, 'success');
       loadStatus(); // Refresh stats
     } catch (err) {
-      showToast(err.message || 'Push subscription migration failed', 'error');
+      showToast(err.message || formatError('Push subscription migration failed'), 'error');
     }
     setMigrating(null);
   };
@@ -73,7 +74,7 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       showToast(data.message || `Migrated ${data.migratedCrews} crews`, 'success');
       loadStatus(); // Refresh stats
     } catch (err) {
-      showToast(err.message || 'Crew membership migration failed', 'error');
+      showToast(err.message || formatError('Crew membership migration failed'), 'error');
     }
     setMigrating(null);
   };

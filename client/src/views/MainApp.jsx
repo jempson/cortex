@@ -4,7 +4,7 @@ import { useE2EE } from '../../e2ee-context.jsx';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useWindowSize } from '../hooks/useWindowSize.js';
 import { VERSION, API_URL, BASE_URL, canAccess, FONT_SIZES } from '../config/constants.js';
-import { getRandomTagline } from '../../messages.js';
+import { getRandomTagline, SUCCESS, NOTIFICATION, formatError } from '../../messages.js';
 import { storage } from '../utils/storage.js';
 import { updateAppBadge, subscribeToPush } from '../utils/pwa.js';
 import { updateDocumentTitle, startFaviconFlash, stopFaviconFlash } from '../utils/favicon.js';
@@ -324,7 +324,7 @@ function MainApp({ sharePingId }) {
       loadCategories();
     } catch (err) {
       console.error('Failed to move wave:', err);
-      showToastMsg('Failed to move wave', 'error');
+      showToastMsg(formatError('Failed to move wave'), 'error');
     }
   }, [fetchAPI, loadWaves, loadCategories, showToastMsg]);
 
@@ -342,7 +342,7 @@ function MainApp({ sharePingId }) {
       ));
     } catch (err) {
       console.error('Failed to pin/unpin wave:', err);
-      showToastMsg('Failed to update wave', 'error');
+      showToastMsg(formatError('Failed to update wave'), 'error');
     }
   }, [fetchAPI, showToastMsg]);
 
@@ -406,7 +406,7 @@ function MainApp({ sharePingId }) {
         }
       }
     } else if (data.type === 'wave_deleted') {
-      showToastMsg(`Wave "${data.wave?.title || 'Unknown'}" was deleted`, 'info');
+      showToastMsg(NOTIFICATION.waveDeleted(data.wave?.title || 'Unknown'), 'info');
       if (selectedWave?.id === data.waveId) {
         setSelectedWave(null);
         setActiveView('waves');
@@ -420,14 +420,14 @@ function MainApp({ sharePingId }) {
         if (selectedWave?.id === data.waveId) {
           setWaveReloadTrigger(prev => prev + 1);
         }
-        showToastMsg('Wave encryption key was rotated', 'info');
+        showToastMsg(NOTIFICATION.keyRotated, 'info');
       }
     } else if (data.type === 'participant_added') {
       // Someone was added to a wave we're in
       if (selectedWave?.id === data.waveId) {
         setWaveReloadTrigger(prev => prev + 1);
       }
-      showToastMsg(`${data.participant?.name || 'Someone'} was added to the wave`, 'info');
+      showToastMsg(NOTIFICATION.participantAdded(data.participant?.name || 'Someone'), 'info');
     } else if (data.type === 'participant_removed') {
       // Someone was removed from a wave we're in
       if (data.userId === user?.id) {
@@ -436,18 +436,18 @@ function MainApp({ sharePingId }) {
           setSelectedWave(null);
           setActiveView('waves');
         }
-        showToastMsg('You were removed from the wave', 'info');
+        showToastMsg(NOTIFICATION.removedFromWave(data.wave?.title || 'a wave'), 'info');
         loadWaves();
       } else {
         // Someone else was removed
         if (selectedWave?.id === data.waveId) {
           setWaveReloadTrigger(prev => prev + 1);
         }
-        showToastMsg(data.wasSelf ? 'A participant left the wave' : 'A participant was removed from the wave', 'info');
+        showToastMsg(data.wasSelf ? NOTIFICATION.participantLeft : NOTIFICATION.participantRemoved, 'info');
       }
     } else if (data.type === 'added_to_wave') {
       // We were added to a wave
-      showToastMsg(`You were added to "${data.wave?.title || 'a wave'}"`, 'success');
+      showToastMsg(NOTIFICATION.addedToWave(data.wave?.title || 'a wave'), 'success');
       loadWaves();
     } else if (data.type === 'category_created' || data.type === 'category_updated' || data.type === 'category_deleted' || data.type === 'categories_reordered') {
       // Category management events (v2.2.0)
@@ -460,7 +460,7 @@ function MainApp({ sharePingId }) {
       loadCategories();
     } else if (data.type === 'removed_from_wave') {
       // We were removed from a wave (by someone else)
-      showToastMsg(`You were removed from "${data.wave?.title || 'a wave'}"`, 'info');
+      showToastMsg(NOTIFICATION.removedFromWave(data.wave?.title || 'a wave'), 'info');
       if (selectedWave?.id === data.wave?.id) {
         setSelectedWave(null);
         setActiveView('waves');
@@ -500,17 +500,17 @@ function MainApp({ sharePingId }) {
     } else if (data.type === 'contact_request_received') {
       // Someone sent us a contact request
       setContactRequests(prev => [data.request, ...prev]);
-      showToastMsg(`${data.request.from_user?.displayName || 'Someone'} sent you a contact request`, 'info');
+      showToastMsg(NOTIFICATION.contactRequestReceived(data.request.from_user?.displayName || 'Someone'), 'info');
     } else if (data.type === 'contact_request_accepted') {
       // Our request was accepted
       setSentContactRequests(prev => prev.filter(r => r.id !== data.requestId));
-      showToastMsg('Your contact request was accepted!', 'success');
+      showToastMsg(NOTIFICATION.contactRequestAccepted, 'success');
       // Reload contacts since we have a new one
       fetchAPI('/contacts').then(setContacts).catch(console.error);
     } else if (data.type === 'contact_request_declined') {
       // Our request was declined
       setSentContactRequests(prev => prev.filter(r => r.id !== data.requestId));
-      showToastMsg('Your contact request was declined', 'info');
+      showToastMsg(NOTIFICATION.contactRequestDeclined, 'info');
     } else if (data.type === 'contact_request_cancelled') {
       // Request to us was cancelled
       setContactRequests(prev => prev.filter(r => r.id !== data.requestId));
@@ -519,14 +519,14 @@ function MainApp({ sharePingId }) {
       setGroupInvitations(prev => [data.invitation, ...prev]);
       const crewName = data.invitation.group?.name || 'a crew';
       const inviterName = data.invitation.invited_by_user?.displayName || 'Someone';
-      showToastMsg(`${inviterName} invited you to join ${crewName}`, 'info');
+      showToastMsg(NOTIFICATION.crewInviteReceived(inviterName, crewName), 'info');
     } else if (data.type === 'group_invitation_accepted') {
       // Our invitation was accepted - reload crews since someone joined
-      showToastMsg('Your crew invitation was accepted!', 'success');
+      showToastMsg(NOTIFICATION.crewInviteAccepted, 'success');
       fetchAPI('/groups').then(setGroups).catch(console.error);
     } else if (data.type === 'group_invitation_declined') {
       // Our invitation was declined
-      showToastMsg('Your crew invitation was declined', 'info');
+      showToastMsg(NOTIFICATION.crewInviteDeclined, 'info');
     } else if (data.type === 'group_invitation_cancelled') {
       // Invitation to us was cancelled
       setGroupInvitations(prev => prev.filter(i => i.id !== data.invitationId));
@@ -553,7 +553,7 @@ function MainApp({ sharePingId }) {
       console.log('📨 Federation request received:', data.request?.fromNodeName);
       setFederationRequestsRefresh(prev => prev + 1);
       if (user?.isAdmin) {
-        showToastMsg(`Federation request from ${data.request?.fromNodeName || 'unknown server'}`, 'info');
+        showToastMsg(NOTIFICATION.federationRequest(data.request?.fromNodeName || 'unknown server'), 'info');
       }
     } else if (data.type === 'watch_party_created' || data.type === 'watch_party_started') {
       // Watch party started in a wave (v2.14.0)
@@ -564,7 +564,7 @@ function MainApp({ sharePingId }) {
         [party.waveId]: party
       }));
       if (party.hostId !== user?.id) {
-        showToastMsg(`${party.hostName || 'Someone'} started a watch party`, 'info');
+        showToastMsg(NOTIFICATION.watchPartyStarted(party.hostName || 'Someone'), 'info');
       }
     } else if (data.type === 'watch_party_ended') {
       // Watch party ended (v2.14.0)
@@ -578,7 +578,7 @@ function MainApp({ sharePingId }) {
       // Close player if it was open for this party
       if (watchPartyPlayer?.partyId === partyId) {
         setWatchPartyPlayer(null);
-        showToastMsg('Watch party ended', 'info');
+        showToastMsg(NOTIFICATION.watchPartyEnded, 'info');
       }
     } else if (data.type === 'watch_party_sync') {
       // Watch party playback state sync (v2.14.0)
@@ -725,7 +725,7 @@ function MainApp({ sharePingId }) {
       setWatchPartyPlayer({ waveId, partyId });
     } catch (e) {
       console.error('Failed to join watch party:', e);
-      showToastMsg(e.message || 'Failed to join watch party', 'error');
+      showToastMsg(e.message || formatError('Failed to join watch party'), 'error');
     }
   }, [fetchAPI, showToastMsg]);
 
@@ -735,7 +735,7 @@ function MainApp({ sharePingId }) {
       setWatchPartyPlayer(null);
     } catch (e) {
       console.error('Failed to leave watch party:', e);
-      showToastMsg(e.message || 'Failed to leave watch party', 'error');
+      showToastMsg(e.message || formatError('Failed to leave watch party'), 'error');
     }
   }, [fetchAPI, showToastMsg]);
 
@@ -755,7 +755,7 @@ function MainApp({ sharePingId }) {
       showToastMsg('Alert dismissed', 'success');
     } catch (e) {
       console.error('Failed to dismiss alert:', e);
-      showToastMsg('Failed to dismiss alert', 'error');
+      showToastMsg(formatError('Failed to dismiss alert'), 'error');
     }
   }, [fetchAPI, showToastMsg]);
 
@@ -940,11 +940,11 @@ function MainApp({ sharePingId }) {
       // Previous behavior: if (e2ee.isUnlocked && e2ee.isE2EEEnabled) { create encrypted }
       // New default: all waves are unencrypted
       await fetchAPI('/waves', { method: 'POST', body: data });
-      showToastMsg('Wave created', 'success');
+      showToastMsg(SUCCESS.waveCreated, 'success');
       loadWaves();
     } catch (err) {
       console.error('Failed to create wave:', err);
-      showToastMsg(err.message || 'Failed to create wave', 'error');
+      showToastMsg(err.message || formatError('Failed to create wave'), 'error');
     }
   };
 
@@ -957,7 +957,7 @@ function MainApp({ sharePingId }) {
       setActiveView('waves');
       setShowSearch(false);
     } else {
-      showToastMsg('Wave not found or not accessible', 'error');
+      showToastMsg(formatError('Wave not found or not accessible'), 'error');
     }
   };
 
@@ -1389,7 +1389,7 @@ function MainApp({ sharePingId }) {
             showToastMsg(`Contact request sent to ${name}`, 'success');
             loadContactRequests();
           } catch (e) {
-            showToastMsg(e.message || 'Failed to send contact request', 'error');
+            showToastMsg(e.message || formatError('Failed to send contact request'), 'error');
           }
         }}
         onBlock={async (userId, name) => {
@@ -1408,7 +1408,7 @@ function MainApp({ sharePingId }) {
             showToastMsg(`Now following ${name}`, 'success');
             loadContacts();
           } catch (e) {
-            showToastMsg(e.message || 'Failed to follow user', 'error');
+            showToastMsg(e.message || formatError('Failed to follow user'), 'error');
           }
         }}
         onUnfollow={async (userId, name) => {
@@ -1417,7 +1417,7 @@ function MainApp({ sharePingId }) {
             showToastMsg(`Unfollowed ${name}`, 'success');
             loadContacts();
           } catch (e) {
-            showToastMsg(e.message || 'Failed to unfollow user', 'error');
+            showToastMsg(e.message || formatError('Failed to unfollow user'), 'error');
           }
         }}
         onNavigateToWave={(waveId, scrollToMessageId) => {
@@ -1430,7 +1430,7 @@ function MainApp({ sharePingId }) {
             fetchAPI(`/waves/${waveId}`).then(waveData => {
               setSelectedWave({ id: waveData.id, title: waveData.title, scrollToMessageId });
               setActiveView('waves');
-            }).catch(() => showToastMsg('Failed to open wave', 'error'));
+            }).catch(() => showToastMsg(formatError('Failed to open wave'), 'error'));
           }
         }}
         isMobile={isMobile}

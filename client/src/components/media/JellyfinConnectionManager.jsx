@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
 
 /**
  * JellyfinConnectionManager (v2.14.0)
@@ -37,7 +38,7 @@ const JellyfinConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
       setConnections(data.connections || []);
     } catch (err) {
       console.error('Failed to load Jellyfin connections:', err);
-      showToast('Failed to load Jellyfin connections', 'error');
+      showToast(formatError('Failed to load Jellyfin connections'), 'error');
     } finally {
       setLoading(false);
     }
@@ -125,17 +126,17 @@ const JellyfinConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
       if (result.success) {
         showToast('Connection successful!', 'success');
       } else {
-        showToast(result.error || 'Connection failed', 'error');
+        showToast(formatError(result.error || 'Connection failed'), 'error');
       }
     } catch (err) {
-      showToast(err.message || 'Connection test failed', 'error');
+      showToast(err.message || formatError('Connection test failed'), 'error');
     } finally {
       setTestingConnection(null);
     }
   };
 
   const handleDeleteConnection = async (connectionId) => {
-    if (!confirm('Are you sure you want to remove this Jellyfin connection?')) {
+    if (!confirm(CONFIRM_DIALOG.removeConnection)) {
       return;
     }
 
@@ -147,7 +148,7 @@ const JellyfinConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
       showToast('Connection removed', 'success');
       loadConnections();
     } catch (err) {
-      showToast(err.message || 'Failed to remove connection', 'error');
+      showToast(err.message || formatError('Failed to remove connection'), 'error');
     } finally {
       setDeletingConnection(null);
     }
@@ -161,7 +162,7 @@ const JellyfinConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
       showToast('Default connection updated', 'success');
       loadConnections();
     } catch (err) {
-      showToast(err.message || 'Failed to set default', 'error');
+      showToast(err.message || formatError('Failed to set default'), 'error');
     }
   };
 

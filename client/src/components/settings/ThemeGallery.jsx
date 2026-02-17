@@ -9,6 +9,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { THEMES } from '../../config/themes.js';
 import { applyCustomTheme, removeCustomTheme } from '../../hooks/useTheme.js';
+import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
 
 const ThemeGallery = ({
   fetchAPI,
@@ -44,7 +45,7 @@ const ThemeGallery = ({
       }
     } catch (error) {
       console.error('Error fetching gallery themes:', error);
-      showToast(error.message || 'Failed to load themes', 'error');
+      showToast(error.message || formatError('Failed to load themes'), 'error');
     } finally {
       setLoading(false);
     }
@@ -87,7 +88,7 @@ const ThemeGallery = ({
       });
 
       if (result.error) {
-        showToast(result.error, 'error');
+        showToast(formatError(result.error), 'error');
         return;
       }
 
@@ -111,7 +112,7 @@ const ThemeGallery = ({
       }
     } catch (error) {
       console.error('Error installing theme:', error);
-      showToast(error.message || 'Failed to install theme', 'error');
+      showToast(error.message || formatError('Failed to install theme'), 'error');
     }
   };
 
@@ -123,7 +124,7 @@ const ThemeGallery = ({
       });
 
       if (result.error) {
-        showToast(result.error, 'error');
+        showToast(formatError(result.error), 'error');
         return;
       }
 
@@ -141,13 +142,13 @@ const ThemeGallery = ({
       }
     } catch (error) {
       console.error('Error uninstalling theme:', error);
-      showToast('Failed to remove theme', 'error');
+      showToast(formatError('Failed to remove theme'), 'error');
     }
   };
 
   // Delete a theme (only for owner)
   const handleDelete = async (theme) => {
-    if (!confirm(`Delete "${theme.name}"? This cannot be undone.`)) {
+    if (!confirm(CONFIRM_DIALOG.deleteTheme(theme.name))) {
       return;
     }
 
@@ -157,7 +158,7 @@ const ThemeGallery = ({
       });
 
       if (result.error) {
-        showToast(result.error, 'error');
+        showToast(formatError(result.error), 'error');
         return;
       }
 
@@ -165,7 +166,7 @@ const ThemeGallery = ({
       showToast('Theme deleted', 'success');
     } catch (error) {
       console.error('Error deleting theme:', error);
-      showToast('Failed to delete theme', 'error');
+      showToast(formatError('Failed to delete theme'), 'error');
     }
   };
 

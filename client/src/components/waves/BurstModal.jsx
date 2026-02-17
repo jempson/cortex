@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatError } from '../../../messages.js';
 import { GlowText, Avatar } from '../ui/SimpleComponents.jsx';
 
 const BurstModal = ({ isOpen, onClose, ping, wave, participants, fetchAPI, showToast, isMobile, onSuccess }) => {
@@ -39,7 +40,7 @@ const BurstModal = ({ isOpen, onClose, ping, wave, participants, fetchAPI, showT
         onSuccess(result.newWave);
       }
     } catch (err) {
-      showToast(err.message || 'Failed to burst message', 'error');
+      showToast(err.message || formatError('Failed to burst message'), 'error');
     } finally {
       setSubmitting(false);
     }

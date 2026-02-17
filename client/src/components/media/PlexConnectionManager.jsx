@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
 
 /**
  * PlexConnectionManager (v2.15.0)
@@ -221,17 +222,17 @@ const PlexConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
       if (result.success) {
         showToast('Connection successful!', 'success');
       } else {
-        showToast(result.error || 'Connection failed', 'error');
+        showToast(formatError(result.error || 'Connection failed'), 'error');
       }
     } catch (err) {
-      showToast(err.message || 'Connection test failed', 'error');
+      showToast(err.message || formatError('Connection test failed'), 'error');
     } finally {
       setTestingConnection(null);
     }
   };
 
   const handleDeleteConnection = async (connectionId) => {
-    if (!confirm('Are you sure you want to remove this Plex connection?')) {
+    if (!confirm(CONFIRM_DIALOG.removeConnection)) {
       return;
     }
 
@@ -243,7 +244,7 @@ const PlexConnectionManager = ({ fetchAPI, showToast, isMobile }) => {
       showToast('Connection removed', 'success');
       loadConnections();
     } catch (err) {
-      showToast(err.message || 'Failed to remove connection', 'error');
+      showToast(err.message || formatError('Failed to remove connection'), 'error');
     } finally {
       setDeletingConnection(null);
     }

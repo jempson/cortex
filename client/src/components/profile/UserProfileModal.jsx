@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LOADING } from '../../../messages.js';
+import { LOADING, formatError } from '../../../messages.js';
 import { GlowText, Avatar } from '../ui/SimpleComponents.jsx';
 
 const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, showToast, contacts, blockedUsers, mutedUsers, onAddContact, onBlock, onMute, onFollow, onUnfollow, onNavigateToWave, isMobile }) => {
@@ -16,7 +16,7 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
         .then(data => setProfile(data))
         .catch(err => {
           console.error('Failed to load profile:', err);
-          showToast('Failed to load profile', 'error');
+          showToast(formatError('Failed to load profile'), 'error');
         })
         .finally(() => setLoading(false));
     }

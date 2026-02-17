@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { GlowText } from '../ui/SimpleComponents.jsx';
+import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
 
 const CategoryManagementModal = ({ isOpen, onClose, categories, fetchAPI, showToast, onCategoriesChange, isMobile }) => {
   const [editingCategory, setEditingCategory] = useState(null);
@@ -35,7 +36,7 @@ const CategoryManagementModal = ({ isOpen, onClose, categories, fetchAPI, showTo
       setNewCategoryColor('var(--accent-green)');
       onCategoriesChange();
     } catch (error) {
-      showToast(error.message || 'Failed to create category', 'error');
+      showToast(error.message || formatError('Failed to create category'), 'error');
     }
   };
 
@@ -51,12 +52,12 @@ const CategoryManagementModal = ({ isOpen, onClose, categories, fetchAPI, showTo
       setEditingCategory(null);
       onCategoriesChange();
     } catch (error) {
-      showToast(error.message || 'Failed to update category', 'error');
+      showToast(error.message || formatError('Failed to update category'), 'error');
     }
   };
 
   const handleDeleteCategory = async (categoryId) => {
-    if (!confirm('Delete this category? Waves in it will move to Uncategorized.')) {
+    if (!confirm(CONFIRM_DIALOG.deleteCategory)) {
       return;
     }
 
@@ -68,7 +69,7 @@ const CategoryManagementModal = ({ isOpen, onClose, categories, fetchAPI, showTo
       showToast('Category deleted successfully', 'success');
       onCategoriesChange();
     } catch (error) {
-      showToast(error.message || 'Failed to delete category', 'error');
+      showToast(error.message || formatError('Failed to delete category'), 'error');
     }
   };
 
@@ -97,7 +98,7 @@ const CategoryManagementModal = ({ isOpen, onClose, categories, fetchAPI, showTo
       onCategoriesChange();
     } catch (error) {
       console.error('Error reordering categories:', error);
-      showToast(error.message || 'Failed to reorder categories', 'error');
+      showToast(error.message || formatError('Failed to reorder categories'), 'error');
     }
   };
 

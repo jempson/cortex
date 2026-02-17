@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatError } from '../../../messages.js';
 import { GlowText, Avatar } from '../ui/SimpleComponents.jsx';
 
 const SendContactRequestModal = ({ isOpen, onClose, toUser, fetchAPI, showToast, onRequestSent, isMobile }) => {
@@ -19,7 +20,7 @@ const SendContactRequestModal = ({ isOpen, onClose, toUser, fetchAPI, showToast,
       setMessage('');
       onClose();
     } catch (err) {
-      showToast(err.message || 'Failed to send request', 'error');
+      showToast(err.message || formatError('Failed to send request'), 'error');
     }
     setSending(false);
   };

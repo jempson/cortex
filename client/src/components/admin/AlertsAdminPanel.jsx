@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
 
 const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [alerts, setAlerts] = useState([]);
@@ -24,7 +25,7 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       setAlerts(data.alerts || []);
     } catch (err) {
       if (!err.message?.includes('401')) {
-        showToast(err.message || 'Failed to load alerts', 'error');
+        showToast(err.message || formatError('Failed to load alerts'), 'error');
       }
     }
     setLoading(false);
@@ -123,19 +124,19 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       setShowCreateModal(false);
       loadAlerts();
     } catch (err) {
-      showToast(err.message || 'Failed to save alert', 'error');
+      showToast(err.message || formatError('Failed to save alert'), 'error');
     }
     setSaving(false);
   };
 
   const handleDelete = async (alertId) => {
-    if (!confirm('Delete this alert?')) return;
+    if (!confirm(CONFIRM_DIALOG.deleteAlert)) return;
     try {
       await fetchAPI(`/admin/alerts/${alertId}`, { method: 'DELETE' });
       showToast('Alert deleted', 'success');
       loadAlerts();
     } catch (err) {
-      showToast(err.message || 'Failed to delete alert', 'error');
+      showToast(err.message || formatError('Failed to delete alert'), 'error');
     }
   };
 

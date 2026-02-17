@@ -31,6 +31,7 @@ export const SUCCESS = {
   unblocked: "Airlock opened",
   muted: "Comm channel muted",
   unmuted: "Comm channel open",
+  pingSent: "Signal's away",
 };
 
 // ============ ERROR PREFIX ============
@@ -92,3 +93,81 @@ export const getRandomTagline = () =>
 // Format error with Firefly prefix (for non-technical errors)
 export const formatError = (message) =>
   `${ERROR_PREFIX} ${message}`;
+
+// ============ ERROR MESSAGES ============
+export const ERROR = {
+  generic: "Something went sideways",
+  connectionFailed: "Lost signal",
+  serverUnreachable: "Ship's grounded",
+  accessDenied: "Alliance interference",
+  sendFailed: "Signal didn't make it",
+  loadFailed: "Couldn't pull that in",
+  uploadFailed: "Cargo didn't make it aboard",
+  deleteFailed: "Couldn't jettison that",
+  updateFailed: "Couldn't patch that through",
+  encryptionFailed: "Encryption protocols failed",
+  searchFailed: "Scanner's on the fritz",
+  notFound: "Nothing out there in the black",
+};
+
+// ============ NOTIFICATION MESSAGES ============
+export const NOTIFICATION = {
+  waveDeleted: (title) => `"${title}" has gone dark`,
+  keyRotated: "Encryption keys rotated",
+  participantAdded: (name) => `${name} has boarded`,
+  participantRemoved: "Crew member removed from wave",
+  participantLeft: "A crew member jumped ship",
+  participantKicked: "Crew member shown the airlock",
+  addedToWave: (title) => `You've been pulled into "${title}"`,
+  removedFromWave: (title) => `You've been pulled from "${title}"`,
+  contactRequestReceived: (name) => `${name} wants to join your crew`,
+  contactRequestAccepted: "Your hail was answered — welcome aboard!",
+  contactRequestDeclined: "Your hail was declined",
+  crewInviteReceived: (inviter, crew) => `${inviter} wants you in the ${crew} crew`,
+  crewInviteAccepted: "Crew invite accepted",
+  crewInviteDeclined: "Crew invite declined",
+  federationRequest: (node) => `Federation request from ${node}`,
+  watchPartyStarted: (name) => `${name} started a watch party`,
+  watchPartyEnded: "Watch party ended",
+};
+
+// ============ CONFIRM DIALOG MESSAGES ============
+export const CONFIRM_DIALOG = {
+  deleteCrew: "Disband this crew? There's no putting it back together.",
+  leaveCrew: "Jump ship from this crew? You'll need a new invite to get back.",
+  leaveWave: "Leave this wave? You'll drift out of range.",
+  deleteMessage: "Scrub this signal from the cortex? Can't unring that bell.",
+  deleteBot: (name) => `Decommission ${name}? This can't be undone.`,
+  regenerateKey: "Generate new encryption keys? Old messages stay locked with the old keys.",
+  removeConnection: "Cut ties with this contact? The black is lonely.",
+  removeFederationNode: "Cut this node loose from the network?",
+  declineFederationRequest: "Decline this federation request?",
+  deleteAlert: "Scrub this alert from the cortex?",
+  unsubscribe: "Stop listening on this channel?",
+  deleteCategory: "Jettison this category? Waves inside will go uncategorized.",
+  removeParticipant: (name) => `Show ${name} the airlock?`,
+  revokeAccess: (title) => `Revoke access to "${title}"? They'll be cut off.`,
+  deleteWebhook: "Pull the plug on this webhook?",
+  clearLocalData: "Wipe local data? You'll need to log in again.",
+  deleteTheme: (name) => `Jettison the "${name}" theme? Can't get it back.`,
+};
+
+// ============ UI LABELS ============
+export const UI_LABELS = {
+  exportData: "Ship's Manifest",
+  deleteAccount: "Abandon Ship",
+  downloadData: "DOWNLOAD SHIP'S MANIFEST",
+  exportingData: "PREPARING MANIFEST...",
+};
+
+// ============ ERROR BOUNDARY ============
+export const ERROR_BOUNDARY = {
+  title: "Gorram it! Something went sideways",
+  retry: "Try to reboot",
+  stackTrace: "Diagnostic readout",
+};
+
+// ============ OFFLINE INDICATOR ============
+export const OFFLINE = {
+  message: "LOST SIGNAL — Running on reserve power",
+};
