@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 /**
- * Privacy & Encryption Dashboard (v2.22.0)
+ * Privacy & Encryption Dashboard (v2.24.0)
  *
  * Admin panel showing encryption status for all encryptable data types
  * with one-click migration buttons.
@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [migrating, setMigrating] = useState(null); // 'emails' | 'participation' | 'pushSubs' | null
+  const [migrating, setMigrating] = useState(null); // 'emails' | 'participation' | 'pushSubs' | 'crewMembers' | null
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -62,6 +62,18 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       loadStatus(); // Refresh stats
     } catch (err) {
       showToast(err.message || 'Push subscription migration failed', 'error');
+    }
+    setMigrating(null);
+  };
+
+  const handleMigrateCrewMembers = async () => {
+    setMigrating('crewMembers');
+    try {
+      const data = await fetchAPI('/admin/maintenance/migrate-crew-members', { method: 'POST' });
+      showToast(data.message || `Migrated ${data.migratedCrews} crews`, 'success');
+      loadStatus(); // Refresh stats
+    } catch (err) {
+      showToast(err.message || 'Crew membership migration failed', 'error');
     }
     setMigrating(null);
   };
@@ -290,6 +302,48 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
                 )}
               </div>
 
+              {/* Crew Membership Encryption (v2.24.0) */}
+              <div style={cardStyle}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ flex: 1, minWidth: '200px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '1rem' }}>🚀</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Crew Membership</span>
+                      {statusBadge(status.config?.crewMembershipEncryptionEnabled, status.config?.crewMembershipEncryptionEnabled ? 'KEY SET' : 'NO KEY')}
+                    </div>
+                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={labelStyle}>Total Crews</div>
+                        <div style={valueStyle}>{status.crewMembership?.totalCrews || 0}</div>
+                      </div>
+                      <div>
+                        <div style={labelStyle}>Encrypted</div>
+                        <div style={valueStyle}>{status.crewMembership?.encryptedCrews || 0}</div>
+                      </div>
+                      <div>
+                        <div style={labelStyle}>Pending</div>
+                        <div style={{ ...valueStyle, color: status.crewMembership?.migrationNeeded > 0 ? 'var(--accent-amber)' : 'var(--text-primary)' }}>
+                          {status.crewMembership?.migrationNeeded || 0}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ alignSelf: 'center' }}>
+                    {migrateButton(
+                      handleMigrateCrewMembers,
+                      !status.config?.crewMembershipEncryptionEnabled,
+                      migrating === 'crewMembers',
+                      status.crewMembership?.migrationNeeded || 0
+                    )}
+                  </div>
+                </div>
+                {!status.config?.crewMembershipEncryptionEnabled && (
+                  <div style={{ marginTop: '8px', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                    Set CREW_MEMBERSHIP_KEY to enable
+                  </div>
+                )}
+              </div>
+
               {/* Contacts (client-side encrypted) */}
               <div style={cardStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -303,7 +357,7 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
               </div>
 
               {/* Cache Stats */}
-              {(status.waveParticipation?.cacheStats || status.pushSubscriptions?.cacheStats) && (
+              {(status.waveParticipation?.cacheStats || status.pushSubscriptions?.cacheStats || status.crewMembership?.cacheStats) && (
                 <div style={{ marginTop: '16px', padding: '12px', background: 'var(--bg-surface)', border: '1px dashed var(--border-subtle)' }}>
                   <div style={{ ...labelStyle, marginBottom: '8px' }}>IN-MEMORY CACHE</div>
                   <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
@@ -320,6 +374,14 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
                           Push Users: {status.pushSubscriptions.cacheStats.userCount}
                         </span>
                         <span>Push Subs: {status.pushSubscriptions.cacheStats.subscriptionCount}</span>
+                      </>
+                    )}
+                    {status.crewMembership?.cacheStats && (
+                      <>
+                        <span style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: '12px' }}>
+                          Crews: {status.crewMembership.cacheStats.crewCount}
+                        </span>
+                        <span>Members: {status.crewMembership.cacheStats.userCount}</span>
                       </>
                     )}
                   </div>
