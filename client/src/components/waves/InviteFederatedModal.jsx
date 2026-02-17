@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatError } from '../../../messages.js';
 import { GlowText } from '../ui/SimpleComponents.jsx';
 
 const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMobile }) => {
@@ -53,10 +54,10 @@ const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMo
         onClose();
       } else {
         const error = await res.json();
-        showToast(error.error || 'Failed to invite', 'error');
+        showToast(error.error || formatError('Failed to invite'), 'error');
       }
     } catch (err) {
-      showToast('Failed to invite federated participants', 'error');
+      showToast(formatError('Failed to invite federated participants'), 'error');
     } finally {
       setInviting(false);
     }

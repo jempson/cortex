@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SUCCESS } from '../../../messages.js';
+import { SUCCESS, formatError } from '../../../messages.js';
 import { Avatar } from '../ui/SimpleComponents.jsx';
 
 const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, onContactsChange, isMobile }) => {
@@ -13,7 +13,7 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
       onRequestsChange();
       onContactsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to accept request', 'error');
+      showToast(err.message || formatError('Failed to accept request'), 'error');
     }
     setProcessing(prev => ({ ...prev, [requestId]: null }));
   };
@@ -25,7 +25,7 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
       showToast('Contact request declined', 'info');
       onRequestsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to decline request', 'error');
+      showToast(err.message || formatError('Failed to decline request'), 'error');
     }
     setProcessing(prev => ({ ...prev, [requestId]: null }));
   };

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatError } from '../../../messages.js';
 import { useE2EE } from '../../../e2ee-context.jsx';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 
@@ -56,7 +57,7 @@ const InviteToWaveModal = ({ isOpen, onClose, wave, contacts, participants, fetc
       } catch (keyErr) {
         console.error('E2EE: Failed to fetch wave key:', keyErr);
         setLoading(false);
-        showToast('Cannot add participants: Failed to load encryption key for this wave. Try reloading the wave first.', 'error');
+        showToast(formatError('Cannot add participants: Failed to load encryption key for this wave. Try reloading the wave first.'), 'error');
         return;
       }
     }
@@ -108,7 +109,7 @@ const InviteToWaveModal = ({ isOpen, onClose, wave, contacts, participants, fetc
       showToast(`⚠️ ${e2eeWarnings.join('; ')}`, 'warning');
     }
     if (errors.length > 0) {
-      showToast(errors.join(', '), 'error');
+      showToast(formatError(errors.join(', ')), 'error');
     }
   };
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError } from '../../../messages.js';
 
 const AdminReportsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [reports, setReports] = useState([]);
@@ -18,7 +19,7 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) 
         setReports(data.reports || []);
       }
     } catch (err) {
-      showToast('Failed to load reports', 'error');
+      showToast(formatError('Failed to load reports'), 'error');
     } finally {
       setLoading(false);
     }
@@ -45,10 +46,10 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) 
         loadReports();
       } else {
         const data = await res.json();
-        showToast(data.error || 'Failed to resolve report', 'error');
+        showToast(data.error || formatError('Failed to resolve report'), 'error');
       }
     } catch (err) {
-      showToast('Failed to resolve report', 'error');
+      showToast(formatError('Failed to resolve report'), 'error');
     }
   };
 
@@ -63,10 +64,10 @@ const AdminReportsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) 
         loadReports();
       } else {
         const data = await res.json();
-        showToast(data.error || 'Failed to dismiss report', 'error');
+        showToast(data.error || formatError('Failed to dismiss report'), 'error');
       }
     } catch (err) {
-      showToast('Failed to dismiss report', 'error');
+      showToast(formatError('Failed to dismiss report'), 'error');
     }
   };
 

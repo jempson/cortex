@@ -14,6 +14,7 @@ import {
   getCurrentThemeVariables,
 } from '../../hooks/useTheme.js';
 import { THEMES } from '../../config/themes.js';
+import { formatError } from '../../../messages.js';
 
 const ThemeEditor = ({
   theme = null, // Existing theme to edit, or null for new theme
@@ -108,7 +109,7 @@ const ThemeEditor = ({
       }
 
       if (result.error) {
-        showToast(result.error, 'error');
+        showToast(formatError(result.error), 'error');
         return;
       }
 
@@ -116,7 +117,7 @@ const ThemeEditor = ({
       onSave(result.theme || result);
     } catch (error) {
       console.error('Error saving theme:', error);
-      showToast('Failed to save theme', 'error');
+      showToast(formatError('Failed to save theme'), 'error');
     } finally {
       setSaving(false);
     }
@@ -152,7 +153,7 @@ const ThemeEditor = ({
         if (data.variables) setVariables(data.variables);
         showToast('Theme imported', 'success');
       } catch (error) {
-        showToast('Invalid theme file', 'error');
+        showToast(formatError('Invalid theme file'), 'error');
       }
     };
     reader.readAsText(file);

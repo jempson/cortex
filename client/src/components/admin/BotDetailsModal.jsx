@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
 
 const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate }) => {
   const [permissions, setPermissions] = useState(bot.permissions || []);
@@ -57,12 +58,12 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
       setPermissions(data.bot.permissions || []);
       onUpdate();
     } catch (err) {
-      showToast(err.message || 'Failed to grant permission', 'error');
+      showToast(err.message || formatError('Failed to grant permission'), 'error');
     }
   };
 
   const handleRevokePermission = async (waveId, waveTitle) => {
-    if (!confirm(`Revoke bot access to "${waveTitle}"?`)) return;
+    if (!confirm(CONFIRM_DIALOG.revokeAccess(waveTitle))) return;
 
     try {
       await fetchAPI(`/admin/bots/${bot.id}/permissions/${waveId}`, { method: 'DELETE' });
@@ -73,7 +74,7 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
       setPermissions(data.bot.permissions || []);
       onUpdate();
     } catch (err) {
-      showToast(err.message || 'Failed to revoke permission', 'error');
+      showToast(err.message || formatError('Failed to revoke permission'), 'error');
     }
   };
 

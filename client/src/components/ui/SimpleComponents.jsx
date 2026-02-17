@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BASE_URL, PRIVACY_LEVELS } from '../../config/constants.js';
+import { OFFLINE } from '../../../messages.js';
 
 // ============ SCAN LINES EFFECT ============
 export const ScanLines = ({ enabled = true }) => {
@@ -143,7 +144,7 @@ export const OfflineIndicator = () => {
       fontWeight: 'bold',
       zIndex: 9999
     }}>
-      OFFLINE - Some features unavailable
+      {OFFLINE.message}
     </div>
   );
 };

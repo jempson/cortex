@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SUCCESS, EMPTY, LOADING } from '../../../messages.js';
+import { SUCCESS, EMPTY, LOADING, formatError } from '../../../messages.js';
 import { useWindowSize } from '../../hooks/useWindowSize.js';
 import { GlowText, Avatar } from '../ui/SimpleComponents.jsx';
 import ContactRequestsPanel from './ContactRequestsPanel.jsx';
@@ -37,7 +37,7 @@ const ContactsView = ({
       showToast(SUCCESS.contactRemoved, 'success');
       onContactsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to remove contact', 'error');
+      showToast(err.message || formatError('Failed to remove contact'), 'error');
     }
   };
 

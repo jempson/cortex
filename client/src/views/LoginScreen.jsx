@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { VERSION, API_URL, BASE_URL, PRIVACY_LEVELS } from '../config/constants.js';
+import { CONFIRM_DIALOG } from '../../messages.js';
 import { useAuth } from '../hooks/useAPI.js';
 import { useWindowSize } from '../hooks/useWindowSize.js';
 import { LoadingSpinner, Toast, Avatar, GlowText, ScanLines } from '../components/ui/SimpleComponents.jsx';
@@ -400,7 +401,7 @@ const LoginScreen = ({ onAbout }) => {
         <div style={{ textAlign: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
           <button
             onClick={async () => {
-              if (confirm('This will clear all local data including saved login, encryption keys, and cached content. You will need to log in again. Continue?')) {
+              if (confirm(CONFIRM_DIALOG.clearLocalData)) {
                 try {
                   // Clear all storage
                   localStorage.clear();

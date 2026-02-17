@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useWindowSize } from '../../hooks/useWindowSize.js';
-import { SUCCESS, EMPTY } from '../../../messages.js';
+import { SUCCESS, EMPTY, CONFIRM_DIALOG, formatError } from '../../../messages.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import GroupInvitationsPanel from './GroupInvitationsPanel.jsx';
 import InviteToGroupModal from './InviteToGroupModal.jsx';
@@ -21,7 +21,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
     if (selectedGroup) {
       fetchAPI(`/groups/${selectedGroup}`)
         .then(setGroupDetails)
-        .catch(() => showToast('Failed to load crew', 'error'));
+        .catch(() => showToast(formatError('Failed to load crew'), 'error'));
     }
   }, [selectedGroup, fetchAPI, showToast]);
 
@@ -47,12 +47,12 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
       setShowNewGroup(false);
       onGroupsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to create crew', 'error');
+      showToast(err.message || formatError('Failed to create crew'), 'error');
     }
   };
 
   const handleDeleteGroup = async () => {
-    if (!confirm('Delete this crew?')) return;
+    if (!confirm(CONFIRM_DIALOG.deleteCrew)) return;
     try {
       await fetchAPI(`/groups/${selectedGroup}`, { method: 'DELETE' });
       showToast(SUCCESS.crewDeleted, 'success');
@@ -60,7 +60,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
       setGroupDetails(null);
       onGroupsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to delete crew', 'error');
+      showToast(err.message || formatError('Failed to delete crew'), 'error');
     }
   };
 
@@ -74,17 +74,17 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
       if (result.invitations?.length > 0) {
         showToast(SUCCESS.invitationSent, 'success');
       } else if (result.errors?.length > 0) {
-        showToast(result.errors[0].error || 'Failed to send invitation', 'error');
+        showToast(result.errors[0].error || formatError('Failed to send invitation'), 'error');
       }
       setMemberSearch('');
       setSearchResults([]);
     } catch (err) {
-      showToast(err.message || 'Failed to send invitation', 'error');
+      showToast(err.message || formatError('Failed to send invitation'), 'error');
     }
   };
 
   const handleLeaveGroup = async () => {
-    if (!confirm('Leave this crew?')) return;
+    if (!confirm(CONFIRM_DIALOG.leaveCrew)) return;
     try {
       await fetchAPI(`/groups/${selectedGroup}/members/${groupDetails.currentUserId}`, { method: 'DELETE' });
       showToast(SUCCESS.left, 'success');
@@ -92,7 +92,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
       setGroupDetails(null);
       onGroupsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to leave crew', 'error');
+      showToast(err.message || formatError('Failed to leave crew'), 'error');
     }
   };
 
@@ -104,7 +104,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
       setGroupDetails(updated);
       onGroupsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to remove member', 'error');
+      showToast(err.message || formatError('Failed to remove member'), 'error');
     }
   };
 
@@ -116,7 +116,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
       const updated = await fetchAPI(`/groups/${selectedGroup}`);
       setGroupDetails(updated);
     } catch (err) {
-      showToast(err.message || 'Failed to update role', 'error');
+      showToast(err.message || formatError('Failed to update role'), 'error');
     }
   };
 
@@ -357,7 +357,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, 
       const data = await fetchAPI(`/admin/users/search?q=${encodeURIComponent(searchQuery)}`);
       setSearchResults(data.users || []);
     } catch (err) {
-      showToast('Failed to search users', 'error');
+      showToast(formatError('Failed to search users'), 'error');
     } finally {
       setSearching(false);
     }
@@ -379,7 +379,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, 
       setShowConfirm(null);
       setSelectedUser(null);
     } catch (err) {
-      showToast(err.message || 'Failed to reset password', 'error');
+      showToast(err.message || formatError('Failed to reset password'), 'error');
     } finally {
       setActionLoading(false);
     }
@@ -394,7 +394,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, 
       setShowConfirm(null);
       setSelectedUser(null);
     } catch (err) {
-      showToast(err.message || 'Failed to disable MFA', 'error');
+      showToast(err.message || formatError('Failed to disable MFA'), 'error');
     } finally {
       setActionLoading(false);
     }
@@ -417,7 +417,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, 
       setSelectedUser(null);
       setPendingRole(null);
     } catch (err) {
-      showToast(err.message || 'Failed to change role', 'error');
+      showToast(err.message || formatError('Failed to change role'), 'error');
     } finally {
       setActionLoading(false);
     }
@@ -752,7 +752,7 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
         setActivities([]);
         setTotal(0);
       } else {
-        showToast('Failed to load activity log', 'error');
+        showToast(formatError('Failed to load activity log'), 'error');
       }
     } finally {
       setLoading(false);
@@ -843,7 +843,7 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
               setTotal(data.total || 0);
               setHasMore((data.activities || []).length === LIMIT);
             }).catch(() => {
-              showToast('Failed to load activity log', 'error');
+              showToast(formatError('Failed to load activity log'), 'error');
             }).finally(() => setLoading(false));
           }}
           style={{
@@ -980,7 +980,7 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle })
       setDefaultLocation(data.config?.default_location?.name || '');
     } catch (err) {
       if (!err.message?.includes('401')) {
-        showToast(err.message || 'Failed to load crawl config', 'error');
+        showToast(err.message || formatError('Failed to load crawl config'), 'error');
       }
     }
     setLoading(false);
@@ -1002,7 +1002,7 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle })
       setConfig(data.config);
       showToast('Crawl bar configuration updated', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to update config', 'error');
+      showToast(err.message || formatError('Failed to update config'), 'error');
     }
     setSaving(false);
   };
@@ -1326,7 +1326,7 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       setAlerts(data.alerts || []);
     } catch (err) {
       if (!err.message?.includes('401')) {
-        showToast(err.message || 'Failed to load alerts', 'error');
+        showToast(err.message || formatError('Failed to load alerts'), 'error');
       }
     }
     setLoading(false);
@@ -1425,19 +1425,19 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
       setShowCreateModal(false);
       loadAlerts();
     } catch (err) {
-      showToast(err.message || 'Failed to save alert', 'error');
+      showToast(err.message || formatError('Failed to save alert'), 'error');
     }
     setSaving(false);
   };
 
   const handleDelete = async (alertId) => {
-    if (!confirm('Delete this alert?')) return;
+    if (!confirm(CONFIRM_DIALOG.deleteAlert)) return;
     try {
       await fetchAPI(`/admin/alerts/${alertId}`, { method: 'DELETE' });
       showToast('Alert deleted', 'success');
       loadAlerts();
     } catch (err) {
-      showToast(err.message || 'Failed to delete alert', 'error');
+      showToast(err.message || formatError('Failed to delete alert'), 'error');
     }
   };
 
@@ -1808,7 +1808,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
       setFederationNodes(nodesData.nodes || []);
     } catch (err) {
       if (!err.message?.includes('401')) {
-        showToast(err.message || 'Failed to load subscriptions', 'error');
+        showToast(err.message || formatError('Failed to load subscriptions'), 'error');
       }
     }
     setLoading(false);
@@ -1877,19 +1877,19 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
       setShowAddModal(false);
       loadSubscriptions();
     } catch (err) {
-      showToast(err.message || 'Failed to save subscription', 'error');
+      showToast(err.message || formatError('Failed to save subscription'), 'error');
     }
     setSaving(false);
   };
 
   const handleDelete = async (subId) => {
-    if (!confirm('Unsubscribe from this node?')) return;
+    if (!confirm(CONFIRM_DIALOG.unsubscribe)) return;
     try {
       await fetchAPI(`/admin/alert-subscriptions/${subId}`, { method: 'DELETE' });
       showToast('Subscription removed', 'success');
       loadSubscriptions();
     } catch (err) {
-      showToast(err.message || 'Failed to remove subscription', 'error');
+      showToast(err.message || formatError('Failed to remove subscription'), 'error');
     }
   };
 
@@ -1902,7 +1902,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
       showToast(`Subscription ${sub.status === 'active' ? 'paused' : 'resumed'}`, 'success');
       loadSubscriptions();
     } catch (err) {
-      showToast(err.message || 'Failed to update subscription', 'error');
+      showToast(err.message || formatError('Failed to update subscription'), 'error');
     }
   };
 
@@ -2196,7 +2196,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
         setNodeName(statusData.nodeName);
       }
     } catch (err) {
-      showToast(err.message || 'Failed to load federation data', 'error');
+      showToast(err.message || formatError('Failed to load federation data'), 'error');
     }
     setLoading(false);
   }, [fetchAPI, showToast]);
@@ -2220,7 +2220,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       showToast('Federation identity configured', 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to configure identity', 'error');
+      showToast(err.message || formatError('Failed to configure identity'), 'error');
     }
   };
 
@@ -2240,7 +2240,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       setShowAddNode(false);
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to add node', 'error');
+      showToast(err.message || formatError('Failed to add node'), 'error');
     }
   };
 
@@ -2259,13 +2259,13 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
   };
 
   const handleDeleteNode = async (nodeId) => {
-    if (!confirm('Remove this federation node?')) return;
+    if (!confirm(CONFIRM_DIALOG.removeFederationNode)) return;
     try {
       await fetchAPI(`/admin/federation/nodes/${nodeId}`, { method: 'DELETE' });
       showToast('Node removed', 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to remove node', 'error');
+      showToast(err.message || formatError('Failed to remove node'), 'error');
     }
   };
 
@@ -2278,7 +2278,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       showToast(`Node ${newStatus}`, 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to update status', 'error');
+      showToast(err.message || formatError('Failed to update status'), 'error');
     }
   };
 
@@ -2302,7 +2302,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       setRequestMessage('');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to send federation request', 'error');
+      showToast(err.message || formatError('Failed to send federation request'), 'error');
     }
     setRequestLoading(false);
   };
@@ -2317,14 +2317,14 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       showToast(result.message || 'Federation request accepted!', 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to accept request', 'error');
+      showToast(err.message || formatError('Failed to accept request'), 'error');
     }
     setAcceptLoading(null);
   };
 
   // Decline incoming federation request
   const handleDeclineRequest = async (requestId) => {
-    if (!confirm('Decline this federation request?')) return;
+    if (!confirm(CONFIRM_DIALOG.declineFederationRequest)) return;
     setAcceptLoading(requestId);
     try {
       await fetchAPI(`/admin/federation/requests/${requestId}/decline`, {
@@ -2333,7 +2333,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       showToast('Federation request declined', 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to decline request', 'error');
+      showToast(err.message || formatError('Failed to decline request'), 'error');
     }
     setAcceptLoading(null);
   };
@@ -2931,7 +2931,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile, isOpen: controlledI
       const data = await fetchAPI('/admin/handle-requests');
       setRequests(data);
     } catch (err) {
-      showToast(err.message || 'Failed to load requests', 'error');
+      showToast(err.message || formatError('Failed to load requests'), 'error');
     }
     setLoading(false);
   };
@@ -2948,7 +2948,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile, isOpen: controlledI
       showToast('Handle change approved', 'success');
       loadRequests();
     } catch (err) {
-      showToast(err.message || 'Failed to approve', 'error');
+      showToast(err.message || formatError('Failed to approve'), 'error');
     }
   };
 
@@ -2962,7 +2962,7 @@ const HandleRequestsList = ({ fetchAPI, showToast, isMobile, isOpen: controlledI
       showToast('Handle change rejected', 'success');
       loadRequests();
     } catch (err) {
-      showToast(err.message || 'Failed to reject', 'error');
+      showToast(err.message || formatError('Failed to reject'), 'error');
     }
   };
 
@@ -3079,7 +3079,7 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
       const data = await fetchAPI('/admin/bots');
       setBots(data.bots || []);
     } catch (err) {
-      showToast(err.message || 'Failed to load bots', 'error');
+      showToast(err.message || formatError('Failed to load bots'), 'error');
     } finally {
       setLoading(false);
     }
@@ -3116,7 +3116,7 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
       loadBots();
       showToast(`Bot "${data.bot.name}" created`, 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to create bot', 'error');
+      showToast(err.message || formatError('Failed to create bot'), 'error');
     }
   };
 
@@ -3130,26 +3130,26 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
       showToast(`Bot ${status}`, 'success');
       loadBots();
     } catch (err) {
-      showToast(err.message || 'Failed to update bot', 'error');
+      showToast(err.message || formatError('Failed to update bot'), 'error');
     }
   };
 
   // Delete bot
   const handleDeleteBot = async (botId, botName) => {
-    if (!confirm(`Delete bot "${botName}"? This cannot be undone.`)) return;
+    if (!confirm(CONFIRM_DIALOG.deleteBot(botName))) return;
 
     try {
       await fetchAPI(`/admin/bots/${botId}`, { method: 'DELETE' });
       showToast(`Bot "${botName}" deleted`, 'success');
       loadBots();
     } catch (err) {
-      showToast(err.message || 'Failed to delete bot', 'error');
+      showToast(err.message || formatError('Failed to delete bot'), 'error');
     }
   };
 
   // Regenerate API key
   const handleRegenerateKey = async (botId) => {
-    if (!confirm('Regenerate API key? The old key will stop working immediately.')) return;
+    if (!confirm(CONFIRM_DIALOG.regenerateKey)) return;
 
     try {
       const data = await fetchAPI(`/admin/bots/${botId}/regenerate`, { method: 'POST' });
@@ -3158,7 +3158,7 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
       setShowApiKeyModal(true);
       showToast('API key regenerated', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to regenerate key', 'error');
+      showToast(err.message || formatError('Failed to regenerate key'), 'error');
     }
   };
 
@@ -3169,7 +3169,7 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
       setSelectedBot(data.bot);
       setShowDetailsModal(true);
     } catch (err) {
-      showToast(err.message || 'Failed to load bot details', 'error');
+      showToast(err.message || formatError('Failed to load bot details'), 'error');
     }
   };
 
@@ -3676,12 +3676,12 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
       setPermissions(data.bot.permissions || []);
       onUpdate();
     } catch (err) {
-      showToast(err.message || 'Failed to grant permission', 'error');
+      showToast(err.message || formatError('Failed to grant permission'), 'error');
     }
   };
 
   const handleRevokePermission = async (waveId, waveTitle) => {
-    if (!confirm(`Revoke bot access to "${waveTitle}"?`)) return;
+    if (!confirm(CONFIRM_DIALOG.revokeAccess(waveTitle))) return;
 
     try {
       await fetchAPI(`/admin/bots/${bot.id}/permissions/${waveId}`, { method: 'DELETE' });
@@ -3692,7 +3692,7 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
       setPermissions(data.bot.permissions || []);
       onUpdate();
     } catch (err) {
-      showToast(err.message || 'Failed to revoke permission', 'error');
+      showToast(err.message || formatError('Failed to revoke permission'), 'error');
     }
   };
 

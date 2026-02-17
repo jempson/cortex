@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
 
 const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [bots, setBots] = useState([]);
@@ -23,7 +24,7 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
       const data = await fetchAPI('/admin/bots');
       setBots(data.bots || []);
     } catch (err) {
-      showToast(err.message || 'Failed to load bots', 'error');
+      showToast(err.message || formatError('Failed to load bots'), 'error');
     } finally {
       setLoading(false);
     }
@@ -60,7 +61,7 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
       loadBots();
       showToast(`Bot "${data.bot.name}" created`, 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to create bot', 'error');
+      showToast(err.message || formatError('Failed to create bot'), 'error');
     }
   };
 
@@ -74,26 +75,26 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
       showToast(`Bot ${status}`, 'success');
       loadBots();
     } catch (err) {
-      showToast(err.message || 'Failed to update bot', 'error');
+      showToast(err.message || formatError('Failed to update bot'), 'error');
     }
   };
 
   // Delete bot
   const handleDeleteBot = async (botId, botName) => {
-    if (!confirm(`Delete bot "${botName}"? This cannot be undone.`)) return;
+    if (!confirm(CONFIRM_DIALOG.deleteBot(botName))) return;
 
     try {
       await fetchAPI(`/admin/bots/${botId}`, { method: 'DELETE' });
       showToast(`Bot "${botName}" deleted`, 'success');
       loadBots();
     } catch (err) {
-      showToast(err.message || 'Failed to delete bot', 'error');
+      showToast(err.message || formatError('Failed to delete bot'), 'error');
     }
   };
 
   // Regenerate API key
   const handleRegenerateKey = async (botId) => {
-    if (!confirm('Regenerate API key? The old key will stop working immediately.')) return;
+    if (!confirm(CONFIRM_DIALOG.regenerateKey)) return;
 
     try {
       const data = await fetchAPI(`/admin/bots/${botId}/regenerate`, { method: 'POST' });
@@ -102,7 +103,7 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
       setShowApiKeyModal(true);
       showToast('API key regenerated', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to regenerate key', 'error');
+      showToast(err.message || formatError('Failed to regenerate key'), 'error');
     }
   };
 
@@ -113,7 +114,7 @@ const BotsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => 
       setSelectedBot(data.bot);
       setShowDetailsModal(true);
     } catch (err) {
-      showToast(err.message || 'Failed to load bot details', 'error');
+      showToast(err.message || formatError('Failed to load bot details'), 'error');
     }
   };
 

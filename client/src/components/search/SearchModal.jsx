@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatError } from '../../../messages.js';
 
 const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -18,7 +19,7 @@ const SearchModal = ({ onClose, fetchAPI, showToast, onSelectMessage, isMobile }
       const data = await fetchAPI(`/search?q=${encodeURIComponent(searchQuery)}`);
       setResults(data.results || []);
     } catch (err) {
-      showToast(err.message || 'Search failed', 'error');
+      showToast(err.message || formatError('Search failed'), 'error');
     }
     setSearching(false);
   };

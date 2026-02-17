@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useE2EE } from '../../../e2ee-context.jsx';
 import { useSwipeGesture } from '../../hooks/useSwipeGesture.js';
-import { SUCCESS, EMPTY } from '../../../messages.js';
+import { SUCCESS, EMPTY, formatError, CONFIRM_DIALOG } from '../../../messages.js';
 import { PRIVACY_LEVELS } from '../../config/constants.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import Message from '../messages/Message.jsx';
@@ -194,7 +194,7 @@ const FocusView = ({
       // Immediately refresh to show the new ping
       fetchFreshData();
     } catch (err) {
-      showToast(err.message || 'Failed to send', 'error');
+      showToast(err.message || formatError('Failed to send'), 'error');
     }
   };
 
@@ -213,7 +213,7 @@ const FocusView = ({
         messagesRef.current.scrollTop = scrollTop;
       }
     } catch (err) {
-      showToast('Failed to react', 'error');
+      showToast(formatError('Failed to react'), 'error');
     }
   };
 
@@ -231,12 +231,12 @@ const FocusView = ({
   };
 
   const handleDeleteMessage = async (message) => {
-    if (!confirm('Delete this message?')) return;
+    if (!confirm(CONFIRM_DIALOG.deleteMessage)) return;
     try {
       await fetchAPI(`/pings/${message.id}`, { method: 'DELETE' });
       showToast(SUCCESS.messageDeleted, 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to delete', 'error');
+      showToast(err.message || formatError('Failed to delete'), 'error');
     }
   };
 
@@ -255,7 +255,7 @@ const FocusView = ({
       setEditContent('');
       showToast(SUCCESS.messageUpdated, 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to update', 'error');
+      showToast(err.message || formatError('Failed to update'), 'error');
     }
   };
 
