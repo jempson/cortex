@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LOADING, formatError } from '../../../messages.js';
+import { LOADING, FEDERATION, formatError } from '../../../messages.js';
 import { GlowText, Avatar } from '../ui/SimpleComponents.jsx';
 
 const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, showToast, contacts, blockedUsers, mutedUsers, onAddContact, onBlock, onMute, onFollow, onUnfollow, onNavigateToWave, isMobile }) => {
@@ -79,7 +79,7 @@ const UserProfileModal = ({ isOpen, onClose, userId, currentUser, fetchAPI, show
                 fontSize: '0.75rem', color: 'var(--accent-purple)',
               }}>
                 <span>◇</span>
-                <span>Federated User from <strong>{profile.nodeName}</strong></span>
+                <span>Traveler from <strong>{profile.nodeName}</strong></span>
               </div>
             )}
 

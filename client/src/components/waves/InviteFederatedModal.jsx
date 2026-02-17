@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatError } from '../../../messages.js';
+import { formatError, FEDERATION } from '../../../messages.js';
 import { GlowText } from '../ui/SimpleComponents.jsx';
 
 const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMobile }) => {
@@ -57,7 +57,7 @@ const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMo
         showToast(error.error || formatError('Failed to invite'), 'error');
       }
     } catch (err) {
-      showToast(formatError('Failed to invite federated participants'), 'error');
+      showToast(formatError(FEDERATION.failedToInviteTravelers), 'error');
     } finally {
       setInviting(false);
     }
@@ -77,15 +77,15 @@ const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMo
         maxHeight: '80vh', overflowY: 'auto',
       }} onClick={e => e.stopPropagation()}>
         <h3 style={{ color: 'var(--accent-teal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '1.2rem' }}>◇</span> FEDERATE WAVE
+          <span style={{ fontSize: '1.2rem' }}>◇</span> {FEDERATION.broadcastToVerse}
         </h3>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px' }}>
-          Invite users from other Cortex servers to join "{wave.title || wave.name}".
+          {FEDERATION.inviteTravelers} "{wave.title || wave.name}".
         </p>
 
         <div style={{ marginBottom: '16px' }}>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
-            ADD FEDERATED PARTICIPANTS
+            {FEDERATION.addTravelers}
           </div>
           <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input
@@ -131,7 +131,7 @@ const InviteFederatedModal = ({ isOpen, onClose, wave, fetchAPI, showToast, isMo
             </div>
           )}
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>
-            Format: @handle@server.com (user on another Cortex server)
+            {FEDERATION.travelerFormatHint}
           </div>
         </div>
 
