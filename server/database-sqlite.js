@@ -1714,6 +1714,25 @@ export class DatabaseSQLite {
       console.log('✅ Encrypted push subscriptions table created');
       console.log('   Run migration endpoint to encrypt existing push subscription data');
     }
+
+    // Create crew_members_encrypted table if it doesn't exist (v2.24.0)
+    const encryptedCrewMembersExists = this.db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='crew_members_encrypted'
+    `).get();
+
+    if (!encryptedCrewMembersExists) {
+      console.log('📝 Creating crew_members_encrypted table (v2.24.0)...');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS crew_members_encrypted (
+          crew_id TEXT PRIMARY KEY,
+          member_blob TEXT NOT NULL,
+          iv TEXT NOT NULL,
+          updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+        );
+      `);
+      console.log('✅ Encrypted crew members table created');
+      console.log('   Run migration endpoint to encrypt existing crew membership data');
+    }
   }
 
   prepareStatements() {
