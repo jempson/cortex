@@ -27,6 +27,7 @@ import { getEmailService } from './email-service.js';
 import { storage } from './storage.js';
 import * as waveParticipationCrypto from './lib/wave-participation-crypto.js';
 import * as pushSubscriptionCrypto from './lib/push-subscription-crypto.js';
+import * as crewMembershipCrypto from './lib/crew-membership-crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -4208,6 +4209,12 @@ if (USE_SQLITE) {
   }).catch(err => {
     console.error('Failed to initialize push subscription cache:', err.message);
   });
+  // Initialize crew membership cache (v2.24.0 - Privacy Hardening Phase 4)
+  crewMembershipCrypto.initializeCache(db).then(stats => {
+    console.log(`🔐 Crew membership cache initialized: ${stats.crewCount} crews, ${stats.memberCount} mappings`);
+  }).catch(err => {
+    console.error('Failed to initialize crew membership cache:', err.message);
+  });
 } else {
   console.log('📁 Using JSON file storage');
 }
@@ -4268,6 +4275,37 @@ const pushSubs = {
       return pushSubscriptionCrypto.removeByEndpoint(endpoint);
     }
     return db.removeExpiredPushSubscription(endpoint);
+  }
+};
+
+// Crew membership helpers - use crypto cache for SQLite, fallback to db methods for JSON (v2.24.0)
+const crewMembership = {
+  isMember: (crewId, userId) => USE_SQLITE
+    ? crewMembershipCrypto.isMember(crewId, userId)
+    : db.isGroupMember(crewId, userId),
+  addMember: (crewId, userId, role) => USE_SQLITE
+    ? crewMembershipCrypto.addMember(crewId, userId, role)
+    : db.addGroupMember(crewId, userId, role),
+  removeMember: (crewId, userId) => USE_SQLITE
+    ? crewMembershipCrypto.removeMember(crewId, userId)
+    : db.removeGroupMember(crewId, userId),
+  getCrewMembers: (crewId) => USE_SQLITE
+    ? crewMembershipCrypto.getCrewMembers(crewId)
+    : new Set(db.getGroupMembers(crewId).map(m => m.id)),
+  getCrewsForUser: (userId) => USE_SQLITE
+    ? crewMembershipCrypto.getCrewsForUser(userId)
+    : new Set(db.getGroupsForUser(userId).map(g => g.id)),
+  deleteCrewMembership: (crewId) => {
+    if (USE_SQLITE) {
+      crewMembershipCrypto.deleteCrewMembership(crewId);
+    }
+    // JSON storage handles this via deleteGroup
+  },
+  deleteUserMembership: (userId) => {
+    if (USE_SQLITE) {
+      crewMembershipCrypto.deleteUserMembership(userId);
+    }
+    // JSON storage handles this via deleteUser
   }
 };
 
@@ -6995,7 +7033,7 @@ app.post('/api/groups/:id/invite', authenticateToken, (req, res) => {
   }
 
   // Check if inviter is a group member
-  if (!db.isGroupMember(groupId, req.user.userId)) {
+  if (!crewMembership.isMember(groupId, req.user.userId)) {
     return res.status(403).json({ error: 'Only group members can invite others' });
   }
 
@@ -7036,7 +7074,7 @@ app.get('/api/groups/:id/invitations/sent', authenticateToken, (req, res) => {
   const groupId = sanitizeInput(req.params.id);
 
   // Check if requester is a group member
-  if (!db.isGroupMember(groupId, req.user.userId)) {
+  if (!crewMembership.isMember(groupId, req.user.userId)) {
     return res.status(403).json({ error: 'Not a group member' });
   }
 
@@ -11614,6 +11652,30 @@ app.post('/api/admin/maintenance/migrate-push-subscriptions', authenticateToken,
   }
 });
 
+// Migrate crew membership to encrypted storage (admin only) - v2.24.0
+app.post('/api/admin/maintenance/migrate-crew-members', authenticateToken, (req, res) => {
+  try {
+    const admin = db.findUserById(req.user.userId);
+    if (!requireRole(admin, ROLES.ADMIN, res)) return;
+
+    const result = crewMembershipCrypto.migrateToEncrypted();
+
+    if (result.success) {
+      console.log(`Admin ${admin.handle} migrated ${result.migratedCrews} crews to encrypted membership storage`);
+      res.json({
+        success: true,
+        migratedCrews: result.migratedCrews,
+        message: `Migrated ${result.migratedCrews} crews to encrypted storage`
+      });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  } catch (err) {
+    console.error('Crew membership migration error:', err);
+    res.status(500).json({ error: 'Failed to migrate crew membership data' });
+  }
+});
+
 // Get privacy status/stats (admin only)
 app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) => {
   try {
@@ -11637,6 +11699,11 @@ app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) =
     const totalPushSubUsers = db.db.prepare('SELECT COUNT(DISTINCT user_id) as count FROM push_subscriptions').get()?.count || 0;
     const totalPushSubs = db.db.prepare('SELECT COUNT(*) as count FROM push_subscriptions').get()?.count || 0;
 
+    // Crew membership protection stats (v2.24.0)
+    const crewMembershipStats = crewMembershipCrypto.getCacheStats();
+    const encryptedCrewsCount = db.db.prepare('SELECT COUNT(*) as count FROM crew_members_encrypted').get()?.count || 0;
+    const totalCrews = db.db.prepare('SELECT COUNT(DISTINCT crew_id) as count FROM crew_members').get()?.count || 0;
+
     res.json({
       totalUsers,
       emailProtection: {
@@ -11658,10 +11725,17 @@ app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) =
         cacheStats: pushSubStats,
         migrationNeeded: pushSubStats.encryptionEnabled ? (totalPushSubUsers - encryptedPushSubsCount) : 0
       },
+      crewMembership: {
+        totalCrews,
+        encryptedCrews: encryptedCrewsCount,
+        cacheStats: crewMembershipStats,
+        migrationNeeded: crewMembershipStats.encryptionEnabled ? (totalCrews - encryptedCrewsCount) : 0
+      },
       config: {
         emailEncryptionEnabled: !!EMAIL_ENCRYPTION_KEY,
         waveParticipationEncryptionEnabled: participationStats.encryptionEnabled,
         pushSubscriptionEncryptionEnabled: pushSubStats.encryptionEnabled,
+        crewMembershipEncryptionEnabled: crewMembershipStats.encryptionEnabled,
         activityLogRetentionDays: ACTIVITY_LOG_RETENTION_DAYS,
         sessionMaxAgeDays: SESSION_MAX_AGE_DAYS
       }
@@ -13714,7 +13788,7 @@ app.get('/api/groups/:id', authenticateToken, (req, res) => {
   const groupId = sanitizeInput(req.params.id);
   const group = db.getGroup(groupId);
   if (!group) return res.status(404).json({ error: 'Group not found' });
-  if (!db.isGroupMember(groupId, req.user.userId)) {
+  if (!crewMembership.isMember(groupId, req.user.userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
 
@@ -13766,12 +13840,12 @@ app.post('/api/groups/:id/members', authenticateToken, (req, res) => {
   if (!db.isGroupAdmin(groupId, req.user.userId)) {
     return res.status(403).json({ error: 'Admin access required' });
   }
-  
+
   const userId = sanitizeInput(req.body.userId);
   const user = db.findUserById(userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  
-  if (!db.addGroupMember(groupId, userId, req.body.role || 'member')) {
+
+  if (!crewMembership.addMember(groupId, userId, req.body.role || 'member')) {
     return res.status(409).json({ error: 'User already in group' });
   }
   res.status(201).json({ success: true });
@@ -13780,13 +13854,13 @@ app.post('/api/groups/:id/members', authenticateToken, (req, res) => {
 app.delete('/api/groups/:id/members/:userId', authenticateToken, (req, res) => {
   const groupId = sanitizeInput(req.params.id);
   const userId = sanitizeInput(req.params.userId);
-  
+
   // Allow self-removal or admin removal
   if (userId !== req.user.userId && !db.isGroupAdmin(groupId, req.user.userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
-  
-  if (!db.removeGroupMember(groupId, userId)) {
+
+  if (!crewMembership.removeMember(groupId, userId)) {
     return res.status(404).json({ error: 'Member not found' });
   }
   res.json({ success: true });
@@ -14512,7 +14586,7 @@ app.post('/api/waves', authenticateToken, async (req, res) => {
   if (privacy === 'group') {
     const groupId = sanitizeInput(req.body.groupId);
     if (!groupId) return res.status(400).json({ error: 'Group ID required for group waves' });
-    if (!db.isGroupMember(groupId, req.user.userId)) {
+    if (!crewMembership.isMember(groupId, req.user.userId)) {
       return res.status(403).json({ error: 'Must be group member' });
     }
   }
@@ -14642,7 +14716,7 @@ app.put('/api/waves/:id', authenticateToken, async (req, res) => {
     if (privacy === 'group') {
       groupId = sanitizeInput(req.body.groupId);
       if (!groupId) return res.status(400).json({ error: 'Group ID required' });
-      if (!db.isGroupMember(groupId, req.user.userId)) {
+      if (!crewMembership.isMember(groupId, req.user.userId)) {
         return res.status(403).json({ error: 'Must be group member' });
       }
     }

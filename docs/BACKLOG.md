@@ -157,7 +157,7 @@ ALTER TABLE group_invitations RENAME TO crew_invitations;
 
 E2EE protects message content, but metadata can reveal just as much. If someone gains database access, they shouldn't be able to "connect the dots" - who talks to whom, when, or how often. Our privacy claims must match our actual security posture.
 
-### Current State (After v2.18.0)
+### Current State (After v2.24.0)
 
 | Data Point | Current State | Risk Level |
 |------------|---------------|------------|
@@ -170,11 +170,11 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 | Contact lists | ✅ Client-encrypted blob (v2.18.0) | **Low** - Protected |
 | User → Wave relationships | ✅ Encrypted at rest (v2.21.0) | **Low** - Protected |
 | Push subscriptions | ✅ Encrypted at rest (v2.22.0) | **Low** - Protected |
-| Crew membership | Stored per-user | **High** - Group associations exposed |
+| Crew membership | ✅ Encrypted at rest (v2.24.0) | **Low** - Protected |
 | Avatars | Stored with user ID | **Low** - Potential recognition |
 
-**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps, contact lists, wave participation, push subscriptions
-**What's still exposed:** Crew membership
+**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps, contact lists, wave participation, push subscriptions, crew membership
+**What's still exposed:** Avatars (low risk)
 
 ### Implementation Progress
 
@@ -198,27 +198,37 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 - Wave IDs are random, not sequential (already done)
 - No global user directory (must know handle to find)
 - Rate-limited handle lookups
-- Encrypted crew membership lists
+- ~~Encrypted crew membership lists~~ ✅ COMPLETED (v2.24.0)
 
-**Phase 4: Plausible Deniability** (Future)
+**Phase 4: Encrypted Crew Membership** ✅ COMPLETED (v2.24.0)
+- ✅ Encrypt crew member lists (DB stores encrypted blobs)
+- ✅ Server uses in-memory cache for fast O(1) lookups
+- ✅ Plaintext table kept for metadata (role, joined_at)
+- ✅ Migration endpoint for existing data
+
+**Phase 5: Plausible Deniability** (Future)
 - Hidden waves (don't appear in lists)
 - Decoy traffic for federation
 - Can't prove user is in a wave without their key
 
-### Environment Variables (v2.17.0 - v2.21.0)
+### Environment Variables (v2.17.0 - v2.24.0)
 
 ```bash
 EMAIL_ENCRYPTION_KEY=<32-byte-hex>       # openssl rand -hex 32 (v2.17.0)
 WAVE_PARTICIPATION_KEY=<32-byte-hex>     # openssl rand -hex 32 (v2.21.0)
+PUSH_SUBSCRIPTION_KEY=<32-byte-hex>      # openssl rand -hex 32 (v2.22.0)
+CREW_MEMBERSHIP_KEY=<32-byte-hex>        # openssl rand -hex 32 (v2.24.0)
 ACTIVITY_LOG_RETENTION_DAYS=30
 SESSION_MAX_AGE_DAYS=30
 ```
 
-### Admin Endpoints (v2.17.0 - v2.21.0)
+### Admin Endpoints (v2.17.0 - v2.24.0)
 
 - `POST /api/admin/maintenance/migrate-emails` - Migrate existing users to encrypted email (v2.17.0)
 - `POST /api/admin/maintenance/migrate-wave-participants` - Migrate wave participation to encrypted storage (v2.21.0)
-- `GET /api/admin/maintenance/privacy-status` - View privacy protection stats (includes email, participation, contacts)
+- `POST /api/admin/maintenance/migrate-push-subscriptions` - Migrate push subscriptions to encrypted storage (v2.22.0)
+- `POST /api/admin/maintenance/migrate-crew-members` - Migrate crew membership to encrypted storage (v2.24.0)
+- `GET /api/admin/maintenance/privacy-status` - View privacy protection stats (includes all encrypted data types)
 
 ### Success Criteria
 
@@ -228,6 +238,7 @@ SESSION_MAX_AGE_DAYS=30
 - [x] Contact lists encrypted, server cannot read them (v2.18.0)
 - [x] Cannot determine who is in which wave from DB alone (v2.21.0)
 - [x] Cannot reconstruct social graph from DB (v2.21.0)
+- [x] Cannot determine group associations from DB alone (v2.24.0)
 - [ ] Privacy policy accurately reflects actual protections
 
 ---

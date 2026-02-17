@@ -5,6 +5,56 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.24.0] - 2026-02-16
+
+### Added
+
+#### Privacy Hardening Phase 4: Encrypted Crew Membership
+
+Crew membership data is now encrypted at rest so database dumps cannot reveal group associations.
+
+**Problem Solved:**
+- Database breach no longer reveals which users belong to which crews
+- Group associations cannot be reconstructed from database alone
+- Completes the social graph protection initiative
+
+**Architecture:**
+- Same pattern as wave participation encryption (v2.21.0) and push subscription encryption (v2.22.0)
+- Database stores encrypted member blobs per crew, keyed by crew ID
+- Server maintains in-memory cache for runtime operations (O(1) lookups)
+- Plaintext `crew_members` table kept for metadata (role, joined_at)
+- All API endpoints use wrapper helpers that route through cache
+
+**New Files:**
+- `server/lib/crew-membership-crypto.js` - Encryption/decryption + cache management
+
+**Database Changes:**
+- New `crew_members_encrypted` table with `crew_id`, `member_blob`, `iv`, `updated_at`
+
+**Environment Variable:**
+```bash
+CREW_MEMBERSHIP_KEY=<32-byte-hex>  # openssl rand -hex 32
+```
+
+**Admin Features:**
+- Migration endpoint: `POST /api/admin/maintenance/migrate-crew-members`
+- Privacy Dashboard updated with crew membership encryption status
+- One-click migration from plaintext to encrypted storage
+
+**How It Works:**
+1. Server startup: Decrypt all blobs into in-memory cache
+2. Runtime: All lookups use memory cache (fast O(1) access)
+3. Writes: Update both cache and encrypted blob atomically
+4. Without key: Falls back to plaintext storage (backward compatible)
+
+**Files Modified:**
+- `server/server.js` - Import crypto module, init cache, add wrapper helpers, migration endpoint, update privacy status
+- `server/schema.sql` - Add `crew_members_encrypted` table
+- `server/.env.example` - Document `CREW_MEMBERSHIP_KEY`
+- `docs/BACKLOG.md` - Mark crew membership encryption complete
+
+---
+
 ## [2.23.0] - 2026-02-16
 
 ### Added
