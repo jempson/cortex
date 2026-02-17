@@ -1,6 +1,6 @@
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-export const VERSION = '2.25.0';
+export const VERSION = '2.26.0';
 
 // Auto-detect production vs development
 export const isProduction = window.location.hostname !== 'localhost';
@@ -21,7 +21,7 @@ export const WS_URL = isProduction
 export const PRIVACY_LEVELS = {
   private: { name: 'Private', color: 'var(--accent-orange)', bgColor: 'var(--overlay-orange)', icon: '◉', desc: 'Only invited participants' },
   group: { name: 'Crew', color: 'var(--accent-amber)', bgColor: 'var(--overlay-amber)', icon: '◈', desc: 'All crew members' },
-  crossServer: { name: 'Cross-Server', color: 'var(--accent-teal)', bgColor: 'var(--overlay-teal)', icon: '◇', desc: 'Federated servers' },
+  crossServer: { name: 'Verse-Wide', color: 'var(--accent-teal)', bgColor: 'var(--overlay-teal)', icon: '◇', desc: 'Allied ports in the Verse' },
   public: { name: 'Public', color: 'var(--accent-green)', bgColor: 'var(--overlay-green)', icon: '○', desc: 'Visible to everyone' },
 };
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
-import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
+import { formatError, CONFIRM_DIALOG, FEDERATION } from '../../../messages.js';
 
 const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [alerts, setAlerts] = useState([]);
@@ -407,7 +407,7 @@ const AlertsAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
                 }}
               >
                 <option value="local">Local only</option>
-                <option value="federated">Federated (broadcast to subscribers)</option>
+                <option value="federated">{FEDERATION.scopeFederated}</option>
               </select>
             </div>
 

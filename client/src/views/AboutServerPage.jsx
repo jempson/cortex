@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { VERSION, API_URL, BASE_URL, PRIVACY_LEVELS } from '../config/constants.js';
+import { FEDERATION } from '../../messages.js';
 import { useWindowSize } from '../hooks/useWindowSize.js';
 import { LoadingSpinner, Toast, Avatar, GlowText } from '../components/ui/SimpleComponents.jsx';
 
@@ -101,7 +102,7 @@ const AboutServerPage = ({ onBack }) => {
                 color: 'var(--accent-purple)',
                 fontSize: '0.75rem',
               }}>
-                FEDERATION ENABLED
+                {FEDERATION.verseConnected}
               </span>
             )}
           </div>
@@ -140,7 +141,7 @@ const AboutServerPage = ({ onBack }) => {
         {info.federationEnabled && info.federation?.configured && (
           <div style={sectionStyle}>
             <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
-              Federated Servers ({info.federation.partnerCount})
+              {FEDERATION.alliedPortsLabel(info.federation.partnerCount)}
             </div>
             {info.federation.partners.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -158,7 +159,7 @@ const AboutServerPage = ({ onBack }) => {
               </div>
             ) : (
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                No federation partners yet
+                {FEDERATION.noAlliedPortsYet}
               </div>
             )}
           </div>

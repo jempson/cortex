@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlowText } from '../ui/SimpleComponents.jsx';
 import { PRIVACY_LEVELS } from '../../config/constants.js';
-import { SUCCESS, CONFIRM_DIALOG, formatError } from '../../../messages.js';
+import { SUCCESS, CONFIRM_DIALOG, FEDERATION, formatError } from '../../../messages.js';
 import { useE2EE } from '../../../e2ee-context.jsx';
 
 const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast, onUpdate, participants = [], showParticipants, setShowParticipants, federationEnabled, currentUserId, onFederate, isMobile }) => {
@@ -285,7 +285,7 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
         {/* Federation Section */}
         {federationEnabled && wave?.createdBy === currentUserId && wave?.federationState !== 'participant' && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>FEDERATION</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>{FEDERATION.verseSection}</div>
             <button
               onClick={onFederate}
               style={{
@@ -298,7 +298,7 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
               }}
             >
               <span>◇</span>
-              {wave?.federationState === 'origin' ? 'Manage federated participants' : 'Federate this wave'}
+              {wave?.federationState === 'origin' ? FEDERATION.manageTravelers : FEDERATION.broadcastBtn}
             </button>
           </div>
         )}

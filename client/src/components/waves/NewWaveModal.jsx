@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PRIVACY_LEVELS } from '../../config/constants.js';
+import { FEDERATION } from '../../../messages.js';
 import { GlowText, Avatar } from '../ui/SimpleComponents.jsx';
 
 const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups, federationEnabled }) => {
@@ -134,7 +135,7 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups, federationE
         {federationEnabled && privacy !== 'group' && (
           <div style={{ marginBottom: '16px' }}>
             <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
-              FEDERATED PARTICIPANTS <span style={{ color: 'var(--accent-teal)' }}>◇</span>
+              {FEDERATION.travelersLabel} <span style={{ color: 'var(--accent-teal)' }}>◇</span>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
               <input
@@ -180,7 +181,7 @@ const NewWaveModal = ({ isOpen, onClose, onCreate, contacts, groups, federationE
               </div>
             )}
             <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
-              Format: @handle@server.com (user on another Cortex server)
+              {FEDERATION.travelerFormatHint}
             </div>
           </div>
         )}

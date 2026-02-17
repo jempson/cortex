@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
-import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
+import { formatError, CONFIRM_DIALOG, FEDERATION } from '../../../messages.js';
 
 const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [subscriptions, setSubscriptions] = useState([]);
@@ -71,7 +71,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
       .map(([k]) => k);
 
     if (!formSourceNode && !editingSub) {
-      showToast('Please select a federation node', 'error');
+      showToast(FEDERATION.selectAlliedPort, 'error');
       return;
     }
     if (selectedCats.length === 0) {
@@ -167,7 +167,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
             <>
               {/* Info text */}
               <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '12px' }}>
-                Subscribe to receive alerts from federated servers. Choose which categories to receive.
+                {FEDERATION.subscribeInfo}
               </div>
 
               {/* Add button */}
@@ -185,12 +185,12 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
                 }}>+ NEW SUBSCRIPTION</button>
                 {availableNodes.length === 0 && federationNodes.length > 0 && (
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginLeft: '8px' }}>
-                    (subscribed to all nodes)
+                    {FEDERATION.subscribedToAllPorts}
                   </span>
                 )}
                 {federationNodes.length === 0 && (
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginLeft: '8px' }}>
-                    (no federation nodes configured)
+                    {FEDERATION.noAlliedPortsConfigured}
                   </span>
                 )}
               </div>
@@ -198,7 +198,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
               {/* Subscriptions list */}
               {subscriptions.length === 0 ? (
                 <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>
-                  No alert subscriptions configured
+                  {FEDERATION.noAlertSubscriptions}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -304,7 +304,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
             {/* Node selector */}
             {!editingSub && (
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>FEDERATION NODE</label>
+                <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '4px' }}>{FEDERATION.alliedPortLabel}</label>
                 <select
                   value={formSourceNode}
                   onChange={e => setFormSourceNode(e.target.value)}
@@ -318,7 +318,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
                     fontSize: '0.85rem',
                   }}
                 >
-                  <option value="">Select a node...</option>
+                  <option value="">{FEDERATION.selectPort}</option>
                   {availableNodes.map(node => (
                     <option key={node.id} value={node.node_name}>{node.node_name}</option>
                   ))}

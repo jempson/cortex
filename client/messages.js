@@ -126,7 +126,7 @@ export const NOTIFICATION = {
   crewInviteReceived: (inviter, crew) => `${inviter} wants you in the ${crew} crew`,
   crewInviteAccepted: "Crew invite accepted",
   crewInviteDeclined: "Crew invite declined",
-  federationRequest: (node) => `Federation request from ${node}`,
+  federationRequest: (node) => `Docking request from ${node}`,
   watchPartyStarted: (name) => `${name} started a watch party`,
   watchPartyEnded: "Watch party ended",
 };
@@ -140,8 +140,8 @@ export const CONFIRM_DIALOG = {
   deleteBot: (name) => `Decommission ${name}? This can't be undone.`,
   regenerateKey: "Generate new encryption keys? Old messages stay locked with the old keys.",
   removeConnection: "Cut ties with this contact? The black is lonely.",
-  removeFederationNode: "Cut this node loose from the network?",
-  declineFederationRequest: "Decline this federation request?",
+  removeFederationNode: "Cut this port loose from the Verse?",
+  declineFederationRequest: "Deny docking clearance for this request?",
   deleteAlert: "Scrub this alert from the cortex?",
   unsubscribe: "Stop listening on this channel?",
   deleteCategory: "Jettison this category? Waves inside will go uncategorized.",
@@ -150,6 +150,114 @@ export const CONFIRM_DIALOG = {
   deleteWebhook: "Pull the plug on this webhook?",
   clearLocalData: "Wipe local data? You'll need to log in again.",
   deleteTheme: (name) => `Jettison the "${name}" theme? Can't get it back.`,
+};
+
+// ============ FEDERATION / THE VERSE ============
+export const FEDERATION = {
+  // Panel headings & section labels
+  panelHeading: "THE VERSE",
+  portIdentity: "Port Identity",
+  alliedPorts: "Allied Ports",
+  incomingRequests: "Incoming Docking Requests",
+  alertSubscriptions: "ALERT SUBSCRIPTIONS",
+
+  // Status badges
+  verseConnected: "VERSE CONNECTED",
+  verseEnabled: "ENABLED",
+  verseDisabled: "DISABLED",
+  awaitingResponse: "AWAITING RESPONSE",
+  declined: "DECLINED",
+  keypairOk: "KEYPAIR OK",
+  noKeypair: "NO KEYPAIR",
+
+  // Stats
+  alliedPortsCount: "Allied Ports",
+  activeCount: "Active",
+
+  // Buttons & actions
+  requestDocking: "Request Docking",
+  dock: "DOCK",
+  docking: "DOCKING...",
+  addPort: "+ ADD PORT",
+  addPortBtn: "ADD PORT",
+  configure: "CONFIGURE",
+  accept: "ACCEPT",
+  accepting: "ACCEPTING...",
+  denyDocking: "DECLINE",
+  suspend: "SUSPEND",
+  reactivate: "REACTIVATE",
+  block: "BLOCK",
+  sendingRequest: "SENDING...",
+  sendRequest: "REQUEST DOCKING",
+
+  // Port/node form labels & placeholders
+  portNamePlaceholder: "farhold.example.com",
+  portUrlPlaceholder: "Server URL (e.g., https://other-farhold.com)",
+  addPortNamePlaceholder: "Port name (e.g., other-farhold.com)",
+  addPortUrlPlaceholder: "Base URL (e.g., https://other-farhold.com)",
+  optionalMessagePlaceholder: "Optional message (e.g., Requesting permission to dock!)",
+
+  // Help text & descriptions
+  requestDockingHelp: "Send a docking request to another Cortex port. They will need to grant docking clearance.",
+  envHint: "Set FEDERATION_ENABLED=true in server environment to enable the Verse.",
+  portNameMinLength: "Port name must be at least 3 characters",
+  portNameUrlRequired: "Port name and URL are required",
+
+  // Empty states
+  noAlliedPorts: "No allied ports in the Verse",
+  noAlertSubscriptions: "No alert subscriptions configured",
+
+  // Toast messages
+  identityConfigured: "Port identity configured",
+  portAdded: "Port added to the Verse",
+  portRemoved: "Port removed from the Verse",
+  dockingSuccessful: "Docking successful",
+  dockingRequestSent: "Docking request transmitted!",
+  dockingRequestAccepted: "Docking request accepted!",
+  dockingRequestDeclined: "Docking request denied",
+  requestWasDeclined: "Request was declined",
+  waitingForResponse: "Waiting for their response...",
+  lastContact: "Last contact",
+
+  // Travelers (federated users)
+  addTravelers: "ADD TRAVELERS",
+  travelersLabel: "TRAVELERS",
+  travelerFrom: (node) => `Traveler from ${node}`,
+  travelerFormatHint: "Format: @handle@server.com (traveler from another port)",
+  manageTravelers: "Manage travelers",
+
+  // Wave federation
+  broadcastToVerse: "BROADCAST TO THE VERSE",
+  broadcastBtn: "Broadcast to the Verse",
+  inviteTravelers: "Invite travelers from other ports to join",
+  scopeFederated: "Verse-Wide (broadcast to allied ports)",
+
+  // Section labels in settings
+  verseSection: "THE VERSE",
+
+  // Alert subscriptions
+  subscribeInfo: "Subscribe to receive alerts from allied ports. Choose which categories to receive.",
+  alliedPortLabel: "ALLIED PORT",
+  selectPort: "Select a port...",
+  subscribedToAllPorts: "(subscribed to all ports)",
+  noAlliedPortsConfigured: "(no allied ports configured)",
+  selectAlliedPort: "Please select an allied port",
+
+  // About page
+  alliedPortsLabel: (count) => `Allied Ports (${count})`,
+  noAlliedPortsYet: "No allied ports yet",
+
+  // formatError replacements
+  failedToLoadVerse: "Failed to load Verse data",
+  failedToConfigureIdentity: "Failed to configure port identity",
+  failedToAddPort: "Failed to add port",
+  failedToDock: "Docking failed",
+  failedToRemovePort: "Failed to remove port",
+  failedToUpdateStatus: "Failed to update port status",
+  failedToSendRequest: "Failed to send docking request",
+  failedToAcceptRequest: "Failed to accept docking request",
+  failedToDeclineRequest: "Failed to decline docking request",
+  failedToInviteTravelers: "Failed to invite travelers",
 };
 
 // ============ UI LABELS ============
