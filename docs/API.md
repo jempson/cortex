@@ -1,6 +1,6 @@
 # Cortex REST API Documentation
 
-Version: 2.0.0
+Version: 2.24.0
 
 ## Overview
 
@@ -39,6 +39,7 @@ The Cortex API is a RESTful API that powers the Cortex federated communication p
    - [Moderation](#moderation-endpoints)
    - [Admin](#admin-endpoints)
    - [Reports](#reports-endpoints)
+   - [Maintenance](#maintenance-endpoints)
    - [Federation](#federation-endpoints)
    - [Crawl Bar](#crawl-bar-endpoints)
 5. [WebSocket API](#websocket-api)
@@ -2696,6 +2697,176 @@ Resolve a report (admin only).
   "success": true
 }
 ```
+
+---
+
+### Maintenance Endpoints
+
+Administrative endpoints for privacy hardening and data migration.
+
+#### GET /api/admin/maintenance/privacy-status
+
+Get encryption and privacy protection status for all data types.
+
+**Authentication:** Required
+
+**Authorization:** Admin only
+
+**Response (200 OK):**
+
+```json
+{
+  "totalUsers": 150,
+  "emailProtection": {
+    "hashed": 150,
+    "encrypted": 150,
+    "plaintext": 0,
+    "migrationNeeded": 0
+  },
+  "waveParticipation": {
+    "totalWaves": 42,
+    "encryptedWaves": 42,
+    "cacheStats": {
+      "waveCount": 42,
+      "userCount": 85,
+      "totalMappings": 312,
+      "encryptionEnabled": true
+    },
+    "migrationNeeded": 0
+  },
+  "pushSubscriptions": {
+    "totalUsers": 75,
+    "totalSubscriptions": 120,
+    "encryptedUsers": 75,
+    "cacheStats": {
+      "userCount": 75,
+      "subscriptionCount": 120,
+      "encryptionEnabled": true
+    },
+    "migrationNeeded": 0
+  },
+  "crewMembership": {
+    "totalCrews": 8,
+    "encryptedCrews": 8,
+    "cacheStats": {
+      "crewCount": 8,
+      "userCount": 45,
+      "totalMappings": 45,
+      "encryptionEnabled": true
+    },
+    "migrationNeeded": 0
+  },
+  "config": {
+    "emailEncryptionEnabled": true,
+    "waveParticipationEncryptionEnabled": true,
+    "pushSubscriptionEncryptionEnabled": true,
+    "crewMembershipEncryptionEnabled": true,
+    "activityLogRetentionDays": 30,
+    "sessionMaxAgeDays": 30
+  }
+}
+```
+
+---
+
+#### POST /api/admin/maintenance/migrate-emails
+
+Migrate existing plaintext emails to encrypted storage.
+
+**Authentication:** Required
+
+**Authorization:** Admin only
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "migrated": 25,
+  "message": "Migrated 25 users to encrypted email storage"
+}
+```
+
+**Notes:**
+- Requires `EMAIL_ENCRYPTION_KEY` environment variable
+- Creates SHA-256 hash for lookup and AES-256-GCM encrypted copy for password reset
+
+---
+
+#### POST /api/admin/maintenance/migrate-wave-participants
+
+Migrate wave participation data to encrypted storage.
+
+**Authentication:** Required
+
+**Authorization:** Admin only
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "migratedWaves": 42,
+  "message": "Migrated 42 waves to encrypted storage"
+}
+```
+
+**Notes:**
+- Requires `WAVE_PARTICIPATION_KEY` environment variable
+- Encrypts participant lists per wave using AES-256-GCM
+- Server uses in-memory cache for runtime lookups
+
+---
+
+#### POST /api/admin/maintenance/migrate-push-subscriptions
+
+Migrate push subscription data to encrypted storage.
+
+**Authentication:** Required
+
+**Authorization:** Admin only
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "migratedUsers": 75,
+  "migratedSubscriptions": 120,
+  "message": "Migrated 75 users with 120 push subscriptions to encrypted storage"
+}
+```
+
+**Notes:**
+- Requires `PUSH_SUBSCRIPTION_KEY` environment variable
+- Encrypts subscription lists per user using AES-256-GCM
+- User identified by SHA-256 hash for deduplication
+
+---
+
+#### POST /api/admin/maintenance/migrate-crew-members
+
+Migrate crew membership data to encrypted storage.
+
+**Authentication:** Required
+
+**Authorization:** Admin only
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "migratedCrews": 8,
+  "message": "Migrated 8 crews to encrypted storage"
+}
+```
+
+**Notes:**
+- Requires `CREW_MEMBERSHIP_KEY` environment variable
+- Encrypts member lists per crew using AES-256-GCM
+- Plaintext table kept for metadata (role, joined_at)
+- Server uses in-memory cache for runtime lookups
 
 ---
 

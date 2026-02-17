@@ -151,7 +151,7 @@ ALTER TABLE group_invitations RENAME TO crew_invitations;
 
 ## Privacy Hardening: Metadata Protection
 
-**Priority:** High
+**Status:** Phases 1-4 Complete (v2.17.0 - v2.24.0)
 
 ### Background
 
