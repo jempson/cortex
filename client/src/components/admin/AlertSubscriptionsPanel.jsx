@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
 
 const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [subscriptions, setSubscriptions] = useState([]);
@@ -27,7 +28,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
       setFederationNodes(nodesData.nodes || []);
     } catch (err) {
       if (!err.message?.includes('401')) {
-        showToast(err.message || 'Failed to load subscriptions', 'error');
+        showToast(err.message || formatError('Failed to load subscriptions'), 'error');
       }
     }
     setLoading(false);
@@ -96,19 +97,19 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
       setShowAddModal(false);
       loadSubscriptions();
     } catch (err) {
-      showToast(err.message || 'Failed to save subscription', 'error');
+      showToast(err.message || formatError('Failed to save subscription'), 'error');
     }
     setSaving(false);
   };
 
   const handleDelete = async (subId) => {
-    if (!confirm('Unsubscribe from this node?')) return;
+    if (!confirm(CONFIRM_DIALOG.unsubscribe)) return;
     try {
       await fetchAPI(`/admin/alert-subscriptions/${subId}`, { method: 'DELETE' });
       showToast('Subscription removed', 'success');
       loadSubscriptions();
     } catch (err) {
-      showToast(err.message || 'Failed to remove subscription', 'error');
+      showToast(err.message || formatError('Failed to remove subscription'), 'error');
     }
   };
 
@@ -121,7 +122,7 @@ const AlertSubscriptionsPanel = ({ fetchAPI, showToast, isMobile, isOpen, onTogg
       showToast(`Subscription ${sub.status === 'active' ? 'paused' : 'resumed'}`, 'success');
       loadSubscriptions();
     } catch (err) {
-      showToast(err.message || 'Failed to update subscription', 'error');
+      showToast(err.message || formatError('Failed to update subscription'), 'error');
     }
   };
 

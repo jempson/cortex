@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
 
 const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0, isOpen, onToggle }) => {
   const [status, setStatus] = useState(null);
@@ -32,7 +33,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
         setNodeName(statusData.nodeName);
       }
     } catch (err) {
-      showToast(err.message || 'Failed to load federation data', 'error');
+      showToast(err.message || formatError('Failed to load federation data'), 'error');
     }
     setLoading(false);
   }, [fetchAPI, showToast]);
@@ -56,7 +57,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       showToast('Federation identity configured', 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to configure identity', 'error');
+      showToast(err.message || formatError('Failed to configure identity'), 'error');
     }
   };
 
@@ -76,7 +77,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       setShowAddNode(false);
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to add node', 'error');
+      showToast(err.message || formatError('Failed to add node'), 'error');
     }
   };
 
@@ -89,19 +90,19 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       showToast(result.message || 'Handshake successful', 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Handshake failed', 'error');
+      showToast(err.message || formatError('Handshake failed'), 'error');
     }
     setHandshakeLoading(null);
   };
 
   const handleDeleteNode = async (nodeId) => {
-    if (!confirm('Remove this federation node?')) return;
+    if (!confirm(CONFIRM_DIALOG.removeFederationNode)) return;
     try {
       await fetchAPI(`/admin/federation/nodes/${nodeId}`, { method: 'DELETE' });
       showToast('Node removed', 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to remove node', 'error');
+      showToast(err.message || formatError('Failed to remove node'), 'error');
     }
   };
 
@@ -114,7 +115,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       showToast(`Node ${newStatus}`, 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to update status', 'error');
+      showToast(err.message || formatError('Failed to update status'), 'error');
     }
   };
 
@@ -138,7 +139,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       setRequestMessage('');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to send federation request', 'error');
+      showToast(err.message || formatError('Failed to send federation request'), 'error');
     }
     setRequestLoading(false);
   };
@@ -153,14 +154,14 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       showToast(result.message || 'Federation request accepted!', 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to accept request', 'error');
+      showToast(err.message || formatError('Failed to accept request'), 'error');
     }
     setAcceptLoading(null);
   };
 
   // Decline incoming federation request
   const handleDeclineRequest = async (requestId) => {
-    if (!confirm('Decline this federation request?')) return;
+    if (!confirm(CONFIRM_DIALOG.declineFederationRequest)) return;
     setAcceptLoading(requestId);
     try {
       await fetchAPI(`/admin/federation/requests/${requestId}/decline`, {
@@ -169,7 +170,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       showToast('Federation request declined', 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || 'Failed to decline request', 'error');
+      showToast(err.message || formatError('Failed to decline request'), 'error');
     }
     setAcceptLoading(null);
   };

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useE2EE } from '../../../e2ee-context.jsx';
 import { useWindowSize } from '../../hooks/useWindowSize.js';
-import { SUCCESS, CONFIRM, EMPTY } from '../../../messages.js';
+import { SUCCESS, CONFIRM, CONFIRM_DIALOG, EMPTY, UI_LABELS, formatError } from '../../../messages.js';
 import { API_URL, canAccess, FONT_SIZES } from '../../config/constants.js';
 import { THEMES } from '../../config/themes.js';
 import { storage } from '../../utils/storage.js';
@@ -174,7 +174,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       setTotpSetupData(data);
       setMfaSetupStep('totp-verify');
     } catch (err) {
-      showToast(err.message || 'Failed to start TOTP setup', 'error');
+      showToast(err.message || formatError('Failed to start TOTP setup'), 'error');
     }
     setMfaLoading(false);
   };
@@ -208,7 +208,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       loadMfaStatus();
       showToast('TOTP disabled successfully', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to disable TOTP', 'error');
+      showToast(err.message || formatError('Failed to disable TOTP'), 'error');
     }
     setMfaLoading(false);
   };
@@ -221,7 +221,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       setMfaSetupStep('email-verify');
       showToast('Verification code sent to your email', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to start email MFA setup', 'error');
+      showToast(err.message || formatError('Failed to start email MFA setup'), 'error');
     }
     setMfaLoading(false);
   };
@@ -257,7 +257,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       setMfaDisablePassword('');
       showToast('Verification code sent to your email', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to send verification code', 'error');
+      showToast(err.message || formatError('Failed to send verification code'), 'error');
     }
     setMfaLoading(false);
   };
@@ -299,7 +299,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       setMfaDisableCode('');
       showToast('Recovery codes regenerated', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to regenerate recovery codes', 'error');
+      showToast(err.message || formatError('Failed to regenerate recovery codes'), 'error');
     }
     setMfaLoading(false);
   };
@@ -323,7 +323,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       setSessions(prev => prev.filter(s => s.id !== sessionId));
       showToast('Session revoked', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to revoke session', 'error');
+      showToast(err.message || formatError('Failed to revoke session'), 'error');
     }
   };
 
@@ -333,7 +333,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       showToast(`${data.revoked} session(s) revoked`, 'success');
       loadSessions(); // Refresh the list
     } catch (err) {
-      showToast(err.message || 'Failed to revoke sessions', 'error');
+      showToast(err.message || formatError('Failed to revoke sessions'), 'error');
     }
   };
 
@@ -435,7 +435,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
 
       showToast('Data exported successfully', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to export data', 'error');
+      showToast(err.message || formatError('Failed to export data'), 'error');
     }
     setExportLoading(false);
   };
@@ -460,7 +460,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
         onLogout();
       }, 1500);
     } catch (err) {
-      showToast(err.message || 'Failed to delete account', 'error');
+      showToast(err.message || formatError('Failed to delete account'), 'error');
       setDeleteLoading(false);
     }
   };
@@ -471,7 +471,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       setNotificationPrefs(data.preferences);
       showToast('Notification preferences updated', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to update notification preferences', 'error');
+      showToast(err.message || formatError('Failed to update notification preferences'), 'error');
     }
   };
 
@@ -481,7 +481,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       setBlockedUsers(prev => prev.filter(u => u.blockedUserId !== userId));
       showToast(`Unblocked ${name}`, 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to unblock user', 'error');
+      showToast(err.message || formatError('Failed to unblock user'), 'error');
     }
   };
 
@@ -491,7 +491,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       setMutedUsers(prev => prev.filter(u => u.mutedUserId !== userId));
       showToast(`Unmuted ${name}`, 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to unmute user', 'error');
+      showToast(err.message || formatError('Failed to unmute user'), 'error');
     }
   };
 
@@ -501,7 +501,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       showToast(SUCCESS.profileUpdated, 'success');
       onUserUpdate?.(updated);
     } catch (err) {
-      showToast(err.message || 'Failed to update profile', 'error');
+      showToast(err.message || formatError('Failed to update profile'), 'error');
     }
   };
 
@@ -553,7 +553,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       showToast('Profile image uploaded', 'success');
     } catch (err) {
       console.error('Avatar upload error:', err);
-      showToast(err.message || 'Failed to upload image', 'error');
+      showToast(err.message || formatError('Failed to upload image'), 'error');
     } finally {
       setUploadingAvatar(false);
     }
@@ -566,7 +566,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       onUserUpdate?.({ ...user, avatarUrl: null });
       showToast('Profile image removed', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to remove image', 'error');
+      showToast(err.message || formatError('Failed to remove image'), 'error');
     }
   };
 
@@ -599,7 +599,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       setNewPassword('');
       setConfirmPassword('');
     } catch (err) {
-      showToast(err.message || 'Failed to change password', 'error');
+      showToast(err.message || formatError('Failed to change password'), 'error');
     }
   };
 
@@ -610,7 +610,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       showToast('Handle change request submitted', 'success');
       setNewHandle('');
     } catch (err) {
-      showToast(err.message || 'Failed to request handle change', 'error');
+      showToast(err.message || formatError('Failed to request handle change'), 'error');
     }
   };
 
@@ -621,7 +621,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
       // Update user with new preferences
       onUserUpdate?.({ ...user, preferences: result.preferences });
     } catch (err) {
-      showToast(err.message || 'Failed to update preferences', 'error');
+      showToast(err.message || formatError('Failed to update preferences'), 'error');
     }
   };
 
@@ -1164,7 +1164,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                         }
                       } catch (err) {
                         console.error('Failed to regenerate recovery key:', err);
-                        showToast(err.message || 'Failed to regenerate recovery key', 'error');
+                        showToast(err.message || formatError('Failed to regenerate recovery key'), 'error');
                       } finally {
                         setE2eeRecoveryLoading(false);
                       }
@@ -1950,7 +1950,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                           setPushEnabled(true);
                           showToast('Push notifications enabled', 'success');
                         } else {
-                          showToast(result.reason || 'Failed to enable push notifications', 'error');
+                          showToast(result.reason || formatError('Failed to enable push notifications'), 'error');
                         }
                       }
                     }}
@@ -1978,7 +1978,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   {/* Reset button for troubleshooting */}
                   <button
                     onClick={async () => {
-                      if (confirm('This will reset your push notification state. You may need to re-enable notifications afterwards. Continue?')) {
+                      if (confirm(CONFIRM_DIALOG.clearLocalData)) {
                         showToast('Resetting push state...', 'info');
                         storage.setPushEnabled(false);
                         setPushEnabled(false);
@@ -2120,7 +2120,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
             {/* Data Export */}
             <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
               <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem', marginBottom: '8px' }}>
-                📦 Export Your Data
+                {"📦 " + UI_LABELS.exportData}
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
                 Download a copy of all your personal data including profile, pings, contacts, and settings.
@@ -2138,14 +2138,14 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   fontSize: '0.8rem',
                 }}
               >
-                {exportLoading ? 'EXPORTING...' : 'DOWNLOAD MY DATA'}
+                {exportLoading ? UI_LABELS.exportingData : UI_LABELS.downloadData}
               </button>
             </div>
 
             {/* Account Deletion */}
             <div style={{ padding: '16px', background: 'var(--accent-orange)05', border: '1px solid var(--accent-orange)' }}>
               <div style={{ color: 'var(--accent-orange)', fontSize: '0.85rem', marginBottom: '8px' }}>
-                ⚠️ Delete Account
+                {"⚠️ " + UI_LABELS.deleteAccount}
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '12px' }}>
                 Permanently delete your account and all associated data. This action cannot be undone.

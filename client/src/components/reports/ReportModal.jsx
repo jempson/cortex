@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatError } from '../../../messages.js';
 import { GlowText } from '../ui/SimpleComponents.jsx';
 
 // Report reasons constant
@@ -37,10 +38,10 @@ const ReportModal = ({ isOpen, onClose, type, targetId, targetPreview, fetchAPI,
         onClose();
       } else {
         const data = await res.json();
-        showToast(data.error || 'Failed to submit report', 'error');
+        showToast(data.error || formatError('Failed to submit report'), 'error');
       }
     } catch (err) {
-      showToast('Failed to submit report', 'error');
+      showToast(formatError('Failed to submit report'), 'error');
     } finally {
       setSubmitting(false);
     }

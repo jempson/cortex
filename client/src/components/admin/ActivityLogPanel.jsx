@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError } from '../../../messages.js';
 
 const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [activities, setActivities] = useState([]);
@@ -52,7 +53,7 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
         setActivities([]);
         setTotal(0);
       } else {
-        showToast('Failed to load activity log', 'error');
+        showToast(formatError('Failed to load activity log'), 'error');
       }
     } finally {
       setLoading(false);
@@ -143,7 +144,7 @@ const ActivityLogPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
               setTotal(data.total || 0);
               setHasMore((data.activities || []).length === LIMIT);
             }).catch(() => {
-              showToast('Failed to load activity log', 'error');
+              showToast(formatError('Failed to load activity log'), 'error');
             }).finally(() => setLoading(false));
           }}
           style={{

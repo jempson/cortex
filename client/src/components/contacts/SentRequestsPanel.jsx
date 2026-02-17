@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatError } from '../../../messages.js';
 import { Avatar } from '../ui/SimpleComponents.jsx';
 
 const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, isMobile }) => {
@@ -12,7 +13,7 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
       showToast('Contact request cancelled', 'info');
       onRequestsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to cancel request', 'error');
+      showToast(err.message || formatError('Failed to cancel request'), 'error');
     }
     setCancelling(prev => ({ ...prev, [requestId]: false }));
   };

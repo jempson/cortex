@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { canAccess } from '../../config/constants.js';
-import { LOADING } from '../../../messages.js';
+import { LOADING, formatError } from '../../../messages.js';
 
 const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, currentUser }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -19,7 +19,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, 
       const data = await fetchAPI(`/admin/users/search?q=${encodeURIComponent(searchQuery)}`);
       setSearchResults(data.users || []);
     } catch (err) {
-      showToast('Failed to search users', 'error');
+      showToast(formatError('Failed to search users'), 'error');
     } finally {
       setSearching(false);
     }
@@ -41,7 +41,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, 
       setShowConfirm(null);
       setSelectedUser(null);
     } catch (err) {
-      showToast(err.message || 'Failed to reset password', 'error');
+      showToast(err.message || formatError('Failed to reset password'), 'error');
     } finally {
       setActionLoading(false);
     }
@@ -56,7 +56,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, 
       setShowConfirm(null);
       setSelectedUser(null);
     } catch (err) {
-      showToast(err.message || 'Failed to disable MFA', 'error');
+      showToast(err.message || formatError('Failed to disable MFA'), 'error');
     } finally {
       setActionLoading(false);
     }
@@ -79,7 +79,7 @@ const UserManagementPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle, 
       setSelectedUser(null);
       setPendingRole(null);
     } catch (err) {
-      showToast(err.message || 'Failed to change role', 'error');
+      showToast(err.message || formatError('Failed to change role'), 'error');
     } finally {
       setActionLoading(false);
     }

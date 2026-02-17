@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useE2EE } from '../../../e2ee-context.jsx';
 import { useVoiceCall } from '../../hooks/useVoiceCall.js';
-import { SUCCESS, EMPTY, CONFIRM } from '../../../messages.js';
+import { SUCCESS, EMPTY, CONFIRM, CONFIRM_DIALOG, formatError } from '../../../messages.js';
 import { PRIVACY_LEVELS, API_URL } from '../../config/constants.js';
 import { Avatar, GlowText, PrivacyBadge, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { LegacyWaveNotice, PartialEncryptionBanner } from '../../../e2ee-components.jsx';
@@ -196,7 +196,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       // Reload wave to show/hide blocked user's pings
       loadWave(true);
     } else {
-      showToast(`Failed to ${wasBlocked ? 'unblock' : 'block'} user`, 'error');
+      showToast(formatError(`Failed to ${wasBlocked ? 'unblock' : 'block'} user`), 'error');
     }
     setShowModMenu(null);
   };
@@ -212,7 +212,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       // Reload wave to show/hide muted user's pings
       loadWave(true);
     } else {
-      showToast(`Failed to ${wasMuted ? 'unmute' : 'mute'} user`, 'error');
+      showToast(formatError(`Failed to ${wasMuted ? 'unmute' : 'mute'} user`), 'error');
     }
     setShowModMenu(null);
   };
@@ -226,7 +226,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       showToast(`Contact request sent to ${participant.name}`, 'success');
       onRequestsChange?.();
     } catch (err) {
-      showToast(err.message || 'Failed to send request', 'error');
+      showToast(err.message || formatError('Failed to send request'), 'error');
     }
   };
 
@@ -239,7 +239,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       onRequestsChange?.();
       onContactsChange?.();
     } catch (err) {
-      showToast(err.message || 'Failed to accept request', 'error');
+      showToast(err.message || formatError('Failed to accept request'), 'error');
     }
   };
 
@@ -798,7 +798,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }
     } catch (err) {
       console.error('Failed to load wave:', err);
-      showToast('Failed to load wave', 'error');
+      showToast(formatError('Failed to load wave'), 'error');
     }
     if (!isRefresh) {
       setLoading(false);
@@ -854,7 +854,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }
     } catch (err) {
       console.error('Failed to enable encryption:', err);
-      showToast(err.message || 'Failed to enable encryption', 'error');
+      showToast(err.message || formatError('Failed to enable encryption'), 'error');
     } finally {
       setIsEnablingEncryption(false);
     }
@@ -897,7 +897,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       await loadEncryptionStatus();
     } catch (err) {
       console.error('Failed to encrypt batch:', err);
-      showToast(err.message || 'Failed to encrypt messages', 'error');
+      showToast(err.message || formatError('Failed to encrypt messages'), 'error');
     } finally {
       setIsEncryptingBatch(false);
     }
@@ -978,7 +978,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         setHasMoreMessages(false);
       }
     } catch (err) {
-      showToast('Failed to load older messages', 'error');
+      showToast(formatError('Failed to load older messages'), 'error');
     }
     setLoadingMore(false);
   };
@@ -1049,7 +1049,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         setHasMoreMessages(false);
         showToast(`Loaded ${allMessages.length} messages`, 'success');
       } catch (err) {
-        showToast('Failed to load all messages for playback', 'error');
+        showToast(formatError('Failed to load all messages for playback'), 'error');
         return;
       }
     }
@@ -1088,7 +1088,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           };
         } catch (encryptErr) {
           console.error('Failed to encrypt message:', encryptErr);
-          showToast('Failed to encrypt message', 'error');
+          showToast(formatError('Failed to encrypt message'), 'error');
           userActionInProgressRef.current = false;
           return;
         }
@@ -1119,7 +1119,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         }, 150);
       }
     } catch (err) {
-      showToast('Failed to send message', 'error');
+      showToast(formatError('Failed to send message'), 'error');
       scrollPositionToRestore.current = null; // Clear on error
       userActionInProgressRef.current = false;
     }
@@ -1165,7 +1165,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       showToast('Image uploaded', 'success');
       textareaRef.current?.focus();
     } catch (err) {
-      showToast(err.message || 'Failed to upload image', 'error');
+      showToast(err.message || formatError('Failed to upload image'), 'error');
     } finally {
       setUploading(false);
       // Reset file input
@@ -1244,7 +1244,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           };
         } catch (encryptErr) {
           console.error('Failed to encrypt message:', encryptErr);
-          showToast('Failed to encrypt message', 'error');
+          showToast(formatError('Failed to encrypt message'), 'error');
           setUploadingMedia(false);
           setMediaUploadStatus('');
           return;
@@ -1267,7 +1267,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         }
       }, 150);
     } catch (err) {
-      showToast(err.message || 'Failed to send media', 'error');
+      showToast(err.message || formatError('Failed to send media'), 'error');
     } finally {
       setUploadingMedia(false);
       setMediaUploadStatus('');
@@ -1284,7 +1284,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       onWaveUpdate?.();
       onBack();
     } catch (err) {
-      showToast('Failed to archive wave', 'error');
+      showToast(formatError('Failed to archive wave'), 'error');
     }
   };
 
@@ -1299,7 +1299,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       onBack();
       onWaveUpdate?.();
     } catch (err) {
-      showToast(err.message || 'Failed to delete wave', 'error');
+      showToast(err.message || formatError('Failed to delete wave'), 'error');
     }
   };
 
@@ -1366,7 +1366,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       onWaveUpdate?.();
     } catch (err) {
       console.error('Wave decryption error:', err);
-      showToast(err.message || 'Failed to decrypt wave', 'error');
+      showToast(err.message || formatError('Failed to decrypt wave'), 'error');
     } finally {
       setDecryptingWave(false);
     }
@@ -1410,7 +1410,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         userActionInProgressRef.current = false;
       }, 150);
     } catch (err) {
-      showToast(err.message || 'Failed to update message', 'error');
+      showToast(err.message || formatError('Failed to update message'), 'error');
       scrollPositionToRestore.current = null;
       userActionInProgressRef.current = false;
     }
@@ -1440,7 +1440,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         userActionInProgressRef.current = false;
       }, 150);
     } catch (err) {
-      showToast(err.message || 'Failed to add reaction', 'error');
+      showToast(err.message || formatError('Failed to add reaction'), 'error');
       scrollPositionToRestore.current = null;
       userActionInProgressRef.current = false;
     }
@@ -1474,7 +1474,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
         userActionInProgressRef.current = false;
       }, 150);
     } catch (err) {
-      showToast(err.message || 'Failed to delete message', 'error');
+      showToast(err.message || formatError('Failed to delete message'), 'error');
       scrollPositionToRestore.current = null;
       userActionInProgressRef.current = false;
     }
@@ -1505,7 +1505,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       }, 150);
     } catch (err) {
       console.error(`❌ Failed to mark ping ${messageId} as read:`, err);
-      showToast('Failed to mark ping as read', 'error');
+      showToast(formatError('Failed to mark ping as read'), 'error');
       scrollPositionToRestore.current = null;
       userActionInProgressRef.current = false;
     }
@@ -1936,7 +1936,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                   onWaveUpdate?.();
                   showToast(`Marked ${unreadPings.length} ping${unreadPings.length !== 1 ? 's' : ''} as read`, 'success');
                 } catch (err) {
-                  showToast('Failed to mark pings as read', 'error');
+                  showToast(formatError('Failed to mark pings as read'), 'error');
                 }
               }}
               style={{
@@ -1996,13 +1996,13 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
               {waveData?.createdBy !== currentUser?.id && participants.some(p => p.id === currentUser?.id) && (
                 <button
                   onClick={async () => {
-                    if (confirm('Are you sure you want to leave this wave?')) {
+                    if (confirm(CONFIRM_DIALOG.leaveWave)) {
                       try {
                         await fetchAPI(`/waves/${wave.id}/participants/${currentUser.id}`, { method: 'DELETE' });
                         showToast('You have left the wave', 'success');
                         onBack();
                       } catch (err) {
-                        showToast(err.message || 'Failed to leave wave', 'error');
+                        showToast(err.message || formatError('Failed to leave wave'), 'error');
                       }
                     }
                   }}
@@ -2202,14 +2202,14 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                         {waveData?.createdBy === currentUser?.id && (
                           <button
                             onClick={async () => {
-                              if (confirm(`Remove ${p.name} from this wave?`)) {
+                              if (confirm(CONFIRM_DIALOG.removeParticipant(p.name))) {
                                 try {
                                   await fetchAPI(`/waves/${wave.id}/participants/${p.id}`, { method: 'DELETE' });
                                   showToast(`${p.name} removed from wave`, 'success');
                                   setShowModMenu(null);
                                   loadWave(); // Refresh participants
                                 } catch (err) {
-                                  showToast(err.message || 'Failed to remove participant', 'error');
+                                  showToast(err.message || formatError('Failed to remove participant'), 'error');
                                 }
                               }
                             }}
@@ -3033,7 +3033,7 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
       onRequestsChange();
       onContactsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to accept request', 'error');
+      showToast(err.message || formatError('Failed to accept request'), 'error');
     }
     setProcessing(prev => ({ ...prev, [requestId]: null }));
   };
@@ -3045,7 +3045,7 @@ const ContactRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange,
       showToast('Contact request declined', 'info');
       onRequestsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to decline request', 'error');
+      showToast(err.message || formatError('Failed to decline request'), 'error');
     }
     setProcessing(prev => ({ ...prev, [requestId]: null }));
   };
@@ -3129,7 +3129,7 @@ const SentRequestsPanel = ({ requests, fetchAPI, showToast, onRequestsChange, is
       showToast('Contact request cancelled', 'info');
       onRequestsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to cancel request', 'error');
+      showToast(err.message || formatError('Failed to cancel request'), 'error');
     }
     setCancelling(prev => ({ ...prev, [requestId]: false }));
   };
@@ -3220,7 +3220,7 @@ const SendContactRequestModal = ({ isOpen, onClose, toUser, fetchAPI, showToast,
       setMessage('');
       onClose();
     } catch (err) {
-      showToast(err.message || 'Failed to send request', 'error');
+      showToast(err.message || formatError('Failed to send request'), 'error');
     }
     setSending(false);
   };
@@ -3308,7 +3308,7 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
       onInvitationsChange();
       onGroupsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to accept invitation', 'error');
+      showToast(err.message || formatError('Failed to accept invitation'), 'error');
     }
     setProcessing(prev => ({ ...prev, [invitationId]: null }));
   };
@@ -3320,7 +3320,7 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
       showToast('Crew invitation declined', 'info');
       onInvitationsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to decline invitation', 'error');
+      showToast(err.message || formatError('Failed to decline invitation'), 'error');
     }
     setProcessing(prev => ({ ...prev, [invitationId]: null }));
   };
@@ -3441,7 +3441,7 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
       setSearchQuery('');
       onClose();
     } catch (err) {
-      showToast(err.message || 'Failed to send invitations', 'error');
+      showToast(err.message || formatError('Failed to send invitations'), 'error');
     }
     setSending(false);
   };

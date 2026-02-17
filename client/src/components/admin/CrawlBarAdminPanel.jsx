@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { formatError } from '../../../messages.js';
 
 const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) => {
   const [config, setConfig] = useState(null);
@@ -17,7 +18,7 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle })
       setDefaultLocation(data.config?.default_location?.name || '');
     } catch (err) {
       if (!err.message?.includes('401')) {
-        showToast(err.message || 'Failed to load crawl config', 'error');
+        showToast(err.message || formatError('Failed to load crawl config'), 'error');
       }
     }
     setLoading(false);
@@ -39,7 +40,7 @@ const CrawlBarAdminPanel = ({ fetchAPI, showToast, isMobile, isOpen, onToggle })
       setConfig(data.config);
       showToast('Crawl bar configuration updated', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to update config', 'error');
+      showToast(err.message || formatError('Failed to update config'), 'error');
     }
     setSaving(false);
   };

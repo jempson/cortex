@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SUCCESS } from '../../../messages.js';
+import { SUCCESS, formatError } from '../../../messages.js';
 import { Avatar } from '../ui/SimpleComponents.jsx';
 
 const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitationsChange, onGroupsChange, isMobile }) => {
@@ -13,7 +13,7 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
       onInvitationsChange();
       onGroupsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to accept invitation', 'error');
+      showToast(err.message || formatError('Failed to accept invitation'), 'error');
     }
     setProcessing(prev => ({ ...prev, [invitationId]: null }));
   };
@@ -25,7 +25,7 @@ const GroupInvitationsPanel = ({ invitations, fetchAPI, showToast, onInvitations
       showToast('Crew invitation declined', 'info');
       onInvitationsChange();
     } catch (err) {
-      showToast(err.message || 'Failed to decline invitation', 'error');
+      showToast(err.message || formatError('Failed to decline invitation'), 'error');
     }
     setProcessing(prev => ({ ...prev, [invitationId]: null }));
   };

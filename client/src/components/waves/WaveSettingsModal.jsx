@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlowText } from '../ui/SimpleComponents.jsx';
 import { PRIVACY_LEVELS } from '../../config/constants.js';
-import { SUCCESS } from '../../../messages.js';
+import { SUCCESS, CONFIRM_DIALOG, formatError } from '../../../messages.js';
 import { useE2EE } from '../../../e2ee-context.jsx';
 
 const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast, onUpdate, participants = [], showParticipants, setShowParticipants, federationEnabled, currentUserId, onFederate, isMobile }) => {
@@ -74,7 +74,7 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
       showToast('Webhook created', 'success');
       resetWebhookForm();
     } catch (err) {
-      showToast(err.message || 'Failed to create webhook', 'error');
+      showToast(err.message || formatError('Failed to create webhook'), 'error');
     }
   };
 
@@ -89,18 +89,18 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
         showToast(updates.enabled ? 'Webhook enabled' : 'Webhook disabled', 'success');
       }
     } catch (err) {
-      showToast(err.message || 'Failed to update webhook', 'error');
+      showToast(err.message || formatError('Failed to update webhook'), 'error');
     }
   };
 
   const handleDeleteWebhook = async (webhookId) => {
-    if (!window.confirm('Delete this webhook?')) return;
+    if (!window.confirm(CONFIRM_DIALOG.deleteWebhook)) return;
     try {
       await fetchAPI(`/webhooks/${webhookId}`, { method: 'DELETE' });
       setWebhooks(webhooks.filter(w => w.id !== webhookId));
       showToast('Webhook deleted', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to delete webhook', 'error');
+      showToast(err.message || formatError('Failed to delete webhook'), 'error');
     }
   };
 
@@ -110,7 +110,7 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
       await fetchAPI(`/webhooks/${webhookId}/test`, { method: 'POST' });
       showToast('Test message sent!', 'success');
     } catch (err) {
-      showToast(err.message || 'Test failed', 'error');
+      showToast(err.message || formatError('Test failed'), 'error');
     } finally {
       setTestingWebhook(null);
     }
@@ -128,7 +128,7 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
       onUpdate();
       onClose();
     } catch (err) {
-      showToast(err.message || 'Failed to update wave', 'error');
+      showToast(err.message || formatError('Failed to update wave'), 'error');
     }
   };
 
@@ -195,7 +195,7 @@ const WaveSettingsModal = ({ isOpen, onClose, wave, groups, fetchAPI, showToast,
       onClose();
     } catch (err) {
       console.error('Wave decryption error:', err);
-      showToast(err.message || 'Failed to decrypt wave', 'error');
+      showToast(err.message || formatError('Failed to decrypt wave'), 'error');
     } finally {
       setDecrypting(false);
     }

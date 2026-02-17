@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatError } from '../../../messages.js';
 import { Avatar, GlowText } from '../ui/SimpleComponents.jsx';
 
 const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showToast, isMobile }) => {
@@ -40,14 +41,14 @@ const InviteToGroupModal = ({ isOpen, onClose, group, contacts, fetchAPI, showTo
         showToast(`Sent ${successCount} invitation${successCount > 1 ? 's' : ''}`, 'success');
       }
       if (errorCount > 0) {
-        showToast(`${errorCount} invitation${errorCount > 1 ? 's' : ''} failed`, 'error');
+        showToast(formatError(`${errorCount} invitation${errorCount > 1 ? 's' : ''} failed`), 'error');
       }
       setSelectedContacts([]);
       setMessage('');
       setSearchQuery('');
       onClose();
     } catch (err) {
-      showToast(err.message || 'Failed to send invitations', 'error');
+      showToast(err.message || formatError('Failed to send invitations'), 'error');
     }
     setSending(false);
   };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LOADING } from '../../../messages.js';
+import { LOADING, formatError } from '../../../messages.js';
 import { GlowText } from '../ui/SimpleComponents.jsx';
 
 const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
@@ -15,7 +15,7 @@ const MyReportsPanel = ({ fetchAPI, showToast, isMobile }) => {
           setReports(data.reports || []);
         }
       } catch (err) {
-        showToast('Failed to load your reports', 'error');
+        showToast(formatError('Failed to load your reports'), 'error');
       } finally {
         setLoading(false);
       }

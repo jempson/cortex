@@ -5,6 +5,98 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.0] - 2026-02-17
+
+### Added
+
+#### UI Personality: Firefly Easter Eggs
+
+Completes the Firefly personality across the entire client UI. Previously, only success/empty/loading states used themed messages — now error toasts, confirm dialogs, WebSocket notifications, profile labels, the error boundary, and the offline indicator all speak Firefly.
+
+**New `messages.js` Exports:**
+- `ERROR` — Themed fallback messages (`"Lost signal"`, `"Ship's grounded"`, `"Alliance interference"`, etc.)
+- `NOTIFICATION` — WebSocket event messages with interpolation functions (`waveDeleted(title)`, `contactRequestReceived(name)`, `crewInviteReceived(inviter, crew)`, etc.)
+- `CONFIRM_DIALOG` — Themed confirm dialog text for 17 actions (`"Disband this crew?"`, `"Show {name} the airlock?"`, `"Wipe local data?"`, etc.)
+- `UI_LABELS` — Profile/Settings section labels (`"Ship's Manifest"`, `"Abandon Ship"`, `"DOWNLOAD SHIP'S MANIFEST"`)
+- `ERROR_BOUNDARY` — Error boundary text (`"Gorram it! Something went sideways"`, `"Try to reboot"`, `"Diagnostic readout"`)
+- `OFFLINE` — Offline indicator text (`"LOST SIGNAL — Running on reserve power"`)
+
+### Fixed
+
+- Added missing `pingSent` key to `SUCCESS` object (was referenced in FocusView but undefined)
+
+### Changed
+
+#### Error Toast Theming (~200+ toasts across 34 files)
+- All `showToast('Failed to...', 'error')` calls now use `formatError()` which prepends `"Gorram it!"` prefix
+- Server-provided `err.message` values are preserved as primary fallback — themed text is only the default
+- Validation messages ("Please enter a title", "Passwords do not match") intentionally left unthemed
+
+#### WebSocket Notification Theming (MainApp.jsx)
+- 18 inline notification strings replaced with `NOTIFICATION.*` constants
+- Examples: `"Wave was deleted"` → `"<title> has gone dark"`, `"sent you a contact request"` → `"{name} wants to join your crew"`
+
+#### Confirm Dialog Theming (~28 dialogs across 15 files)
+- All `confirm('plain text')` calls replaced with `CONFIRM_DIALOG.*` constants
+- Examples: `"Delete this crew?"` → `"Disband this crew? There's no putting it back together."`, `"Remove {name} from this wave?"` → `"Show {name} the airlock?"`
+
+#### Profile Labels (ProfileSettings.jsx)
+- `"Export Your Data"` → `"Ship's Manifest"`
+- `"DOWNLOAD MY DATA"` → `"DOWNLOAD SHIP'S MANIFEST"`
+- `"EXPORTING..."` → `"PREPARING MANIFEST..."`
+- `"Delete Account"` → `"Abandon Ship"`
+
+#### ErrorBoundary (ErrorBoundary.jsx)
+- `"Something went wrong"` → `"Gorram it! Something went sideways"`
+- `"Try Again"` → `"Try to reboot"`
+- `"Stack trace"` → `"Diagnostic readout"`
+
+#### OfflineIndicator (SimpleComponents.jsx)
+- `"OFFLINE - Some features unavailable"` → `"LOST SIGNAL — Running on reserve power"`
+
+**Files Modified (37 total):**
+- `client/messages.js` — Added 6 new exports, fixed `pingSent` bug
+- `client/src/views/MainApp.jsx` — Notification + error toast theming
+- `client/src/views/LoginScreen.jsx` — Confirm dialog theming
+- `client/src/components/waves/WaveView.jsx` — Confirm + error toast theming
+- `client/src/components/waves/WaveSettingsModal.jsx` — Confirm + error toast theming
+- `client/src/components/waves/InviteToWaveModal.jsx` — Error toast theming
+- `client/src/components/waves/InviteFederatedModal.jsx` — Error toast theming
+- `client/src/components/waves/BurstModal.jsx` — Error toast theming
+- `client/src/components/groups/GroupsView.jsx` — Confirm + error toast theming
+- `client/src/components/groups/InviteToGroupModal.jsx` — Error toast theming
+- `client/src/components/groups/GroupInvitationsPanel.jsx` — Error toast theming
+- `client/src/components/profile/ProfileSettings.jsx` — UI labels + confirm + error toast theming
+- `client/src/components/profile/UserProfileModal.jsx` — Error toast theming
+- `client/src/components/focus/FocusView.jsx` — Confirm + error toast theming
+- `client/src/components/contacts/ContactRequestsPanel.jsx` — Error toast theming
+- `client/src/components/contacts/ContactsView.jsx` — Error toast theming
+- `client/src/components/contacts/SentRequestsPanel.jsx` — Error toast theming
+- `client/src/components/contacts/SendContactRequestModal.jsx` — Error toast theming
+- `client/src/components/search/SearchModal.jsx` — Error toast theming
+- `client/src/components/reports/ReportModal.jsx` — Error toast theming
+- `client/src/components/reports/MyReportsPanel.jsx` — Error toast theming
+- `client/src/components/settings/ThemeGallery.jsx` — Confirm + error toast theming
+- `client/src/components/settings/ThemeEditor.jsx` — Error toast theming
+- `client/src/components/media/JellyfinConnectionManager.jsx` — Confirm + error toast theming
+- `client/src/components/media/PlexConnectionManager.jsx` — Confirm + error toast theming
+- `client/src/components/categories/CategoryManagementModal.jsx` — Confirm + error toast theming
+- `client/src/components/admin/FederationAdminPanel.jsx` — Confirm + error toast theming
+- `client/src/components/admin/BotsAdminPanel.jsx` — Confirm + error toast theming
+- `client/src/components/admin/BotDetailsModal.jsx` — Confirm + error toast theming
+- `client/src/components/admin/AlertsAdminPanel.jsx` — Confirm + error toast theming
+- `client/src/components/admin/AlertSubscriptionsPanel.jsx` — Confirm + error toast theming
+- `client/src/components/admin/PrivacyDashboard.jsx` — Error toast theming
+- `client/src/components/admin/AdminReportsPanel.jsx` — Error toast theming
+- `client/src/components/admin/UserManagementPanel.jsx` — Error toast theming
+- `client/src/components/admin/HandleRequestsList.jsx` — Error toast theming
+- `client/src/components/admin/CrawlBarAdminPanel.jsx` — Error toast theming
+- `client/src/components/admin/ActivityLogPanel.jsx` — Error toast theming
+- `client/src/components/ui/ErrorBoundary.jsx` — Error boundary theming
+- `client/src/components/ui/SimpleComponents.jsx` — Offline indicator theming
+
+---
+
 ## [2.24.0] - 2026-02-16
 
 ### Added
