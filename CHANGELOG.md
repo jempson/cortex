@@ -5,6 +5,108 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.26.0] - 2026-02-17
+
+### Added
+
+#### Federation Theming: The Verse
+
+Completes Phase 4 of the nomenclature overhaul by replacing all generic federation terminology with Firefly-themed equivalents across the entire client UI.
+
+**New `messages.js` Export — `FEDERATION` (~55 keys):**
+- Panel headings & section labels (`"THE VERSE"`, `"Port Identity"`, `"Allied Ports"`)
+- Status badges (`"VERSE CONNECTED"`, `"ENABLED"`, `"AWAITING RESPONSE"`)
+- Buttons & actions (`"DOCK"`, `"REQUEST DOCKING"`, `"+ ADD PORT"`, `"ACCEPT"`, `"DECLINE"`)
+- Form placeholders (`"farhold.example.com"`, `"Port name (e.g., other-farhold.com)"`)
+- Help text (`"Send a docking request to another Cortex port. They will need to grant docking clearance."`)
+- Empty states (`"No allied ports in the Verse"`, `"No alert subscriptions configured"`)
+- Toast messages (`"Port identity configured"`, `"Docking successful"`, `"Docking request transmitted!"`)
+- Traveler labels (`"ADD TRAVELERS"`, `"TRAVELERS"`, `"Traveler from {node}"`)
+- Wave federation (`"BROADCAST TO THE VERSE"`, `"Verse-Wide (broadcast to allied ports)"`)
+- Error messages (`"Failed to load Verse data"`, `"Docking failed"`, `"Failed to add port"`)
+
+**Terminology Mapping:**
+
+| Old Term | New Term | Used Where |
+|----------|----------|------------|
+| Federation | The Verse | Panel headings, section labels |
+| Node / Trusted Node | Port / Allied Port | Node lists, buttons, labels |
+| Handshake | Dock / Docking | Connection buttons, status |
+| Federation Request | Docking Request | Request flow |
+| Federated User | Traveler | User profiles, participant labels |
+| Cross-Server | Verse-Wide | Privacy level badge |
+| Server Identity | Port Identity | Config section |
+
+### Changed
+
+#### Privacy Level Update (constants.js)
+- `crossServer.name`: `"Cross-Server"` → `"Verse-Wide"`
+- `crossServer.desc`: `"Federated servers"` → `"Allied ports in the Verse"`
+
+#### Existing Message Updates (messages.js)
+- `NOTIFICATION.federationRequest`: `"Federation request from {node}"` → `"Docking request from {node}"`
+- `CONFIRM_DIALOG.removeFederationNode`: `"Cut this node loose from the network?"` → `"Cut this port loose from the Verse?"`
+- `CONFIRM_DIALOG.declineFederationRequest`: `"Decline this federation request?"` → `"Deny docking clearance for this request?"`
+
+#### FederationAdminPanel.jsx (~41 replacements)
+- Panel heading: `"FEDERATION"` → `"THE VERSE"`
+- Section labels: `"Server Identity"` → `"Port Identity"`, `"Trusted Nodes"` → `"Allied Ports"`, `"Request Federation"` → `"Request Docking"`, `"Incoming Requests"` → `"Incoming Docking Requests"`
+- Buttons: `"HANDSHAKE"` → `"DOCK"`, `"REQUEST FEDERATION"` → `"REQUEST DOCKING"`, `"+ ADD NODE"` → `"+ ADD PORT"`, `"ADD NODE"` → `"ADD PORT"`
+- Stats: `"Trusted Nodes"` → `"Allied Ports"`, status/toast messages themed
+- Empty state: `"No trusted nodes configured"` → `"No allied ports in the Verse"`
+
+#### GroupsView.jsx (~48 replacements)
+- Identical changes applied to duplicate FederationAdminPanel, AlertSubscriptionsPanel, and AlertsAdminPanel embedded in GroupsView
+- Alert scope: `"Federated (broadcast to subscribers)"` → `"Verse-Wide (broadcast to allied ports)"`
+
+#### AlertSubscriptionsPanel.jsx (~8 replacements)
+- Label: `"FEDERATION NODE"` → `"ALLIED PORT"`, info text and empty states themed
+
+#### AlertsAdminPanel.jsx (1 replacement)
+- Scope option: `"Federated (broadcast to subscribers)"` → `"Verse-Wide (broadcast to allied ports)"`
+
+#### InviteFederatedModal.jsx (~5 replacements)
+- Title: `"FEDERATE WAVE"` → `"BROADCAST TO THE VERSE"`
+- Label: `"ADD FEDERATED PARTICIPANTS"` → `"ADD TRAVELERS"`
+- Hint: `"Format: @handle@server.com (user on another Cortex server)"` → themed
+
+#### NewWaveModal.jsx (~3 replacements)
+- Label: `"FEDERATED PARTICIPANTS"` → `"TRAVELERS"`
+- Format hint themed to traveler metaphor
+
+#### WaveSettingsModal.jsx (~3 replacements)
+- Section label: `"FEDERATION"` → `"THE VERSE"`
+- Button text: `"Federate this wave"` → `"Broadcast to the Verse"`, `"Manage federated participants"` → `"Manage travelers"`
+
+#### UserProfileModal.jsx (1 replacement)
+- `"Federated User from {node}"` → `"Traveler from {node}"`
+
+#### AboutServerPage.jsx (~3 replacements)
+- Badge: `"FEDERATION ENABLED"` → `"VERSE CONNECTED"`
+- Section heading: `"Federated Servers (N)"` → `"Allied Ports (N)"`
+- Empty state: `"No federation partners yet"` → `"No allied ports yet"`
+
+### What Was NOT Changed
+- API paths (`/admin/federation/*`), environment variable names (`FEDERATION_ENABLED`), JavaScript variable/prop/component names, CSS variables, `console.error` messages, database column values, `value="federated"` in select options
+
+### Files Modified (13 component files + 2 docs)
+
+| File | Changes |
+|------|---------|
+| `server/package.json` | Version bump |
+| `client/package.json` | Version bump |
+| `client/src/config/constants.js` | Version + PRIVACY_LEVELS |
+| `client/messages.js` | Add FEDERATION export, update 3 existing |
+| `client/src/components/admin/FederationAdminPanel.jsx` | ~41 replacements |
+| `client/src/components/groups/GroupsView.jsx` | ~48 replacements |
+| `client/src/components/admin/AlertSubscriptionsPanel.jsx` | ~8 replacements |
+| `client/src/components/admin/AlertsAdminPanel.jsx` | 1 replacement |
+| `client/src/components/waves/InviteFederatedModal.jsx` | ~5 replacements |
+| `client/src/components/waves/NewWaveModal.jsx` | ~3 replacements |
+| `client/src/components/waves/WaveSettingsModal.jsx` | ~3 replacements |
+| `client/src/components/profile/UserProfileModal.jsx` | 1 replacement |
+| `client/src/views/AboutServerPage.jsx` | ~3 replacements |
+
 ## [2.25.0] - 2026-02-17
 
 ### Added

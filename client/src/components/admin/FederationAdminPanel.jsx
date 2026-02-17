@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
-import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
+import { formatError, CONFIRM_DIALOG, FEDERATION } from '../../../messages.js';
 
 const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 0, isOpen, onToggle }) => {
   const [status, setStatus] = useState(null);
@@ -33,7 +33,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
         setNodeName(statusData.nodeName);
       }
     } catch (err) {
-      showToast(err.message || formatError('Failed to load federation data'), 'error');
+      showToast(err.message || formatError(FEDERATION.failedToLoadVerse), 'error');
     }
     setLoading(false);
   }, [fetchAPI, showToast]);
@@ -46,7 +46,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
 
   const handleSetupIdentity = async () => {
     if (!nodeName.trim() || nodeName.length < 3) {
-      showToast('Node name must be at least 3 characters', 'error');
+      showToast(FEDERATION.portNameMinLength, 'error');
       return;
     }
     try {
@@ -54,16 +54,16 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
         method: 'POST',
         body: { nodeName: nodeName.trim() }
       });
-      showToast('Federation identity configured', 'success');
+      showToast(FEDERATION.identityConfigured, 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || formatError('Failed to configure identity'), 'error');
+      showToast(err.message || formatError(FEDERATION.failedToConfigureIdentity), 'error');
     }
   };
 
   const handleAddNode = async () => {
     if (!newNodeName.trim() || !newNodeUrl.trim()) {
-      showToast('Node name and URL are required', 'error');
+      showToast(FEDERATION.portNameUrlRequired, 'error');
       return;
     }
     try {
@@ -71,13 +71,13 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
         method: 'POST',
         body: { nodeName: newNodeName.trim(), baseUrl: newNodeUrl.trim() }
       });
-      showToast('Node added successfully', 'success');
+      showToast(FEDERATION.portAdded, 'success');
       setNewNodeName('');
       setNewNodeUrl('');
       setShowAddNode(false);
       loadFederationData();
     } catch (err) {
-      showToast(err.message || formatError('Failed to add node'), 'error');
+      showToast(err.message || formatError(FEDERATION.failedToAddPort), 'error');
     }
   };
 
@@ -87,10 +87,10 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       const result = await fetchAPI(`/admin/federation/nodes/${nodeId}/handshake`, {
         method: 'POST'
       });
-      showToast(result.message || 'Handshake successful', 'success');
+      showToast(result.message || FEDERATION.dockingSuccessful, 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || formatError('Handshake failed'), 'error');
+      showToast(err.message || formatError(FEDERATION.failedToDock), 'error');
     }
     setHandshakeLoading(null);
   };
@@ -99,10 +99,10 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
     if (!confirm(CONFIRM_DIALOG.removeFederationNode)) return;
     try {
       await fetchAPI(`/admin/federation/nodes/${nodeId}`, { method: 'DELETE' });
-      showToast('Node removed', 'success');
+      showToast(FEDERATION.portRemoved, 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || formatError('Failed to remove node'), 'error');
+      showToast(err.message || formatError(FEDERATION.failedToRemovePort), 'error');
     }
   };
 
@@ -112,17 +112,17 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
         method: 'PUT',
         body: { status: newStatus }
       });
-      showToast(`Node ${newStatus}`, 'success');
+      showToast(`Port ${newStatus}`, 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || formatError('Failed to update status'), 'error');
+      showToast(err.message || formatError(FEDERATION.failedToUpdateStatus), 'error');
     }
   };
 
   // Send federation request to another server
   const handleSendRequest = async () => {
     if (!requestUrl.trim()) {
-      showToast('Server URL is required', 'error');
+      showToast('Port URL is required', 'error');
       return;
     }
     setRequestLoading(true);
@@ -134,12 +134,12 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
           message: requestMessage.trim() || null
         }
       });
-      showToast(result.message || 'Federation request sent!', 'success');
+      showToast(result.message || FEDERATION.dockingRequestSent, 'success');
       setRequestUrl('');
       setRequestMessage('');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || formatError('Failed to send federation request'), 'error');
+      showToast(err.message || formatError(FEDERATION.failedToSendRequest), 'error');
     }
     setRequestLoading(false);
   };
@@ -151,10 +151,10 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       const result = await fetchAPI(`/admin/federation/requests/${requestId}/accept`, {
         method: 'POST'
       });
-      showToast(result.message || 'Federation request accepted!', 'success');
+      showToast(result.message || FEDERATION.dockingRequestAccepted, 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || formatError('Failed to accept request'), 'error');
+      showToast(err.message || formatError(FEDERATION.failedToAcceptRequest), 'error');
     }
     setAcceptLoading(null);
   };
@@ -167,10 +167,10 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       await fetchAPI(`/admin/federation/requests/${requestId}/decline`, {
         method: 'POST'
       });
-      showToast('Federation request declined', 'success');
+      showToast(FEDERATION.dockingRequestDeclined, 'success');
       loadFederationData();
     } catch (err) {
-      showToast(err.message || formatError('Failed to decline request'), 'error');
+      showToast(err.message || formatError(FEDERATION.failedToDeclineRequest), 'error');
     }
     setAcceptLoading(null);
   };
@@ -198,7 +198,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
   return (
     <div style={{ marginTop: '20px', padding: isMobile ? '16px' : '20px', background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))', border: '1px solid var(--accent-teal)40' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>FEDERATION</div>
+        <div style={{ color: 'var(--accent-teal)', fontSize: '0.8rem', fontWeight: 500 }}>{FEDERATION.panelHeading}</div>
         <button
           onClick={onToggle}
           style={{
@@ -237,7 +237,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
             fontSize: '0.75rem',
             textTransform: 'uppercase',
           }}>
-            {status?.enabled ? 'ENABLED' : 'DISABLED'}
+            {status?.enabled ? FEDERATION.verseEnabled : FEDERATION.verseDisabled}
           </span>
         </div>
 
@@ -250,14 +250,14 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
             fontSize: isMobile ? '0.85rem' : '0.8rem',
             marginBottom: '16px',
           }}>
-            Set FEDERATION_ENABLED=true in server environment to enable federation.
+            {FEDERATION.envHint}
           </div>
         )}
 
         {/* Server Identity Setup */}
         <div style={{ marginBottom: '16px' }}>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px', textTransform: 'uppercase' }}>
-            Server Identity
+            {FEDERATION.portIdentity}
           </div>
 
           {status?.configured ? (
@@ -313,8 +313,8 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
 
         {/* Stats */}
         <div style={{ display: 'flex', gap: '24px', color: 'var(--text-dim)', fontSize: isMobile ? '0.85rem' : '0.8rem' }}>
-          <span>Trusted Nodes: <span style={{ color: 'var(--text-primary)' }}>{status?.trustedNodes || 0}</span></span>
-          <span>Active: <span style={{ color: 'var(--accent-green)' }}>{status?.activeNodes || 0}</span></span>
+          <span>{FEDERATION.alliedPortsCount}: <span style={{ color: 'var(--text-primary)' }}>{status?.trustedNodes || 0}</span></span>
+          <span>{FEDERATION.activeCount}: <span style={{ color: 'var(--accent-green)' }}>{status?.activeNodes || 0}</span></span>
         </div>
       </div>
 
@@ -322,7 +322,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       {status?.configured && status?.enabled && (
         <div style={{ marginTop: '16px' }}>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
-            Request Federation
+            {FEDERATION.requestDocking}
           </div>
           <div style={{
             padding: isMobile ? '14px' : '16px',
@@ -334,7 +334,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={requestUrl}
                 onChange={(e) => setRequestUrl(e.target.value)}
-                placeholder="Server URL (e.g., https://other-farhold.com)"
+                placeholder={FEDERATION.portUrlPlaceholder}
                 style={{
                   width: '100%',
                   padding: isMobile ? '12px' : '10px',
@@ -349,7 +349,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
               <textarea
                 value={requestMessage}
                 onChange={(e) => setRequestMessage(e.target.value)}
-                placeholder="Optional message (e.g., Hi, we'd like to federate!)"
+                placeholder={FEDERATION.optionalMessagePlaceholder}
                 rows={2}
                 style={{
                   width: '100%',
@@ -378,10 +378,10 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 opacity: requestLoading || !requestUrl.trim() ? 0.6 : 1,
               }}
             >
-              {requestLoading ? 'SENDING...' : 'REQUEST FEDERATION'}
+              {requestLoading ? FEDERATION.sendingRequest : FEDERATION.sendRequest}
             </button>
             <div style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-              Send a federation request to another Cortex server. They will need to accept your request.
+              {FEDERATION.requestDockingHelp}
             </div>
           </div>
         </div>
@@ -392,7 +392,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
         <div style={{ marginTop: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
             <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-              Incoming Requests
+              {FEDERATION.incomingRequests}
             </span>
             <span style={{
               padding: '2px 8px',
@@ -458,7 +458,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                       opacity: acceptLoading === request.id ? 0.6 : 1,
                     }}
                   >
-                    {acceptLoading === request.id ? 'ACCEPTING...' : 'ACCEPT'}
+                    {acceptLoading === request.id ? FEDERATION.accepting : FEDERATION.accept}
                   </button>
                   <button
                     onClick={() => handleDeclineRequest(request.id)}
@@ -475,7 +475,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                       opacity: acceptLoading === request.id ? 0.6 : 1,
                     }}
                   >
-                    DECLINE
+                    {FEDERATION.denyDocking}
                   </button>
                 </div>
               </div>
@@ -487,7 +487,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
       {/* Trusted Nodes */}
       <div style={{ marginTop: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase' }}>Trusted Nodes</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase' }}>{FEDERATION.alliedPorts}</span>
           <button
             onClick={() => setShowAddNode(!showAddNode)}
             style={{
@@ -500,7 +500,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
               fontSize: isMobile ? '0.8rem' : '0.75rem',
             }}
           >
-            {showAddNode ? 'CANCEL' : '+ ADD NODE'}
+            {showAddNode ? 'CANCEL' : FEDERATION.addPort}
           </button>
         </div>
 
@@ -517,7 +517,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={newNodeName}
                 onChange={(e) => setNewNodeName(e.target.value)}
-                placeholder="Node name (e.g., other-farhold.com)"
+                placeholder={FEDERATION.addPortNamePlaceholder}
                 style={{
                   width: '100%',
                   padding: isMobile ? '12px' : '10px',
@@ -533,7 +533,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 type="text"
                 value={newNodeUrl}
                 onChange={(e) => setNewNodeUrl(e.target.value)}
-                placeholder="Base URL (e.g., https://other-farhold.com)"
+                placeholder={FEDERATION.addPortUrlPlaceholder}
                 style={{
                   width: '100%',
                   padding: isMobile ? '12px' : '10px',
@@ -558,7 +558,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                 fontSize: isMobile ? '0.85rem' : '0.8rem',
               }}
             >
-              ADD NODE
+              {FEDERATION.addPortBtn}
             </button>
           </div>
         )}
@@ -573,7 +573,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
             border: '1px dashed var(--border-subtle)',
             fontSize: isMobile ? '0.9rem' : '0.85rem',
           }}>
-            No trusted nodes configured
+            {FEDERATION.noAlliedPorts}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -644,7 +644,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                         opacity: handshakeLoading === node.id ? 0.6 : 1,
                       }}
                     >
-                      {handshakeLoading === node.id ? 'CONNECTING...' : 'HANDSHAKE'}
+                      {handshakeLoading === node.id ? FEDERATION.docking : FEDERATION.dock}
                     </button>
                   )}
 
@@ -656,7 +656,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                       fontFamily: 'monospace',
                       fontSize: isMobile ? '0.8rem' : '0.75rem',
                     }}>
-                      Waiting for their response...
+                      {FEDERATION.waitingForResponse}
                     </span>
                   )}
 
@@ -668,7 +668,7 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                       fontFamily: 'monospace',
                       fontSize: isMobile ? '0.8rem' : '0.75rem',
                     }}>
-                      Request was declined
+                      {FEDERATION.requestWasDeclined}
                     </span>
                   )}
 
