@@ -640,6 +640,7 @@ CREATE TABLE IF NOT EXISTS federation_nodes (
     added_by TEXT REFERENCES users(id),
     last_contact_at TEXT,
     failure_count INTEGER DEFAULT 0,
+    protocol_version INTEGER DEFAULT 1,  -- v2.28.0: federation protocol version (1=legacy, 2=decoy+padding)
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
