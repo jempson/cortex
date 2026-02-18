@@ -239,7 +239,7 @@ SESSION_MAX_AGE_DAYS=30
 - [x] Cannot determine who is in which wave from DB alone (v2.21.0)
 - [x] Cannot reconstruct social graph from DB (v2.21.0)
 - [x] Cannot determine group associations from DB alone (v2.24.0)
-- [ ] Privacy policy accurately reflects actual protections
+- [x] Privacy policy accurately reflects actual protections
 
 ---
 
