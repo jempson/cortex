@@ -285,3 +285,22 @@ export const VERSION_CHECK = {
   outdated: "New version available on the cortex",
   refresh: "REFRESH",
 };
+
+// ============ GHOST PROTOCOL (v2.27.0) ============
+export const GHOST_PROTOCOL = {
+  menuItem: "Ghost Protocol",
+  enterPin: "Enter Ghost Protocol PIN",
+  setPin: "Set Ghost Protocol PIN",
+  confirmPin: "Confirm PIN",
+  modeActive: "GHOST PROTOCOL",
+  waveHidden: "Gone dark. Can't find you in the black.",
+  waveRevealed: "Signal visible again",
+  pinSet: "Ghost Protocol activated",
+  pinChanged: "Ghost Protocol codes updated",
+  pinIncorrect: "Wrong codes, try again",
+  noHiddenWaves: "Nothing hidden in the black",
+  exit: "EXIT GHOST PROTOCOL",
+  hideWave: "Go Dark",
+  revealWave: "Reveal Signal",
+  genericNotification: "New activity on the cortex",
+};

@@ -4,7 +4,7 @@ import { useE2EE } from '../../e2ee-context.jsx';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useWindowSize } from '../hooks/useWindowSize.js';
 import { VERSION, API_URL, BASE_URL, canAccess, FONT_SIZES } from '../config/constants.js';
-import { getRandomTagline, SUCCESS, NOTIFICATION, formatError } from '../../messages.js';
+import { getRandomTagline, SUCCESS, NOTIFICATION, formatError, GHOST_PROTOCOL } from '../../messages.js';
 import { storage } from '../utils/storage.js';
 import { updateAppBadge, subscribeToPush } from '../utils/pwa.js';
 import { updateDocumentTitle, startFaviconFlash, stopFaviconFlash } from '../utils/favicon.js';
@@ -18,6 +18,7 @@ import NewWaveModal from '../components/waves/NewWaveModal.jsx';
 import CategoryManagementModal from '../components/categories/CategoryManagementModal.jsx';
 import UserProfileModal from '../components/profile/UserProfileModal.jsx';
 import AlertDetailModal from '../components/modals/AlertDetailModal.jsx';
+import GhostProtocolModal from '../components/modals/GhostProtocolModal.jsx';
 import SearchModal from '../components/search/SearchModal.jsx';
 import ContactsView from '../components/contacts/ContactsView.jsx';
 import ErrorBoundary from '../components/ui/ErrorBoundary.jsx';
@@ -77,6 +78,9 @@ function MainApp({ sharePingId }) {
   const [categoryManagementOpen, setCategoryManagementOpen] = useState(false); // Category management modal (v2.2.0)
   const [activeWatchParties, setActiveWatchParties] = useState({}); // Active watch parties by wave ID (v2.14.0)
   const [watchPartyPlayer, setWatchPartyPlayer] = useState(null); // { waveId, partyId } for open player (v2.14.0)
+  const [showGhostProtocol, setShowGhostProtocol] = useState(false); // Ghost Protocol modal (v2.27.0)
+  const [ghostMode, setGhostMode] = useState(false); // Showing hidden waves (v2.27.0)
+  const [ghostHasPin, setGhostHasPin] = useState(false); // Whether user has set a ghost PIN (v2.27.0)
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop, hasMeasured } = useWindowSize();
 
@@ -293,6 +297,41 @@ function MainApp({ sharePingId }) {
       console.error('loadCategories failed:', err);
     }
   }, [fetchAPI]);
+
+  // Ghost Protocol functions (v2.27.0)
+  const checkGhostStatus = useCallback(async () => {
+    try {
+      const status = await fetchAPI('/user/ghost-status');
+      setGhostHasPin(status.hasPin);
+    } catch (err) {
+      // Ghost status check failed, not critical
+    }
+  }, [fetchAPI]);
+
+  const handleGhostVerified = useCallback(async () => {
+    setGhostMode(true);
+    try {
+      const data = await fetchAPI('/waves?hidden=true');
+      setWaves(data);
+    } catch (err) {
+      showToastMsg(formatError('Failed to load hidden waves'), 'error');
+      setGhostMode(false);
+    }
+  }, [fetchAPI]);
+
+  const handleExitGhostMode = useCallback(() => {
+    setGhostMode(false);
+    loadWaves();
+  }, [loadWaves]);
+
+  const handleToggleGhostProtocol = useCallback(async () => {
+    if (ghostMode) {
+      handleExitGhostMode();
+    } else {
+      await checkGhostStatus();
+      setShowGhostProtocol(true);
+    }
+  }, [ghostMode, handleExitGhostMode, checkGhostStatus]);
 
   // Handle category toggle (collapse/expand)
   const handleCategoryToggle = useCallback(async (categoryId, collapsed) => {
@@ -1199,6 +1238,8 @@ function MainApp({ sharePingId }) {
                 onWaveMove={handleWaveMove}
                 onWavePin={handleWavePin}
                 onManageCategories={() => setCategoryManagementOpen(true)}
+                ghostMode={ghostMode}
+                onToggleGhostProtocol={handleToggleGhostProtocol}
               />
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
@@ -1445,6 +1486,18 @@ function MainApp({ sharePingId }) {
         onDismiss={handleDismissAlert}
         isMobile={isMobile}
       />
+
+      {showGhostProtocol && (
+        <GhostProtocolModal
+          isOpen={showGhostProtocol}
+          onClose={() => setShowGhostProtocol(false)}
+          onVerified={handleGhostVerified}
+          fetchAPI={fetchAPI}
+          showToast={showToastMsg}
+          isMobile={isMobile}
+          hasPin={ghostHasPin}
+        />
+      )}
 
       {/* PWA Components */}
       <OfflineIndicator />

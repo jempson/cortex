@@ -127,6 +127,9 @@ const expo = new Expo();
 const PUSH_DEBOUNCE_MINUTES = parseInt(process.env.PUSH_DEBOUNCE_MINUTES) || 5;
 const lastPushSent = new Map(); // userId -> timestamp
 
+// Ghost Protocol: track PIN verification timestamps per user (v2.27.0)
+const ghostVerifications = new Map();
+
 // Federation configuration
 const FEDERATION_ENABLED = process.env.FEDERATION_ENABLED === 'true';
 const FEDERATION_NODE_NAME = process.env.FEDERATION_NODE_NAME || null;
@@ -4244,8 +4247,33 @@ const participation = {
       waveParticipationCrypto.syncWaveFromDb(waveId);
     }
     // No-op for JSON storage
-  }
+  },
+  getMetadata: (waveId, userId) => USE_SQLITE
+    ? waveParticipationCrypto.getMetadata(waveId, userId)
+    : {},
+  setMetadata: (waveId, userId, updates) => {
+    if (USE_SQLITE) {
+      return waveParticipationCrypto.setMetadata(waveId, userId, updates);
+    }
+    // No-op for JSON storage
+  },
+  migrateMetadata: () => USE_SQLITE
+    ? waveParticipationCrypto.migrateMetadata()
+    : { success: false, error: 'Only available with SQLite storage' },
+  migrateWaveKeyIds: () => USE_SQLITE
+    ? waveParticipationCrypto.migrateWaveKeyIds()
+    : { success: false, error: 'Only available with SQLite storage' }
 };
+
+// v2.27.0: Cache-based wave access check (replaces db.canAccessWave)
+function canAccessWaveFromCache(waveId, userId) {
+  const wave = db.getWave(waveId);
+  if (!wave) return false;
+  if (wave.privacy === 'public') return true;
+  if ((wave.privacy === 'crossServer' || wave.privacy === 'cross-server') && wave.federationState === 'participant') return true;
+  if ((wave.privacy === 'group' || wave.privacy === 'crew') && wave.groupId) return db.isGroupMember(wave.groupId, userId);
+  return participation.isParticipant(waveId, userId);
+}
 
 // Push subscription helpers - use crypto cache for SQLite, fallback to db methods for JSON (v2.22.0)
 const pushSubs = {
@@ -11676,6 +11704,20 @@ app.post('/api/admin/maintenance/migrate-crew-members', authenticateToken, (req,
   }
 });
 
+// v2.27.0: Admin migration - wave user metadata
+app.post('/api/admin/maintenance/migrate-wave-metadata', authenticateToken, (req, res) => {
+  if (!requireRole(req.user, ROLES.ADMIN, res)) return;
+  const result = participation.migrateMetadata();
+  res.json(result);
+});
+
+// v2.27.0: Admin migration - wave encryption key IDs
+app.post('/api/admin/maintenance/migrate-wave-key-ids', authenticateToken, (req, res) => {
+  if (!requireRole(req.user, ROLES.ADMIN, res)) return;
+  const result = participation.migrateWaveKeyIds();
+  res.json(result);
+});
+
 // Get privacy status/stats (admin only)
 app.get('/api/admin/maintenance/privacy-status', authenticateToken, (req, res) => {
   try {
@@ -14155,7 +14197,7 @@ app.get('/api/waves/active-calls', authenticateToken, async (req, res) => {
       try {
         if (room.numParticipants > 0) {
           const wave = db.getWave(room.name);
-          if (wave && db.canAccessWave(room.name, userId)) {
+          if (wave && canAccessWaveFromCache(room.name, userId)) {
             activeCalls.push({
               waveId: room.name,
               participantCount: room.numParticipants,
@@ -14177,11 +14219,20 @@ app.get('/api/waves/active-calls', authenticateToken, async (req, res) => {
 app.get('/api/waves', authenticateToken, (req, res) => {
   const includeArchived = req.query.archived === 'true';
   const minimal = req.query.minimal === 'true'; // Low-bandwidth mode (v2.10.0)
+  const showHidden = req.query.hidden === 'true';
+
+  // Ghost Protocol verification required for hidden waves (v2.27.0)
+  if (showHidden) {
+    const ghostVerifiedAt = ghostVerifications.get(req.user.userId);
+    if (!ghostVerifiedAt || (Date.now() - ghostVerifiedAt) > 5 * 60 * 1000) {
+      return res.status(403).json({ error: 'Ghost Protocol verification required' });
+    }
+  }
 
   // Use minimal query for low-bandwidth mode - skips participants, reduces payload 60-80%
   const waves = minimal
-    ? db.getWavesForUserMinimal(req.user.userId, includeArchived)
-    : db.getWavesForUser(req.user.userId, includeArchived);
+    ? db.getWavesForUserMinimal(req.user.userId, includeArchived, showHidden, participation)
+    : db.getWavesForUser(req.user.userId, includeArchived, showHidden, participation);
 
   // Log unread counts for debugging
   const wavesWithUnread = waves.filter(w => w.unread_count > 0);
@@ -14196,7 +14247,7 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
   const minimal = req.query.minimal === 'true'; // Low-bandwidth mode (v2.10.0)
   const wave = db.getWave(waveId);
   if (!wave) return res.status(404).json({ error: 'Wave not found' });
-  if (!db.canAccessWave(waveId, req.user.userId)) {
+  if (!canAccessWaveFromCache(waveId, req.user.userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
 
@@ -14210,7 +14261,7 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
   let parentWave = null;
   if (wave.brokenOutFrom) {
     const parent = db.getWave(wave.brokenOutFrom);
-    if (parent && db.canAccessWave(parent.id, req.user.userId)) {
+    if (parent && canAccessWaveFromCache(parent.id, req.user.userId)) {
       parentWave = {
         id: parent.id,
         title: parent.title,
@@ -14310,7 +14361,7 @@ app.get('/api/waves/:id/droplets', authenticateToken, (req, res) => {
   const minimal = req.query.fields === 'minimal'; // Low-bandwidth mode (v2.10.0)
   const wave = db.getWave(waveId);
   if (!wave) return res.status(404).json({ error: 'Wave not found' });
-  if (!db.canAccessWave(waveId, req.user.userId)) {
+  if (!canAccessWaveFromCache(waveId, req.user.userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
 
@@ -14369,7 +14420,7 @@ app.get('/api/waves/:id/messages', authenticateToken, (req, res) => {
   const waveId = sanitizeInput(req.params.id);
   const wave = db.getWave(waveId);
   if (!wave) return res.status(404).json({ error: 'Wave not found' });
-  if (!db.canAccessWave(waveId, req.user.userId)) {
+  if (!canAccessWaveFromCache(waveId, req.user.userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
 
@@ -14437,7 +14488,7 @@ app.post('/api/waves/:waveId/call/token', authenticateToken, async (req, res) =>
   }
 
   // Verify user can access this wave
-  if (!db.canAccessWave(waveId, userId)) {
+  if (!canAccessWaveFromCache(waveId, userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
 
@@ -14538,7 +14589,7 @@ app.get('/api/waves/:waveId/call/status', authenticateToken, async (req, res) =>
   }
 
   // Verify user can access this wave
-  if (!db.canAccessWave(waveId, userId)) {
+  if (!canAccessWaveFromCache(waveId, userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
 
@@ -14925,7 +14976,100 @@ app.post('/api/waves/:id/archive', authenticateToken, (req, res) => {
   if (!db.archiveWaveForUser(waveId, req.user.userId, archived)) {
     return res.status(404).json({ error: 'Wave not found or not a participant' });
   }
+
+  // Sync metadata cache (v2.27.0)
+  participation.setMetadata(waveId, req.user.userId, { archived: archived ? 1 : 0 });
+
   res.json({ success: true, archived });
+});
+
+// v2.27.0: Ghost Protocol - Hide/reveal wave
+app.post('/api/waves/:id/hide', authenticateToken, (req, res) => {
+  const waveId = sanitizeInput(req.params.id);
+  const hidden = req.body.hidden !== false;
+
+  if (!participation.isParticipant(waveId, req.user.userId)) {
+    return res.status(404).json({ error: 'Wave not found or not a participant' });
+  }
+
+  participation.setMetadata(waveId, req.user.userId, { hidden: hidden ? 1 : 0 });
+
+  // Also update plaintext table for backward compatibility during transition
+  if (db.archiveWaveForUser) {
+    // Don't touch archive state, just ensure participant record exists
+  }
+
+  res.json({ success: true, hidden });
+});
+
+// v2.27.0: Ghost Protocol - Set PIN
+app.post('/api/user/ghost-pin', authenticateToken, (req, res) => {
+  const { pinHash } = req.body;
+  if (!pinHash || typeof pinHash !== 'string' || pinHash.length !== 64) {
+    return res.status(400).json({ error: 'Invalid PIN hash (expected SHA-256 hex)' });
+  }
+
+  try {
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const prefs = typeof user.preferences === 'string' ? JSON.parse(user.preferences) : (user.preferences || {});
+    prefs.ghostPinHash = pinHash;
+    db.updateUserPreferences(req.user.userId, prefs);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Ghost PIN set error:', err.message);
+    res.status(500).json({ error: 'Failed to set Ghost Protocol PIN' });
+  }
+});
+
+// v2.27.0: Ghost Protocol - Verify PIN
+app.post('/api/user/ghost-verify', authenticateToken, (req, res) => {
+  const { pinHash } = req.body;
+  if (!pinHash || typeof pinHash !== 'string') {
+    return res.status(400).json({ error: 'PIN hash required' });
+  }
+
+  try {
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const prefs = typeof user.preferences === 'string' ? JSON.parse(user.preferences) : (user.preferences || {});
+
+    if (!prefs.ghostPinHash) {
+      return res.status(400).json({ error: 'Ghost Protocol PIN not set' });
+    }
+
+    if (prefs.ghostPinHash !== pinHash) {
+      return res.status(403).json({ error: 'Incorrect PIN', verified: false });
+    }
+
+    // Record verification timestamp
+    ghostVerifications.set(req.user.userId, Date.now());
+
+    res.json({ verified: true });
+  } catch (err) {
+    console.error('Ghost verify error:', err.message);
+    res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
+// v2.27.0: Ghost Protocol - Check if user has PIN set
+app.get('/api/user/ghost-status', authenticateToken, (req, res) => {
+  try {
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const prefs = typeof user.preferences === 'string' ? JSON.parse(user.preferences) : (user.preferences || {});
+    const hasPin = !!prefs.ghostPinHash;
+    const ghostVerifiedAt = ghostVerifications.get(req.user.userId);
+    const isVerified = ghostVerifiedAt && (Date.now() - ghostVerifiedAt) < 5 * 60 * 1000;
+
+    res.json({ hasPin, isVerified });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get ghost status' });
+  }
 });
 
 app.post('/api/waves/:id/read', authenticateToken, (req, res) => {
@@ -14937,6 +15081,9 @@ app.post('/api/waves/:id/read', authenticateToken, (req, res) => {
     console.log(`❌ Failed to mark wave ${waveId} as read`);
     return res.status(404).json({ error: 'Wave not found or access denied' });
   }
+
+  // Sync metadata cache (v2.27.0)
+  participation.setMetadata(waveId, userId, { lastRead: new Date().toISOString() });
 
   // Mark any notifications for this wave as read
   const notificationsMarked = db.markNotificationsReadByWave ? db.markNotificationsReadByWave(waveId, userId) : 0;
@@ -15189,6 +15336,9 @@ app.put('/api/waves/:waveId/category', authenticateToken, (req, res) => {
       return res.status(400).json({ error: result.error });
     }
 
+    // Sync metadata cache (v2.27.0)
+    participation.setMetadata(waveId, req.user.userId, { categoryId: categoryId || null });
+
     // Broadcast wave category change to user
     const userClients = clients.get(req.user.userId);
     if (userClients) {
@@ -15239,6 +15389,9 @@ app.put('/api/waves/:waveId/pin', authenticateToken, (req, res) => {
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }
+
+    // Sync metadata cache (v2.27.0)
+    participation.setMetadata(waveId, req.user.userId, { pinned: pinned ? 1 : 0 });
 
     // Broadcast wave pin change to user
     const userClients = clients.get(req.user.userId);
@@ -15739,7 +15892,7 @@ app.get('/api/waves/:id/key', authenticateToken, (req, res) => {
     }
 
     // Check wave access
-    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    const canAccess = canAccessWaveFromCache(waveId, req.user.userId);
     if (!canAccess) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -15775,7 +15928,7 @@ app.get('/api/waves/:id/keys/all', authenticateToken, (req, res) => {
     const waveId = req.params.id;
 
     // Check wave access
-    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    const canAccess = canAccessWaveFromCache(waveId, req.user.userId);
     if (!canAccess) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -15809,7 +15962,7 @@ app.post('/api/waves/:id/key/distribute', authenticateToken, (req, res) => {
     }
 
     // Only existing participants can distribute keys
-    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    const canAccess = canAccessWaveFromCache(waveId, req.user.userId);
     if (!canAccess) {
       return res.status(403).json({ error: 'Only wave participants can distribute keys' });
     }
@@ -15901,7 +16054,7 @@ app.get('/api/waves/:id/participants/keys', authenticateToken, (req, res) => {
     const waveId = req.params.id;
 
     // Check wave access
-    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    const canAccess = canAccessWaveFromCache(waveId, req.user.userId);
     if (!canAccess) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -15991,7 +16144,7 @@ app.get('/api/waves/:id/encryption-status', authenticateToken, (req, res) => {
     }
 
     // Check access
-    const canAccess = db.canAccessWave(waveId, req.user.userId);
+    const canAccess = canAccessWaveFromCache(waveId, req.user.userId);
     if (!canAccess) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -16173,7 +16326,7 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
   const wave = db.getWave(waveId);
   if (!wave) return res.status(404).json({ error: 'Wave not found' });
 
-  const canAccess = db.canAccessWave(waveId, req.user.userId);
+  const canAccess = canAccessWaveFromCache(waveId, req.user.userId);
   if (!canAccess) return res.status(403).json({ error: 'Access denied' });
 
   // Auto-join public waves - use crypto module for cache synchronization (v2.21.0)
@@ -16471,7 +16624,7 @@ app.post('/api/droplets/:id/ripple', authenticateToken, (req, res) => {
     return res.status(404).json({ error: 'Wave not found' });
   }
 
-  if (!db.canAccessWave(wave.id, req.user.userId)) {
+  if (!canAccessWaveFromCache(wave.id, req.user.userId)) {
     return res.status(403).json({ error: 'Access denied' });
   }
 
@@ -16555,7 +16708,7 @@ app.post('/api/messages', authenticateToken, deprecatedEndpoint, (req, res) => {
   const wave = db.getWave(waveId);
   if (!wave) return res.status(404).json({ error: 'Wave not found' });
 
-  const canAccess = db.canAccessWave(waveId, req.user.userId);
+  const canAccess = canAccessWaveFromCache(waveId, req.user.userId);
   if (!canAccess) return res.status(403).json({ error: 'Access denied' });
 
   // Auto-join public waves - use crypto module for cache synchronization (v2.21.0)
@@ -17624,13 +17777,25 @@ function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs 
     // Users expect mobile notifications even when web app is open
     // Debounce: only send one push per user per PUSH_DEBOUNCE_MINUTES window
     if (pushPayload) {
+      // v2.27.0: Suppress detailed push for hidden waves
+      let finalPushPayload = pushPayload;
+      const meta = participation.getMetadata(waveId, userId);
+      if (meta.hidden === 1) {
+        finalPushPayload = {
+          ...pushPayload,
+          title: 'Cortex',
+          body: 'New activity on the cortex',
+          // Preserve type and IDs but hide wave title
+        };
+      }
+
       const now = Date.now();
       const lastPush = lastPushSent.get(userId);
       const debounceMs = PUSH_DEBOUNCE_MINUTES * 60 * 1000;
 
       if (!lastPush || (now - lastPush) > debounceMs) {
         console.log(`📱 Sending push notification to user ${userId} (wsConnected: ${isConnected})`);
-        sendPushNotification(userId, pushPayload);
+        sendPushNotification(userId, finalPushPayload);
         lastPushSent.set(userId, now);
       } else {
         console.log(`📱 Push debounced for user ${userId} (last push ${Math.round((now - lastPush) / 1000)}s ago)`);

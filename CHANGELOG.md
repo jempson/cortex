@@ -5,6 +5,122 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.27.0] - 2026-02-17
+
+### Added
+
+#### Plausible Deniability — Ghost Protocol (Phase 5 Privacy Hardening)
+
+Two major privacy enhancements: cryptographic participation deniability eliminates plaintext social graph data from the database, and Ghost Protocol adds PIN-protected hidden waves.
+
+#### Part 1: Cryptographic Participation Deniability
+
+Eliminates plaintext `(wave_id, user_id)` tuples from the database so a raw database dump no longer reveals the social graph.
+
+**Cache-Based Authorization (`canAccessWaveFromCache`)**
+- Replaced all `db.canAccessWave()` calls (16 call sites) with `canAccessWaveFromCache()` that reads from the in-memory participation cache instead of querying the plaintext `wave_participants` table
+- Handles all privacy levels: public, crew/group, cross-server/federated, and private (cache lookup)
+
+**Encrypted Per-User Wave Metadata (`wave_user_metadata` table)**
+- New table stores wave metadata (archived, pinned, hidden, lastRead, joinedAt, categoryId) as AES-256-GCM encrypted blobs
+- Rows are keyed by HMAC-SHA256 of `waveId|userId` using `WAVE_PARTICIPATION_KEY` — no plaintext user or wave IDs in the table
+- In-memory `waveUserMetadata` Map cache loaded on startup from encrypted participation data
+- All metadata reads/writes go through the cache, with encrypted persistence to the new table
+
+**Cache-Based Wave Listing**
+- Rewrote `getWavesForUser()` and `getWavesForUserMinimal()` to use the participation cache instead of SQL JOINs on `wave_participants`
+- Gets user's wave IDs from `participation.getUserWaves()`, fetches wave details via `WHERE w.id IN (...)`, applies metadata from the encrypted cache
+- Supports three modes: normal (excludes archived AND hidden), archived-only, hidden-only
+- Returns `is_hidden` field for client UI
+
+**Blinded `user_id` in `wave_encryption_keys`**
+- Replaced plaintext `user_id` with `user_key_id` = `HMAC-SHA256(userId, WAVE_PARTICIPATION_KEY)` in the `wave_encryption_keys` table
+- Updated `createWaveEncryptionKey()` to accept and store `userKeyId`
+- Server computes HMAC at lookup time — no plaintext user ID needed for E2EE key retrieval
+
+**Category Assignments Folded into Encrypted Metadata**
+- `category_id` now stored in the encrypted `wave_user_metadata` blob
+- Eliminates the `wave_category_assignments` table as a source of `(user_id, wave_id)` leaks
+- Category reads/writes go through the metadata cache
+
+**Admin Migration Endpoints**
+- `POST /api/admin/maintenance/migrate-wave-metadata` — copies existing `wave_participants` metadata into encrypted `wave_user_metadata` table
+- `POST /api/admin/maintenance/migrate-wave-key-ids` — computes HMAC `user_key_id` for all existing `wave_encryption_keys` rows
+- Plaintext `wave_participants` table kept during v2.27.0 for safety — removal planned for future version
+
+#### Part 2: Hidden Waves — Ghost Protocol
+
+PIN-protected "Go Dark" mode that truly hides waves, not just archives them.
+
+**Server Endpoints**
+- `POST /api/waves/:id/hide` — toggle wave hidden status (updates encrypted metadata)
+- `POST /api/user/ghost-pin` — set/update Ghost Protocol PIN (SHA-256 hashed client-side before sending)
+- `POST /api/user/ghost-verify` — verify PIN, grants 5-minute verification window tracked in-memory
+- `GET /api/user/ghost-status` — check if user has a Ghost PIN set
+- `GET /api/waves?hidden=true` — returns only hidden waves (requires ghost verification)
+
+**Client UI**
+- New `GhostProtocolModal` component — PIN entry/creation modal with SHA-256 client-side hashing, orange accent styling
+- Ghost Protocol toggle button in `WaveList` header (ghost emoji icon)
+- Header switches to "GHOST PROTOCOL" with orange accent when in ghost mode
+- "Go Dark" / "Reveal Signal" menu items in `WaveView` wave settings menu (orange styled)
+- Ghost mode state management in `MainApp` (showGhostProtocol, ghostMode, ghostHasPin)
+
+**Push Notification Suppression**
+- Hidden waves show generic push notification text: "New activity on the cortex" (no wave title or content)
+
+**Firefly-Themed Messages**
+- New `GHOST_PROTOCOL` export in `messages.js` with 15 themed strings
+- "Gone dark. Can't find you in the black." / "Signal visible again" / "Wrong codes, try again"
+
+### Changed
+
+- `getWavesForUser()` and `getWavesForUserMinimal()` now accept `participation` parameter for cache-based lookups
+- `createWaveEncryptionKey()` now accepts optional `userKeyId` parameter
+- Archive endpoint now syncs metadata to encrypted `wave_user_metadata` table
+- Pin/category/mark-read operations now sync to encrypted metadata cache
+- `wave-participation-crypto.js` extended with metadata cache, HMAC helpers, encrypt/decrypt metadata, migration functions
+
+### Database
+
+**New Table: `wave_user_metadata`**
+```sql
+CREATE TABLE IF NOT EXISTS wave_user_metadata (
+    lookup_key TEXT PRIMARY KEY,       -- HMAC-SHA256(waveId|userId, WAVE_PARTICIPATION_KEY)
+    encrypted_data TEXT NOT NULL,      -- AES-256-GCM encrypted JSON
+    iv TEXT NOT NULL,
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+);
+```
+
+**Modified Table: `wave_encryption_keys`**
+- Added `user_key_id TEXT` column — HMAC-based blind identifier replacing plaintext `user_id`
+- New index: `idx_wave_encryption_keys_user_key` on `user_key_id`
+
+### Files Modified (11 files, +846 -113 lines)
+
+| File | Changes |
+|------|---------|
+| `server/package.json` | Version → 2.27.0 |
+| `client/package.json` | Version → 2.27.0 |
+| `client/src/config/constants.js` | VERSION → 2.27.0 |
+| `client/messages.js` | Add GHOST_PROTOCOL export (15 keys) |
+| `server/lib/wave-participation-crypto.js` | Metadata cache, HMAC helpers, encrypt/decrypt, migration functions |
+| `server/database-sqlite.js` | New table, column migration, rewritten wave listing, updated key methods |
+| `server/server.js` | `canAccessWaveFromCache()`, Ghost Protocol endpoints, migration endpoints, push suppression |
+| `server/schema.sql` | `wave_user_metadata` table, `user_key_id` index |
+| `client/src/views/MainApp.jsx` | Ghost Protocol state, functions, modal render |
+| `client/src/components/waves/WaveList.jsx` | Ghost Protocol button, ghost mode rendering |
+| `client/src/components/waves/WaveView.jsx` | Go Dark / Reveal Signal menu items |
+| `client/src/components/modals/GhostProtocolModal.jsx` | **NEW** — PIN entry/creation modal |
+
+### What Was NOT Changed
+
+- Plaintext `wave_participants` table kept during v2.27.0 as fallback — removal deferred
+- No federation protocol changes — decoy traffic deferred to v2.28.0
+- No changes to E2EE key exchange protocol — only storage blinding
+- Ghost PIN never stored in plaintext — always SHA-256 hashed client-side
+
 ## [2.26.1] - 2026-02-17
 
 ### Added
