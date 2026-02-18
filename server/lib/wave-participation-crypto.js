@@ -33,9 +33,82 @@ if (!PARTICIPATION_KEY) {
 const waveToParticipants = new Map();
 // userId → Set<waveId>
 const userToWaves = new Map();
+// waveId:userId → {archived, lastRead, pinned, hidden, joinedAt, categoryId}
+const waveUserMetadata = new Map();
 
 // Reference to database instance (set during initialization)
 let db = null;
+
+/**
+ * Compute HMAC-SHA256 lookup key for wave_user_metadata table
+ * @param {string} waveId
+ * @param {string} userId
+ * @returns {string} Hex HMAC digest
+ */
+function computeMetadataKey(waveId, userId) {
+  if (!PARTICIPATION_KEY) return `${waveId}|${userId}`;
+  return crypto.createHmac('sha256', Buffer.from(PARTICIPATION_KEY, 'hex'))
+    .update(`${waveId}|${userId}`).digest('hex');
+}
+
+/**
+ * Compute HMAC-SHA256 of userId for blinding in wave_encryption_keys
+ * @param {string} userId
+ * @returns {string} Hex HMAC digest
+ */
+function computeUserKeyId(userId) {
+  if (!PARTICIPATION_KEY) return userId;
+  return crypto.createHmac('sha256', Buffer.from(PARTICIPATION_KEY, 'hex'))
+    .update(userId).digest('hex');
+}
+
+/**
+ * Encrypt metadata JSON blob
+ * @param {Object} metadata
+ * @returns {{encrypted_data: string, iv: string}|null}
+ */
+function encryptMetadata(metadata) {
+  if (!PARTICIPATION_KEY) return null;
+  try {
+    const key = Buffer.from(PARTICIPATION_KEY, 'hex');
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const data = JSON.stringify(metadata);
+    let encrypted = cipher.update(data, 'utf8', 'base64');
+    encrypted += cipher.final('base64');
+    const authTag = cipher.getAuthTag();
+    const combined = Buffer.concat([Buffer.from(encrypted, 'base64'), authTag]).toString('base64');
+    return { encrypted_data: combined, iv: iv.toString('base64') };
+  } catch (err) {
+    console.error('Metadata encryption error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Decrypt metadata JSON blob
+ * @param {string} encryptedData - Base64 encrypted data
+ * @param {string} iv - Base64 IV
+ * @returns {Object|null}
+ */
+function decryptMetadata(encryptedData, iv) {
+  if (!PARTICIPATION_KEY || !encryptedData || !iv) return null;
+  try {
+    const key = Buffer.from(PARTICIPATION_KEY, 'hex');
+    const ivBuffer = Buffer.from(iv, 'base64');
+    const combined = Buffer.from(encryptedData, 'base64');
+    const authTag = combined.slice(-16);
+    const ciphertext = combined.slice(0, -16);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(ciphertext, undefined, 'utf8');
+    decrypted += decipher.final('utf8');
+    return JSON.parse(decrypted);
+  } catch (err) {
+    console.error('Metadata decryption error:', err.message);
+    return null;
+  }
+}
 
 /**
  * Encrypt participant list for a wave
@@ -109,6 +182,7 @@ export async function initializeCache(database) {
   db = database;
   waveToParticipants.clear();
   userToWaves.clear();
+  waveUserMetadata.clear();
 
   let waveCount = 0;
   let participantCount = 0;
@@ -172,6 +246,60 @@ export async function initializeCache(database) {
     console.log(`✅ Loaded ${waveCount} waves with ${participantCount} participant mappings into cache`);
   }
 
+  // Load wave user metadata (v2.27.0)
+  // Always load plaintext first, then overlay encrypted records on top.
+  // This ensures category_id from wave_category_assignments is always available
+  // even before the admin migration is run.
+  const plaintextRows = db.db.prepare(`
+    SELECT wp.wave_id, wp.user_id, wp.archived, wp.last_read, wp.pinned, wp.joined_at,
+      wca.category_id
+    FROM wave_participants wp
+    LEFT JOIN wave_category_assignments wca ON wp.wave_id = wca.wave_id AND wp.user_id = wca.user_id
+  `).all();
+
+  for (const row of plaintextRows) {
+    waveUserMetadata.set(`${row.wave_id}:${row.user_id}`, {
+      archived: row.archived || 0,
+      lastRead: row.last_read || null,
+      pinned: row.pinned || 0,
+      hidden: 0,
+      joinedAt: row.joined_at || null,
+      categoryId: row.category_id || null,
+    });
+  }
+
+  if (plaintextRows.length > 0) {
+    console.log(`📂 Loaded ${plaintextRows.length} wave user metadata records from plaintext`);
+  }
+
+  // Overlay encrypted metadata on top (takes precedence — contains hidden flag, etc.)
+  const metadataTableExists = db.db.prepare(`
+    SELECT name FROM sqlite_master WHERE type='table' AND name='wave_user_metadata'
+  `).get();
+
+  if (metadataTableExists && PARTICIPATION_KEY) {
+    const metadataRows = db.db.prepare('SELECT lookup_key, encrypted_data, iv FROM wave_user_metadata').all();
+    let encryptedCount = 0;
+
+    for (const [waveId, participants] of waveToParticipants.entries()) {
+      for (const userId of participants) {
+        const lookupKey = computeMetadataKey(waveId, userId);
+        const row = metadataRows.find(r => r.lookup_key === lookupKey);
+        if (row) {
+          const metadata = decryptMetadata(row.encrypted_data, row.iv);
+          if (metadata) {
+            waveUserMetadata.set(`${waveId}:${userId}`, metadata);
+            encryptedCount++;
+          }
+        }
+      }
+    }
+
+    if (encryptedCount > 0) {
+      console.log(`🔐 Overlaid ${encryptedCount} encrypted wave user metadata records`);
+    }
+  }
+
   return { waveCount, participantCount };
 }
 
@@ -225,6 +353,20 @@ export function addParticipant(waveId, userId, options = {}) {
   }
   userToWaves.get(userId).add(waveId);
 
+  // Initialize metadata for new participant (v2.27.0)
+  const metaKey = `${waveId}:${userId}`;
+  if (!waveUserMetadata.has(metaKey)) {
+    const metadata = {
+      archived: options.archived || 0,
+      lastRead: null,
+      pinned: 0,
+      hidden: 0,
+      joinedAt: options.joinedAt || new Date().toISOString(),
+      categoryId: null,
+    };
+    waveUserMetadata.set(metaKey, metadata);
+  }
+
   // Update plaintext table (still needed for metadata like joined_at, archived, last_read)
   // The wave_participants table stores metadata, encrypted table stores the user<->wave mapping
   if (db) {
@@ -269,6 +411,9 @@ export function removeParticipant(waveId, userId) {
       userToWaves.delete(userId);
     }
   }
+
+  // Clean up metadata (v2.27.0)
+  deleteMetadata(waveId, userId);
 
   // Update plaintext table
   if (db) {
@@ -380,6 +525,11 @@ export function deleteWaveParticipation(waveId) {
         }
       }
     }
+    // Clean up metadata for all participants (v2.27.0)
+    for (const userId of participants) {
+      waveUserMetadata.delete(`${waveId}:${userId}`);
+    }
+
     waveToParticipants.delete(waveId);
   }
 
@@ -387,6 +537,16 @@ export function deleteWaveParticipation(waveId) {
   if (db) {
     db.db.prepare('DELETE FROM wave_participants WHERE wave_id = ?').run(waveId);
     db.db.prepare('DELETE FROM wave_participants_encrypted WHERE wave_id = ?').run(waveId);
+
+    // Clean up encrypted metadata
+    if (PARTICIPATION_KEY) {
+      // We can't easily look up HMAC keys without knowing user IDs, but we already
+      // iterated participants above. Delete by computing each key.
+      for (const userId of (participants || [])) {
+        const lookupKey = computeMetadataKey(waveId, userId);
+        db.db.prepare('DELETE FROM wave_user_metadata WHERE lookup_key = ?').run(lookupKey);
+      }
+    }
   }
 }
 
@@ -408,6 +568,12 @@ export function deleteUserParticipation(userId) {
         // Update encrypted blob for this wave
         updateEncryptedBlob(waveId);
       }
+        // Clean up metadata (v2.27.0)
+        waveUserMetadata.delete(`${waveId}:${userId}`);
+        if (PARTICIPATION_KEY && db) {
+          const lookupKey = computeMetadataKey(waveId, userId);
+          db.db.prepare('DELETE FROM wave_user_metadata WHERE lookup_key = ?').run(lookupKey);
+        }
     }
     userToWaves.delete(userId);
   }
@@ -481,11 +647,13 @@ export function getCacheStats() {
   for (const participants of waveToParticipants.values()) {
     totalMappings += participants.size;
   }
+  const metadataCount = waveUserMetadata.size;
 
   return {
     waveCount: waveToParticipants.size,
     userCount: userToWaves.size,
     totalMappings,
+    metadataCount,
     encryptionEnabled: !!PARTICIPATION_KEY
   };
 }
@@ -496,6 +664,177 @@ export function getCacheStats() {
  */
 export function isEncryptionEnabled() {
   return !!PARTICIPATION_KEY;
+}
+
+/**
+ * Get metadata for a user's wave participation
+ * @param {string} waveId
+ * @param {string} userId
+ * @returns {Object} Metadata with defaults
+ */
+export function getMetadata(waveId, userId) {
+  const key = `${waveId}:${userId}`;
+  return waveUserMetadata.get(key) || {
+    archived: 0, lastRead: null, pinned: 0, hidden: 0,
+    joinedAt: null, categoryId: null
+  };
+}
+
+/**
+ * Set metadata for a user's wave participation (updates cache + encrypted DB)
+ * @param {string} waveId
+ * @param {string} userId
+ * @param {Object} updates - Fields to update
+ */
+export function setMetadata(waveId, userId, updates) {
+  const key = `${waveId}:${userId}`;
+  const existing = waveUserMetadata.get(key) || {
+    archived: 0, lastRead: null, pinned: 0, hidden: 0,
+    joinedAt: null, categoryId: null
+  };
+  const merged = { ...existing, ...updates };
+  waveUserMetadata.set(key, merged);
+
+  // Persist to encrypted table
+  if (db) {
+    const lookupKey = computeMetadataKey(waveId, userId);
+    const encrypted = encryptMetadata(merged);
+    if (encrypted) {
+      const now = Math.floor(Date.now() / 1000);
+      db.db.prepare(`
+        INSERT INTO wave_user_metadata (lookup_key, encrypted_data, iv, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(lookup_key) DO UPDATE SET
+          encrypted_data = excluded.encrypted_data,
+          iv = excluded.iv,
+          updated_at = excluded.updated_at
+      `).run(lookupKey, encrypted.encrypted_data, encrypted.iv, now);
+    }
+  }
+}
+
+/**
+ * Delete metadata for a user's wave participation
+ * @param {string} waveId
+ * @param {string} userId
+ */
+export function deleteMetadata(waveId, userId) {
+  const key = `${waveId}:${userId}`;
+  waveUserMetadata.delete(key);
+
+  if (db) {
+    const lookupKey = computeMetadataKey(waveId, userId);
+    db.db.prepare('DELETE FROM wave_user_metadata WHERE lookup_key = ?').run(lookupKey);
+  }
+}
+
+/**
+ * Get all waves where user has specific metadata flags
+ * @param {string} userId
+ * @param {Object} filter - e.g. { hidden: 1 } or { archived: 1 }
+ * @returns {string[]} Array of wave IDs matching the filter
+ */
+export function getWavesByMetadata(userId, filter) {
+  const userWaveIds = getUserWaves(userId);
+  return userWaveIds.filter(waveId => {
+    const meta = getMetadata(waveId, userId);
+    return Object.entries(filter).every(([k, v]) => meta[k] === v);
+  });
+}
+
+/**
+ * Migrate wave_participants metadata to encrypted wave_user_metadata table
+ * @returns {{success: boolean, migratedCount: number, error?: string}}
+ */
+export function migrateMetadata() {
+  if (!PARTICIPATION_KEY) {
+    return { success: false, error: 'WAVE_PARTICIPATION_KEY not configured' };
+  }
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+
+  try {
+    const rows = db.db.prepare(`
+      SELECT wp.wave_id, wp.user_id, wp.archived, wp.last_read, wp.pinned, wp.joined_at,
+        wca.category_id
+      FROM wave_participants wp
+      LEFT JOIN wave_category_assignments wca ON wp.wave_id = wca.wave_id AND wp.user_id = wca.user_id
+    `).all();
+
+    let migratedCount = 0;
+    for (const row of rows) {
+      const metadata = {
+        archived: row.archived || 0,
+        lastRead: row.last_read || null,
+        pinned: row.pinned || 0,
+        hidden: 0,
+        joinedAt: row.joined_at || null,
+        categoryId: row.category_id || null,
+      };
+
+      const key = `${row.wave_id}:${row.user_id}`;
+      waveUserMetadata.set(key, metadata);
+
+      const lookupKey = computeMetadataKey(row.wave_id, row.user_id);
+      const encrypted = encryptMetadata(metadata);
+      if (encrypted) {
+        const now = Math.floor(Date.now() / 1000);
+        db.db.prepare(`
+          INSERT INTO wave_user_metadata (lookup_key, encrypted_data, iv, updated_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(lookup_key) DO UPDATE SET
+            encrypted_data = excluded.encrypted_data,
+            iv = excluded.iv,
+            updated_at = excluded.updated_at
+        `).run(lookupKey, encrypted.encrypted_data, encrypted.iv, now);
+        migratedCount++;
+      }
+    }
+
+    console.log(`✅ Migrated ${migratedCount} wave user metadata records to encrypted storage`);
+    return { success: true, migratedCount };
+  } catch (err) {
+    console.error('Metadata migration error:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Migrate wave_encryption_keys user_id to blinded user_key_id
+ * @returns {{success: boolean, migratedCount: number, error?: string}}
+ */
+export function migrateWaveKeyIds() {
+  if (!PARTICIPATION_KEY) {
+    return { success: false, error: 'WAVE_PARTICIPATION_KEY not configured' };
+  }
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+
+  try {
+    // Check if user_key_id column exists
+    const cols = db.db.prepare("PRAGMA table_info(wave_encryption_keys)").all();
+    const hasUserKeyId = cols.some(c => c.name === 'user_key_id');
+    if (!hasUserKeyId) {
+      return { success: false, error: 'user_key_id column not found - run initializeDatabase first' };
+    }
+
+    const rows = db.db.prepare('SELECT id, user_id FROM wave_encryption_keys WHERE user_key_id IS NULL').all();
+    let migratedCount = 0;
+
+    for (const row of rows) {
+      const userKeyId = computeUserKeyId(row.user_id);
+      db.db.prepare('UPDATE wave_encryption_keys SET user_key_id = ? WHERE id = ?').run(userKeyId, row.id);
+      migratedCount++;
+    }
+
+    console.log(`✅ Migrated ${migratedCount} wave encryption key IDs to blinded storage`);
+    return { success: true, migratedCount };
+  } catch (err) {
+    console.error('Wave key ID migration error:', err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 export default {
@@ -512,5 +851,13 @@ export default {
   deleteUserParticipation,
   migrateToEncrypted,
   getCacheStats,
-  isEncryptionEnabled
+  isEncryptionEnabled,
+  getMetadata,
+  setMetadata,
+  deleteMetadata,
+  getWavesByMetadata,
+  migrateMetadata,
+  migrateWaveKeyIds,
+  computeUserKeyId,
+  computeMetadataKey,
 };

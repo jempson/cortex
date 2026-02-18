@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PRIVACY_LEVELS, NOTIFICATION_BADGE_COLORS } from '../../config/constants.js';
-import { EMPTY } from '../../../messages.js';
+import { EMPTY, GHOST_PROTOCOL } from '../../../messages.js';
 import { GlowText } from '../ui/SimpleComponents.jsx';
 import CollapsibleSection from '../ui/CollapsibleSection.jsx';
 
@@ -367,7 +367,7 @@ const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCat
   );
 };
 
-const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile, waveNotifications = {}, activeCalls = {}, onCategoryToggle, onWaveMove, onWavePin, onManageCategories }) => (
+const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile, waveNotifications = {}, activeCalls = {}, onCategoryToggle, onWaveMove, onWavePin, onManageCategories, ghostMode = false, onToggleGhostProtocol }) => (
   <div style={{
     width: isMobile ? '100%' : '300px',
     minWidth: isMobile ? 'auto' : '280px',
@@ -376,7 +376,7 @@ const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWav
     borderBottom: isMobile ? '1px solid var(--border-subtle)' : 'none',
   }}>
     <div style={{ padding: isMobile ? '14px 16px' : '12px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-      <GlowText color="var(--accent-amber)" size={isMobile ? '1rem' : '0.9rem'}>WAVES</GlowText>
+      <GlowText color={ghostMode ? 'var(--accent-orange)' : 'var(--accent-amber)'} size={isMobile ? '1rem' : '0.9rem'}>{ghostMode ? GHOST_PROTOCOL.modeActive : 'WAVES'}</GlowText>
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
         {categories.length > 0 && (
           <button
@@ -397,6 +397,18 @@ const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWav
             {isMobile ? '⚙' : '⚙ MANAGE'}
           </button>
         )}
+        <button
+          onClick={onToggleGhostProtocol}
+          title={ghostMode ? GHOST_PROTOCOL.exit : GHOST_PROTOCOL.menuItem}
+          style={{
+            padding: isMobile ? '12px 14px' : '6px 10px',
+            minHeight: isMobile ? '44px' : 'auto',
+            minWidth: isMobile ? '44px' : 'auto',
+            background: ghostMode ? 'var(--accent-orange)20' : 'transparent',
+            border: `1px solid ${ghostMode ? 'var(--accent-orange)' : 'var(--border-primary)'}`,
+            color: ghostMode ? 'var(--accent-orange)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'monospace', fontSize: isMobile ? '0.85rem' : '0.7rem',
+          }}
+        >{ghostMode ? '👻 GHOST' : '👻'}</button>
         <button
           onClick={onToggleArchived}
           title={showArchived ? 'Show active waves' : 'Show archived waves'}

@@ -432,10 +432,23 @@ CREATE TABLE IF NOT EXISTS crew_members_encrypted (
     updated_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
 
+-- Encrypted wave user metadata (v2.27.0 - Privacy Hardening Phase 5)
+-- Per-user wave settings (archived, pinned, hidden, category) stored encrypted
+-- lookup_key is HMAC-SHA256(waveId|userId, WAVE_PARTICIPATION_KEY) — no plaintext user/wave IDs
+CREATE TABLE IF NOT EXISTS wave_user_metadata (
+    lookup_key TEXT PRIMARY KEY,              -- HMAC-SHA256(waveId|userId, key)
+    encrypted_data TEXT NOT NULL,             -- AES-256-GCM encrypted JSON blob
+    iv TEXT NOT NULL,                         -- Base64 initialization vector (12 bytes)
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+);
+
 -- E2EE indexes
 CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_wave ON wave_encryption_keys(wave_id);
 CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_user ON wave_encryption_keys(user_id);
 CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_version ON wave_encryption_keys(wave_id, key_version);
+-- v2.27.0: Blinded user key ID for wave encryption keys (HMAC of user_id)
+-- user_key_id column added via migration in database-sqlite.js initializeDatabase()
+CREATE INDEX IF NOT EXISTS idx_wave_encryption_keys_user_key ON wave_encryption_keys(user_key_id) WHERE user_key_id IS NOT NULL;
 
 -- ============ Indexes ============
 
