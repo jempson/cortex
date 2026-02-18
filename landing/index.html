@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Farhold - Secure Wave Communications</title>
+  <title>Cortex - Secure Wave Communications</title>
   <meta name="description" content="Privacy-first, federated communication platform. End-to-end encrypted messaging for those who value their freedom.">
   <meta name="theme-color" content="#0ead69">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="Farhold - Secure Wave Communications">
+  <meta property="og:title" content="Cortex - Secure Wave Communications">
   <meta property="og:description" content="Privacy-first, federated communication platform. End-to-end encrypted messaging.">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://farhold.com">
+  <meta property="og:url" content="https://cortex.farhold.com">
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' stroke='%230ead69' stroke-width='4' fill='none'/><circle cx='50' cy='50' r='25' stroke='%23ffd23f' stroke-width='3' fill='none'/><circle cx='50' cy='50' r='10' fill='%230ead69'/></svg>">
@@ -33,6 +33,7 @@
       --accent-green: #0ead69;
       --accent-amber: #ffd23f;
       --accent-teal: #14b8a6;
+      --accent-purple: #a78bfa;
       --border-primary: #1a3a1a;
       --glow-green: rgba(14, 173, 105, 0.3);
       --glow-amber: rgba(255, 210, 63, 0.3);
@@ -324,6 +325,42 @@
       font-size: 0.95rem;
     }
 
+    .privacy-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      max-width: 800px;
+      margin: 40px auto 0;
+      text-align: left;
+    }
+
+    .privacy-detail {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-primary);
+      padding: 20px;
+    }
+
+    .privacy-detail h4 {
+      color: var(--accent-teal);
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+    }
+
+    .privacy-detail p {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      margin: 0;
+    }
+
+    .privacy-link {
+      margin-top: 32px;
+    }
+
+    .privacy-link a {
+      color: var(--accent-teal);
+      font-size: 0.9rem;
+    }
+
     /* Footer */
     footer {
       padding: 40px 0;
@@ -380,6 +417,10 @@
       .nav-links {
         gap: 16px;
       }
+
+      .privacy-features {
+        gap: 16px;
+      }
     }
   </style>
 </head>
@@ -392,11 +433,11 @@
           <circle cx="50" cy="50" r="25" stroke="#ffd23f" stroke-width="3" fill="none"/>
           <circle cx="50" cy="50" r="10" fill="#0ead69"/>
         </svg>
-        <span class="logo-text">FARHOLD</span>
+        <span class="logo-text">CORTEX</span>
       </a>
       <nav class="nav-links">
         <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener">GitHub</a>
-        <a href="https://app.farhold.com" target="_blank" rel="noopener">Launch App</a>
+        <a href="https://cortex.farhold.com" target="_blank" rel="noopener">Launch App</a>
       </nav>
     </div>
   </header>
@@ -404,14 +445,14 @@
   <main>
     <section class="hero">
       <div class="container">
-        <h1>FARHOLD</h1>
+        <h1>CORTEX</h1>
         <p class="tagline">"Can't stop the signal."</p>
         <p class="subtitle">
           A privacy-first, federated communication platform. End-to-end encrypted messaging
           for those who value their freedom in the digital frontier.
         </p>
         <div class="cta-buttons">
-          <a href="https://app.farhold.com" class="btn btn-primary" target="_blank" rel="noopener">
+          <a href="https://cortex.farhold.com" class="btn btn-primary" target="_blank" rel="noopener">
             Launch App
           </a>
           <a href="https://github.com/jempson/cortex" class="btn btn-secondary" target="_blank" rel="noopener">
@@ -426,34 +467,34 @@
         <h2>// FEATURES</h2>
         <div class="feature-grid">
           <div class="feature-card">
-            <div class="feature-icon">🔐</div>
+            <div class="feature-icon">&#x1F510;</div>
             <h3>End-to-End Encryption</h3>
-            <p>Zero-knowledge encryption using ECDH P-384 and AES-256-GCM. Your messages are yours alone.</p>
+            <p>Zero-knowledge encryption using ECDH P-384 and AES-256-GCM. Your messages are yours alone. The server never sees plaintext.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">🌐</div>
+            <div class="feature-icon">&#x1F30C;</div>
             <h3>Federation</h3>
-            <p>Connect multiple Farhold servers across the 'verse. Your crew, your rules, your network.</p>
+            <p>Connect Cortex instances across the Verse. Cover traffic and message padding resist traffic analysis between allied ports.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">💬</div>
+            <div class="feature-icon">&#x1F4AC;</div>
             <h3>Threaded Waves</h3>
-            <p>Conversations that flow naturally. Focus on any thread, burst discussions into new waves.</p>
+            <p>Conversations that flow naturally. Focus on any thread, burst discussions into new waves, collapse long messages.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">📱</div>
-            <h3>Progressive Web App</h3>
-            <p>Install on any device. Works offline. Push notifications when you're away from the bridge.</p>
+            <div class="feature-icon">&#x1F3A4;</div>
+            <h3>Voice &amp; Video</h3>
+            <p>Record voice and video messages. Real-time calls with screen sharing via LiveKit. Media server integration for Plex, Jellyfin, and Emby.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">👥</div>
-            <h3>Crews & Contacts</h3>
-            <p>Organize your people. Invite-only crews with role-based access control.</p>
+            <div class="feature-icon">&#x1F6E1;&#xFE0F;</div>
+            <h3>Privacy Hardened</h3>
+            <p>Encrypted metadata, anonymized IPs, hidden waves with plausible deniability. Ghost Protocol means you can't prove who's in a wave.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">🎨</div>
+            <div class="feature-icon">&#x1F3A8;</div>
             <h3>Customizable</h3>
-            <p>Multiple themes, font sizes, and preferences. Make it yours.</p>
+            <p>Create and share custom themes. Holiday effects. Outgoing webhooks to Discord, Slack, and Teams. Installable PWA with push notifications.</p>
           </div>
         </div>
       </div>
@@ -462,7 +503,7 @@
     <section class="terminology">
       <div class="container">
         <h2>// TERMINOLOGY</h2>
-        <p class="intro">Farhold uses terminology inspired by the frontier spirit.</p>
+        <p class="intro">Cortex uses terminology inspired by the frontier spirit of the Verse.</p>
         <div class="term-grid">
           <div class="term-card">
             <div class="term-name">Wave</div>
@@ -486,28 +527,51 @@
 
     <section class="privacy">
       <div class="container">
-        <h2>// PRIVACY FIRST</h2>
+        <h2>// THE BLACK KEEPS SECRETS</h2>
         <p>
-          Farhold was built with privacy as its foundation, not an afterthought.
-          We believe communication should be free from surveillance.
+          Cortex was built with privacy as its foundation, not an afterthought.
+          Communication should be free from surveillance.
         </p>
         <p>
           End-to-end encryption means even the server operator cannot read your messages.
-          Your keys, your data, your freedom.
+          But we go further &mdash; metadata is protected too.
         </p>
         <div class="privacy-features">
           <div class="privacy-badge">
-            <span>✓</span> Zero-Knowledge Server
+            <span>&#x2713;</span> Zero-Knowledge Server
           </div>
           <div class="privacy-badge">
-            <span>✓</span> No Tracking
+            <span>&#x2713;</span> No Tracking
           </div>
           <div class="privacy-badge">
-            <span>✓</span> Self-Hostable
+            <span>&#x2713;</span> Self-Hostable
           </div>
           <div class="privacy-badge">
-            <span>✓</span> Open Source
+            <span>&#x2713;</span> Open Source
           </div>
+        </div>
+        <div class="privacy-detail-grid">
+          <div class="privacy-detail">
+            <h4>Encrypted Metadata</h4>
+            <p>Emails, wave participation, crew membership, push subscriptions, and contact lists are all encrypted at rest. A database dump reveals nothing.</p>
+          </div>
+          <div class="privacy-detail">
+            <h4>Anonymized Footprint</h4>
+            <p>IPs anonymized to /24 subnet. User-agents truncated. Timestamps rounded. Activity logs auto-deleted after 30 days.</p>
+          </div>
+          <div class="privacy-detail">
+            <h4>Ghost Protocol</h4>
+            <p>PIN-protected hidden waves with cryptographic participation deniability. Nobody can prove you were in a wave without your key.</p>
+          </div>
+          <div class="privacy-detail">
+            <h4>Running Dark</h4>
+            <p>Federation cover traffic, message padding, and queue jitter make real messages indistinguishable from decoys.</p>
+          </div>
+        </div>
+        <div class="privacy-link">
+          <a href="https://github.com/jempson/cortex/blob/master/docs/PRIVACY.md" target="_blank" rel="noopener">
+            Read the full privacy policy &rarr;
+          </a>
         </div>
       </div>
     </section>
@@ -517,13 +581,14 @@
     <div class="container">
       <p class="footer-quote">"Privacy isn't a feature, it's a foundation."</p>
       <div class="footer-links">
-        <a href="https://app.farhold.com" target="_blank" rel="noopener">Launch App</a>
+        <a href="https://cortex.farhold.com" target="_blank" rel="noopener">Launch App</a>
         <a href="https://github.com/jempson/cortex" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/jempson/cortex/blob/master/docs/PRIVACY.md" target="_blank" rel="noopener">Privacy Policy</a>
         <a href="https://github.com/jempson/cortex/blob/master/README.md" target="_blank" rel="noopener">Documentation</a>
         <a href="https://github.com/jempson/cortex/releases" target="_blank" rel="noopener">Releases</a>
       </div>
       <p class="copyright">
-        Farhold v2.0.0 · Open Source · MIT License
+        Cortex v2.28.1 &middot; Open Source &middot; MIT License
       </p>
     </div>
   </footer>
