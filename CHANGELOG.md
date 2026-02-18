@@ -5,6 +5,22 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.28.1] - 2026-02-18
+
+### Added
+- **Privacy Policy** (`docs/PRIVACY.md`) — plain-language privacy policy documenting all protections from v2.17.0 through v2.28.0: E2EE, metadata encryption, federation cover traffic, data retention, operator visibility, self-hosting model, and account deletion
+- **About Server page** — new Privacy section with bullet-point summary of key protections and link to full policy on GitHub
+
+### Changed
+- Marked final Privacy Hardening backlog item complete in `docs/BACKLOG.md`
+
+### Removed
+- Completed version plan files (`docs/PLAN-v1.9.0.md`, `docs/PLAN-v1.10.0.md`, `docs/PLAN-v1.11.0.md`)
+- Entire `docs/archive/` directory (11 obsolete v1.x plan files, release notes, and deployment guides)
+- Legacy migration scripts (`migrate-v1.2-to-v1.3.js`, `migrate-v1.2-to-v1.3.1.js`, `server/migrate-v1.20-to-v2.0.js`)
+
+---
+
 ## [2.28.0] - 2026-02-17
 
 ### Added
