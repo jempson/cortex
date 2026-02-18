@@ -246,17 +246,41 @@ export async function initializeCache(database) {
     console.log(`✅ Loaded ${waveCount} waves with ${participantCount} participant mappings into cache`);
   }
 
-  // Load wave user metadata from encrypted table (v2.27.0)
+  // Load wave user metadata (v2.27.0)
+  // Always load plaintext first, then overlay encrypted records on top.
+  // This ensures category_id from wave_category_assignments is always available
+  // even before the admin migration is run.
+  const plaintextRows = db.db.prepare(`
+    SELECT wp.wave_id, wp.user_id, wp.archived, wp.last_read, wp.pinned, wp.joined_at,
+      wca.category_id
+    FROM wave_participants wp
+    LEFT JOIN wave_category_assignments wca ON wp.wave_id = wca.wave_id AND wp.user_id = wca.user_id
+  `).all();
+
+  for (const row of plaintextRows) {
+    waveUserMetadata.set(`${row.wave_id}:${row.user_id}`, {
+      archived: row.archived || 0,
+      lastRead: row.last_read || null,
+      pinned: row.pinned || 0,
+      hidden: 0,
+      joinedAt: row.joined_at || null,
+      categoryId: row.category_id || null,
+    });
+  }
+
+  if (plaintextRows.length > 0) {
+    console.log(`📂 Loaded ${plaintextRows.length} wave user metadata records from plaintext`);
+  }
+
+  // Overlay encrypted metadata on top (takes precedence — contains hidden flag, etc.)
   const metadataTableExists = db.db.prepare(`
     SELECT name FROM sqlite_master WHERE type='table' AND name='wave_user_metadata'
   `).get();
 
   if (metadataTableExists && PARTICIPATION_KEY) {
     const metadataRows = db.db.prepare('SELECT lookup_key, encrypted_data, iv FROM wave_user_metadata').all();
-    let metadataCount = 0;
+    let encryptedCount = 0;
 
-    // We need to iterate all known wave:user pairs to find their metadata
-    // Since lookup_key is HMAC'd, we can't reverse it — iterate cache instead
     for (const [waveId, participants] of waveToParticipants.entries()) {
       for (const userId of participants) {
         const lookupKey = computeMetadataKey(waveId, userId);
@@ -265,37 +289,14 @@ export async function initializeCache(database) {
           const metadata = decryptMetadata(row.encrypted_data, row.iv);
           if (metadata) {
             waveUserMetadata.set(`${waveId}:${userId}`, metadata);
-            metadataCount++;
+            encryptedCount++;
           }
         }
       }
     }
 
-    if (metadataCount > 0) {
-      console.log(`🔐 Loaded ${metadataCount} encrypted wave user metadata records`);
-    }
-  } else if (metadataTableExists) {
-    // No encryption key — load from plaintext wave_participants for metadata
-    const rows = db.db.prepare(`
-      SELECT wp.wave_id, wp.user_id, wp.archived, wp.last_read, wp.pinned, wp.joined_at,
-        wca.category_id
-      FROM wave_participants wp
-      LEFT JOIN wave_category_assignments wca ON wp.wave_id = wca.wave_id AND wp.user_id = wca.user_id
-    `).all();
-
-    for (const row of rows) {
-      waveUserMetadata.set(`${row.wave_id}:${row.user_id}`, {
-        archived: row.archived || 0,
-        lastRead: row.last_read || null,
-        pinned: row.pinned || 0,
-        hidden: 0,
-        joinedAt: row.joined_at || null,
-        categoryId: row.category_id || null,
-      });
-    }
-
-    if (rows.length > 0) {
-      console.log(`📂 Loaded ${rows.length} wave user metadata records from plaintext table`);
+    if (encryptedCount > 0) {
+      console.log(`🔐 Overlaid ${encryptedCount} encrypted wave user metadata records`);
     }
   }
 
