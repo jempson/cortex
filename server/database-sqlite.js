@@ -1754,6 +1754,17 @@ export class DatabaseSQLite {
     } catch (err) {
       // Column may already exist
     }
+
+    // v2.28.0: Add protocol_version column to federation_nodes
+    try {
+      const fedCols = this.db.prepare("PRAGMA table_info(federation_nodes)").all();
+      if (!fedCols.some(c => c.name === 'protocol_version')) {
+        this.db.prepare('ALTER TABLE federation_nodes ADD COLUMN protocol_version INTEGER DEFAULT 1').run();
+        console.log('✅ Added protocol_version column to federation_nodes');
+      }
+    } catch (err) {
+      // Column may already exist
+    }
   }
 
   prepareStatements() {
@@ -6545,6 +6556,7 @@ export class DatabaseSQLite {
       addedBy: r.added_by,
       lastContactAt: r.last_contact_at,
       failureCount: r.failure_count,
+      protocolVersion: r.protocol_version || 1,
       createdAt: r.created_at,
       updatedAt: r.updated_at
     }));
@@ -6562,6 +6574,7 @@ export class DatabaseSQLite {
       addedBy: row.added_by,
       lastContactAt: row.last_contact_at,
       failureCount: row.failure_count,
+      protocolVersion: row.protocol_version || 1,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -6579,6 +6592,7 @@ export class DatabaseSQLite {
       addedBy: row.added_by,
       lastContactAt: row.last_contact_at,
       failureCount: row.failure_count,
+      protocolVersion: row.protocol_version || 1,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -6601,14 +6615,15 @@ export class DatabaseSQLite {
     const node = this.getFederationNode(nodeId);
     if (!node) return null;
 
-    const allowedFields = ['nodeName', 'baseUrl', 'publicKey', 'status', 'lastContactAt', 'failureCount'];
+    const allowedFields = ['nodeName', 'baseUrl', 'publicKey', 'status', 'lastContactAt', 'failureCount', 'protocolVersion'];
     const dbFields = {
       nodeName: 'node_name',
       baseUrl: 'base_url',
       publicKey: 'public_key',
       status: 'status',
       lastContactAt: 'last_contact_at',
-      failureCount: 'failure_count'
+      failureCount: 'failure_count',
+      protocolVersion: 'protocol_version'
     };
 
     const setClauses = [];

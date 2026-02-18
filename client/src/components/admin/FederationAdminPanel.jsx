@@ -17,6 +17,8 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
   const [requestMessage, setRequestMessage] = useState('');
   const [requestLoading, setRequestLoading] = useState(false);
   const [acceptLoading, setAcceptLoading] = useState(null);
+  // Cover traffic (v2.28.0)
+  const [decoyToggling, setDecoyToggling] = useState(false);
 
   const loadFederationData = useCallback(async () => {
     setLoading(true);
@@ -175,6 +177,23 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
     setAcceptLoading(null);
   };
 
+  // Toggle cover traffic (v2.28.0)
+  const handleToggleDecoy = async () => {
+    setDecoyToggling(true);
+    try {
+      const newEnabled = !status?.decoy?.enabled;
+      const result = await fetchAPI('/admin/federation/decoy', {
+        method: 'POST',
+        body: { enabled: newEnabled }
+      });
+      showToast(newEnabled ? FEDERATION.coverTrafficStarted : FEDERATION.coverTrafficStopped, 'success');
+      loadFederationData();
+    } catch (err) {
+      showToast(err.message || 'Failed to toggle cover traffic', 'error');
+    }
+    setDecoyToggling(false);
+  };
+
   const getStatusColor = (s) => {
     switch (s) {
       case 'active': return 'var(--accent-green)';
@@ -317,6 +336,76 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
           <span>{FEDERATION.activeCount}: <span style={{ color: 'var(--accent-green)' }}>{status?.activeNodes || 0}</span></span>
         </div>
       </div>
+
+      {/* Cover Traffic Section (v2.28.0) */}
+      {status?.enabled && (
+        <div style={{
+          marginTop: '16px',
+          padding: isMobile ? '14px' : '16px',
+          background: 'var(--bg-surface)',
+          border: `1px solid ${status?.decoy?.enabled ? 'var(--accent-green)40' : 'var(--accent-amber)40'}`,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+              {FEDERATION.coverTrafficSection}
+            </span>
+            <span style={{
+              padding: '2px 10px',
+              background: status?.decoy?.enabled ? 'var(--accent-green)20' : 'var(--accent-amber)20',
+              color: status?.decoy?.enabled ? 'var(--accent-green)' : 'var(--accent-amber)',
+              fontSize: '0.75rem',
+              textShadow: status?.decoy?.enabled ? '0 0 6px var(--accent-green)' : 'none',
+            }}>
+              {status?.decoy?.enabled ? FEDERATION.runningDark : FEDERATION.exposed}
+            </span>
+          </div>
+
+          <div style={{ marginBottom: '12px', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+            {FEDERATION.coverTrafficDescription}
+          </div>
+
+          {status?.decoy?.enabled && (
+            <div style={{ display: 'flex', gap: '24px', color: 'var(--text-dim)', fontSize: isMobile ? '0.85rem' : '0.8rem', marginBottom: '12px', flexWrap: 'wrap' }}>
+              <span>{FEDERATION.activeTargets}: <span style={{ color: 'var(--text-primary)' }}>{status.decoy.activeTargets || 0}</span></span>
+              <span>{FEDERATION.decoysSent}: <span style={{ color: 'var(--text-primary)' }}>{status.decoy.sentTotal || 0}</span></span>
+              {status.decoy.lastSentAt && (
+                <span>{FEDERATION.lastDecoy}: <span style={{ color: 'var(--text-primary)' }}>{new Date(status.decoy.lastSentAt).toLocaleTimeString()}</span></span>
+              )}
+            </div>
+          )}
+
+          {!status?.decoy?.enabled && (
+            <div style={{
+              padding: '8px 12px',
+              background: 'var(--accent-amber)10',
+              border: '1px solid var(--accent-amber)20',
+              color: 'var(--accent-amber)',
+              fontSize: '0.75rem',
+              marginBottom: '12px',
+            }}>
+              {FEDERATION.coverTrafficDisabled}
+            </div>
+          )}
+
+          <button
+            onClick={handleToggleDecoy}
+            disabled={decoyToggling}
+            style={{
+              padding: isMobile ? '12px 20px' : '10px 20px',
+              minHeight: isMobile ? '44px' : 'auto',
+              background: status?.decoy?.enabled ? 'transparent' : 'var(--accent-green)20',
+              border: `1px solid ${status?.decoy?.enabled ? 'var(--accent-amber)' : 'var(--accent-green)'}`,
+              color: status?.decoy?.enabled ? 'var(--accent-amber)' : 'var(--accent-green)',
+              cursor: decoyToggling ? 'wait' : 'pointer',
+              fontFamily: 'monospace',
+              fontSize: isMobile ? '0.85rem' : '0.8rem',
+              opacity: decoyToggling ? 0.6 : 1,
+            }}
+          >
+            {decoyToggling ? '...' : status?.decoy?.enabled ? FEDERATION.stopCoverTraffic : FEDERATION.startCoverTraffic}
+          </button>
+        </div>
+      )}
 
       {/* Request Federation Section */}
       {status?.configured && status?.enabled && (
@@ -600,6 +689,18 @@ const FederationAdminPanel = ({ fetchAPI, showToast, isMobile, refreshTrigger = 
                     }}>
                       {getStatusLabel(node.status)}
                     </span>
+                    {node.status === 'active' && (
+                      <span style={{
+                        marginLeft: '6px',
+                        padding: '2px 6px',
+                        background: node.protocolVersion >= 2 ? 'var(--accent-teal)20' : 'var(--text-dim)20',
+                        color: node.protocolVersion >= 2 ? 'var(--accent-teal)' : 'var(--text-dim)',
+                        fontSize: '0.65rem',
+                        fontFamily: 'monospace',
+                      }}>
+                        {node.protocolVersion >= 2 ? FEDERATION.v2Badge : FEDERATION.v1Badge}
+                      </span>
+                    )}
                   </div>
                   <button
                     onClick={() => handleDeleteNode(node.id)}

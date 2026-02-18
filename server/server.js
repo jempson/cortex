@@ -134,6 +134,11 @@ const ghostVerifications = new Map();
 const FEDERATION_ENABLED = process.env.FEDERATION_ENABLED === 'true';
 const FEDERATION_NODE_NAME = process.env.FEDERATION_NODE_NAME || null;
 
+// Federation cover traffic (v2.28.0)
+let FEDERATION_DECOY_ENABLED = process.env.FEDERATION_DECOY_ENABLED === 'true';
+const FEDERATION_DECOY_MIN_INTERVAL_S = parseInt(process.env.FEDERATION_DECOY_MIN_INTERVAL_S || '30', 10);
+const FEDERATION_DECOY_MAX_INTERVAL_S = parseInt(process.env.FEDERATION_DECOY_MAX_INTERVAL_S || '120', 10);
+
 // Database configuration - set USE_SQLITE=true to use SQLite instead of JSON files
 const USE_SQLITE = process.env.USE_SQLITE === 'true';
 
@@ -4427,7 +4432,7 @@ if (!ALLOWED_ORIGINS && process.env.NODE_ENV === 'production') {
   console.error('========================================');
 }
 
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({ limit: '512kb' })); // Increased from 100kb to support federation message padding (v2.28.0)
 
 app.use('/api/', apiLimiter);
 app.set('trust proxy', 1);
@@ -9669,20 +9674,16 @@ app.post('/api/admin/alerts', authenticateToken, async (req, res) => {
       const node = db.getFederationNodeByName(sub.subscriberNode);
       if (node?.status === 'active') {
         const messageId = `alert-broadcast-${alert.id}-${Date.now()}`;
-        const payload = {
-          id: messageId,
-          type: 'alert_broadcast',
-          payload: {
-            alertId: alert.id,
-            title: alert.title,
-            content: alert.content,
-            priority: alert.priority,
-            category: alert.category,
-            startTime: alert.startTime,
-            endTime: alert.endTime,
-            originNode: db.getServerIdentity()?.nodeName
-          }
-        };
+        const payload = createFederationEnvelope(messageId, 'alert_broadcast', {
+          alertId: alert.id,
+          title: alert.title,
+          content: alert.content,
+          priority: alert.priority,
+          category: alert.category,
+          startTime: alert.startTime,
+          endTime: alert.endTime,
+          originNode: db.getServerIdentity()?.nodeName
+        });
 
         try {
           await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
@@ -9775,22 +9776,18 @@ app.put('/api/admin/alerts/:id', authenticateToken, async (req, res) => {
       const node = db.getFederationNodeByName(sub.subscriberNode);
       if (node?.status === 'active') {
         const messageId = `alert-update-${alert.id}-${Date.now()}`;
-        const payload = {
-          id: messageId,
-          type: 'alert_update',
-          payload: {
-            alertId: alert.id,
-            originNode: db.getServerIdentity()?.nodeName,
-            updates: {
-              title: alert.title,
-              content: alert.content,
-              priority: alert.priority,
-              category: alert.category,
-              startTime: alert.startTime,
-              endTime: alert.endTime
-            }
+        const payload = createFederationEnvelope(messageId, 'alert_update', {
+          alertId: alert.id,
+          originNode: db.getServerIdentity()?.nodeName,
+          updates: {
+            title: alert.title,
+            content: alert.content,
+            priority: alert.priority,
+            category: alert.category,
+            startTime: alert.startTime,
+            endTime: alert.endTime
           }
-        };
+        });
 
         try {
           await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
@@ -9826,14 +9823,10 @@ app.delete('/api/admin/alerts/:id', authenticateToken, async (req, res) => {
       const node = db.getFederationNodeByName(sub.subscriberNode);
       if (node?.status === 'active') {
         const messageId = `alert-delete-${alert.id}-${Date.now()}`;
-        const payload = {
-          id: messageId,
-          type: 'alert_delete',
-          payload: {
-            alertId: alert.id,
-            originNode: db.getServerIdentity()?.nodeName
-          }
-        };
+        const payload = createFederationEnvelope(messageId, 'alert_delete', {
+          alertId: alert.id,
+          originNode: db.getServerIdentity()?.nodeName
+        });
 
         try {
           await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
@@ -9924,14 +9917,10 @@ app.post('/api/admin/alert-subscriptions', authenticateToken, async (req, res) =
   // Notify the source node that we're subscribing
   if (FEDERATION_ENABLED) {
     const messageId = `alert-subscribe-${Date.now()}`;
-    const payload = {
-      id: messageId,
-      type: 'alert_subscribe',
-      payload: {
-        subscriberNode: db.getServerIdentity()?.nodeName,
-        categories
-      }
-    };
+    const payload = createFederationEnvelope(messageId, 'alert_subscribe', {
+      subscriberNode: db.getServerIdentity()?.nodeName,
+      categories
+    });
 
     try {
       await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
@@ -9999,13 +9988,9 @@ app.delete('/api/admin/alert-subscriptions/:id', authenticateToken, async (req, 
     const node = db.getFederationNodeByName(subscription.sourceNode);
     if (node?.status === 'active') {
       const messageId = `alert-unsubscribe-${Date.now()}`;
-      const payload = {
-        id: messageId,
-        type: 'alert_unsubscribe',
-        payload: {
-          subscriberNode: db.getServerIdentity()?.nodeName
-        }
-      };
+      const payload = createFederationEnvelope(messageId, 'alert_unsubscribe', {
+        subscriberNode: db.getServerIdentity()?.nodeName
+      });
 
       try {
         await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', payload);
@@ -12097,6 +12082,32 @@ const authenticateFederationRequest = createFederationAuthMiddleware(['active'])
 // Middleware that also allows outbound_pending (for accept/decline responses)
 const authenticateFederationResponse = createFederationAuthMiddleware(['active', 'outbound_pending']);
 
+// ============ Federation Protocol v2 Helpers (v2.28.0) ============
+
+// Create a standardized federation envelope with protocol version
+function createFederationEnvelope(id, type, payload) {
+  return { id, type, payload, protocolVersion: 2 };
+}
+
+// Message padding — fixed-size buckets to resist traffic analysis
+const PADDING_BUCKETS = [1024, 4096, 16384, 65536, 262144]; // 1KB, 4KB, 16KB, 64KB, 256KB
+
+function padFederationPayload(envelope) {
+  const serialized = JSON.stringify(envelope);
+  const currentSize = Buffer.byteLength(serialized);
+  const targetBucket = PADDING_BUCKETS.find(b => b >= currentSize + 50) || PADDING_BUCKETS[PADDING_BUCKETS.length - 1];
+  const paddingNeeded = targetBucket - currentSize - 15; // account for _pad key overhead
+  if (paddingNeeded > 0) {
+    envelope._pad = crypto.randomBytes(Math.max(1, Math.floor(paddingNeeded / 2))).toString('base64');
+  }
+  return envelope;
+}
+
+function stripPadding(envelope) {
+  if (envelope && envelope._pad) delete envelope._pad;
+  return envelope;
+}
+
 // Helper to send signed federation requests
 async function sendSignedFederationRequest(targetNode, method, path, body = null) {
   const ourIdentity = db.getServerIdentity();
@@ -12105,6 +12116,11 @@ async function sendSignedFederationRequest(targetNode, method, path, body = null
   }
 
   const url = `${targetNode.baseUrl}${path}`;
+
+  // Pad outbound federation inbox messages for traffic analysis resistance (v2.28.0)
+  if (body && typeof body === 'object' && path === '/api/federation/inbox' && body.type) {
+    body = padFederationPayload(body);
+  }
 
   // Stringify body once and use the same string for both signature and request
   // Guard against double-stringify: if body is already a string, don't stringify again
@@ -12159,21 +12175,17 @@ async function sendWaveInvite(targetNode, wave, participants, invitedUserHandle)
     nodeName: p.nodeName || ourIdentity?.nodeName, // Local users have our node
   }));
 
-  const payload = {
-    id: messageId,
-    type: 'wave_invite',
-    payload: {
-      wave: {
-        id: wave.id,
-        title: wave.title,
-        privacy: wave.privacy || 'cross-server',
-        createdBy: wave.createdBy,
-        createdAt: wave.createdAt,
-      },
-      participants: participantList,
-      invitedUserHandle,
-    }
-  };
+  const payload = createFederationEnvelope(messageId, 'wave_invite', {
+    wave: {
+      id: wave.id,
+      title: wave.title,
+      privacy: wave.privacy || 'cross-server',
+      createdBy: wave.createdBy,
+      createdAt: wave.createdAt,
+    },
+    participants: participantList,
+    invitedUserHandle,
+  });
 
   try {
     // Try to send immediately (optimistic)
@@ -12236,11 +12248,7 @@ async function sendDropletToFederatedNodes(waveId, messageType, payload) {
       continue;
     }
 
-    const fullPayload = {
-      id: messageId,
-      type: messageType,
-      payload,
-    };
+    const fullPayload = createFederationEnvelope(messageId, messageType, payload);
 
     try {
       // Try to send immediately (optimistic)
@@ -12297,7 +12305,9 @@ app.get('/api/federation/identity', (req, res) => {
   res.json({
     nodeName: identity.nodeName,
     publicKey: identity.publicKey,
-    createdAt: identity.createdAt
+    createdAt: identity.createdAt,
+    protocolVersion: 2,
+    capabilities: ['decoy', 'padding']
   });
 });
 
@@ -12309,13 +12319,53 @@ app.get('/api/admin/federation/status', authenticateToken, (req, res) => {
   const identity = db.getServerIdentity();
   const nodes = db.getFederationNodes();
 
+  const activeNodes = nodes.filter(n => n.status === 'active');
   res.json({
     enabled: FEDERATION_ENABLED,
     configured: !!identity,
     nodeName: identity?.nodeName || FEDERATION_NODE_NAME || null,
     hasKeypair: !!identity?.publicKey,
     trustedNodes: nodes.length,
-    activeNodes: nodes.filter(n => n.status === 'active').length
+    activeNodes: activeNodes.length,
+    protocolVersion: 2,
+    v2NodeCount: activeNodes.filter(n => n.protocolVersion >= 2).length,
+    decoy: {
+      enabled: FEDERATION_DECOY_ENABLED,
+      minIntervalS: FEDERATION_DECOY_MIN_INTERVAL_S,
+      maxIntervalS: FEDERATION_DECOY_MAX_INTERVAL_S,
+      activeTargets: decoyStats.activeTargets,
+      sentTotal: decoyStats.sentTotal,
+      lastSentAt: decoyStats.lastSentAt,
+      startedAt: decoyStats.startedAt,
+    }
+  });
+});
+
+// Runtime decoy cover traffic toggle (v2.28.0)
+app.post('/api/admin/federation/decoy', authenticateToken, (req, res) => {
+  const user = db.findUserById(req.user.userId);
+  if (!requireRole(user, ROLES.ADMIN, res)) return;
+
+  if (!FEDERATION_ENABLED) {
+    return res.status(400).json({ error: 'Federation is not enabled' });
+  }
+
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'enabled must be a boolean' });
+  }
+
+  FEDERATION_DECOY_ENABLED = enabled;
+  if (enabled) {
+    startDecoyTraffic();
+  } else {
+    stopDecoyTraffic();
+  }
+
+  res.json({
+    success: true,
+    enabled: FEDERATION_DECOY_ENABLED,
+    activeTargets: decoyStats.activeTargets
   });
 });
 
@@ -12450,6 +12500,9 @@ app.put('/api/admin/federation/nodes/:id', authenticateToken, (req, res) => {
     return res.status(404).json({ error: 'Federation node not found' });
   }
 
+  // Refresh decoy targets on status change (v2.28.0)
+  if (FEDERATION_DECOY_ENABLED && updates.status) refreshDecoyTargets();
+
   res.json({ success: true, node });
 });
 
@@ -12533,9 +12586,13 @@ app.post('/api/admin/federation/nodes/:id/handshake', authenticateToken, async (
     // Update our record with the remote server's public key and mark as active
     const updatedNode = db.updateFederationNode(nodeId, {
       publicKey: remoteIdentity.publicKey,
-      status: 'active'
+      status: 'active',
+      protocolVersion: remoteIdentity.protocolVersion || 1
     });
     db.recordFederationContact(nodeId, true);
+
+    // Refresh decoy targets if cover traffic is active (v2.28.0)
+    if (FEDERATION_DECOY_ENABLED) refreshDecoyTargets();
 
     res.json({
       success: true,
@@ -12915,6 +12972,14 @@ app.post('/api/admin/federation/requests/:id/accept', authenticateToken, async (
       return res.status(500).json({ error: 'Failed to accept request' });
     }
 
+    // Store protocol version from remote identity (v2.28.0)
+    const acceptedNode = db.getFederationNodeByName(request.fromNodeName);
+    if (acceptedNode) {
+      db.updateFederationNode(acceptedNode.id, {
+        protocolVersion: remoteIdentity.protocolVersion || 1
+      });
+    }
+
     // Send acceptance notification to the requesting server
     const acceptBody = {
       type: 'federation_accepted',
@@ -12934,6 +12999,9 @@ app.post('/api/admin/federation/requests/:id/accept', authenticateToken, async (
 
     const node = db.getFederationNodeByName(request.fromNodeName);
     console.log(`✅ Accepted federation request from ${request.fromNodeName}`);
+
+    // Refresh decoy targets if cover traffic is active (v2.28.0)
+    if (FEDERATION_DECOY_ENABLED) refreshDecoyTargets();
 
     res.json({
       success: true,
@@ -13065,6 +13133,8 @@ app.post('/api/federation/inbox/decline', federationRequestLimiter, authenticate
 // Federation inbox - receives signed messages from other servers
 // This is the main entry point for federated content delivery
 app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederationRequest, async (req, res) => {
+  // Strip padding from incoming messages (v2.28.0)
+  stripPadding(req.body);
   const { id, type, payload } = req.body;
   const sourceNode = req.federationNode;
 
@@ -13378,11 +13448,7 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
             const node = db.getFederationNodeByName(fed.nodeName);
             if (!node || node.status !== 'active') continue;
 
-            const relayPayload = {
-              id: `relay-${droplet.id}-${Date.now()}`,
-              type: 'new_droplet',
-              payload: { droplet, originWaveId, author },
-            };
+            const relayPayload = createFederationEnvelope(`relay-${droplet.id}-${Date.now()}`, 'new_droplet', { droplet, originWaveId, author });
 
             sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', relayPayload)
               .then(res => {
@@ -13610,6 +13676,10 @@ app.post('/api/federation/inbox', federationInboxLimiter, authenticateFederation
       case 'ping':
         // Simple connectivity test
         console.log(`📨 Received ping from ${sourceNode.nodeName}`);
+        break;
+
+      case 'decoy':
+        // Cover traffic — silent discard, no content logging (v2.28.0)
         break;
 
       default:
@@ -14806,50 +14876,46 @@ app.put('/api/waves/:id', authenticateToken, async (req, res) => {
         db.addWaveFederationNode(waveId, node.nodeName);
 
         // Send wave broadcast (invites all users on the remote node)
-        const broadcastPayload = {
-          id: `wave-broadcast-${uuidv4()}`,
-          type: 'wave_broadcast',
-          payload: {
-            wave: {
-              id: wave.id,
-              title: wave.title,
-              privacy: 'crossServer',
-              createdBy: wave.createdBy,
-              createdAt: wave.createdAt,
-            },
-            participants: localParticipants.map(p => ({
-              id: p.id,
-              handle: p.handle,
-              displayName: p.name,
-              avatar: p.avatar,
-              nodeName: ourNodeName,
-            })),
-            // Include existing droplets so federated servers have history
-            droplets: existingDroplets.map(d => {
-              // Ensure reactions is an object (may be string from DB)
-              let reactions = d.reactions || {};
-              if (typeof reactions === 'string') {
-                try { reactions = JSON.parse(reactions); } catch { reactions = {}; }
-              }
-              return {
-                id: d.id,
-                parentId: d.parentId || d.parent_id,
-                content: d.content,
-                createdAt: d.createdAt || d.created_at,
-                editedAt: d.editedAt || d.edited_at,
-                reactions,
-                author: {
-                  id: d.authorId || d.author_id,
-                  handle: d.sender_handle,
-                  displayName: d.sender_name,
-                  avatar: d.sender_avatar,
-                  avatarUrl: d.sender_avatar_url,
-                  nodeName: ourNodeName,
-                },
-              };
-            }),
+        const broadcastPayload = createFederationEnvelope(`wave-broadcast-${uuidv4()}`, 'wave_broadcast', {
+          wave: {
+            id: wave.id,
+            title: wave.title,
+            privacy: 'crossServer',
+            createdBy: wave.createdBy,
+            createdAt: wave.createdAt,
           },
-        };
+          participants: localParticipants.map(p => ({
+            id: p.id,
+            handle: p.handle,
+            displayName: p.name,
+            avatar: p.avatar,
+            nodeName: ourNodeName,
+          })),
+          // Include existing droplets so federated servers have history
+          droplets: existingDroplets.map(d => {
+            // Ensure reactions is an object (may be string from DB)
+            let reactions = d.reactions || {};
+            if (typeof reactions === 'string') {
+              try { reactions = JSON.parse(reactions); } catch { reactions = {}; }
+            }
+            return {
+              id: d.id,
+              parentId: d.parentId || d.parent_id,
+              content: d.content,
+              createdAt: d.createdAt || d.created_at,
+              editedAt: d.editedAt || d.edited_at,
+              reactions,
+              author: {
+                id: d.authorId || d.author_id,
+                handle: d.sender_handle,
+                displayName: d.sender_name,
+                avatar: d.sender_avatar,
+                avatarUrl: d.sender_avatar_url,
+                nodeName: ourNodeName,
+              },
+            };
+          }),
+        });
 
         sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', broadcastPayload)
           .then(response => {
@@ -16436,7 +16502,7 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
       const originNode = db.getFederationNodeByName(wave.originNode);
       if (originNode && originNode.status === 'active') {
         const messageId = `new_droplet-${droplet.id}-${Date.now()}`;
-        const fullPayload = { id: messageId, type: 'new_droplet', payload: dropletPayload };
+        const fullPayload = createFederationEnvelope(messageId, 'new_droplet', dropletPayload);
         sendSignedFederationRequest(originNode, 'POST', '/api/federation/inbox', fullPayload)
           .then(response => {
             if (response.ok) {
@@ -17358,11 +17424,7 @@ function queueFederationDelivery(targetNodeName, messageType, payload) {
 
   // Create a full message payload with ID
   const messageId = `${messageType}-${payload.droplet?.id || payload.dropletId || payload.wave?.id || uuidv4()}-${Date.now()}`;
-  const fullPayload = {
-    id: messageId,
-    type: messageType,
-    payload,
-  };
+  const fullPayload = createFederationEnvelope(messageId, messageType, payload);
 
   return db.queueFederationMessage({
     targetNode: targetNodeName,
@@ -17371,10 +17433,18 @@ function queueFederationDelivery(targetNodeName, messageType, payload) {
   });
 }
 
-// Start federation queue processor if enabled
+// Start federation queue processor with jitter (v2.28.0 — randomized 20-40s intervals)
+function scheduleNextQueueProcess() {
+  const jitter = 20000 + Math.floor(Math.random() * 20000); // 20-40s
+  federationQueueInterval = setTimeout(() => {
+    processFederationQueue();
+    scheduleNextQueueProcess();
+  }, jitter);
+}
+
 if (FEDERATION_ENABLED) {
-  federationQueueInterval = setInterval(processFederationQueue, 30000);
-  console.log('📤 Federation queue processor started (30s interval)');
+  scheduleNextQueueProcess();
+  console.log('📤 Federation queue processor started (20-40s jitter)');
 
   // Also cleanup old messages daily
   setInterval(() => {
@@ -17383,6 +17453,78 @@ if (FEDERATION_ENABLED) {
       console.log(`🧹 Cleaned up ${cleaned} old federation messages`);
     }
   }, 24 * 60 * 60 * 1000); // Daily
+}
+
+// ============ Federation Decoy Cover Traffic (v2.28.0) ============
+
+const decoyTimers = new Map(); // per-node setTimeout references
+const decoyStats = {
+  sentTotal: 0,
+  sentPerNode: {},
+  lastSentAt: null,
+  startedAt: null,
+  activeTargets: 0,
+};
+
+async function sendDecoyToNode(node) {
+  try {
+    const envelope = createFederationEnvelope(`decoy-${uuidv4()}`, 'decoy', {
+      nonce: crypto.randomBytes(32).toString('base64')
+    });
+    // Pad to a random bucket for size variance
+    padFederationPayload(envelope);
+    await sendSignedFederationRequest(node, 'POST', '/api/federation/inbox', envelope);
+    decoyStats.sentTotal++;
+    decoyStats.sentPerNode[node.nodeName] = (decoyStats.sentPerNode[node.nodeName] || 0) + 1;
+    decoyStats.lastSentAt = new Date().toISOString();
+  } catch {
+    // Silent failure — don't log to prevent traffic analysis
+  }
+}
+
+function scheduleDecoyForNode(node) {
+  if (decoyTimers.has(node.nodeName)) {
+    clearTimeout(decoyTimers.get(node.nodeName));
+  }
+  const intervalMs = (FEDERATION_DECOY_MIN_INTERVAL_S + Math.floor(Math.random() * (FEDERATION_DECOY_MAX_INTERVAL_S - FEDERATION_DECOY_MIN_INTERVAL_S))) * 1000;
+  const timer = setTimeout(() => {
+    sendDecoyToNode(node);
+    if (FEDERATION_DECOY_ENABLED) {
+      scheduleDecoyForNode(node);
+    }
+  }, intervalMs);
+  decoyTimers.set(node.nodeName, timer);
+}
+
+function startDecoyTraffic() {
+  const nodes = db.getFederationNodes({ status: 'active' });
+  const v2Nodes = nodes.filter(n => n.protocolVersion >= 2);
+  decoyStats.startedAt = new Date().toISOString();
+  decoyStats.activeTargets = v2Nodes.length;
+  for (const node of v2Nodes) {
+    scheduleDecoyForNode(node);
+  }
+}
+
+function stopDecoyTraffic() {
+  for (const [, timer] of decoyTimers) {
+    clearTimeout(timer);
+  }
+  decoyTimers.clear();
+  decoyStats.activeTargets = 0;
+  decoyStats.startedAt = null;
+}
+
+function refreshDecoyTargets() {
+  if (!FEDERATION_DECOY_ENABLED) return;
+  stopDecoyTraffic();
+  startDecoyTraffic();
+}
+
+// Auto-start decoy traffic if enabled
+if (FEDERATION_ENABLED && FEDERATION_DECOY_ENABLED) {
+  startDecoyTraffic();
+  console.log('🔇 Federation cover traffic started');
 }
 
 // Activity log cleanup is now handled by the privacy retention job in the server startup section (v2.16.0)

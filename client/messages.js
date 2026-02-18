@@ -258,6 +258,24 @@ export const FEDERATION = {
   failedToAcceptRequest: "Failed to accept docking request",
   failedToDeclineRequest: "Failed to decline docking request",
   failedToInviteTravelers: "Failed to invite travelers",
+
+  // Cover Traffic (v2.28.0)
+  coverTrafficSection: "COVER TRAFFIC",
+  runningDark: "RUNNING DARK",
+  exposed: "EXPOSED",
+  coverTrafficEnabled: "Cover traffic active",
+  coverTrafficDisabled: "Cover traffic inactive — federation traffic patterns are visible",
+  startCoverTraffic: "RUN DARK",
+  stopCoverTraffic: "GO VISIBLE",
+  coverTrafficStarted: "Running dark — cover traffic active",
+  coverTrafficStopped: "Cover traffic stopped",
+  activeTargets: "Active Targets",
+  decoysSent: "Decoys Sent",
+  lastDecoy: "Last Decoy",
+  protocolVersion: "Protocol",
+  v2Badge: "V2",
+  v1Badge: "V1",
+  coverTrafficDescription: "Sends decoy signals to allied ports to mask real traffic patterns. Only works with V2 ports.",
 };
 
 // ============ UI LABELS ============
