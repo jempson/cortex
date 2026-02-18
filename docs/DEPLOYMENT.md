@@ -31,24 +31,42 @@ apt update && apt upgrade -y
 # Create deploy user
 adduser cortex
 usermod -aG sudo cortex
-
-# SSH hardening
-sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-systemctl restart sshd
-
-# Set timezone
-timedatectl set-timezone UTC
-
-# Enable automatic security updates
-apt install -y unattended-upgrades
-dpkg-reconfigure -plow unattended-upgrades
 ```
 
-Copy your SSH public key to the `cortex` user before disabling password auth:
+### SSH Key Setup
+
+Copy your SSH public key to the `cortex` user **before** disabling password auth. Run this from your local machine:
 
 ```bash
 ssh-copy-id cortex@your-server-ip
+```
+
+Verify you can log in with the key (no password prompt):
+
+```bash
+ssh cortex@your-server-ip
+```
+
+### SSH Hardening
+
+Only after confirming key-based login works:
+
+```bash
+# Disable root login and password authentication
+sudo sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+sudo systemctl restart sshd
+```
+
+### Remaining Setup
+
+```bash
+# Set timezone
+sudo timedatectl set-timezone UTC
+
+# Enable automatic security updates
+sudo apt install -y unattended-upgrades
+sudo dpkg-reconfigure -plow unattended-upgrades
 ```
 
 ---
