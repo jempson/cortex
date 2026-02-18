@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { formatError } from '../../../messages.js';
+import { formatError, FEDERATION } from '../../../messages.js';
 
 /**
  * Privacy & Encryption Dashboard (v2.24.0)
@@ -11,12 +11,17 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [migrating, setMigrating] = useState(null); // 'emails' | 'participation' | 'pushSubs' | 'crewMembers' | null
+  const [fedStatus, setFedStatus] = useState(null);
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchAPI('/admin/maintenance/privacy-status');
+      const [data, fedData] = await Promise.all([
+        fetchAPI('/admin/maintenance/privacy-status'),
+        fetchAPI('/admin/federation/status').catch(() => null)
+      ]);
       setStatus(data);
+      setFedStatus(fedData);
     } catch (err) {
       if (!err.message?.includes('401')) {
         showToast(err.message || formatError('Failed to load privacy status'), 'error');
@@ -356,6 +361,26 @@ const PrivacyDashboard = ({ fetchAPI, showToast, isMobile, isOpen, onToggle }) =
                   Encrypted on user devices with their E2EE keys. Server cannot decrypt.
                 </div>
               </div>
+
+              {/* Federation Cover Traffic (v2.28.0) */}
+              {fedStatus?.enabled && (
+                <div style={cardStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '1rem' }}>📡</span>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Federation Cover Traffic</span>
+                    {statusBadge(
+                      fedStatus.decoy?.enabled && fedStatus.decoy?.activeTargets > 0,
+                      fedStatus.decoy?.enabled ? FEDERATION.runningDark : FEDERATION.exposed
+                    )}
+                  </div>
+                  <div style={{ marginTop: '8px', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                    {fedStatus.decoy?.enabled
+                      ? `${FEDERATION.coverTrafficEnabled} — ${fedStatus.decoy.activeTargets || 0} V2 targets`
+                      : FEDERATION.coverTrafficDisabled
+                    }
+                  </div>
+                </div>
+              )}
 
               {/* Cache Stats */}
               {(status.waveParticipation?.cacheStats || status.pushSubscriptions?.cacheStats || status.crewMembership?.cacheStats) && (

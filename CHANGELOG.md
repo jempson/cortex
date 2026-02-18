@@ -5,6 +5,60 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.28.0] - 2026-02-17
+
+### Added
+
+#### Running Dark — Federation Cover Traffic (Phase 5b Privacy Hardening)
+
+Four complementary traffic analysis resistance mechanisms for federation communications. Even with encrypted participation data (v2.27.0), an observer monitoring network traffic between federated nodes can infer social graph information from traffic patterns. This version addresses timing, volume, frequency, and message size analysis.
+
+**Protocol Version Negotiation**
+- Federation identity endpoint (`GET /api/federation/identity`) now returns `protocolVersion: 2` and `capabilities: ['decoy', 'padding']`
+- New `createFederationEnvelope(id, type, payload)` helper standardizes all outbound federation message construction with protocol version field
+- All 11 federation envelope construction sites refactored to use the helper
+- `protocol_version` column added to `federation_nodes` table (migration auto-applied)
+- Protocol version captured during handshake and federation request acceptance
+- V1 nodes ignore unknown JSON keys — fully backward-compatible
+
+**Message Padding**
+- All outbound federation inbox messages padded to fixed-size buckets: 1KB, 4KB, 16KB, 64KB, 256KB
+- `padFederationPayload()` adds random Base64 padding in `_pad` field to reach next bucket size
+- `stripPadding()` removes padding on receipt before processing
+- Federation inbox body parser limit increased to 512KB to accommodate padded messages
+- Makes all messages indistinguishable by size at the network level
+
+**Queue Processor Jitter**
+- Replaced fixed 30-second `setInterval` with self-rescheduling `setTimeout`
+- Processing intervals randomized between 20-40 seconds
+- Prevents timing analysis of queue processing patterns
+
+**Decoy Cover Traffic**
+- New `FEDERATION_DECOY_ENABLED`, `FEDERATION_DECOY_MIN_INTERVAL_S`, `FEDERATION_DECOY_MAX_INTERVAL_S` environment variables
+- Per-node decoy scheduler sends padded `type: 'decoy'` messages at random intervals to V2 federation partners
+- Decoy messages are silently discarded by the receiver (no content logging)
+- Decoys use the same `/api/federation/inbox` endpoint as real messages — indistinguishable at the network level
+- Only sent to V2 nodes (prevents unknown message type warnings on V1 nodes)
+- Not queued in `federation_queue` table — ephemeral, not retried
+- Decoy targets automatically refreshed on handshake success, node status change, and federation request acceptance
+
+**Admin API**
+- `GET /api/admin/federation/status` extended with `protocolVersion`, `v2NodeCount`, and `decoy` stats
+- New `POST /api/admin/federation/decoy` endpoint for runtime enable/disable of cover traffic without server restart
+
+**Client UI**
+- New "COVER TRAFFIC" section in Federation Admin Panel with "RUNNING DARK" / "EXPOSED" status badge
+- Stats display: active targets, decoys sent, last sent timestamp
+- Toggle button: "RUN DARK" / "GO VISIBLE"
+- Protocol version badges (V1/V2) next to each node in the allied ports list
+- Federation Cover Traffic card in Privacy Dashboard showing protection status
+- New message strings for all cover traffic UI elements
+
+### Changed
+- Federation queue processor now uses randomized 20-40s intervals instead of fixed 30s
+
+---
+
 ## [2.27.0] - 2026-02-17
 
 ### Added
