@@ -165,6 +165,31 @@ const AboutServerPage = ({ onBack }) => {
           </div>
         )}
 
+        {/* Privacy */}
+        <div style={sectionStyle}>
+          <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '12px' }}>
+            Privacy
+          </div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.6' }}>
+            <div style={{ marginBottom: '6px' }}>• Messages are end-to-end encrypted (ECDH P-384 + AES-256-GCM)</div>
+            <div style={{ marginBottom: '6px' }}>• Emails hashed + encrypted — never stored in plaintext</div>
+            <div style={{ marginBottom: '6px' }}>• IPs anonymized, user-agents truncated, timestamps rounded</div>
+            <div style={{ marginBottom: '6px' }}>• Wave participation, crew membership, and push subscriptions encrypted at rest</div>
+            <div style={{ marginBottom: '6px' }}>• Contact lists client-encrypted — server can't read them</div>
+            <div style={{ marginBottom: '6px' }}>• No analytics, no ads, no third-party tracking</div>
+            <div style={{ marginTop: '10px' }}>
+              <a
+                href="https://github.com/jempson/cortex/blob/master/docs/PRIVACY.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--accent-teal)', fontSize: '0.8rem' }}
+              >
+                Read the full privacy policy →
+              </a>
+            </div>
+          </div>
+        </div>
+
         {/* Footer */}
         <div style={{
           padding: '16px',
