@@ -137,6 +137,9 @@ cortex/
 │       ├── services/          # Voice call service
 │       ├── config/            # Constants, holidays, theme config
 │       └── utils/             # Shared utilities
+├── landing/
+│   ├── index.html             # Landing page (static)
+│   └── nginx.conf             # Nginx config for landing + app
 ├── tools/                     # Migration utilities
 └── docs/                      # API docs, privacy policy, backlog
 ```
@@ -253,39 +256,26 @@ cd server && pm2 start server.js --name cortex-api
 pm2 startup && pm2 save
 ```
 
-### Nginx Reverse Proxy
+### Nginx
 
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name cortex.example.com;
+A reference nginx config is provided at `landing/nginx.conf`. It sets up:
 
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-    }
+- **farhold.com** — serves the landing page from `landing/index.html`
+- **cortex.farhold.com** — proxies to client (port 3000) and server API/WebSocket/uploads (port 3001)
+- **HTTP → HTTPS** redirect for all domains
 
-    location /api {
-        proxy_pass http://localhost:3001;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
+```bash
+# Symlink into nginx sites
+sudo ln -s /path/to/cortex/landing/nginx.conf /etc/nginx/sites-enabled/cortex
 
-    location /ws {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
+# Get SSL certs
+sudo certbot --nginx -d farhold.com -d www.farhold.com -d cortex.farhold.com
 
-    location /uploads {
-        proxy_pass http://localhost:3001;
-    }
-}
+# Test and reload
+sudo nginx -t && sudo nginx -s reload
 ```
+
+To adapt for your own domain, replace `farhold.com` / `cortex.farhold.com` with your domains and update the SSL cert paths.
 
 **Nginx Proxy Manager Note:** Disable "Cache Assets" to prevent profile images from breaking.
 
