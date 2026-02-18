@@ -296,6 +296,7 @@ To adapt for your own domain, replace `farhold.com` / `cortex.farhold.com` with 
 
 - [CHANGELOG.md](CHANGELOG.md) — Complete version history
 - [docs/API.md](docs/API.md) — API endpoint documentation
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Hardened VPS deployment guide (LUKS, SQLCipher, backups)
 - [docs/PRIVACY.md](docs/PRIVACY.md) — Privacy policy
 - [OUTSTANDING-FEATURES.md](OUTSTANDING-FEATURES.md) — Future roadmap
 
