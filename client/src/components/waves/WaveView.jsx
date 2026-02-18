@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useE2EE } from '../../../e2ee-context.jsx';
 import { useVoiceCall } from '../../hooks/useVoiceCall.js';
-import { SUCCESS, EMPTY, CONFIRM, CONFIRM_DIALOG, formatError } from '../../../messages.js';
+import { SUCCESS, EMPTY, CONFIRM, CONFIRM_DIALOG, formatError, GHOST_PROTOCOL } from '../../../messages.js';
 import { PRIVACY_LEVELS, API_URL } from '../../config/constants.js';
 import { Avatar, GlowText, PrivacyBadge, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { LegacyWaveNotice, PartialEncryptionBanner } from '../../../e2ee-components.jsx';
@@ -1288,6 +1288,21 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   };
 
+  const handleHide = async () => {
+    try {
+      const isHidden = waveData?.is_hidden;
+      await fetchAPI(`/waves/${wave.id}/hide`, {
+        method: 'POST',
+        body: { hidden: !isHidden },
+      });
+      showToast(isHidden ? GHOST_PROTOCOL.waveRevealed : GHOST_PROTOCOL.waveHidden, 'success');
+      onWaveUpdate?.();
+      onBack();
+    } catch (err) {
+      showToast(err.message || 'Failed to update wave visibility', 'error');
+    }
+  };
+
   const handleDeleteWave = () => {
     setShowDeleteConfirm(true);
   };
@@ -1674,6 +1689,29 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                   >
                     <span>{waveData.is_archived ? '📬' : '📦'}</span>
                     <span>{waveData.is_archived ? 'Restore from Archive' : 'Archive Wave'}</span>
+                  </div>
+
+                  {/* Go Dark / Reveal Signal (v2.27.0) */}
+                  <div
+                    onClick={() => {
+                      handleHide();
+                      setShowWaveMenu(false);
+                    }}
+                    style={{
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      color: 'var(--accent-orange)',
+                      background: 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span>{waveData.is_hidden ? '📡' : '👻'}</span>
+                    <span>{waveData.is_hidden ? GHOST_PROTOCOL.revealWave : GHOST_PROTOCOL.hideWave}</span>
                   </div>
 
                   {/* Decrypt (if encrypted) */}

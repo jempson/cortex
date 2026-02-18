@@ -1733,6 +1733,27 @@ export class DatabaseSQLite {
       console.log('✅ Encrypted crew members table created');
       console.log('   Run migration endpoint to encrypt existing crew membership data');
     }
+
+    // Wave user metadata - encrypted per-user wave settings (v2.27.0)
+    this.db.prepare(`
+      CREATE TABLE IF NOT EXISTS wave_user_metadata (
+        lookup_key TEXT PRIMARY KEY,
+        encrypted_data TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `).run();
+
+    // v2.27.0: Add blinded user_key_id column to wave_encryption_keys
+    try {
+      const cols = this.db.prepare("PRAGMA table_info(wave_encryption_keys)").all();
+      if (!cols.some(c => c.name === 'user_key_id')) {
+        this.db.prepare('ALTER TABLE wave_encryption_keys ADD COLUMN user_key_id TEXT').run();
+        console.log('✅ Added user_key_id column to wave_encryption_keys');
+      }
+    } catch (err) {
+      // Column may already exist
+    }
   }
 
   prepareStatements() {
@@ -3858,7 +3879,7 @@ export class DatabaseSQLite {
   }
 
   // === Wave Methods ===
-  getWavesForUser(userId, showArchived = false) {
+  getWavesForUser(userId, showArchived = false, showHidden = false, participation = null) {
     // Get user's crew IDs
     const userCrewIds = this.db.prepare('SELECT crew_id FROM crew_members WHERE user_id = ?').all(userId).map(r => r.crew_id);
 
@@ -3866,54 +3887,93 @@ export class DatabaseSQLite {
     const blockedIds = this.db.prepare('SELECT blocked_user_id FROM blocks WHERE user_id = ?').all(userId).map(r => r.blocked_user_id);
     const mutedIds = this.db.prepare('SELECT muted_user_id FROM mutes WHERE user_id = ?').all(userId).map(r => r.muted_user_id);
 
-    // Build wave query
-    // Note: federated participant waves (crossServer with federation_state='participant') are shown to all local users
-    let sql = `
-      SELECT w.*, wp.archived, wp.last_read, wp.pinned,
-        u.display_name as creator_name, u.avatar as creator_avatar, u.handle as creator_handle,
-        cr.name as crew_name,
-        wca.category_id, wc.name as category_name,
-        (SELECT COUNT(*) FROM pings WHERE wave_id = w.id AND deleted = 0) as ping_count
-      FROM waves w
-      LEFT JOIN wave_participants wp ON w.id = wp.wave_id AND wp.user_id = ?
-      LEFT JOIN users u ON w.created_by = u.id
-      LEFT JOIN crews cr ON w.crew_id = cr.id
-      LEFT JOIN wave_category_assignments wca ON w.id = wca.wave_id AND wca.user_id = ?
-      LEFT JOIN wave_categories wc ON wca.category_id = wc.id
-      WHERE (
-        w.privacy = 'public'
-        OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
-        OR (w.privacy = 'crossServer' AND wp.user_id IS NOT NULL)
-        OR (w.privacy = 'cross-server' AND wp.user_id IS NOT NULL)
-        OR (w.privacy = 'crossServer' AND w.federation_state = 'participant')
-        OR (w.privacy = 'cross-server' AND w.federation_state = 'participant')
-        OR ((w.privacy = 'crew' OR w.privacy = 'group') AND w.crew_id IN (${userCrewIds.map(() => '?').join(',') || 'NULL'}))
-      )
-    `;
-
-    const params = [userId, userId, ...userCrewIds];
-
-    // Exclude profile waves (video feed profile waves should not appear in wave list)
-    sql += ' AND (w.is_profile_wave IS NULL OR w.is_profile_wave = 0)';
-
-    // When showArchived=true, return ONLY archived waves
-    // When showArchived=false, return ONLY non-archived waves
-    if (showArchived) {
-      sql += ' AND wp.archived = 1';
+    // v2.27.0: Build wave ID list from cache if participation module available
+    let waveIds;
+    if (participation) {
+      const userWaveIds = participation.getUserWaves(userId);
+      // Also include public waves and crew waves
+      const publicWaves = this.db.prepare("SELECT id FROM waves WHERE privacy = 'public' AND (is_profile_wave IS NULL OR is_profile_wave = 0)").all().map(r => r.id);
+      const crewWaves = userCrewIds.length > 0
+        ? this.db.prepare(`SELECT id FROM waves WHERE (privacy = 'crew' OR privacy = 'group') AND crew_id IN (${userCrewIds.map(() => '?').join(',')}) AND (is_profile_wave IS NULL OR is_profile_wave = 0)`).all(...userCrewIds).map(r => r.id)
+        : [];
+      // Federated participant waves
+      const fedWaves = this.db.prepare("SELECT id FROM waves WHERE (privacy = 'crossServer' OR privacy = 'cross-server') AND federation_state = 'participant' AND (is_profile_wave IS NULL OR is_profile_wave = 0)").all().map(r => r.id);
+      waveIds = [...new Set([...userWaveIds, ...publicWaves, ...crewWaves, ...fedWaves])];
     } else {
-      sql += ' AND (wp.archived IS NULL OR wp.archived = 0)';
+      // Fallback: get from DB
+      waveIds = this.db.prepare(`
+        SELECT DISTINCT w.id FROM waves w
+        LEFT JOIN wave_participants wp ON w.id = wp.wave_id AND wp.user_id = ?
+        WHERE (
+          w.privacy = 'public'
+          OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
+          OR (w.privacy = 'crossServer' AND wp.user_id IS NOT NULL)
+          OR (w.privacy = 'cross-server' AND wp.user_id IS NOT NULL)
+          OR (w.privacy = 'crossServer' AND w.federation_state = 'participant')
+          OR (w.privacy = 'cross-server' AND w.federation_state = 'participant')
+          OR ((w.privacy = 'crew' OR w.privacy = 'group') AND w.crew_id IN (${userCrewIds.map(() => '?').join(',') || 'NULL'}))
+        )
+        AND (w.is_profile_wave IS NULL OR w.is_profile_wave = 0)
+      `).all(userId, ...userCrewIds).map(r => r.id);
     }
 
-    sql += ' ORDER BY w.updated_at DESC';
+    if (waveIds.length === 0) return [];
 
-    const rows = this.db.prepare(sql).all(...params);
+    // Fetch wave details for all IDs
+    const placeholders = waveIds.map(() => '?').join(',');
+    const rows = this.db.prepare(`
+      SELECT w.*,
+        u.display_name as creator_name, u.avatar as creator_avatar, u.handle as creator_handle,
+        cr.name as crew_name,
+        (SELECT COUNT(*) FROM pings WHERE wave_id = w.id AND deleted = 0) as ping_count
+      FROM waves w
+      LEFT JOIN users u ON w.created_by = u.id
+      LEFT JOIN crews cr ON w.crew_id = cr.id
+      WHERE w.id IN (${placeholders})
+      ORDER BY w.updated_at DESC
+    `).all(...waveIds);
 
     return rows.map(r => {
+      // Get metadata from cache or DB
+      let archived = 0, pinned = 0, hidden = 0, categoryId = null, categoryName = null, lastRead = null;
+      if (participation) {
+        const meta = participation.getMetadata(r.id, userId);
+        archived = meta.archived || 0;
+        pinned = meta.pinned || 0;
+        hidden = meta.hidden || 0;
+        categoryId = meta.categoryId || null;
+        lastRead = meta.lastRead || null;
+      } else {
+        // Fallback to plaintext tables
+        const wp = this.db.prepare('SELECT archived, last_read, pinned FROM wave_participants WHERE wave_id = ? AND user_id = ?').get(r.id, userId);
+        if (wp) {
+          archived = wp.archived || 0;
+          pinned = wp.pinned || 0;
+          lastRead = wp.last_read;
+        }
+        const wca = this.db.prepare('SELECT category_id FROM wave_category_assignments WHERE wave_id = ? AND user_id = ?').get(r.id, userId);
+        if (wca) categoryId = wca.category_id;
+      }
+
+      // Look up category name if we have a categoryId
+      if (categoryId) {
+        const cat = this.db.prepare('SELECT name FROM wave_categories WHERE id = ?').get(categoryId);
+        categoryName = cat ? cat.name : null;
+      }
+
+      // Filter based on mode
+      if (showHidden) {
+        if (hidden !== 1) return null; // Only show hidden waves in ghost mode
+      } else if (showArchived) {
+        if (archived !== 1) return null; // Only show archived
+      } else {
+        if (archived === 1 || hidden === 1) return null; // Exclude both
+      }
+
       // Get participants for this wave
       const participants = this.getWaveParticipants(r.id);
 
       // Calculate unread count
-      // Note: NOT IN (NULL) returns NULL in SQL, not TRUE, so we must use proper conditionals
       const blockedClause = blockedIds.length > 0
         ? `AND p.author_id NOT IN (${blockedIds.map(() => '?').join(',')})`
         : '';
@@ -3944,23 +4004,24 @@ export class DatabaseSQLite {
         participants,
         ping_count: r.ping_count,
         unread_count: unreadCount,
-        is_participant: r.archived !== null,
-        is_archived: r.archived === 1,
+        is_participant: participation ? participation.isParticipant(r.id, userId) : (archived !== null),
+        is_archived: archived === 1,
+        is_hidden: hidden === 1,
         crew_name: r.crew_name,
         federationState: r.federation_state || 'local',
         originNode: r.origin_node || null,
         originWaveId: r.origin_wave_id || null,
-        category_id: r.category_id || null,
-        category_name: r.category_name || null,
-        pinned: r.pinned === 1,
+        category_id: categoryId,
+        category_name: categoryName,
+        pinned: pinned === 1,
       };
-    });
+    }).filter(Boolean); // Remove nulls from filtering
   }
 
   // Low-Bandwidth Mode: Minimal wave list (v2.10.0)
   // Skips participants array and returns only essential fields
   // Saves 60-80% bandwidth for wave list requests
-  getWavesForUserMinimal(userId, showArchived = false) {
+  getWavesForUserMinimal(userId, showArchived = false, showHidden = false, participation = null) {
     // Get user's crew IDs
     const userCrewIds = this.db.prepare('SELECT crew_id FROM crew_members WHERE user_id = ?').all(userId).map(r => r.crew_id);
 
@@ -3968,44 +4029,70 @@ export class DatabaseSQLite {
     const blockedIds = this.db.prepare('SELECT blocked_user_id FROM blocks WHERE user_id = ?').all(userId).map(r => r.blocked_user_id);
     const mutedIds = this.db.prepare('SELECT muted_user_id FROM mutes WHERE user_id = ?').all(userId).map(r => r.muted_user_id);
 
-    // Build wave query - minimal fields, no participant join
-    let sql = `
+    // v2.27.0: Build wave ID list from cache if available
+    let waveIds;
+    if (participation) {
+      const userWaveIds = participation.getUserWaves(userId);
+      const publicWaves = this.db.prepare("SELECT id FROM waves WHERE privacy = 'public' AND (is_profile_wave IS NULL OR is_profile_wave = 0)").all().map(r => r.id);
+      const crewWaves = userCrewIds.length > 0
+        ? this.db.prepare(`SELECT id FROM waves WHERE (privacy = 'crew' OR privacy = 'group') AND crew_id IN (${userCrewIds.map(() => '?').join(',')}) AND (is_profile_wave IS NULL OR is_profile_wave = 0)`).all(...userCrewIds).map(r => r.id)
+        : [];
+      const fedWaves = this.db.prepare("SELECT id FROM waves WHERE (privacy = 'crossServer' OR privacy = 'cross-server') AND federation_state = 'participant' AND (is_profile_wave IS NULL OR is_profile_wave = 0)").all().map(r => r.id);
+      waveIds = [...new Set([...userWaveIds, ...publicWaves, ...crewWaves, ...fedWaves])];
+    } else {
+      waveIds = this.db.prepare(`
+        SELECT DISTINCT w.id FROM waves w
+        LEFT JOIN wave_participants wp ON w.id = wp.wave_id AND wp.user_id = ?
+        WHERE (
+          w.privacy = 'public'
+          OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
+          OR (w.privacy = 'crossServer' AND wp.user_id IS NOT NULL)
+          OR (w.privacy = 'cross-server' AND wp.user_id IS NOT NULL)
+          OR (w.privacy = 'crossServer' AND w.federation_state = 'participant')
+          OR (w.privacy = 'cross-server' AND w.federation_state = 'participant')
+          OR ((w.privacy = 'crew' OR w.privacy = 'group') AND w.crew_id IN (${userCrewIds.map(() => '?').join(',') || 'NULL'}))
+        )
+        AND (w.is_profile_wave IS NULL OR w.is_profile_wave = 0)
+      `).all(userId, ...userCrewIds).map(r => r.id);
+    }
+
+    if (waveIds.length === 0) return [];
+
+    const placeholders = waveIds.map(() => '?').join(',');
+    const rows = this.db.prepare(`
       SELECT w.id, w.title, w.privacy, w.updated_at, w.created_by, w.encrypted,
-        wp.archived, wp.pinned,
-        wca.category_id,
         (SELECT COUNT(*) FROM pings WHERE wave_id = w.id AND deleted = 0) as ping_count,
         (SELECT COUNT(*) FROM wave_participants WHERE wave_id = w.id) as participant_count
       FROM waves w
-      LEFT JOIN wave_participants wp ON w.id = wp.wave_id AND wp.user_id = ?
-      LEFT JOIN wave_category_assignments wca ON w.id = wca.wave_id AND wca.user_id = ?
-      WHERE (
-        w.privacy = 'public'
-        OR (w.privacy = 'private' AND wp.user_id IS NOT NULL)
-        OR (w.privacy = 'crossServer' AND wp.user_id IS NOT NULL)
-        OR (w.privacy = 'cross-server' AND wp.user_id IS NOT NULL)
-        OR (w.privacy = 'crossServer' AND w.federation_state = 'participant')
-        OR (w.privacy = 'cross-server' AND w.federation_state = 'participant')
-        OR ((w.privacy = 'crew' OR w.privacy = 'group') AND w.crew_id IN (${userCrewIds.map(() => '?').join(',') || 'NULL'}))
-      )
-    `;
-
-    const params = [userId, userId, ...userCrewIds];
-
-    // Exclude profile waves (video feed profile waves should not appear in wave list)
-    sql += ' AND (w.is_profile_wave IS NULL OR w.is_profile_wave = 0)';
-
-    if (showArchived) {
-      sql += ' AND wp.archived = 1';
-    } else {
-      sql += ' AND (wp.archived IS NULL OR wp.archived = 0)';
-    }
-
-    sql += ' ORDER BY w.updated_at DESC';
-
-    const rows = this.db.prepare(sql).all(...params);
+      WHERE w.id IN (${placeholders})
+      ORDER BY w.updated_at DESC
+    `).all(...waveIds);
 
     return rows.map(r => {
-      // Calculate unread count (same logic as full method)
+      let archived = 0, pinned = 0, hidden = 0, categoryId = null;
+      if (participation) {
+        const meta = participation.getMetadata(r.id, userId);
+        archived = meta.archived || 0;
+        pinned = meta.pinned || 0;
+        hidden = meta.hidden || 0;
+        categoryId = meta.categoryId || null;
+      } else {
+        const wp = this.db.prepare('SELECT archived, pinned FROM wave_participants WHERE wave_id = ? AND user_id = ?').get(r.id, userId);
+        if (wp) { archived = wp.archived || 0; pinned = wp.pinned || 0; }
+        const wca = this.db.prepare('SELECT category_id FROM wave_category_assignments WHERE wave_id = ? AND user_id = ?').get(r.id, userId);
+        if (wca) categoryId = wca.category_id;
+      }
+
+      // Filter based on mode
+      if (showHidden) {
+        if (hidden !== 1) return null;
+      } else if (showArchived) {
+        if (archived !== 1) return null;
+      } else {
+        if (archived === 1 || hidden === 1) return null;
+      }
+
+      // Calculate unread count
       const blockedClause = blockedIds.length > 0
         ? `AND p.author_id NOT IN (${blockedIds.map(() => '?').join(',')})`
         : '';
@@ -4030,13 +4117,13 @@ export class DatabaseSQLite {
         encrypted: r.encrypted === 1,
         ping_count: r.ping_count,
         unread_count: unreadCount,
-        pinned: r.pinned === 1,
-        is_archived: r.archived === 1,
-        category_id: r.category_id || null,
-        participant_count: r.participant_count, // Just the count, not full array
-        // Omit: participants, creator_name, creator_avatar, creator_handle, crew_name, etc.
+        pinned: pinned === 1,
+        is_archived: archived === 1,
+        is_hidden: hidden === 1,
+        category_id: categoryId,
+        participant_count: r.participant_count,
       };
-    });
+    }).filter(Boolean);
   }
 
   // Helper to convert wave row to object
@@ -7957,7 +8044,7 @@ export class DatabaseSQLite {
   }
 
   // Create wave encryption key for a participant
-  createWaveEncryptionKey(waveId, userId, encryptedWaveKey, senderPublicKey, keyVersion = 1) {
+  createWaveEncryptionKey(waveId, userId, encryptedWaveKey, senderPublicKey, keyVersion = 1, userKeyId = null) {
     const id = uuidv4();
     const now = new Date().toISOString();
 
@@ -7971,16 +8058,16 @@ export class DatabaseSQLite {
       // Update existing
       this.db.prepare(`
         UPDATE wave_encryption_keys
-        SET encrypted_wave_key = ?, sender_public_key = ?
+        SET encrypted_wave_key = ?, sender_public_key = ?, user_key_id = COALESCE(?, user_key_id)
         WHERE wave_id = ? AND user_id = ? AND key_version = ?
-      `).run(encryptedWaveKey, senderPublicKey, waveId, userId, keyVersion);
+      `).run(encryptedWaveKey, senderPublicKey, userKeyId, waveId, userId, keyVersion);
       return existing.id;
     }
 
     this.db.prepare(`
-      INSERT INTO wave_encryption_keys (id, wave_id, user_id, encrypted_wave_key, sender_public_key, key_version, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, waveId, userId, encryptedWaveKey, senderPublicKey, keyVersion, now);
+      INSERT INTO wave_encryption_keys (id, wave_id, user_id, encrypted_wave_key, sender_public_key, key_version, created_at, user_key_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, waveId, userId, encryptedWaveKey, senderPublicKey, keyVersion, now, userKeyId);
 
     return id;
   }
