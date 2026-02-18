@@ -5,6 +5,24 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.26.1] - 2026-02-17
+
+### Added
+
+#### Client Version Mismatch Detection
+
+Lightweight mechanism to detect when a user's cached client build is older than the running server version and prompt them to refresh.
+
+- Server includes `serverVersion` in WebSocket `auth_success` response
+- Client `useWebSocket` hook exposes `serverVersion` state
+- New `VersionMismatchBanner` component (fixed-position amber bar, z-index 9998) shows when client and server versions differ
+- "REFRESH" button reloads the page; "✕" button dismisses the banner for the session
+- Banner reappears on WebSocket reconnect if versions still differ
+- New `VERSION_CHECK` message constant in `messages.js` with Firefly-themed copy
+- No new endpoints, polling, or dependencies — piggybacks on existing WS auth flow
+
+**Files changed:** `server/server.js`, `client/src/hooks/useWebSocket.js`, `client/src/components/ui/SimpleComponents.jsx`, `client/src/views/MainApp.jsx`, `client/messages.js`, plus version bumps in `server/package.json`, `client/package.json`, `client/src/config/constants.js`
+
 ## [2.26.0] - 2026-02-17
 
 ### Added

@@ -279,3 +279,9 @@ export const ERROR_BOUNDARY = {
 export const OFFLINE = {
   message: "LOST SIGNAL — Running on reserve power",
 };
+
+// ============ VERSION CHECK ============
+export const VERSION_CHECK = {
+  outdated: "New version available on the cortex",
+  refresh: "REFRESH",
+};

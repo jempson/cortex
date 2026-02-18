@@ -5,6 +5,7 @@ import { WS_URL } from '../config/constants.js';
 export function useWebSocket(token, onMessage) {
   const wsRef = useRef(null);
   const [connected, setConnected] = useState(false);
+  const [serverVersion, setServerVersion] = useState(null);
   const onMessageRef = useRef(onMessage);
   const reconnectTimeoutRef = useRef(null);
   const pingIntervalRef = useRef(null);
@@ -47,6 +48,7 @@ export function useWebSocket(token, onMessage) {
 
           if (data.type === 'auth_success') {
             setConnected(true);
+            if (data.serverVersion) setServerVersion(data.serverVersion);
             console.log('✅ WebSocket authenticated');
           } else if (data.type === 'auth_error') {
             setConnected(false);
@@ -110,5 +112,5 @@ export function useWebSocket(token, onMessage) {
     }
   }, []);
 
-  return { connected, sendMessage };
+  return { connected, sendMessage, serverVersion };
 }
