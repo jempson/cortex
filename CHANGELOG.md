@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Privacy Policy** (`docs/PRIVACY.md`) — plain-language privacy policy documenting all protections from v2.17.0 through v2.28.0: E2EE, metadata encryption, federation cover traffic, data retention, operator visibility, self-hosting model, and account deletion
 - **About Server page** — new Privacy section with bullet-point summary of key protections and link to full policy on GitHub
+- **Nginx config** (`landing/nginx.conf`) — reference config for serving landing page at root domain and proxying app at subdomain, with HTTP→HTTPS redirect
 
 ### Changed
 - Marked final Privacy Hardening backlog item complete in `docs/BACKLOG.md`
