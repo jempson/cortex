@@ -151,7 +151,7 @@ ALTER TABLE group_invitations RENAME TO crew_invitations;
 
 ## Privacy Hardening: Metadata Protection
 
-**Status:** Phases 1-4 Complete (v2.17.0 - v2.24.0)
+**Status:** Phases 1-5 Complete (v2.17.0 - v2.28.0)
 
 ### Background
 
@@ -173,7 +173,7 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 | Crew membership | ✅ Encrypted at rest (v2.24.0) | **Low** - Protected |
 | Avatars | Stored with user ID | **Low** - Potential recognition |
 
-**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps, contact lists, wave participation, push subscriptions, crew membership
+**What's protected:** Message content (E2EE), emails, IPs, user-agents, timestamps, contact lists, wave participation, push subscriptions, crew membership, federation traffic patterns (v2.28.0)
 **What's still exposed:** Avatars (low risk)
 
 ### Implementation Progress
@@ -194,11 +194,11 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 - ✅ Encrypt push subscriptions (v2.22.0)
 - ✅ Server uses in-memory cache at runtime, DB stores encrypted blobs
 
-**Phase 3: Social Graph Protection** (Future)
-- Wave IDs are random, not sequential (already done)
-- No global user directory (must know handle to find)
-- Rate-limited handle lookups
-- ~~Encrypted crew membership lists~~ ✅ COMPLETED (v2.24.0)
+**Phase 3: Social Graph Protection** ✅ COMPLETED
+- ✅ Wave IDs are random, not sequential
+- ✅ No global user directory (must know handle to find)
+- ✅ Rate-limited handle lookups
+- ✅ Encrypted crew membership lists (v2.24.0)
 
 **Phase 4: Encrypted Crew Membership** ✅ COMPLETED (v2.24.0)
 - ✅ Encrypt crew member lists (DB stores encrypted blobs)
@@ -206,10 +206,10 @@ E2EE protects message content, but metadata can reveal just as much. If someone 
 - ✅ Plaintext table kept for metadata (role, joined_at)
 - ✅ Migration endpoint for existing data
 
-**Phase 5: Plausible Deniability** (Future)
-- Hidden waves (don't appear in lists)
-- Decoy traffic for federation
-- Can't prove user is in a wave without their key
+**Phase 5: Plausible Deniability** ✅ COMPLETED (v2.27.0 - v2.28.0)
+- ✅ Hidden waves / Ghost Protocol — PIN-protected hidden waves (v2.27.0)
+- ✅ Can't prove user is in a wave without their key — cryptographic participation deniability (v2.27.0)
+- ✅ Decoy traffic for federation — cover traffic, message padding, queue jitter (v2.28.0)
 
 ### Environment Variables (v2.17.0 - v2.24.0)
 
