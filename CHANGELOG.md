@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Marked final Privacy Hardening backlog item complete in `docs/BACKLOG.md`
+- **Backlog** — replaced 323-line detailed backlog with clean summary table; all items complete
+- **Outstanding Features** — updated completed features through v2.28.1, removed implemented items from roadmap (webhooks, voice/video, screen sharing, bot framework, moderator roles)
+- **README** — updated through v2.28.1, fixed demo password, removed 220-line inline changelog, added missing features (privacy hardening, voice/video, media servers, Ghost Protocol, cover traffic, bots, RBAC), updated project structure for modular architecture
+- **Landing page** — renamed Farhold to Cortex throughout, updated feature cards (added Voice & Video, Privacy Hardened), expanded privacy section with metadata/Ghost Protocol/Running Dark details, added privacy policy link
 
 ### Removed
 - Completed version plan files (`docs/PLAN-v1.9.0.md`, `docs/PLAN-v1.10.0.md`, `docs/PLAN-v1.11.0.md`)
