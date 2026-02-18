@@ -4230,6 +4230,9 @@ const participation = {
   getWaveParticipants: (waveId) => USE_SQLITE
     ? waveParticipationCrypto.getWaveParticipants(waveId)
     : db.getWaveParticipants(waveId).map(p => p.id),
+  getUserWaves: (userId) => USE_SQLITE
+    ? waveParticipationCrypto.getUserWaves(userId)
+    : [],
   addParticipant: (waveId, userId, options) => {
     if (USE_SQLITE) {
       return waveParticipationCrypto.addParticipant(waveId, userId, options);
