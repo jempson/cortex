@@ -16964,7 +16964,7 @@ wss.on('connection', (ws, req) => {
           db.updateUserStatus(userId, 'online');
           // Clear push debounce so user gets fresh notification on next offline period
           lastPushSent.delete(userId);
-          ws.send(JSON.stringify({ type: 'auth_success', userId }));
+          ws.send(JSON.stringify({ type: 'auth_success', userId, serverVersion: VERSION }));
         } catch (err) {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'Invalid token' }));
         }

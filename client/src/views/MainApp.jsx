@@ -10,7 +10,7 @@ import { updateAppBadge, subscribeToPush } from '../utils/pwa.js';
 import { updateDocumentTitle, startFaviconFlash, stopFaviconFlash } from '../utils/favicon.js';
 import { getCachedWaveList, cacheWaveList } from '../utils/waveCache.js';
 import BottomNav from '../components/ui/BottomNav.jsx';
-import { Toast, OfflineIndicator, ScanLines, GlowText } from '../components/ui/SimpleComponents.jsx';
+import { Toast, OfflineIndicator, VersionMismatchBanner, ScanLines, GlowText } from '../components/ui/SimpleComponents.jsx';
 import NotificationBell from '../components/notifications/NotificationBell.jsx';
 import CrawlBar from '../components/crawl/CrawlBar.jsx';
 import WaveList from '../components/waves/WaveList.jsx';
@@ -599,7 +599,7 @@ function MainApp({ sharePingId }) {
     }
   }, [loadWaves, selectedWave, showToastMsg, user, waves, setSelectedWave, setActiveView, fetchAPI, watchPartyPlayer]);
 
-  const { connected: wsConnected, sendMessage: sendWSMessage } = useWebSocket(token, handleWSMessage);
+  const { connected: wsConnected, sendMessage: sendWSMessage, serverVersion } = useWebSocket(token, handleWSMessage);
 
   const loadContacts = useCallback(async () => {
     try { setContacts(await fetchAPI('/contacts')); } catch (e) { console.error(e); }
@@ -1448,6 +1448,7 @@ function MainApp({ sharePingId }) {
 
       {/* PWA Components */}
       <OfflineIndicator />
+      <VersionMismatchBanner serverVersion={serverVersion} clientVersion={VERSION} />
       <InstallPrompt isMobile={isMobile} />
 
       {/* Docked Call Window - persists across navigation (v2.6.1) */}

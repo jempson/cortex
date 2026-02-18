@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BASE_URL, PRIVACY_LEVELS } from '../../config/constants.js';
-import { OFFLINE } from '../../../messages.js';
+import { OFFLINE, VERSION_CHECK } from '../../../messages.js';
 
 // ============ SCAN LINES EFFECT ============
 export const ScanLines = ({ enabled = true }) => {
@@ -145,6 +145,66 @@ export const OfflineIndicator = () => {
       zIndex: 9999
     }}>
       {OFFLINE.message}
+    </div>
+  );
+};
+
+// ============ VERSION MISMATCH BANNER ============
+export const VersionMismatchBanner = ({ serverVersion, clientVersion }) => {
+  const [dismissed, setDismissed] = useState(false);
+
+  if (dismissed || !serverVersion || serverVersion === clientVersion) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      background: 'var(--accent-amber)',
+      color: 'var(--bg-base)',
+      padding: '8px 16px',
+      textAlign: 'center',
+      fontFamily: 'monospace',
+      fontSize: '0.85rem',
+      fontWeight: 'bold',
+      zIndex: 9998,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '12px',
+    }}>
+      <span>{VERSION_CHECK.outdated} (v{serverVersion})</span>
+      <button
+        onClick={() => window.location.reload()}
+        style={{
+          background: 'var(--bg-base)',
+          color: 'var(--accent-amber)',
+          border: 'none',
+          padding: '2px 10px',
+          fontFamily: 'monospace',
+          fontSize: '0.8rem',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+        }}
+      >
+        {VERSION_CHECK.refresh}
+      </button>
+      <button
+        onClick={() => setDismissed(true)}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: 'var(--bg-base)',
+          fontSize: '1rem',
+          cursor: 'pointer',
+          padding: '0 4px',
+          lineHeight: 1,
+        }}
+        aria-label="Dismiss"
+      >
+        ✕
+      </button>
     </div>
   );
 };
