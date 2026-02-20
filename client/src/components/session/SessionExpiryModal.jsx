@@ -11,21 +11,20 @@ function SessionExpiryModal() {
   const [timeRemaining, setTimeRemaining] = useState('');
   const inputRef = useRef(null);
 
-  const isExpired = sessionExpiresAt && Date.now() >= sessionExpiresAt;
-
   // Auto-focus password input
   useEffect(() => {
     if (inputRef.current) inputRef.current.focus();
   }, []);
 
-  // Countdown timer
+  // Countdown timer — auto-logout when it hits zero
   useEffect(() => {
     if (!sessionExpiresAt) return;
 
     const updateCountdown = () => {
       const remaining = sessionExpiresAt - Date.now();
       if (remaining <= 0) {
-        setTimeRemaining('0:00');
+        // Token has fully expired — can't refresh, auto-logout
+        logout();
         return;
       }
       const mins = Math.floor(remaining / 60000);
@@ -36,7 +35,7 @@ function SessionExpiryModal() {
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
-  }, [sessionExpiresAt]);
+  }, [sessionExpiresAt, logout]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -50,14 +49,6 @@ function SessionExpiryModal() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleLogout = () => {
-    logout();
-  };
-
-  const handleDismiss = () => {
-    if (!isExpired) dismissSessionWarning();
   };
 
   const modalStyle = {
@@ -123,13 +114,13 @@ function SessionExpiryModal() {
   };
 
   return (
-    <div style={modalStyle} onClick={!isExpired ? handleDismiss : undefined}>
+    <div style={modalStyle} onClick={dismissSessionWarning}>
       <div style={contentStyle} onClick={e => e.stopPropagation()}>
         <h2 style={{ color: 'var(--accent-amber, var(--accent-orange))', marginBottom: '4px', fontSize: '20px', marginTop: 0 }}>
-          {isExpired ? SESSION.expired : SESSION.expiring}
+          {SESSION.expiring}
         </h2>
 
-        {!isExpired && timeRemaining && (
+        {timeRemaining && (
           <div style={{
             color: 'var(--accent-amber, var(--accent-orange))',
             fontSize: '24px',
@@ -143,7 +134,7 @@ function SessionExpiryModal() {
         )}
 
         <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
-          {isExpired ? SESSION.expiredMessage : SESSION.expiringMessage}
+          {SESSION.expiringMessage}
         </p>
 
         <form onSubmit={handleSubmit}>
@@ -192,7 +183,7 @@ function SessionExpiryModal() {
         </form>
 
         <button
-          onClick={handleLogout}
+          onClick={logout}
           style={{
             width: '100%',
             padding: '10px',

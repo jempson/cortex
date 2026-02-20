@@ -65,24 +65,28 @@ function AuthProvider({ children }) {
     if (!token) return;
 
     const checkExpiry = () => {
-      // Check if token has already fully expired
-      if (storage.isSessionExpired()) {
-        console.log('⏰ Session expired during use.');
-        setSessionExpiring(true);
-        return;
-      }
-
-      // Check if within warning window
       const expiry = getTokenExpiry(token);
       if (expiry) {
         setSessionExpiresAt(expiry);
         const remaining = expiry - Date.now();
-        if (remaining <= EXPIRY_WARNING_MS && remaining > 0) {
-          // Only show if not temporarily dismissed
+
+        // Token fully expired — auto-logout (refresh endpoint can't work with expired token)
+        if (remaining <= 0) {
+          console.log('⏰ Session expired during use. Logging out...');
+          pendingPasswordRef.current = null;
+          storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
+          setSessionExpiring(false);
+          setSessionExpiresAt(null);
+          setToken(null); setUser(null);
+          return;
+        }
+
+        // Within warning window — show renewal modal
+        if (remaining <= EXPIRY_WARNING_MS) {
           if (Date.now() > dismissedUntilRef.current) {
             setSessionExpiring(true);
           }
-        } else if (remaining > EXPIRY_WARNING_MS) {
+        } else {
           setSessionExpiring(false);
         }
       }
@@ -234,9 +238,14 @@ function AuthProvider({ children }) {
     setSessionExpiring(false);
   }, []);
 
-  // Trigger session expiry from useAPI on TOKEN_EXPIRED (v2.29.0)
+  // Handle TOKEN_EXPIRED from useAPI — token is already dead, auto-logout (v2.29.0)
   const triggerSessionExpiry = useCallback(() => {
-    setSessionExpiring(true);
+    console.log('⏰ Token expired (server rejected). Logging out...');
+    pendingPasswordRef.current = null;
+    storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
+    setSessionExpiring(false);
+    setSessionExpiresAt(null);
+    setToken(null); setUser(null);
   }, []);
 
   if (loading) return <LoadingSpinner />;
