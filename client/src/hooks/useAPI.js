@@ -10,7 +10,7 @@ export const useAuth = () => useContext(AuthContext);
 // ============ API HOOK ============
 // v2.10.0: Added low-bandwidth mode support
 export function useAPI() {
-  const { token, logout } = useAuth();
+  const { token, logout, triggerSessionExpiry } = useAuth();
   const { isSlowConnection } = useNetworkStatus();
 
   // Memoized fetch function with bandwidth-aware mode
@@ -53,12 +53,18 @@ export function useAPI() {
 
     const data = await res.json();
     if (!res.ok) {
-      // Only logout on 401 (authentication failure), not 403 (authorization/access denied)
-      if (res.status === 401) logout?.();
+      if (res.status === 401) {
+        // Token expired — show renewal modal instead of immediate logout (v2.29.0)
+        if (data.code === 'TOKEN_EXPIRED') {
+          triggerSessionExpiry?.();
+        } else {
+          logout?.();
+        }
+      }
       throw new Error(data.error || `API error: ${res.status}`);
     }
     return data;
-  }, [token, logout, isSlowConnection]);
+  }, [token, logout, triggerSessionExpiry, isSlowConnection]);
 
   // Return both fetchAPI and connection status for components that need it
   return useMemo(() => ({

@@ -440,6 +440,9 @@ function hashToken(token) {
 
 // Validate and return session duration
 function getSessionDuration(requestedDuration) {
+  // JWT_EXPIRES_IN env var overrides all user-selected durations (useful for testing)
+  if (process.env.JWT_EXPIRES_IN) return process.env.JWT_EXPIRES_IN;
+
   // Validate requested duration is in allowed list
   if (requestedDuration && SESSION_DURATIONS[requestedDuration]) {
     return requestedDuration;
@@ -4452,12 +4455,17 @@ function authenticateToken(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Authentication required' });
 
   jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) return res.status(403).json({ error: 'Invalid or expired token' });
+    if (err) {
+      if (err.name === 'TokenExpiredError') {
+        return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+      }
+      return res.status(401).json({ error: 'Invalid token' });
+    }
 
     // Validate session if session tracking is enabled
     const validation = validateSession(token);
     if (!validation.valid) {
-      return res.status(403).json({ error: validation.reason });
+      return res.status(401).json({ error: validation.reason });
     }
 
     req.user = decoded;
@@ -4684,6 +4692,50 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
   // Log logout
   if (db.logActivity) db.logActivity(req.user.userId, 'logout', 'user', req.user.userId, getRequestMeta(req));
   res.json({ success: true });
+});
+
+// Session refresh — extend session before token expires (v2.29.0)
+app.post('/api/auth/refresh', loginLimiter, authenticateToken, async (req, res) => {
+  try {
+    const { password } = req.body;
+    const sessionDuration = getSessionDuration(req.body.sessionDuration);
+
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      if (db.logActivity) db.logActivity(user.id, 'session_refresh_failed', 'user', user.id, { ...getRequestMeta(req), reason: 'invalid_password' });
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Revoke old session
+    if (req.token) {
+      revokeSessionByToken(req.token);
+    }
+
+    // Issue new token
+    const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: sessionDuration });
+    const session = createSession(user.id, token, req);
+    console.log(`🔄 Session refreshed for: ${user.handle} with ${sessionDuration} session`);
+
+    if (db.logActivity) db.logActivity(user.id, 'session_refresh', 'user', user.id, getRequestMeta(req));
+
+    res.json({
+      token,
+      sessionDuration,
+      user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, role: user.role || (user.isAdmin ? 'admin' : 'user'), preferences: user.preferences || { theme: 'serenity', fontSize: 'medium' } },
+    });
+  } catch (err) {
+    console.error('Session refresh error:', err);
+    res.status(500).json({ error: 'Session refresh failed' });
+  }
 });
 
 // ============ Session Management Routes (v1.18.0) ============
