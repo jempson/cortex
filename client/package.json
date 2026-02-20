@@ -7,7 +7,7 @@
     "dev": "vite --port 3000",
     "build": "vite build",
     "preview": "vite preview",
-    "electron:dev": "ELECTRON_BUILD=1 vite build && electron .",
+    "electron:dev": "electron .",
     "electron:build": "ELECTRON_BUILD=1 vite build && electron-builder",
     "electron:build:mac": "ELECTRON_BUILD=1 vite build && electron-builder --mac",
     "electron:build:win": "ELECTRON_BUILD=1 vite build && electron-builder --win",
