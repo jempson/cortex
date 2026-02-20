@@ -26,6 +26,7 @@ The server URL is now configurable from the login screen, enabling Capacitor/Ele
 - **Share URLs in native apps** — `WaveView` and `FocusView` now use `BASE_URL` instead of `window.location.origin` for share links, so they point to the actual server rather than `capacitor://localhost`
 - **Server URL preserved across "Clear all data"** — both `LoginScreen` and `AppContent` `localStorage.clear()` calls now preserve `farhold_server_url`
 - **`isProduction` for native apps** — Capacitor on iOS uses `localhost`, which previously triggered dev mode; now `isNativeApp || hostname !== 'localhost'`
+- **Version mismatch banner only for upgrades** — `VersionMismatchBanner` now compares semver and only shows when the server version is newer than the client, preventing false "update available" prompts when connecting to a server running an older version
 
 ## [2.29.0] - 2026-02-20
 

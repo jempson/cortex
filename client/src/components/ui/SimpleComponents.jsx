@@ -153,7 +153,17 @@ export const OfflineIndicator = () => {
 export const VersionMismatchBanner = ({ serverVersion, clientVersion }) => {
   const [dismissed, setDismissed] = useState(false);
 
-  if (dismissed || !serverVersion || serverVersion === clientVersion) return null;
+  // Only show banner when server version is newer (upgrade), not older (downgrade)
+  const isNewer = (server, client) => {
+    const s = (server || '').split('.').map(Number);
+    const c = (client || '').split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+      if ((s[i] || 0) > (c[i] || 0)) return true;
+      if ((s[i] || 0) < (c[i] || 0)) return false;
+    }
+    return false;
+  };
+  if (dismissed || !serverVersion || !isNewer(serverVersion, clientVersion)) return null;
 
   return (
     <div style={{
