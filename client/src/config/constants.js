@@ -1,21 +1,35 @@
 // ============ CONFIGURATION ============
 // Version - keep in sync with package.json
-export const VERSION = '2.29.0';
+export const VERSION = '2.30.0';
 
-// Auto-detect production vs development
-export const isProduction = window.location.hostname !== 'localhost';
-export const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-export const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-export const hostname = isProduction ? window.location.hostname : 'localhost';
-export const port = isProduction ? '' : ':3001';
+// Native app detection (Capacitor / Electron)
+const isCapacitor = typeof window !== 'undefined' && window.Capacitor !== undefined;
+const isElectron = typeof window !== 'undefined' && window.navigator?.userAgent?.includes('Electron');
+export const isNativeApp = isCapacitor || isElectron;
 
-export const BASE_URL = isProduction
-  ? `${protocol}//${hostname}`
-  : 'http://localhost:3001';
+// Resolve server URL: localStorage override > native app default > auto-detect from window.location
+const storedServerUrl = localStorage.getItem('farhold_server_url');
+const resolvedUrl = (() => {
+  if (storedServerUrl) return storedServerUrl;
+  if (isNativeApp) return 'https://cortex.farhold.com';
+  // Web app: auto-detect from current origin (unchanged behavior)
+  return window.location.hostname !== 'localhost'
+    ? `${window.location.protocol}//${window.location.hostname}`
+    : 'http://localhost:3001';
+})();
+
+export const isProduction = isNativeApp || window.location.hostname !== 'localhost';
+
+// Derive legacy exports from resolved URL
+const _resolved = new URL(resolvedUrl);
+export const protocol = _resolved.protocol;
+export const wsProtocol = _resolved.protocol === 'https:' ? 'wss:' : 'ws:';
+export const hostname = _resolved.hostname;
+export const port = _resolved.port ? `:${_resolved.port}` : '';
+
+export const BASE_URL = resolvedUrl.replace(/\/+$/, '');
 export const API_URL = `${BASE_URL}/api`;
-export const WS_URL = isProduction
-  ? `${wsProtocol}//${hostname}/ws`
-  : 'ws://localhost:3001';
+export const WS_URL = `${wsProtocol}//${_resolved.host}${_resolved.protocol === 'https:' ? '/ws' : ''}`;
 
 // ============ PRIVACY LEVELS ============
 export const PRIVACY_LEVELS = {

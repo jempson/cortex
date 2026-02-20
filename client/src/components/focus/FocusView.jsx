@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useE2EE } from '../../../e2ee-context.jsx';
 import { useSwipeGesture } from '../../hooks/useSwipeGesture.js';
 import { SUCCESS, EMPTY, formatError, CONFIRM_DIALOG } from '../../../messages.js';
-import { PRIVACY_LEVELS } from '../../config/constants.js';
+import { PRIVACY_LEVELS, BASE_URL } from '../../config/constants.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import Message from '../messages/Message.jsx';
 
@@ -270,7 +270,7 @@ const FocusView = ({
 
   // Share ping to external platforms
   const handleSharePing = async (ping) => {
-    const shareUrl = `${window.location.origin}/share/${ping.id}`;
+    const shareUrl = `${BASE_URL}/share/${ping.id}`;
     const shareTitle = wave?.title || wave?.name || 'Cortex';
     const shareText = `Check out this conversation on Cortex`;
 
