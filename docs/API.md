@@ -298,6 +298,56 @@ Log out the current user (updates status to offline, revokes session).
 
 ---
 
+#### POST /api/auth/refresh
+
+Refresh the current session by issuing a new JWT token. Requires a valid (non-expired) token and the user's password. Revokes the old session and creates a new one. Rate-limited.
+
+**Authentication:** Required (token must not be expired)
+
+**Request Body:**
+
+```json
+{
+  "password": "string (required)",
+  "sessionDuration": "24h | 7d | 30d (optional, defaults to 24h)"
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "token": "eyJhbGc...",
+  "sessionDuration": "24h",
+  "user": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "handle": "mal",
+    "email": "mal@serenity.ship",
+    "displayName": "Malcolm Reynolds",
+    "avatar": "🚀",
+    "avatarUrl": null,
+    "bio": null,
+    "nodeName": "farhold.com",
+    "status": "online",
+    "isAdmin": true,
+    "role": "admin",
+    "preferences": { "theme": "serenity", "fontSize": "medium" }
+  }
+}
+```
+
+**Response (401 Unauthorized):**
+
+```json
+{
+  "error": "Invalid password"
+}
+```
+
+*Added in v2.29.0*
+
+---
+
 ### Session Management (v1.18.0)
 
 #### GET /api/auth/sessions

@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 2.28.1** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 2.29.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
 > *"Can't stop the signal."*
 
@@ -103,7 +103,7 @@ See [docs/PRIVACY.md](docs/PRIVACY.md) for the full privacy policy.
 - **Outgoing webhooks** — Forward wave messages to Discord, Slack, Teams
 
 ### Security
-- JWT authentication with session management and token revocation
+- JWT authentication with session management, token revocation, and proactive session renewal
 - End-to-end encryption (ECDH P-384 + AES-256-GCM)
 - Multi-factor authentication (TOTP and email-based 2FA)
 - Role-based access control (Admin / Moderator / User)
