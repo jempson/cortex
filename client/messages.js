@@ -282,8 +282,6 @@ export const FEDERATION = {
 export const SESSION = {
   expiring: "Session Expiring",
   expiringMessage: "Your session is about to expire. Enter your password to stay connected.",
-  expired: "Session Expired",
-  expiredMessage: "Your session has expired. Enter your password to reconnect.",
   extendSession: "EXTEND SESSION",
   extending: "EXTENDING...",
   extended: "Session extended",
