@@ -1,0 +1,42 @@
+appId: com.farhold.cortex
+productName: Cortex
+directories:
+  output: electron-dist
+  buildResources: electron
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+
+mac:
+  category: public.app-category.social-networking
+  target:
+    - target: dmg
+      arch: [universal]
+  icon: public/icons/icon-512x512.png
+  hardenedRuntime: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  icon: public/icons/icon-512x512.png
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64, arm64]
+    - target: deb
+      arch: [x64]
+  category: Network
+  icon: public/icons/icon-512x512.png
+
+protocols:
+  - name: Cortex
+    schemes:
+      - cortex
+
+publish:
+  provider: github
+  owner: jempson
+  repo: cortex

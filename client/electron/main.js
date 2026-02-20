@@ -1,0 +1,218 @@
+import { app, BrowserWindow, ipcMain, Notification, screen } from 'electron';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import serve from 'electron-serve';
+import electronUpdater from 'electron-updater';
+const { autoUpdater } = electronUpdater;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const isDev = !app.isPackaged;
+const APP_PROTOCOL = 'cortex';
+
+// Serve dist/ in production via custom protocol
+const loadURL = isDev ? null : serve({ directory: path.join(__dirname, '..', 'dist') });
+
+// ============ WINDOW STATE PERSISTENCE ============
+
+const stateFile = path.join(app.getPath('userData'), 'window-state.json');
+
+function loadWindowState() {
+  try {
+    if (fs.existsSync(stateFile)) {
+      return JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+    }
+  } catch {
+    // Ignore corrupt state file
+  }
+  return null;
+}
+
+function saveWindowState(win) {
+  if (!win || win.isDestroyed()) return;
+  const bounds = win.getBounds();
+  const state = {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    isMaximized: win.isMaximized(),
+  };
+  try {
+    fs.writeFileSync(stateFile, JSON.stringify(state));
+  } catch {
+    // Non-critical — ignore write failures
+  }
+}
+
+// ============ DEEP LINK PROTOCOL ============
+
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(APP_PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient(APP_PROTOCOL);
+}
+
+// macOS: handle protocol URL when app is already running
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
+
+function handleDeepLink(url) {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+    win.webContents.send('deep-link', url);
+  }
+}
+
+// ============ SINGLE INSTANCE LOCK ============
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+    // Windows/Linux: deep link URL is in argv
+    const deepLinkUrl = argv.find(arg => arg.startsWith(`${APP_PROTOCOL}://`));
+    if (deepLinkUrl) handleDeepLink(deepLinkUrl);
+  });
+}
+
+// ============ IPC HANDLERS ============
+
+ipcMain.on('show-notification', (_event, { title, body }) => {
+  if (Notification.isSupported()) {
+    new Notification({ title, body }).show();
+  }
+});
+
+ipcMain.handle('get-app-version', () => app.getVersion());
+
+// ============ CREATE WINDOW ============
+
+let mainWindow = null;
+
+async function createWindow() {
+  const savedState = loadWindowState();
+
+  // Ensure saved position is still on a visible display
+  let { x, y, width, height } = savedState || {};
+  width = width || 1200;
+  height = height || 800;
+
+  if (x !== undefined && y !== undefined) {
+    const displays = screen.getAllDisplays();
+    const onScreen = displays.some(d => {
+      const { x: dx, y: dy, width: dw, height: dh } = d.bounds;
+      return x >= dx && y >= dy && x < dx + dw && y < dy + dh;
+    });
+    if (!onScreen) {
+      x = undefined;
+      y = undefined;
+    }
+  }
+
+  mainWindow = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
+    minWidth: 400,
+    minHeight: 600,
+    title: 'Cortex',
+    backgroundColor: '#050805',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true,
+    },
+    // Hide frame on macOS for native title bar integration
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    show: false,
+  });
+
+  // Restore maximized state
+  if (savedState?.isMaximized) {
+    mainWindow.maximize();
+  }
+
+  // Show when ready to avoid white flash
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+  // Save window state on move/resize
+  mainWindow.on('resize', () => saveWindowState(mainWindow));
+  mainWindow.on('move', () => saveWindowState(mainWindow));
+  mainWindow.on('close', () => saveWindowState(mainWindow));
+
+  // Load the app
+  if (isDev) {
+    await mainWindow.loadURL('http://localhost:3000');
+    // Open DevTools in development
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  } else {
+    await loadURL(mainWindow);
+  }
+}
+
+// ============ APP LIFECYCLE ============
+
+app.whenReady().then(async () => {
+  await createWindow();
+
+  // macOS: re-create window when dock icon clicked
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+
+  // Auto-updater (production only)
+  if (!isDev) {
+    autoUpdater.autoDownload = false;
+    autoUpdater.checkForUpdatesAndNotify();
+  }
+});
+
+// Quit when all windows are closed (except macOS)
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// ============ AUTO-UPDATER EVENTS ============
+
+autoUpdater.on('update-available', (info) => {
+  console.log('[Updater] Update available:', info.version);
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    win.webContents.send('update-available', info.version);
+  }
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('[Updater] Update downloaded:', info.version);
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    win.webContents.send('update-downloaded', info.version);
+  }
+});
+
+autoUpdater.on('error', (err) => {
+  console.error('[Updater] Error:', err.message);
+});
