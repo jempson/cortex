@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from
 import { useE2EE } from '../../../e2ee-context.jsx';
 import { useVoiceCall } from '../../hooks/useVoiceCall.js';
 import { SUCCESS, EMPTY, CONFIRM, CONFIRM_DIALOG, formatError, GHOST_PROTOCOL } from '../../../messages.js';
-import { PRIVACY_LEVELS, API_URL } from '../../config/constants.js';
+import { PRIVACY_LEVELS, API_URL, BASE_URL } from '../../config/constants.js';
 import { Avatar, GlowText, PrivacyBadge, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { LegacyWaveNotice, PartialEncryptionBanner } from '../../../e2ee-components.jsx';
 import ImageLightbox from '../ui/ImageLightbox.jsx';
@@ -341,7 +341,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   // Share ping to external platforms
   const handleSharePing = async (ping) => {
-    const shareUrl = `${window.location.origin}/share/${ping.id}`;
+    const shareUrl = `${BASE_URL}/share/${ping.id}`;
     const shareTitle = wave?.title || waveData?.title || 'Cortex';
     const shareText = `Check out this conversation on Cortex`;
 

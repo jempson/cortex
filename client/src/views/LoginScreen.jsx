@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { VERSION, API_URL, BASE_URL, PRIVACY_LEVELS } from '../config/constants.js';
-import { CONFIRM_DIALOG } from '../../messages.js';
+import { CONFIRM_DIALOG, SERVER } from '../../messages.js';
+import { storage } from '../utils/storage.js';
 import { useAuth } from '../hooks/useAPI.js';
 import { useWindowSize } from '../hooks/useWindowSize.js';
 import { LoadingSpinner, Toast, Avatar, GlowText, ScanLines } from '../components/ui/SimpleComponents.jsx';
@@ -28,6 +29,11 @@ const LoginScreen = ({ onAbout }) => {
   const [emailCodeSent, setEmailCodeSent] = useState(false);
   const [emailCodeSending, setEmailCodeSending] = useState(false);
   const [sessionDuration, setSessionDuration] = useState('24h');
+  // Change Server state (v2.30.0)
+  const [showChangeServer, setShowChangeServer] = useState(false);
+  const [serverUrl, setServerUrl] = useState(storage.getServerUrl() || BASE_URL);
+  const [serverUrlError, setServerUrlError] = useState('');
+  const [testingServer, setTestingServer] = useState(false);
   const { isMobile, isTablet, isDesktop } = useWindowSize();
 
   const handleForgotPassword = async (e) => {
@@ -129,6 +135,41 @@ const LoginScreen = ({ onAbout }) => {
     } finally {
       setEmailCodeSending(false);
     }
+  };
+
+  const handleChangeServer = async () => {
+    setServerUrlError('');
+    let url = serverUrl.trim();
+    if (!url) { setServerUrlError(SERVER.enterUrl); return; }
+    // Auto-prepend https:// if no protocol
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    // Strip trailing slashes
+    url = url.replace(/\/+$/, '');
+    // Validate URL format
+    try { new URL(url); } catch { setServerUrlError(SERVER.invalidUrl); return; }
+
+    setTestingServer(true);
+    try {
+      await fetch(`${url}/api/server/info`, { signal: AbortSignal.timeout(5000) });
+    } catch {
+      setTestingServer(false);
+      if (!confirm(`Could not reach ${url}. Connect anyway?`)) return;
+    }
+    setTestingServer(false);
+
+    storage.setServerUrl(url);
+    storage.removeToken();
+    storage.removeUser();
+    storage.removeSessionStart();
+    window.location.reload();
+  };
+
+  const handleResetServer = () => {
+    storage.removeServerUrl();
+    storage.removeToken();
+    storage.removeUser();
+    storage.removeSessionStart();
+    window.location.reload();
   };
 
   const inputStyle = {
@@ -397,14 +438,80 @@ const LoginScreen = ({ onAbout }) => {
           </div>
         )}
 
+        {/* Change Server (v2.30.0) */}
+        <div style={{ textAlign: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
+          {!showChangeServer ? (
+            <button onClick={() => setShowChangeServer(true)}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+              {storage.getServerUrl() ? `Port: ${new URL(storage.getServerUrl()).hostname} ◈` : `${SERVER.changeServer} ◈`}
+            </button>
+          ) : (
+            <div style={{ textAlign: 'left' }}>
+              <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                {SERVER.serverUrl}
+              </label>
+              <input
+                type="text"
+                value={serverUrl}
+                onChange={(e) => { setServerUrl(e.target.value); setServerUrlError(''); }}
+                placeholder={SERVER.serverUrlPlaceholder}
+                style={inputStyle}
+              />
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.65rem', marginTop: '4px', marginBottom: '12px' }}>
+                {SERVER.serverUrlHint}
+              </div>
+              {serverUrlError && (
+                <div style={{ color: 'var(--accent-orange)', fontSize: '0.8rem', marginBottom: '12px', padding: '8px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
+                  {serverUrlError}
+                </div>
+              )}
+              <button
+                onClick={handleChangeServer}
+                disabled={testingServer}
+                style={{
+                  width: '100%', padding: '12px',
+                  background: testingServer ? 'var(--border-subtle)' : 'var(--accent-amber)20',
+                  border: `1px solid ${testingServer ? 'var(--border-primary)' : 'var(--accent-amber)'}`,
+                  color: testingServer ? 'var(--text-muted)' : 'var(--accent-amber)',
+                  cursor: testingServer ? 'not-allowed' : 'pointer',
+                  fontFamily: 'monospace', fontSize: '0.85rem',
+                }}
+              >
+                {testingServer ? SERVER.testing : SERVER.connect}
+              </button>
+              {storage.getServerUrl() && (
+                <button
+                  onClick={handleResetServer}
+                  style={{
+                    width: '100%', padding: '10px', marginTop: '8px',
+                    background: 'none', border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-muted)', cursor: 'pointer',
+                    fontFamily: 'monospace', fontSize: '0.75rem',
+                  }}
+                >
+                  {SERVER.resetToDefault}
+                </button>
+              )}
+              <div style={{ textAlign: 'center', marginTop: '10px' }}>
+                <button onClick={() => { setShowChangeServer(false); setServerUrlError(''); }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                  ← Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Clear All Data - for troubleshooting stale data issues */}
         <div style={{ textAlign: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
           <button
             onClick={async () => {
               if (confirm(CONFIRM_DIALOG.clearLocalData)) {
                 try {
-                  // Clear all storage
+                  // Clear all storage (preserve server URL)
+                  const savedServerUrl = localStorage.getItem('farhold_server_url');
                   localStorage.clear();
+                  if (savedServerUrl) localStorage.setItem('farhold_server_url', savedServerUrl);
                   sessionStorage.clear();
 
                   // Clear IndexedDB
