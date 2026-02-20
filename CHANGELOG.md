@@ -5,6 +5,29 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.30.0] - 2026-02-20
+
+### Added
+
+#### Configurable Server URL
+
+The server URL is now configurable from the login screen, enabling Capacitor/Electron native app wrappers and connecting to any federated Cortex server.
+
+- **Native app detection** — `isNativeApp` export detects Capacitor and Electron environments; defaults to `https://cortex.farhold.com` when running as a native app
+- **localStorage-aware URL resolution** — `BASE_URL`, `API_URL`, and `WS_URL` in `constants.js` now read from `localStorage('farhold_server_url')` at module eval time; when no override is set, existing web auto-detect behavior is unchanged
+- **"Change Server" UI on login screen** — expandable section between "About this server" and "Clear all data" links; shows current port hostname when a custom URL is set
+- **Server connectivity test** — `CONNECT` button tests the target URL via `GET /api/server/info` with a 5-second timeout; warns if unreachable but allows connecting anyway
+- **`RESET TO DEFAULT`** — clears the stored URL and returns to auto-detected server
+- **Server URL helpers** in `storage.js` — `getServerUrl()`, `setServerUrl()`, `removeServerUrl()`
+- **`SERVER` message block** in `messages.js` — all UI strings for the change server feature
+
+### Fixed
+
+- **Share URLs in native apps** — `WaveView` and `FocusView` now use `BASE_URL` instead of `window.location.origin` for share links, so they point to the actual server rather than `capacitor://localhost`
+- **Server URL preserved across "Clear all data"** — both `LoginScreen` and `AppContent` `localStorage.clear()` calls now preserve `farhold_server_url`
+- **`isProduction` for native apps** — Capacitor on iOS uses `localhost`, which previously triggered dev mode; now `isNativeApp || hostname !== 'localhost'`
+- **Version mismatch banner only for upgrades** — `VersionMismatchBanner` now compares semver and only shows when the server version is newer than the client, preventing false "update available" prompts when connecting to a server running an older version
+
 ## [2.29.0] - 2026-02-20
 
 ### Added

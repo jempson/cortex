@@ -288,6 +288,19 @@ export const SESSION = {
   selectDuration: "SESSION DURATION",
 };
 
+// ============ SERVER CONNECTION (v2.30.0) ============
+export const SERVER = {
+  changeServer: "Change server",
+  serverUrl: "SERVER URL",
+  serverUrlPlaceholder: "https://cortex.example.com",
+  serverUrlHint: "Enter the URL of the Cortex port to connect to",
+  connect: "CONNECT",
+  testing: "TESTING...",
+  resetToDefault: "RESET TO DEFAULT",
+  invalidUrl: "Invalid URL format",
+  enterUrl: "Please enter a server URL",
+};
+
 // ============ UI LABELS ============
 export const UI_LABELS = {
   exportData: "Ship's Manifest",

@@ -53,6 +53,10 @@ export const storage = {
     localStorage.removeItem('farhold_session_duration');
   },
   getSessionDuration: () => localStorage.getItem('farhold_session_duration') || '24h',
+  // Server URL override (v2.30.0)
+  getServerUrl: () => localStorage.getItem('farhold_server_url'),
+  setServerUrl: (url) => localStorage.setItem('farhold_server_url', url),
+  removeServerUrl: () => localStorage.removeItem('farhold_server_url'),
   // Check if browser session has expired — uses JWT exp claim as source of truth (v2.29.0)
   isSessionExpired: () => {
     const token = storage.getToken();

@@ -24,7 +24,10 @@ function AppContent() {
 
       (async () => {
         try {
+          // Clear all storage (preserve server URL)
+          const savedServerUrl = localStorage.getItem('farhold_server_url');
           localStorage.clear();
+          if (savedServerUrl) localStorage.setItem('farhold_server_url', savedServerUrl);
           sessionStorage.clear();
 
           // Clear IndexedDB
