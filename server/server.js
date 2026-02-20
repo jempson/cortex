@@ -440,6 +440,9 @@ function hashToken(token) {
 
 // Validate and return session duration
 function getSessionDuration(requestedDuration) {
+  // JWT_EXPIRES_IN env var overrides all user-selected durations (useful for testing)
+  if (process.env.JWT_EXPIRES_IN) return process.env.JWT_EXPIRES_IN;
+
   // Validate requested duration is in allowed list
   if (requestedDuration && SESSION_DURATIONS[requestedDuration]) {
     return requestedDuration;
