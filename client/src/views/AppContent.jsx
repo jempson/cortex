@@ -48,8 +48,9 @@ function AppContent() {
             await caches.delete(cacheName);
           }
 
-          // Remove the ?clear=1 param and reload
-          window.location.href = window.location.origin + window.location.pathname;
+          // Remove the ?clear=1 param and reload cleanly
+          window.history.replaceState({}, '', window.location.pathname);
+          window.location.reload();
         } catch (err) {
           console.error('[Clear] Failed to clear data:', err);
           alert('Failed to clear some data. Try clearing manually in browser settings.');
