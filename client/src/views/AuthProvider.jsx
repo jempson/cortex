@@ -1,8 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { API_URL } from '../config/constants.js';
-import { storage } from '../utils/storage.js';
+import { storage, getTokenExpiry } from '../utils/storage.js';
 import { AuthContext } from '../hooks/useAPI.js';
 import { LoadingSpinner } from '../components/ui/SimpleComponents.jsx';
+
+// Warning threshold: show renewal modal this many ms before expiry
+const EXPIRY_WARNING_MS = 5 * 60 * 1000; // 5 minutes
+// How often to check expiry
+const EXPIRY_CHECK_INTERVAL_MS = 30 * 1000; // 30 seconds
+// Dismiss snooze duration
+const DISMISS_SNOOZE_MS = 2 * 60 * 1000; // 2 minutes
 
 function AuthProvider({ children }) {
   const [user, setUser] = useState(storage.getUser());
@@ -11,10 +18,15 @@ function AuthProvider({ children }) {
   // Temporary password storage for E2EE unlock (cleared after use)
   const pendingPasswordRef = useRef(null);
 
+  // Session expiry monitoring (v2.29.0)
+  const [sessionExpiring, setSessionExpiring] = useState(false);
+  const [sessionExpiresAt, setSessionExpiresAt] = useState(() => getTokenExpiry(storage.getToken()));
+  const dismissedUntilRef = useRef(0);
+
   useEffect(() => {
     // Check for browser session timeout (24 hours for non-PWA browser tabs)
     if (token && storage.isSessionExpired()) {
-      console.log('⏰ Browser session expired (24 hour limit for non-PWA). Logging out...');
+      console.log('⏰ Browser session expired. Logging out...');
       storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
       setToken(null); setUser(null);
       setLoading(false);
@@ -25,8 +37,8 @@ function AuthProvider({ children }) {
       fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => {
           if (res.ok) return res.json();
-          // Clear session on 401 (invalid) or 403 (expired token/session)
-          if (res.status === 401 || res.status === 403) {
+          // Clear session on 401 (invalid/expired token/session)
+          if (res.status === 401) {
             storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
             setToken(null); setUser(null);
           }
@@ -48,20 +60,54 @@ function AuthProvider({ children }) {
     }
   }, [token]);
 
-  // Periodic session expiry check (every 5 minutes) for long-running tabs
+  // Session expiry monitoring timer (v2.29.0)
   useEffect(() => {
     if (!token) return;
 
     const checkExpiry = () => {
+      // Check if token has already fully expired
       if (storage.isSessionExpired()) {
-        console.log('⏰ Browser session expired during use. Logging out...');
-        storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
-        setToken(null); setUser(null);
+        console.log('⏰ Session expired during use.');
+        setSessionExpiring(true);
+        return;
+      }
+
+      // Check if within warning window
+      const expiry = getTokenExpiry(token);
+      if (expiry) {
+        setSessionExpiresAt(expiry);
+        const remaining = expiry - Date.now();
+        if (remaining <= EXPIRY_WARNING_MS && remaining > 0) {
+          // Only show if not temporarily dismissed
+          if (Date.now() > dismissedUntilRef.current) {
+            setSessionExpiring(true);
+          }
+        } else if (remaining > EXPIRY_WARNING_MS) {
+          setSessionExpiring(false);
+        }
       }
     };
 
-    const interval = setInterval(checkExpiry, 5 * 60 * 1000); // Check every 5 minutes
-    return () => clearInterval(interval);
+    // Check immediately
+    checkExpiry();
+
+    // Periodic check
+    const interval = setInterval(checkExpiry, EXPIRY_CHECK_INTERVAL_MS);
+
+    // Also check on visibility change / focus (device waking from sleep)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') checkExpiry();
+    };
+    const handleFocus = () => checkExpiry();
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [token]);
 
   // Get pending password for E2EE unlock (one-time read, clears after access)
@@ -92,6 +138,9 @@ function AuthProvider({ children }) {
     pendingPasswordRef.current = password;
     storage.setToken(data.token); storage.setUser(data.user);
     storage.setSessionStart(sessionDuration); // Start browser session timer with user's selected duration
+    setSessionExpiresAt(getTokenExpiry(data.token));
+    setSessionExpiring(false);
+    dismissedUntilRef.current = 0;
     setToken(data.token); setUser(data.user);
     return { success: true };
   };
@@ -108,6 +157,9 @@ function AuthProvider({ children }) {
     const duration = storage.getSessionDuration() || '24h';
     storage.setToken(data.token); storage.setUser(data.user);
     storage.setSessionStart(duration); // Start browser session timer
+    setSessionExpiresAt(getTokenExpiry(data.token));
+    setSessionExpiring(false);
+    dismissedUntilRef.current = 0;
     setToken(data.token); setUser(data.user);
     return { success: true };
   };
@@ -123,6 +175,9 @@ function AuthProvider({ children }) {
     pendingPasswordRef.current = password;
     storage.setToken(data.token); storage.setUser(data.user);
     storage.setSessionStart(sessionDuration); // Start browser session timer with user's selected duration
+    setSessionExpiresAt(getTokenExpiry(data.token));
+    setSessionExpiring(false);
+    dismissedUntilRef.current = 0;
     setToken(data.token); setUser(data.user);
   };
 
@@ -141,6 +196,8 @@ function AuthProvider({ children }) {
     // Clear password and local storage
     pendingPasswordRef.current = null;
     storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
+    setSessionExpiring(false);
+    setSessionExpiresAt(null);
     setToken(null); setUser(null);
   };
 
@@ -150,10 +207,46 @@ function AuthProvider({ children }) {
     storage.setUser(updatedUser);
   };
 
+  // Refresh session with password (v2.29.0)
+  const refreshSession = useCallback(async (password, sessionDuration) => {
+    const duration = sessionDuration || storage.getSessionDuration() || '24h';
+    const res = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ password, sessionDuration: duration }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Session refresh failed');
+
+    // Update token and user state
+    storage.setToken(data.token); storage.setUser(data.user);
+    storage.setSessionStart(data.sessionDuration || duration);
+    setSessionExpiresAt(getTokenExpiry(data.token));
+    setSessionExpiring(false);
+    dismissedUntilRef.current = 0;
+    setToken(data.token); setUser(data.user);
+    return data;
+  }, [token]);
+
+  // Dismiss session warning temporarily (v2.29.0)
+  const dismissSessionWarning = useCallback(() => {
+    dismissedUntilRef.current = Date.now() + DISMISS_SNOOZE_MS;
+    setSessionExpiring(false);
+  }, []);
+
+  // Trigger session expiry from useAPI on TOKEN_EXPIRED (v2.29.0)
+  const triggerSessionExpiry = useCallback(() => {
+    setSessionExpiring(true);
+  }, []);
+
   if (loading) return <LoadingSpinner />;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, completeMfaLogin, register, logout, updateUser, getPendingPassword, clearPendingPassword }}>
+    <AuthContext.Provider value={{
+      user, token, login, completeMfaLogin, register, logout, updateUser,
+      getPendingPassword, clearPendingPassword,
+      sessionExpiring, sessionExpiresAt, refreshSession, dismissSessionWarning, triggerSessionExpiry
+    }}>
       {children}
     </AuthContext.Provider>
   );

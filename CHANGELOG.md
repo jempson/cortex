@@ -5,6 +5,31 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.29.0] - 2026-02-20
+
+### Added
+
+#### Session Expiry Monitoring & Renewal
+
+Proactive JWT session expiry detection with in-app renewal, eliminating silent 403 failures in PWA and long-running browser sessions.
+
+**Server**
+- `POST /api/auth/refresh` endpoint — accepts password + optional session duration, validates credentials, revokes old session, issues new JWT with fresh expiry
+- `authenticateToken` middleware now differentiates expired vs invalid tokens: returns `401 { code: 'TOKEN_EXPIRED' }` for expired JWTs (previously returned generic 403)
+
+**Client**
+- `getTokenExpiry()` utility — decodes JWT `exp` claim from token payload (no signature verification needed)
+- `isSessionExpired()` rewritten to use JWT `exp` claim as source of truth; removed PWA bypass that caused silent failures
+- `AuthProvider` session monitoring — checks token expiry every 30 seconds and on `visibilitychange`/`focus` events (handles devices waking from sleep); triggers warning 5 minutes before expiry
+- `SessionExpiryModal` component — password-based session renewal UI styled like E2EE unlock modal; shows countdown timer, session duration selector (24h/7d/30d), and extend/logout buttons
+- `useAPI` handles `TOKEN_EXPIRED` response code — triggers renewal modal instead of immediate logout
+
+### Fixed
+- PWA users no longer experience silent session expiry — the `isPWA() return false` bypass in `isSessionExpired()` has been removed since server-side JWTs expire regardless of client type
+- API calls returning 403 for expired tokens now correctly return 401, allowing proper client-side handling
+
+---
+
 ## [2.28.1] - 2026-02-18
 
 ### Added

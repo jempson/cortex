@@ -7,6 +7,21 @@ export const isPWA = () => {
          document.referrer.includes('android-app://'); // Android TWA
 };
 
+// Decode JWT expiry timestamp (ms) from token payload without signature verification
+export function getTokenExpiry(token) {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    // base64url → base64 → decode
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = JSON.parse(atob(payload));
+    return decoded.exp ? decoded.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 export const storage = {
   getToken: () => localStorage.getItem('farhold_token'),
   setToken: (token) => localStorage.setItem('farhold_token', token),
@@ -38,19 +53,20 @@ export const storage = {
     localStorage.removeItem('farhold_session_duration');
   },
   getSessionDuration: () => localStorage.getItem('farhold_session_duration') || '24h',
-  // Check if browser session has expired (respects user-selected duration)
+  // Check if browser session has expired — uses JWT exp claim as source of truth (v2.29.0)
   isSessionExpired: () => {
-    // PWA sessions don't expire based on time (they use device session)
-    if (isPWA()) return false;
+    const token = storage.getToken();
+    const expiry = getTokenExpiry(token);
+    if (expiry) return Date.now() > expiry;
 
+    // Fallback: client-side duration tracking for legacy tokens without exp
     const sessionStart = storage.getSessionStart();
-    if (!sessionStart) return false; // No session start = legacy session, let it continue
+    if (!sessionStart) return false;
 
-    // Use the user's selected session duration instead of hardcoded 24h
     const duration = storage.getSessionDuration();
     const durationMs = duration === '7d' ? 7 * 24 * 60 * 60 * 1000 :
                        duration === '30d' ? 30 * 24 * 60 * 60 * 1000 :
-                       24 * 60 * 60 * 1000; // Default 24h
+                       24 * 60 * 60 * 1000;
 
     const elapsed = Date.now() - sessionStart;
     return elapsed > durationMs;

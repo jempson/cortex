@@ -278,6 +278,18 @@ export const FEDERATION = {
   coverTrafficDescription: "Sends decoy signals to allied ports to mask real traffic patterns. Only works with V2 ports.",
 };
 
+// ============ SESSION EXPIRY (v2.29.0) ============
+export const SESSION = {
+  expiring: "Session Expiring",
+  expiringMessage: "Your session is about to expire. Enter your password to stay connected.",
+  expired: "Session Expired",
+  expiredMessage: "Your session has expired. Enter your password to reconnect.",
+  extendSession: "EXTEND SESSION",
+  extending: "EXTENDING...",
+  extended: "Session extended",
+  selectDuration: "SESSION DURATION",
+};
+
 // ============ UI LABELS ============
 export const UI_LABELS = {
   exportData: "Ship's Manifest",

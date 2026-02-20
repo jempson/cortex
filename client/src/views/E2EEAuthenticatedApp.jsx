@@ -3,10 +3,11 @@ import { useAuth } from '../hooks/useAPI.js';
 import { useE2EE } from '../../e2ee-context.jsx';
 import { E2EESetupModal, PassphraseUnlockModal } from '../../e2ee-components.jsx';
 import { LoadingSpinner } from '../components/ui/SimpleComponents.jsx';
+import SessionExpiryModal from '../components/session/SessionExpiryModal.jsx';
 import MainApp from './MainApp.jsx';
 
 function E2EEAuthenticatedApp({ sharePingId, logout }) {
-  const { getPendingPassword, clearPendingPassword } = useAuth();
+  const { getPendingPassword, clearPendingPassword, sessionExpiring } = useAuth();
   const {
     e2eeStatus,
     isUnlocked,
@@ -152,6 +153,11 @@ function E2EEAuthenticatedApp({ sharePingId, logout }) {
   }
 
   // E2EE is unlocked - render the main app
-  return <MainApp sharePingId={sharePingId} />;
+  return (
+    <>
+      <MainApp sharePingId={sharePingId} />
+      {sessionExpiring && <SessionExpiryModal />}
+    </>
+  );
 }
 export default E2EEAuthenticatedApp;
