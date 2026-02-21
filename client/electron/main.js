@@ -12,8 +12,8 @@ const __dirname = path.dirname(__filename);
 const isDev = !app.isPackaged;
 const APP_PROTOCOL = 'cortex';
 
-// Serve dist/ in production via custom protocol
-const loadURL = isDev ? null : serve({ directory: path.join(__dirname, '..', 'dist') });
+// Serve redirect page in production via custom protocol
+const loadURL = isDev ? null : serve({ directory: path.join(__dirname, 'app') });
 
 // ============ WINDOW STATE PERSISTENCE ============
 
@@ -165,7 +165,9 @@ async function createWindow() {
     // Open DevTools in development
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    await loadURL(mainWindow);
+    // electron-serve loads the redirect page, which navigates to the remote URL.
+    // The navigation aborts the original load — catch the expected ERR_ABORTED.
+    await loadURL(mainWindow).catch(() => {});
   }
 }
 
@@ -182,10 +184,12 @@ app.whenReady().then(async () => {
   });
 
   // Auto-updater (production only)
-  if (!isDev) {
-    autoUpdater.autoDownload = false;
-    autoUpdater.checkForUpdatesAndNotify();
-  }
+  // Disabled until GitHub Releases with electron-builder artifacts are published.
+  // To enable: uncomment the block below and publish a release with latest-linux.yml / latest-mac.yml etc.
+  // if (!isDev) {
+  //   autoUpdater.autoDownload = false;
+  //   autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  // }
 });
 
 // Quit when all windows are closed (except macOS)

@@ -4,7 +4,6 @@ directories:
   output: electron-dist
   buildResources: electron
 files:
-  - dist/**/*
   - electron/**/*
   - package.json
 
@@ -27,6 +26,8 @@ linux:
     - target: AppImage
       arch: [x64, arm64]
     - target: deb
+      arch: [x64]
+    - target: rpm
       arch: [x64]
   category: Network
   icon: public/icons/icon-512x512.png

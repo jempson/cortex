@@ -11,25 +11,25 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron:dev": "electron .",
-    "electron:build": "ELECTRON_BUILD=1 vite build && electron-builder",
-    "electron:build:mac": "ELECTRON_BUILD=1 vite build && electron-builder --mac",
-    "electron:build:win": "ELECTRON_BUILD=1 vite build && electron-builder --win",
-    "electron:build:linux": "ELECTRON_BUILD=1 vite build && electron-builder --linux"
+    "electron:build": "electron-builder",
+    "electron:build:mac": "electron-builder --mac",
+    "electron:build:win": "electron-builder --win",
+    "electron:build:linux": "electron-builder --linux"
   },
   "dependencies": {
-    "@livekit/components-react": "^2.6.0",
     "electron-serve": "^2.1.1",
-    "electron-updater": "^6.8.3",
-    "hls.js": "^1.6.15",
-    "livekit-client": "^2.6.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
+    "@livekit/components-react": "^2.6.0",
     "@vitejs/plugin-react": "^4.3.2",
     "canvas": "^3.2.0",
     "electron": "^35.7.5",
     "electron-builder": "^26.8.1",
+    "hls.js": "^1.6.15",
+    "livekit-client": "^2.6.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "vite": "^5.4.8"
   }
 }
