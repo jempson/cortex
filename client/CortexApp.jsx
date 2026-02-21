@@ -41,7 +41,10 @@ import AuthProvider from './src/views/AuthProvider.jsx';
 import E2EEWrapper from './src/views/E2EEWrapper.jsx';
 
 // ============ SERVICE WORKER REGISTRATION ============
-if ('serviceWorker' in navigator) {
+// Skip in native apps — Electron/Capacitor don't support Service Workers
+const _isNativeApp = typeof window !== 'undefined' &&
+  (window.Capacitor !== undefined || window.navigator?.userAgent?.includes('Electron'));
+if ('serviceWorker' in navigator && !_isNativeApp) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
