@@ -7,14 +7,6 @@ files:
   - electron/**/*
   - package.json
 
-mac:
-  category: public.app-category.social-networking
-  target:
-    - target: dmg
-      arch: [universal]
-  icon: public/icons/icon-512x512.png
-  hardenedRuntime: true
-
 win:
   target:
     - target: nsis
