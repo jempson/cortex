@@ -12,7 +12,6 @@
     "preview": "vite preview",
     "electron:dev": "electron .",
     "electron:build": "electron-builder",
-    "electron:build:mac": "electron-builder --mac",
     "electron:build:win": "electron-builder --win",
     "electron:build:linux": "electron-builder --linux"
   },
