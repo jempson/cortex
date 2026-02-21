@@ -5,6 +5,33 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.30.0] - 2026-02-20 (cont.)
+
+### Added
+
+#### Electron Desktop App (Phase 2)
+
+Electron integration for distributing Cortex as a native desktop application on Windows, macOS, and Linux.
+
+- **`electron/main.js`** — Main process with BrowserWindow, window state persistence (position/size saved to `userData`), `cortex://` deep link protocol registration, single-instance lock, native notification IPC, and auto-updater via `electron-updater`
+- **`electron/preload.cjs`** — Context bridge exposing `electronAPI` to renderer: `platform`, `showNotification()`, `getAppVersion()`, `onDeepLink()`, `onUpdateAvailable()`, `onUpdateDownloaded()`
+- **`electron-builder.yml`** — Build configuration for macOS (dmg/universal), Windows (nsis/x64+arm64), Linux (AppImage+deb), with GitHub Releases as auto-update provider
+- **Electron npm scripts** — `electron:dev`, `electron:build`, `electron:build:mac`, `electron:build:win`, `electron:build:linux`
+- **`ELECTRON_BUILD` env var** — When set, Vite uses `base: './'` for relative asset paths compatible with Electron's protocol handler; web builds remain absolute
+- **Security**: `nodeIntegration: false`, `contextIsolation: true`, `webSecurity: true` — no Node.js access from renderer
+- **Dev mode**: Loads `http://localhost:3000` (Vite dev server with HMR); production: serves `dist/` via `electron-serve`
+
+### Changed
+
+#### Native App Prep (Phase 1)
+
+Pre-integration fixes to make the codebase ready for Electron and Capacitor wrappers without adding any new dependencies.
+
+- **Replaced all `window.location.origin` references** with `BASE_URL` — `CallModal.jsx` (pop-out call URL), `BotDetailsModal.jsx` and `GroupsView.jsx` (webhook display URLs), `AppContent.jsx` (clear-cache redirect)
+- **Guarded Service Worker registration** for native apps — `CortexApp.jsx` SW registration skipped when Capacitor or Electron detected; `pwa.js` push subscribe/unsubscribe/reset functions return early on native platforms
+- **Hidden pop-out call button** on native apps — `CallModal.jsx` pop-out button only renders when `!isNativeApp` (native apps don't support `window.open()`)
+- **Added Electron build base path** — `vite.config.js` uses `base: './'` when `ELECTRON_BUILD` env var is set (relative asset paths for `file://` protocol); defaults to `/` for web builds (unchanged behavior)
+
 ## [2.30.0] - 2026-02-20
 
 ### Added

@@ -23,6 +23,7 @@ versions/
 
 # Build outputs
 client/dist/
+client/electron-dist/
 
 # Logs
 *.log

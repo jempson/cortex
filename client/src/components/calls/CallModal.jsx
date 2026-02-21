@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { LiveKitRoom, useParticipants, useLocalParticipant, RoomAudioRenderer, ParticipantTile, useTracks } from '@livekit/components-react';
 import { Track } from 'livekit-client';
+import { BASE_URL, isNativeApp } from '../../config/constants.js';
 
 // Nested component: LiveKitCallRoom
 // Use refs to prevent callback recreation and avoid unnecessary LiveKit reconnection attempts
@@ -217,8 +218,7 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
     const top = (window.screen.height - height) / 2;
 
     // Build URL with call parameters
-    const baseUrl = window.location.origin + window.location.pathname;
-    const callUrl = `${baseUrl}?call=${wave.id}&popout=true`;
+    const callUrl = `${BASE_URL}/?call=${wave.id}&popout=true`;
 
     const popoutWindow = window.open(
       callUrl,
@@ -376,7 +376,7 @@ const CallModal = ({ isOpen, onClose, wave, voiceCall, user, isMobile }) => {
             )}
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {isConnected && (
+            {isConnected && !isNativeApp && (
               <button
                 onClick={handlePopOut}
                 style={{

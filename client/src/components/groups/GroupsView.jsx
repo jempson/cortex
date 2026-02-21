@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useWindowSize } from '../../hooks/useWindowSize.js';
 import { SUCCESS, EMPTY, CONFIRM_DIALOG, FEDERATION, formatError } from '../../../messages.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { BASE_URL } from '../../config/constants.js';
 import GroupInvitationsPanel from './GroupInvitationsPanel.jsx';
 import InviteToGroupModal from './InviteToGroupModal.jsx';
 
@@ -3770,7 +3771,7 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
                 color: 'var(--accent-purple)',
                 wordBreak: 'break-all',
               }}>
-                POST {window.location.origin}/api/webhooks/{bot.id}/{bot.webhook_secret}
+                POST {BASE_URL}/api/webhooks/{bot.id}/{bot.webhook_secret}
               </code>
               <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginTop: '8px' }}>
                 Send JSON: {'{'}waveId, content, parentId (optional){'}'}

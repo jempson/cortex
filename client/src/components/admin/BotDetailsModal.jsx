@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { formatError, CONFIRM_DIALOG } from '../../../messages.js';
+import { BASE_URL } from '../../config/constants.js';
 
 const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate }) => {
   const [permissions, setPermissions] = useState(bot.permissions || []);
@@ -152,7 +153,7 @@ const BotDetailsModal = ({ bot, onClose, fetchAPI, showToast, isMobile, onUpdate
                 color: 'var(--accent-purple)',
                 wordBreak: 'break-all',
               }}>
-                POST {window.location.origin}/api/webhooks/{bot.id}/{bot.webhook_secret}
+                POST {BASE_URL}/api/webhooks/{bot.id}/{bot.webhook_secret}
               </code>
               <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginTop: '8px' }}>
                 Send JSON: {'{'}waveId, content, parentId (optional){'}'}

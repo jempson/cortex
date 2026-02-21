@@ -1,6 +1,6 @@
 // ============ PWA UTILITIES ============
 
-import { API_URL } from '../config/constants.js';
+import { API_URL, isNativeApp } from '../config/constants.js';
 
 // PWA Badge API - shows unread count on installed app icon
 // Note: Only works when installed as PWA (not in browser tab)
@@ -29,6 +29,12 @@ export const updateAppBadge = (count) => {
 // Subscribe to push notifications
 export async function subscribeToPush(token) {
   console.log('[Push] subscribeToPush called');
+
+  // Native apps use platform-specific push (FCM/APNs), not web push
+  if (isNativeApp) {
+    console.log('[Push] Native app detected — web push not available');
+    return { success: false, reason: 'Push notifications use native platform on this device' };
+  }
 
   if (!('serviceWorker' in navigator)) {
     console.log('[Push] Service Worker not supported');
@@ -232,7 +238,7 @@ export async function subscribeToPush(token) {
 
 // Unsubscribe from push notifications
 export async function unsubscribeFromPush(token) {
-  if (!('serviceWorker' in navigator)) return false;
+  if (isNativeApp || !('serviceWorker' in navigator)) return false;
 
   try {
     const registration = await navigator.serviceWorker.ready;
@@ -281,6 +287,11 @@ export async function unsubscribeFromPush(token) {
 // Force reset push notification state (for troubleshooting)
 export async function forceResetPushState() {
   console.log('[Push] Force resetting push state...');
+
+  if (isNativeApp) {
+    console.log('[Push] Native app — skipping web push reset');
+    return true;
+  }
 
   try {
     // Clear stored VAPID key
