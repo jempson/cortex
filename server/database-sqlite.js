@@ -1985,7 +1985,7 @@ export class DatabaseSQLite {
     const user = {
       id: userData.id,
       handle: userData.handle,
-      email: emailEncryption ? '' : userData.email, // Store empty string when encrypted (legacy NOT NULL compat)
+      email: emailEncryption ? emailHash : userData.email, // Store hash when encrypted (satisfies NOT NULL + UNIQUE on legacy schemas)
       emailHash: emailHash,
       emailEncrypted: emailEncryption?.encrypted || null,
       emailIv: emailEncryption?.iv || null,
