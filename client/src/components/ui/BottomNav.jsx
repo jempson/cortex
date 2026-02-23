@@ -1,5 +1,10 @@
 import React from 'react';
 
+// Register Capacitor Haptics proxy for native haptic feedback (remote URL pattern)
+const Haptics = window.Capacitor?.registerPlugin
+  ? window.Capacitor.registerPlugin('Haptics')
+  : null;
+
 // ============ BOTTOM NAVIGATION ============
 const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendingGroups }) => {
   const items = [
@@ -12,8 +17,8 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
 
   const handleNavigate = (view) => {
     // Haptic feedback — prefer Capacitor native haptics, fall back to Web Vibration API
-    if (window.Capacitor?.Plugins?.Haptics) {
-      window.Capacitor.Plugins.Haptics.impact({ style: 'LIGHT' });
+    if (Haptics) {
+      Haptics.impact({ style: 'LIGHT' });
     } else if (navigator.vibrate) {
       navigator.vibrate(10);
     }
