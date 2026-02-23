@@ -11,8 +11,10 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
   ];
 
   const handleNavigate = (view) => {
-    // Haptic feedback if available
-    if (navigator.vibrate) {
+    // Haptic feedback — prefer Capacitor native haptics, fall back to Web Vibration API
+    if (window.Capacitor?.Plugins?.Haptics) {
+      window.Capacitor.Plugins.Haptics.impact({ style: 'LIGHT' });
+    } else if (navigator.vibrate) {
       navigator.vibrate(10);
     }
     onNavigate(view);

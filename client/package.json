@@ -1,6 +1,6 @@
 {
   "name": "cortex-client",
-  "version": "2.30.1",
+  "version": "2.31.0",
   "description": "Cortex - Privacy-First Federated Communication Platform",
   "author": "Cortex Project <admin@farhold.com>",
   "homepage": "https://cortex.farhold.com",
@@ -13,9 +13,25 @@
     "electron:dev": "electron .",
     "electron:build": "electron-builder",
     "electron:build:win": "electron-builder --win",
-    "electron:build:linux": "electron-builder --linux"
+    "electron:build:linux": "electron-builder --linux",
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios",
+    "cap:run:android": "cap run android",
+    "cap:run:ios": "cap run ios",
+    "cap:build:android": "cd android && ./gradlew assembleRelease",
+    "cap:build:android:aab": "cd android && ./gradlew bundleRelease"
   },
   "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/app": "^8.0.1",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/haptics": "^8.0.0",
+    "@capacitor/ios": "^8.1.0",
+    "@capacitor/push-notifications": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.1",
     "electron-serve": "^2.1.1",
     "electron-updater": "^6.8.3"
   },
@@ -29,6 +45,7 @@
     "livekit-client": "^2.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "typescript": "^5.9.3",
     "vite": "^5.4.8"
   }
 }

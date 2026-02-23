@@ -28,6 +28,7 @@ import { storage } from './storage.js';
 import * as waveParticipationCrypto from './lib/wave-participation-crypto.js';
 import * as pushSubscriptionCrypto from './lib/push-subscription-crypto.js';
 import * as crewMembershipCrypto from './lib/crew-membership-crypto.js';
+import admin from 'firebase-admin';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -56,6 +57,23 @@ if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
 const livekitRoomService = (LIVEKIT_API_KEY && LIVEKIT_API_SECRET)
   ? new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
   : null;
+
+// ============ FIREBASE ADMIN SDK (v2.31.0 - Capacitor Push) ============
+const FIREBASE_SERVICE_ACCOUNT_PATH = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+if (FIREBASE_SERVICE_ACCOUNT_PATH) {
+  try {
+    const serviceAccount = JSON.parse(fs.readFileSync(path.resolve(FIREBASE_SERVICE_ACCOUNT_PATH), 'utf8'));
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log('✅ Firebase Admin SDK initialized');
+  } catch (error) {
+    console.warn('⚠️  Firebase Admin SDK initialization failed:', error.message);
+    console.warn('   FCM push notifications will not work');
+  }
+} else {
+  console.warn('⚠️  FIREBASE_SERVICE_ACCOUNT_PATH not set — FCM push disabled');
+}
 
 // JWT_SECRET is REQUIRED in production - fail fast if not configured
 const JWT_SECRET_ENV = process.env.JWT_SECRET;
@@ -6836,6 +6854,64 @@ app.post('/api/push/unregister', authenticateToken, (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Failed to unregister Expo push token:', error);
+    res.status(500).json({ error: 'Failed to unregister push token' });
+  }
+});
+
+// ============ FCM Push Notifications (Capacitor Mobile App v2.31.0) ============
+
+// Register FCM push token (for Capacitor native apps)
+app.post('/api/push/fcm/register', authenticateToken, (req, res) => {
+  const { token, platform, deviceId } = req.body;
+
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'FCM token is required' });
+  }
+
+  if (!admin.apps.length) {
+    return res.status(501).json({ error: 'Firebase not configured on server' });
+  }
+
+  try {
+    pushSubs.addSubscription(req.user.userId, {
+      endpoint: `fcm:${token}`,
+      keys: {
+        type: 'fcm',
+        platform: platform || 'unknown',
+        deviceName: `${(platform || 'Mobile').charAt(0).toUpperCase() + (platform || 'mobile').slice(1)} Device`,
+        deviceId: deviceId || null,
+      },
+    });
+
+    console.log(`📱 FCM token registered for user ${req.user.userId}: ${token.substring(0, 20)}...`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to register FCM token:', error);
+    res.status(500).json({ error: 'Failed to register push token' });
+  }
+});
+
+// Unregister FCM push token
+app.post('/api/push/fcm/unregister', authenticateToken, (req, res) => {
+  const { token } = req.body;
+
+  try {
+    if (token) {
+      pushSubs.removeSubscription(req.user.userId, `fcm:${token}`);
+      console.log(`📱 FCM token unregistered for user ${req.user.userId}`);
+    } else {
+      // Remove all FCM tokens for this user
+      const subs = pushSubs.getSubscriptions(req.user.userId);
+      for (const sub of subs) {
+        if (sub.endpoint?.startsWith('fcm:')) {
+          pushSubs.removeSubscription(req.user.userId, sub.endpoint);
+        }
+      }
+      console.log(`📱 All FCM tokens unregistered for user ${req.user.userId}`);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to unregister FCM token:', error);
     res.status(500).json({ error: 'Failed to unregister push token' });
   }
 });
@@ -17863,13 +17939,16 @@ async function sendPushNotification(userId, payload) {
   const subscriptions = pushSubs.getSubscriptions(userId);
   if (subscriptions.length === 0) return;
 
-  // Separate Expo tokens from web push subscriptions
+  // Classify subscriptions by type
   const expoTokens = [];
+  const fcmTokens = [];
   const webPushSubs = [];
 
   for (const sub of subscriptions) {
     if (sub.endpoint?.startsWith('ExponentPushToken[') || sub.endpoint?.startsWith('ExpoPushToken[')) {
       expoTokens.push(sub);
+    } else if (sub.endpoint?.startsWith('fcm:')) {
+      fcmTokens.push(sub);
     } else if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
       webPushSubs.push(sub);
     }
@@ -17937,6 +18016,55 @@ async function sendPushNotification(userId, payload) {
           console.log(`🔕 Removed invalid web push subscription (${error.statusCode || error.message})`);
         } else {
           console.error('Web push notification error:', error.statusCode, error.message);
+        }
+      }
+    }
+  }
+
+  // Send to FCM (Capacitor native) tokens
+  if (fcmTokens.length > 0 && admin.apps.length > 0) {
+    console.log(`📱 Sending ${fcmTokens.length} FCM notification(s) to user ${userId}`);
+
+    for (const sub of fcmTokens) {
+      const fcmToken = sub.endpoint.replace(/^fcm:/, '');
+      try {
+        await admin.messaging().send({
+          token: fcmToken,
+          notification: {
+            title: payload.title || 'Cortex',
+            body: payload.body || payload.message || '',
+          },
+          data: {
+            type: String(payload.type || ''),
+            waveId: String(payload.waveId || ''),
+            messageId: String(payload.messageId || ''),
+            senderId: String(payload.senderId || ''),
+            senderHandle: String(payload.senderHandle || ''),
+          },
+          android: {
+            priority: 'high',
+            notification: {
+              channelId: 'cortex_messages',
+              color: '#0ead69',
+            },
+          },
+          apns: {
+            payload: {
+              aps: {
+                badge: 1,
+                sound: 'default',
+              },
+            },
+          },
+        });
+      } catch (error) {
+        const errorCode = error.code || error.errorInfo?.code || '';
+        if (errorCode === 'messaging/registration-token-not-registered' ||
+            errorCode === 'messaging/invalid-registration-token') {
+          pushSubs.removeByEndpoint(sub.endpoint);
+          console.log(`📱 Removed stale FCM token: ${fcmToken.substring(0, 20)}...`);
+        } else {
+          console.error('📱 FCM push error:', errorCode, error.message);
         }
       }
     }
