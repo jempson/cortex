@@ -1970,7 +1970,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '6px' }}>
                     Receive notifications when the app is closed or in background
                   </div>
-                  {/iPad|iPhone|iPod/.test(navigator.userAgent) && (
+                  {/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.Capacitor && (
                     <div style={{ color: 'var(--accent-orange)', fontSize: '0.65rem', marginTop: '6px', padding: '6px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
                       ⚠️ iOS does not support push notifications for web apps. This is a platform limitation by Apple.
                     </div>

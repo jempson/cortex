@@ -25,6 +25,20 @@ versions/
 client/dist/
 client/electron-dist/
 
+# Capacitor native builds
+client/android/.gradle/
+client/android/app/build/
+client/android/build/
+client/android/.idea/
+client/android/local.properties
+client/android/app/google-services.json
+client/ios/App/Pods/
+client/ios/DerivedData/
+client/ios/App/App/GoogleService-Info.plist
+
+# Firebase credentials
+server/firebase-service-account.json
+
 # Logs
 *.log
 npm-debug.log*

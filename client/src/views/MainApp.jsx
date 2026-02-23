@@ -7,6 +7,7 @@ import { VERSION, API_URL, BASE_URL, canAccess, FONT_SIZES } from '../config/con
 import { getRandomTagline, SUCCESS, NOTIFICATION, formatError, GHOST_PROTOCOL } from '../../messages.js';
 import { storage } from '../utils/storage.js';
 import { updateAppBadge, subscribeToPush } from '../utils/pwa.js';
+import { setupCapacitorPushListeners } from '../utils/capacitor-push.js';
 import { updateDocumentTitle, startFaviconFlash, stopFaviconFlash } from '../utils/favicon.js';
 import { getCachedWaveList, cacheWaveList } from '../utils/waveCache.js';
 import BottomNav from '../components/ui/BottomNav.jsx';
@@ -972,6 +973,17 @@ function MainApp({ sharePingId }) {
     const timer = setTimeout(setupPushNotifications, 2000);
     return () => clearTimeout(timer);
   }, [user]);
+
+  // Set up Capacitor native push notification listeners (tap-to-navigate)
+  useEffect(() => {
+    if (!window.Capacitor) return;
+
+    setupCapacitorPushListeners(({ waveId }) => {
+      console.log('[CapPush] Navigating to wave:', waveId);
+      setSelectedWave({ id: waveId, title: '' });
+      setActiveView('waves');
+    });
+  }, []);
 
   const handleCreateWave = async (data) => {
     try {

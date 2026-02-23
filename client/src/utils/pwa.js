@@ -1,6 +1,7 @@
 // ============ PWA UTILITIES ============
 
 import { API_URL, isNativeApp } from '../config/constants.js';
+import { registerCapacitorPush, unregisterCapacitorPush } from './capacitor-push.js';
 
 // PWA Badge API - shows unread count on installed app icon
 // Note: Only works when installed as PWA (not in browser tab)
@@ -30,7 +31,13 @@ export const updateAppBadge = (count) => {
 export async function subscribeToPush(token) {
   console.log('[Push] subscribeToPush called');
 
-  // Native apps use platform-specific push (FCM/APNs), not web push
+  // Capacitor native apps use FCM/APNs via capacitor-push.js
+  if (window.Capacitor) {
+    console.log('[Push] Capacitor detected — delegating to native push');
+    return registerCapacitorPush(token);
+  }
+
+  // Other native apps (Electron) don't support web push
   if (isNativeApp) {
     console.log('[Push] Native app detected — web push not available');
     return { success: false, reason: 'Push notifications use native platform on this device' };
@@ -238,6 +245,12 @@ export async function subscribeToPush(token) {
 
 // Unsubscribe from push notifications
 export async function unsubscribeFromPush(token) {
+  // Capacitor native apps — unregister FCM token
+  if (window.Capacitor) {
+    await unregisterCapacitorPush(token);
+    return true;
+  }
+
   if (isNativeApp || !('serviceWorker' in navigator)) return false;
 
   try {
