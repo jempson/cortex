@@ -1,24 +1,21 @@
 // ============ CAPACITOR NATIVE PUSH NOTIFICATIONS ============
 // Client-side utility for Capacitor native push (FCM on Android, APNs on iOS).
-// Since we use a remote URL wrapper, the @capacitor/* npm packages aren't loaded
-// at runtime. We must use Capacitor.registerPlugin() to create JS proxies that
-// communicate with the native plugins through the bridge.
+// Import registerPlugin from @capacitor/core — Vite bundles it into the build,
+// and at runtime it connects to the native bridge injected by the Capacitor shell.
 
+import { registerPlugin } from '@capacitor/core';
 import { API_URL } from '../config/constants.js';
 
 const FCM_TOKEN_KEY = 'farhold_fcm_token';
 const DEVICE_ID_KEY = 'farhold_device_id';
 
-// Lazy-init plugin proxy — the Capacitor bridge may not be injected yet when
-// this module is first evaluated, so we resolve on first call.
-let _pushPlugin = null;
-function getPushPlugin() {
-  if (_pushPlugin) return _pushPlugin;
-  if (window.Capacitor?.registerPlugin) {
-    _pushPlugin = window.Capacitor.registerPlugin('PushNotifications');
-  }
-  return _pushPlugin;
-}
+// Register plugin proxies via @capacitor/core — these communicate with native
+// plugins through the bridge when running in the Capacitor shell, and are
+// no-ops in a regular browser.
+const PushNotifications = registerPlugin('PushNotifications');
+const Haptics = registerPlugin('Haptics');
+
+export { Haptics };
 
 function getOrCreateDeviceId() {
   let deviceId = localStorage.getItem(DEVICE_ID_KEY);
@@ -41,15 +38,9 @@ function getPlatform() {
  * Sends the FCM/APNs token to the server.
  */
 export async function registerCapacitorPush(authToken) {
-  const plugin = getPushPlugin();
-  if (!plugin) {
-    console.log('[CapPush] PushNotifications plugin not available');
-    return { success: false, reason: 'Native push plugin not available' };
-  }
-
   try {
     // Request permission
-    const permResult = await plugin.requestPermissions();
+    const permResult = await PushNotifications.requestPermissions();
     console.log('[CapPush] Permission result:', permResult.receive);
 
     if (permResult.receive !== 'granted') {
@@ -63,17 +54,17 @@ export async function registerCapacitorPush(authToken) {
         reject(new Error('Push registration timed out'));
       }, 15000);
 
-      plugin.addListener('registration', (regToken) => {
+      PushNotifications.addListener('registration', (regToken) => {
         clearTimeout(timeout);
         resolve(regToken.value);
       });
 
-      plugin.addListener('registrationError', (error) => {
+      PushNotifications.addListener('registrationError', (error) => {
         clearTimeout(timeout);
         reject(new Error(error.error || 'Registration failed'));
       });
 
-      plugin.register();
+      PushNotifications.register();
     });
 
     console.log('[CapPush] Got FCM token:', token.substring(0, 20) + '...');
@@ -114,16 +105,13 @@ export async function registerCapacitorPush(authToken) {
  * @param {function} onNotificationTap - Called with { waveId } when user taps a notification
  */
 export function setupCapacitorPushListeners(onNotificationTap) {
-  const plugin = getPushPlugin();
-  if (!plugin) return;
-
   // Foreground notification — log it (OS shows nothing by default, our config enables alert)
-  plugin.addListener('pushNotificationReceived', (notification) => {
+  PushNotifications.addListener('pushNotificationReceived', (notification) => {
     console.log('[CapPush] Foreground notification:', notification.title, notification.body);
   });
 
   // User tapped a notification (background or killed state)
-  plugin.addListener('pushNotificationActionPerformed', (action) => {
+  PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
     console.log('[CapPush] Notification tapped:', action.notification?.data);
     const data = action.notification?.data;
     if (data?.waveId && onNotificationTap) {
