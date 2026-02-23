@@ -13976,7 +13976,10 @@ app.post('/api/groups', authenticateToken, (req, res) => {
     description: req.body.description,
     createdBy: req.user.userId,
   });
-  
+
+  // Update encrypted membership cache
+  crewMembership.addMember(group.id, req.user.userId, 'admin');
+
   res.status(201).json({ ...group, memberCount: 1, role: 'admin' });
 });
 
