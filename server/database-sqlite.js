@@ -1657,6 +1657,52 @@ export class DatabaseSQLite {
       console.log('   Run email migration to populate email_hash/email_encrypted from existing emails');
     }
 
+    // v2.30.0 - Drop legacy NOT NULL + UNIQUE constraints from email column
+    // When email encryption is active, email column stores the hash (not plaintext).
+    // Old schemas had: email TEXT UNIQUE NOT NULL — new schemas have: email TEXT
+    const emailColInfo = this.db.prepare(`PRAGMA table_info(users)`).all();
+    const emailCol = emailColInfo.find(c => c.name === 'email');
+    if (emailCol && emailCol.notnull === 1) {
+      console.log('📝 Migrating users table to remove email NOT NULL/UNIQUE constraints (v2.30.0)...');
+      this.db.exec(`
+        PRAGMA foreign_keys=OFF;
+        BEGIN TRANSACTION;
+        CREATE TABLE users_migrate (
+          id TEXT PRIMARY KEY,
+          handle TEXT UNIQUE NOT NULL COLLATE NOCASE,
+          email TEXT COLLATE NOCASE,
+          email_hash TEXT,
+          email_encrypted TEXT,
+          email_iv TEXT,
+          password_hash TEXT NOT NULL,
+          display_name TEXT NOT NULL,
+          avatar TEXT NOT NULL DEFAULT '?',
+          avatar_url TEXT,
+          bio TEXT,
+          node_name TEXT DEFAULT 'Local',
+          status TEXT DEFAULT 'offline',
+          is_admin INTEGER DEFAULT 0,
+          role TEXT DEFAULT 'user',
+          created_at TEXT NOT NULL,
+          last_seen TEXT,
+          last_handle_change TEXT,
+          require_password_change INTEGER DEFAULT 0,
+          preferences TEXT DEFAULT '{"theme":"firefly","fontSize":"medium"}'
+        );
+        INSERT INTO users_migrate SELECT * FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_migrate RENAME TO users;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_hash ON users(email_hash) WHERE email_hash IS NOT NULL;
+        COMMIT;
+        PRAGMA foreign_keys=ON;
+      `);
+      // Clear plaintext emails for users that have encryption — set to NULL now that constraint is gone
+      this.db.prepare(`
+        UPDATE users SET email = NULL WHERE email_encrypted IS NOT NULL
+      `).run();
+      console.log('✅ Email constraints migrated — plaintext emails cleared for encrypted users');
+    }
+
     // v2.18.0 - Privacy Hardening Phase 2: Encrypted contacts table
     const encryptedContactsExists = this.db.prepare(`
       SELECT name FROM sqlite_master WHERE type='table' AND name='encrypted_contacts'
@@ -1985,7 +2031,7 @@ export class DatabaseSQLite {
     const user = {
       id: userData.id,
       handle: userData.handle,
-      email: emailEncryption ? emailHash : userData.email, // Store hash when encrypted (satisfies NOT NULL + UNIQUE on legacy schemas)
+      email: emailEncryption ? null : userData.email, // No plaintext email when encryption is active
       emailHash: emailHash,
       emailEncrypted: emailEncryption?.encrypted || null,
       emailIv: emailEncryption?.iv || null,
@@ -2024,6 +2070,21 @@ export class DatabaseSQLite {
     // Ensure role is synced with isAdmin for backward compat
     if (updates.isAdmin !== undefined && updates.role === undefined) {
       updated.role = updates.isAdmin ? 'admin' : 'user';
+    }
+
+    // If email changed, update encryption fields too
+    if (updates.email && updates.email !== user.email) {
+      const newHash = hashEmail(updates.email);
+      const newEncryption = encryptEmail(updates.email);
+      updated.email = newEncryption ? newHash : updates.email;
+      updated.emailHash = newHash;
+      updated.emailEncrypted = newEncryption?.encrypted || null;
+      updated.emailIv = newEncryption?.iv || null;
+      // Update encrypted email fields
+      this.db.prepare(`
+        UPDATE users SET email_hash = ?, email_encrypted = ?, email_iv = ?
+        WHERE id = ?
+      `).run(updated.emailHash, updated.emailEncrypted, updated.emailIv, userId);
     }
 
     this.db.prepare(`
