@@ -5,6 +5,14 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.31.2] - 2026-02-23
+
+### Fixed
+
+- **Android push crash on Android 13+** — Added `POST_NOTIFICATIONS` permission to AndroidManifest.xml; Pixel 7 and other Android 13+ devices require this for FCM registration
+- **Web push broken by @capacitor/core** — Changed to dynamic `import()` so @capacitor/core only loads inside Capacitor native shell; static import was creating a `window.Capacitor` stub on web browsers
+- **Capacitor detection checks** — All `window.Capacitor` checks now use `.isNativePlatform` to distinguish real native bridge from web stub
+
 ## [2.31.1] - 2026-02-23
 
 ### Fixed
