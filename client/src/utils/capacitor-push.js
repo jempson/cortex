@@ -1,11 +1,18 @@
 // ============ CAPACITOR NATIVE PUSH NOTIFICATIONS ============
 // Client-side utility for Capacitor native push (FCM on Android, APNs on iOS).
-// Plugins are accessed via window.Capacitor.Plugins — injected by native shell into WebView.
+// Since we use a remote URL wrapper, the @capacitor/* npm packages aren't loaded
+// at runtime. We must use Capacitor.registerPlugin() to create JS proxies that
+// communicate with the native plugins through the bridge.
 
 import { API_URL } from '../config/constants.js';
 
 const FCM_TOKEN_KEY = 'farhold_fcm_token';
 const DEVICE_ID_KEY = 'farhold_device_id';
+
+// Create plugin proxy via native bridge (works with remote URL pattern)
+const PushNotifications = window.Capacitor?.registerPlugin
+  ? window.Capacitor.registerPlugin('PushNotifications')
+  : null;
 
 function getOrCreateDeviceId() {
   let deviceId = localStorage.getItem(DEVICE_ID_KEY);
@@ -28,7 +35,6 @@ function getPlatform() {
  * Sends the FCM/APNs token to the server.
  */
 export async function registerCapacitorPush(authToken) {
-  const PushNotifications = window.Capacitor?.Plugins?.PushNotifications;
   if (!PushNotifications) {
     console.log('[CapPush] PushNotifications plugin not available');
     return { success: false, reason: 'Native push plugin not available' };
@@ -101,7 +107,6 @@ export async function registerCapacitorPush(authToken) {
  * @param {function} onNotificationTap - Called with { waveId } when user taps a notification
  */
 export function setupCapacitorPushListeners(onNotificationTap) {
-  const PushNotifications = window.Capacitor?.Plugins?.PushNotifications;
   if (!PushNotifications) return;
 
   // Foreground notification — log it (OS shows nothing by default, our config enables alert)
