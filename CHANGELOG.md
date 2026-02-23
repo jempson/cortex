@@ -5,6 +5,13 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.31.1] - 2026-02-23
+
+### Fixed
+
+- **Capacitor plugin proxies crash** — `registerPlugin()` was called at ES module load time before the native bridge was injected into the WebView; now lazily initialized on first function call
+- **Version mismatch banner hidden on Android** — Added `env(safe-area-inset-top)` padding so the refresh banner renders below the status bar and is tappable
+
 ## [2.31.0] - 2026-02-23
 
 ### Added
