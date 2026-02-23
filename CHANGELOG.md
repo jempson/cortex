@@ -5,6 +5,30 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.31.0] - 2026-02-23
+
+### Added
+
+#### Capacitor Mobile Apps (Android + iOS)
+
+Native Android and iOS mobile apps using Capacitor, following the same remote wrapper pattern as the Electron desktop app. The Capacitor WebView loads `https://cortex.farhold.com` — no bundled web assets.
+
+- **Capacitor project setup** — `@capacitor/core`, `@capacitor/cli`, `@capacitor/android`, `@capacitor/ios` with `capacitor.config.ts` pointing to remote server URL
+- **Native push notifications** — FCM (Android) and APNs (iOS) via `@capacitor/push-notifications`; new `capacitor-push.js` client utility handles registration, token management, and notification tap-to-navigate
+- **Firebase Admin SDK** — Server-side `firebase-admin` for sending FCM messages; `POST /api/push/fcm/register` and `/unregister` endpoints for token management
+- **FCM sending in `sendPushNotification()`** — Three-way subscription classification (Expo / FCM / Web Push); FCM messages include Android notification channel, high priority, and APNs badge/sound config; stale tokens auto-cleaned on `registration-token-not-registered` errors
+- **Android notification channel** — `cortex_messages` channel created in `MainActivity.onCreate()` with HIGH importance and Cortex green LED color
+- **Capacitor Haptics** — `BottomNav` uses `@capacitor/haptics` for native Taptic Engine / vibration feedback, falling back to Web Vibration API
+- **Smart push delegation** — `pwa.js` `subscribeToPush()` and `unsubscribeFromPush()` detect `window.Capacitor` and delegate to native push registration instead of web push
+- **iOS push warning hidden in Capacitor** — ProfileSettings iOS web push limitation warning only shows for Safari web app, not Capacitor native
+- **Splash screen + status bar** — `@capacitor/splash-screen` with `#050805` background, `@capacitor/status-bar` with dark style matching Firefly theme
+- **Build scripts** — `cap:sync`, `cap:open:android`, `cap:open:ios`, `cap:run:android`, `cap:run:ios`, `cap:build:android`, `cap:build:android:aab`
+
+### Changed
+
+- **`.gitignore`** — Added Capacitor build outputs (`android/.gradle/`, `android/app/build/`, `ios/App/Pods/`), Firebase credentials, and platform-specific config files (`google-services.json`, `GoogleService-Info.plist`)
+- **`.env.example`** — Added `FIREBASE_SERVICE_ACCOUNT_PATH` documentation with Firebase project setup instructions
+
 ## [2.30.1] - 2026-02-22
 
 ### Fixed
