@@ -1689,7 +1689,14 @@ export class DatabaseSQLite {
           require_password_change INTEGER DEFAULT 0,
           preferences TEXT DEFAULT '{"theme":"firefly","fontSize":"medium"}'
         );
-        INSERT INTO users_migrate SELECT * FROM users;
+        INSERT INTO users_migrate SELECT
+          id, handle, email, email_hash, email_encrypted, email_iv,
+          password_hash, COALESCE(display_name, handle), COALESCE(avatar, '?'),
+          avatar_url, bio, COALESCE(node_name, 'Local'), COALESCE(status, 'offline'),
+          COALESCE(is_admin, 0), COALESCE(role, 'user'), created_at, last_seen,
+          last_handle_change, COALESCE(require_password_change, 0),
+          COALESCE(preferences, '{"theme":"firefly","fontSize":"medium"}')
+        FROM users;
         DROP TABLE users;
         ALTER TABLE users_migrate RENAME TO users;
         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_hash ON users(email_hash) WHERE email_hash IS NOT NULL;
