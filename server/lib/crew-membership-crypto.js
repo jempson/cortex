@@ -145,6 +145,32 @@ export async function initializeCache(database) {
     }
 
     console.log(`Loaded ${crewCount} encrypted crews with ${memberCount} member mappings`);
+
+    // Backfill: check plaintext table for members missing from encrypted table
+    // This handles crews created by db.createGroup() before the cache sync fix
+    const plaintextRows = db.db.prepare('SELECT crew_id, user_id FROM crew_members').all();
+    let backfilled = 0;
+    for (const row of plaintextRows) {
+      const members = crewToMembers.get(row.crew_id);
+      if (!members || !members.has(row.user_id)) {
+        if (!crewToMembers.has(row.crew_id)) {
+          crewToMembers.set(row.crew_id, new Set());
+        }
+        crewToMembers.get(row.crew_id).add(row.user_id);
+        if (!userToCrews.has(row.user_id)) {
+          userToCrews.set(row.user_id, new Set());
+        }
+        userToCrews.get(row.user_id).add(row.crew_id);
+        backfilled++;
+      }
+    }
+    if (backfilled > 0) {
+      console.log(`Backfilled ${backfilled} members from plaintext table into cache`);
+      // Persist backfilled data to encrypted table
+      for (const [crewId, members] of crewToMembers) {
+        updateEncryptedBlob(crewId);
+      }
+    }
   } else {
     // Encryption not enabled, table doesn't exist, or no migration yet - load from plaintext table
     if (MEMBERSHIP_KEY && encryptedCount === 0) {
