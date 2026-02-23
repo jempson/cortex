@@ -173,7 +173,7 @@ export const VersionMismatchBanner = ({ serverVersion, clientVersion }) => {
       right: 0,
       background: 'var(--accent-amber)',
       color: 'var(--bg-base)',
-      padding: '8px 16px',
+      padding: 'calc(8px + env(safe-area-inset-top)) 16px 8px',
       textAlign: 'center',
       fontFamily: 'monospace',
       fontSize: '0.85rem',
