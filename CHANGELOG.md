@@ -5,6 +5,15 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.30.1] - 2026-02-22
+
+### Fixed
+
+- **Registration fails with email encryption enabled** — `createUser()` set email to `null` when `EMAIL_ENCRYPTION_KEY` is configured, but production databases had `NOT NULL` + `UNIQUE` constraints on the email column from older schema versions
+- **Auto-migration for legacy email constraints** — On startup, detects `NOT NULL` on the email column and recreates the users table with the correct schema; clears plaintext emails for users that already have encrypted email data
+- **Email encryption on profile update** — `updateUser()` now properly hashes and encrypts the email when a user changes it (previously wrote plaintext to all email columns)
+- **Crew creation membership cache** — `POST /api/groups` now calls `crewMembership.addMember()` after creating the group, so the creator can immediately access the crew via `GET /api/groups/:id`
+
 ## [2.30.0] - 2026-02-20
 
 ### Added
