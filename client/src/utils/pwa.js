@@ -32,7 +32,8 @@ export async function subscribeToPush(token) {
   console.log('[Push] subscribeToPush called');
 
   // Capacitor native apps use FCM/APNs via capacitor-push.js
-  if (window.Capacitor) {
+  // Check isNativePlatform to distinguish real Capacitor bridge from @capacitor/core web stub
+  if (window.Capacitor?.isNativePlatform) {
     console.log('[Push] Capacitor detected — delegating to native push');
     return registerCapacitorPush(token);
   }
@@ -246,7 +247,7 @@ export async function subscribeToPush(token) {
 // Unsubscribe from push notifications
 export async function unsubscribeFromPush(token) {
   // Capacitor native apps — unregister FCM token
-  if (window.Capacitor) {
+  if (window.Capacitor?.isNativePlatform) {
     await unregisterCapacitorPush(token);
     return true;
   }

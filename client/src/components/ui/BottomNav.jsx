@@ -1,5 +1,6 @@
 import React from 'react';
-import { Haptics } from '../../utils/capacitor-push.js';
+import { triggerHaptic } from '../../utils/capacitor-push.js';
+import { isNativeApp } from '../../config/constants.js';
 
 // ============ BOTTOM NAVIGATION ============
 const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendingGroups }) => {
@@ -13,8 +14,8 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
 
   const handleNavigate = (view) => {
     // Haptic feedback — prefer Capacitor native haptics, fall back to Web Vibration API
-    if (window.Capacitor && Haptics) {
-      Haptics.impact({ style: 'LIGHT' });
+    if (isNativeApp) {
+      triggerHaptic();
     } else if (navigator.vibrate) {
       navigator.vibrate(10);
     }
