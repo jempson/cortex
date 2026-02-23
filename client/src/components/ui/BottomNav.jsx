@@ -1,14 +1,5 @@
 import React from 'react';
-
-// Lazy-init Capacitor Haptics proxy — bridge may not be ready at module load
-let _haptics = null;
-function getHaptics() {
-  if (_haptics) return _haptics;
-  if (window.Capacitor?.registerPlugin) {
-    _haptics = window.Capacitor.registerPlugin('Haptics');
-  }
-  return _haptics;
-}
+import { Haptics } from '../../utils/capacitor-push.js';
 
 // ============ BOTTOM NAVIGATION ============
 const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendingGroups }) => {
@@ -22,9 +13,8 @@ const BottomNav = ({ activeView, onNavigate, unreadCount, pendingContacts, pendi
 
   const handleNavigate = (view) => {
     // Haptic feedback — prefer Capacitor native haptics, fall back to Web Vibration API
-    const haptics = getHaptics();
-    if (haptics) {
-      haptics.impact({ style: 'LIGHT' });
+    if (window.Capacitor && Haptics) {
+      Haptics.impact({ style: 'LIGHT' });
     } else if (navigator.vibrate) {
       navigator.vibrate(10);
     }
