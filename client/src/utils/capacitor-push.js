@@ -1,21 +1,36 @@
 // ============ CAPACITOR NATIVE PUSH NOTIFICATIONS ============
-// Client-side utility for Capacitor native push (FCM on Android, APNs on iOS).
-// Import registerPlugin from @capacitor/core — Vite bundles it into the build,
-// and at runtime it connects to the native bridge injected by the Capacitor shell.
+// Uses dynamic import() for @capacitor/core so the module is only loaded inside
+// the Capacitor native shell. A static import would create a window.Capacitor
+// stub on web, breaking native-app detection in pwa.js and constants.js.
 
-import { registerPlugin } from '@capacitor/core';
 import { API_URL } from '../config/constants.js';
 
 const FCM_TOKEN_KEY = 'farhold_fcm_token';
 const DEVICE_ID_KEY = 'farhold_device_id';
 
-// Register plugin proxies via @capacitor/core — these communicate with native
-// plugins through the bridge when running in the Capacitor shell, and are
-// no-ops in a regular browser.
-const PushNotifications = registerPlugin('PushNotifications');
-const Haptics = registerPlugin('Haptics');
+// Cached plugin proxies — initialized on first use via dynamic import
+let _PushNotifications = null;
+let _Haptics = null;
+let _initPromise = null;
 
-export { Haptics };
+async function ensurePlugins() {
+  if (_PushNotifications) return true;
+  if (_initPromise) return _initPromise;
+
+  _initPromise = (async () => {
+    try {
+      const { registerPlugin } = await import('@capacitor/core');
+      _PushNotifications = registerPlugin('PushNotifications');
+      _Haptics = registerPlugin('Haptics');
+      return true;
+    } catch (e) {
+      console.error('[CapPush] Failed to load @capacitor/core:', e.message);
+      return false;
+    }
+  })();
+
+  return _initPromise;
+}
 
 function getOrCreateDeviceId() {
   let deviceId = localStorage.getItem(DEVICE_ID_KEY);
@@ -34,13 +49,31 @@ function getPlatform() {
 }
 
 /**
+ * Trigger haptic feedback (fire-and-forget, safe to call from sync context).
+ */
+export function triggerHaptic() {
+  if (!_Haptics) {
+    // First call — kick off async init, haptic will work from second tap onwards
+    ensurePlugins();
+    return;
+  }
+  _Haptics.impact({ style: 'LIGHT' });
+}
+
+/**
  * Request permission and register for native push notifications.
  * Sends the FCM/APNs token to the server.
  */
 export async function registerCapacitorPush(authToken) {
+  const ready = await ensurePlugins();
+  if (!ready || !_PushNotifications) {
+    console.log('[CapPush] PushNotifications plugin not available');
+    return { success: false, reason: 'Native push plugin not available' };
+  }
+
   try {
     // Request permission
-    const permResult = await PushNotifications.requestPermissions();
+    const permResult = await _PushNotifications.requestPermissions();
     console.log('[CapPush] Permission result:', permResult.receive);
 
     if (permResult.receive !== 'granted') {
@@ -54,17 +87,17 @@ export async function registerCapacitorPush(authToken) {
         reject(new Error('Push registration timed out'));
       }, 15000);
 
-      PushNotifications.addListener('registration', (regToken) => {
+      _PushNotifications.addListener('registration', (regToken) => {
         clearTimeout(timeout);
         resolve(regToken.value);
       });
 
-      PushNotifications.addListener('registrationError', (error) => {
+      _PushNotifications.addListener('registrationError', (error) => {
         clearTimeout(timeout);
         reject(new Error(error.error || 'Registration failed'));
       });
 
-      PushNotifications.register();
+      _PushNotifications.register();
     });
 
     console.log('[CapPush] Got FCM token:', token.substring(0, 20) + '...');
@@ -104,14 +137,17 @@ export async function registerCapacitorPush(authToken) {
  * Set up listeners for incoming push notifications.
  * @param {function} onNotificationTap - Called with { waveId } when user taps a notification
  */
-export function setupCapacitorPushListeners(onNotificationTap) {
+export async function setupCapacitorPushListeners(onNotificationTap) {
+  const ready = await ensurePlugins();
+  if (!ready || !_PushNotifications) return;
+
   // Foreground notification — log it (OS shows nothing by default, our config enables alert)
-  PushNotifications.addListener('pushNotificationReceived', (notification) => {
+  _PushNotifications.addListener('pushNotificationReceived', (notification) => {
     console.log('[CapPush] Foreground notification:', notification.title, notification.body);
   });
 
   // User tapped a notification (background or killed state)
-  PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+  _PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
     console.log('[CapPush] Notification tapped:', action.notification?.data);
     const data = action.notification?.data;
     if (data?.waveId && onNotificationTap) {

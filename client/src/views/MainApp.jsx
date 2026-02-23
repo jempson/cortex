@@ -976,7 +976,7 @@ function MainApp({ sharePingId }) {
 
   // Set up Capacitor native push notification listeners (tap-to-navigate)
   useEffect(() => {
-    if (!window.Capacitor) return;
+    if (!window.Capacitor?.isNativePlatform) return;
 
     setupCapacitorPushListeners(({ waveId }) => {
       console.log('[CapPush] Navigating to wave:', waveId);
