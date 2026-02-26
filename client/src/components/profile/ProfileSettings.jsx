@@ -27,7 +27,7 @@ import ThemeCustomizationModal from '../settings/ThemeCustomizationModal.jsx';
 import JellyfinConnectionManager from '../media/JellyfinConnectionManager.jsx';
 import PlexConnectionManager from '../media/PlexConnectionManager.jsx';
 
-const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, federationRequestsRefresh }) => {
+const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, federationRequestsRefresh, onNotifPrefsChange }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [email, setEmail] = useState(user?.email || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
@@ -52,6 +52,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
   const [mutedUsers, setMutedUsers] = useState([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(storage.getPushEnabled());
+  const [pushError, setPushError] = useState(null);
   const [crawlBarLocation, setCrawlBarLocation] = useState(user?.preferences?.crawlBar?.locationName || '');
   // MFA state
   const [showMfaSetup, setShowMfaSetup] = useState(false);
@@ -469,6 +470,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
     try {
       const data = await fetchAPI('/notifications/preferences', { method: 'PUT', body: updates });
       setNotificationPrefs(data.preferences);
+      if (onNotifPrefsChange) onNotifPrefsChange(data.preferences);
       showToast('Notification preferences updated', 'success');
     } catch (err) {
       showToast(err.message || formatError('Failed to update notification preferences'), 'error');
@@ -1930,6 +1932,42 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   </div>
                 </div>
 
+                {/* Push Debounce */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
+                    PUSH THROTTLE
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[
+                      { value: 0, label: 'None' },
+                      { value: 1, label: '1 min' },
+                      { value: 5, label: '5 min' },
+                      { value: 15, label: '15 min' },
+                      { value: 30, label: '30 min' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => handleUpdateNotificationPrefs({ pushDebounceMinutes: opt.value })}
+                        style={{
+                          padding: isMobile ? '8px 12px' : '6px 12px',
+                          minHeight: isMobile ? '40px' : 'auto',
+                          background: (notificationPrefs.pushDebounceMinutes ?? 5) === opt.value ? 'var(--accent-amber)20' : 'transparent',
+                          border: `1px solid ${(notificationPrefs.pushDebounceMinutes ?? 5) === opt.value ? 'var(--accent-amber)' : 'var(--border-subtle)'}`,
+                          color: (notificationPrefs.pushDebounceMinutes ?? 5) === opt.value ? 'var(--accent-amber)' : 'var(--text-dim)',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        {opt.label.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.6rem', marginTop: '4px' }}>
+                    Minimum time between push notifications — "None" sends every message
+                  </div>
+                </div>
+
                 {/* Push Notifications */}
                 <div style={{ marginBottom: '16px' }}>
                   <label style={{ display: 'block', color: 'var(--text-dim)', fontSize: '0.75rem', marginBottom: '8px' }}>
@@ -1937,21 +1975,27 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   </label>
                   <button
                     onClick={async () => {
-                      const token = storage.getToken();
-                      if (pushEnabled) {
-                        storage.setPushEnabled(false);
-                        setPushEnabled(false);
-                        await unsubscribeFromPush(token);
-                        showToast('Push notifications disabled', 'success');
-                      } else {
-                        const result = await subscribeToPush(token);
-                        if (result.success) {
-                          storage.setPushEnabled(true);
-                          setPushEnabled(true);
-                          showToast('Push notifications enabled', 'success');
+                      try {
+                        setPushError(null);
+                        const token = storage.getToken();
+                        if (pushEnabled) {
+                          storage.setPushEnabled(false);
+                          setPushEnabled(false);
+                          await unsubscribeFromPush(token);
+                          showToast('Push notifications disabled', 'success');
                         } else {
-                          showToast(result.reason || formatError('Failed to enable push notifications'), 'error');
+                          const result = await subscribeToPush(token);
+                          if (result.success) {
+                            storage.setPushEnabled(true);
+                            setPushEnabled(true);
+                            showToast('Push notifications enabled', 'success');
+                          } else {
+                            setPushError(result.reason || 'Failed to enable push notifications');
+                          }
                         }
+                      } catch (err) {
+                        console.error('[Push] Unexpected error:', err);
+                        setPushError('Push notification setup failed. Check browser console for details.');
                       }
                     }}
                     style={{
@@ -1973,6 +2017,11 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                   {/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.Capacitor && (
                     <div style={{ color: 'var(--accent-orange)', fontSize: '0.65rem', marginTop: '6px', padding: '6px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)30' }}>
                       ⚠️ iOS does not support push notifications for web apps. This is a platform limitation by Apple.
+                    </div>
+                  )}
+                  {pushError && (
+                    <div style={{ color: 'var(--accent-orange)', fontSize: '0.75rem', marginTop: '8px', padding: '10px', background: 'var(--accent-orange)10', border: '1px solid var(--accent-orange)40', lineHeight: '1.5', wordBreak: 'break-word', userSelect: 'text' }}>
+                      {pushError}
                     </div>
                   )}
                   {/* Reset button for troubleshooting */}

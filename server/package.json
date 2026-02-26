@@ -1,6 +1,6 @@
 {
   "name": "cortex-server",
-  "version": "2.31.2",
+  "version": "2.32.0",
   "description": "Cortex - Privacy-First Federated Communication Platform",
   "type": "module",
   "scripts": {
@@ -14,7 +14,6 @@
     "better-sqlite3": "^12.5.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "expo-server-sdk": "^3.15.0",
     "express": "^4.21.0",
     "express-rate-limit": "^7.4.0",
     "firebase-admin": "^13.6.1",
