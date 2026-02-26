@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS users (
     -- Security flags
     require_password_change INTEGER DEFAULT 0,
     -- Preferences stored as JSON
-    preferences TEXT DEFAULT '{"theme":"firefly","fontSize":"medium"}'
+    preferences TEXT DEFAULT '{"theme":"firefly","fontSize":"medium"}',
+    notification_preferences TEXT DEFAULT NULL
 );
 
 -- Handle history for tracking username changes

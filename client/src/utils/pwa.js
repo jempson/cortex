@@ -28,8 +28,8 @@ export const updateAppBadge = (count) => {
 };
 
 // Subscribe to push notifications
-export async function subscribeToPush(token) {
-  console.log('[Push] subscribeToPush called');
+export async function subscribeToPush(token, { silent = false } = {}) {
+  console.log('[Push] subscribeToPush called', silent ? '(silent/auto)' : '(manual)');
 
   // Capacitor native apps use FCM/APNs via capacitor-push.js
   // Check isNativePlatform to distinguish real Capacitor bridge from @capacitor/core web stub
@@ -59,6 +59,10 @@ export async function subscribeToPush(token) {
     console.log('[Push] Current permission:', Notification.permission);
     let permission = Notification.permission;
     if (permission === 'default') {
+      if (silent) {
+        console.log('[Push] Permission not yet granted, skipping auto-subscribe');
+        return { success: false, reason: 'Permission not yet granted' };
+      }
       console.log('[Push] Requesting notification permission...');
       permission = await Notification.requestPermission();
       console.log('[Push] Permission result:', permission);
@@ -88,132 +92,100 @@ export async function subscribeToPush(token) {
     const registration = await navigator.serviceWorker.ready;
     console.log('[Push] Service worker ready');
 
-    // Check existing subscription
+    // Always clear any existing subscription first for a clean state
+    // This prevents stale subscriptions from previous users on the same browser
     let subscription = await registration.pushManager.getSubscription();
-    console.log('[Push] Existing subscription:', subscription ? 'yes' : 'no');
-
-    // Check if VAPID key has changed - if so, unsubscribe old and create new
-    const storedVapidKey = localStorage.getItem('farhold_vapid_key');
-    if (subscription && storedVapidKey && storedVapidKey !== publicKey) {
-      console.log('[Push] VAPID key changed, unsubscribing old subscription...');
+    if (subscription) {
+      console.log('[Push] Clearing existing subscription for clean state...');
       try {
         await subscription.unsubscribe();
-        subscription = null;
-        console.log('[Push] Old subscription removed due to VAPID key change');
+        console.log('[Push] Old subscription cleared');
       } catch (unsubError) {
-        console.warn('[Push] Failed to unsubscribe old subscription:', unsubError.message);
-        subscription = null; // Proceed anyway
+        console.warn('[Push] Failed to clear old subscription:', unsubError.message);
       }
+      subscription = null;
     }
 
-    // If no subscription (or was cleared due to VAPID change), create new subscription
-    if (!subscription) {
-      console.log('[Push] Creating new push subscription...');
-      try {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey)
-        });
-        console.log('[Push] New push subscription created');
-      } catch (subError) {
-        console.error('[Push] Failed to create subscription:', subError.name, subError.message);
+    // Clear stored VAPID key so we always start fresh
+    localStorage.removeItem('farhold_vapid_key');
 
-        // If AbortError (push service error), try aggressive recovery strategies
-        if (subError.name === 'AbortError') {
-          console.log('[Push] AbortError detected - attempting aggressive recovery...');
+    // Create new push subscription
+    console.log('[Push] Creating new push subscription...');
+    try {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+      console.log('[Push] New push subscription created');
+    } catch (subError) {
+      console.error('[Push] Failed to create subscription:', subError.name, subError.message);
 
-          // Strategy 1: Try to get and unsubscribe any stale subscription
-          try {
-            const staleSubscription = await registration.pushManager.getSubscription();
-            if (staleSubscription) {
-              console.log('[Push] Found stale subscription, unsubscribing...');
-              await staleSubscription.unsubscribe();
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          } catch (e) {
-            console.log('[Push] Could not clear stale subscription:', e.message);
+      // For silent/auto-subscribe, don't do aggressive recovery
+      if (silent) {
+        console.log('[Push] Auto-subscribe failed, user can enable manually');
+        return { success: false, reason: subError.message };
+      }
+
+      // For manual enable, try recovery strategies
+      if (subError.name === 'AbortError') {
+        console.log('[Push] AbortError detected - attempting recovery...');
+
+        // Strategy: Re-register service worker and retry
+        let newReg = null;
+        try {
+          console.log('[Push] Re-registering service worker...');
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const reg of registrations) {
+            await reg.unregister();
           }
-
-          // Strategy 2: Full service worker reset with cache clearing
-          let newReg = null;
-          try {
-            console.log('[Push] Performing full service worker reset...');
-
-            // Unregister all service workers for this scope
-            const registrations = await navigator.serviceWorker.getRegistrations();
-            for (const reg of registrations) {
-              await reg.unregister();
-            }
-
-            // Clear all caches
-            if ('caches' in window) {
-              const cacheNames = await caches.keys();
-              await Promise.all(cacheNames.map(name => caches.delete(name)));
-              console.log('[Push] Cleared all caches');
-            }
-
-            // Clear VAPID key
-            localStorage.removeItem('farhold_vapid_key');
-
-            // Wait for push service to fully clear state
-            console.log('[Push] Waiting for push service to reset...');
-            await new Promise(resolve => setTimeout(resolve, 3000));
-
-            // Re-register service worker
-            console.log('[Push] Re-registering service worker...');
-            newReg = await navigator.serviceWorker.register('/sw.js');
-            await navigator.serviceWorker.ready;
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            console.log('[Push] Service worker re-registered');
-          } catch (e) {
-            console.log('[Push] Service worker reset error:', e.message);
-          }
-
-          // Strategy 3: Multiple retry attempts with increasing delays
-          const retryDelays = [1000, 2000, 3000];
-          let lastError = null;
-
-          for (let i = 0; i < retryDelays.length; i++) {
-            try {
-              console.log(`[Push] Subscription attempt ${i + 1}/${retryDelays.length}...`);
-              const reg = newReg || await navigator.serviceWorker.ready;
-              subscription = await reg.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(publicKey)
-              });
-              console.log('[Push] Subscription succeeded on retry');
-              break;
-            } catch (retryError) {
-              lastError = retryError;
-              console.log(`[Push] Attempt ${i + 1} failed:`, retryError.message);
-              if (i < retryDelays.length - 1) {
-                console.log(`[Push] Waiting ${retryDelays[i]}ms before next attempt...`);
-                await new Promise(resolve => setTimeout(resolve, retryDelays[i]));
-              }
-            }
-          }
-
-          // If all retries failed, provide guidance
-          if (!subscription) {
-            console.error('[Push] All recovery attempts failed');
-
-            const isFirefox = navigator.userAgent.includes('Firefox');
-            const isChrome = navigator.userAgent.includes('Chrome');
-
-            let guidance = 'Push service error. Please try: ';
-            if (isFirefox) {
-              guidance += 'Click the lock icon → Connection secure → More Information → Permissions → Clear "Receive Notifications" permission, then refresh and try again.';
-            } else if (isChrome) {
-              guidance += 'Click the lock icon → Site settings → Notifications → Reset, then refresh and try again.';
-            } else {
-              guidance += 'Reset notification permissions for this site in browser settings, then refresh.';
-            }
-
-            return { success: false, reason: guidance };
-          }
-        } else {
-          return { success: false, reason: `Browser subscription failed: ${subError.message}` };
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          newReg = await navigator.serviceWorker.register('/sw.js');
+          await navigator.serviceWorker.ready;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          console.log('[Push] Service worker re-registered');
+        } catch (e) {
+          console.log('[Push] Service worker reset error:', e.message);
         }
+
+        // Retry subscription with increasing delays
+        const retryDelays = [1000, 3000, 5000];
+        for (let i = 0; i < retryDelays.length; i++) {
+          try {
+            console.log(`[Push] Subscription attempt ${i + 1}/${retryDelays.length}...`);
+            const reg = newReg || await navigator.serviceWorker.ready;
+            subscription = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(publicKey)
+            });
+            console.log('[Push] Subscription succeeded on retry');
+            break;
+          } catch (retryError) {
+            console.log(`[Push] Attempt ${i + 1} failed:`, retryError.message);
+            if (i < retryDelays.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, retryDelays[i]));
+            }
+          }
+        }
+
+        if (!subscription) {
+          console.error('[Push] All recovery attempts failed');
+          const isBrave = navigator.brave && typeof navigator.brave.isBrave === 'function';
+          const isFirefox = navigator.userAgent.includes('Firefox');
+          const isChrome = navigator.userAgent.includes('Chrome');
+          let guidance = '';
+          if (isBrave) {
+            guidance = 'Brave blocks push by default. Go to brave://settings/privacy and enable "Use Google Services for Push Messaging", then refresh and try again.';
+          } else if (isFirefox) {
+            guidance = 'Push service error. Click the lock icon → Connection secure → More Information → Permissions → Clear "Receive Notifications" permission, then refresh and try again.';
+          } else if (isChrome) {
+            guidance = 'Push service error. Click the lock icon → Site settings → Notifications → Reset, then refresh and try again.';
+          } else {
+            guidance = 'Push service error. Reset notification permissions for this site in browser settings, then refresh.';
+          }
+          return { success: false, reason: guidance };
+        }
+      } else {
+        return { success: false, reason: `Browser subscription failed: ${subError.message}` };
       }
     }
 

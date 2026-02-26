@@ -35,7 +35,7 @@ export const storage = {
     }
   },
   removeUser: () => { localStorage.removeItem('farhold_user'); localStorage.removeItem('farhold_theme'); },
-  getPushEnabled: () => localStorage.getItem('farhold_push_enabled') !== 'false', // Default true
+  getPushEnabled: () => localStorage.getItem('farhold_push_enabled') === 'true', // Default false (opt-in)
   setPushEnabled: (enabled) => localStorage.setItem('farhold_push_enabled', enabled ? 'true' : 'false'),
   getTheme: () => localStorage.getItem('farhold_theme'),
   setTheme: (theme) => localStorage.setItem('farhold_theme', theme),

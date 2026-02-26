@@ -117,7 +117,7 @@ const NotificationItem = ({ notification, onRead, onDismiss, onClick }) => {
   );
 };
 
-const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, onClick, onReadAll, onClose, isMobile }) => {
+const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, onClick, onReadAll, onDismissAll, onClose, isMobile }) => {
   return (
     <div style={{
       position: isMobile ? 'fixed' : 'absolute',
@@ -156,8 +156,6 @@ const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, o
               borderRadius: '10px',
             }}>{unreadCount}</span>
           )}
-        </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {unreadCount > 0 && (
             <button
               onClick={onReadAll}
@@ -173,20 +171,35 @@ const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, o
               Mark all read
             </button>
           )}
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-dim)',
-              cursor: 'pointer',
-              fontSize: '1rem',
-              padding: '4px',
-            }}
-          >
-            ✕
-          </button>
+          {notifications.length > 0 && (
+            <button
+              onClick={onDismissAll}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--accent-orange)',
+                cursor: 'pointer',
+                fontSize: '0.7rem',
+                fontFamily: 'monospace',
+              }}
+            >
+              Clear all
+            </button>
+          )}
         </div>
+        <button
+          onClick={onClose}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-dim)',
+            cursor: 'pointer',
+            fontSize: '1rem',
+            padding: '4px',
+          }}
+        >
+          ✕
+        </button>
       </div>
 
       {/* Notification list */}
@@ -216,7 +229,7 @@ const NotificationDropdown = ({ notifications, unreadCount, onRead, onDismiss, o
   );
 };
 
-const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger }) => {
+const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger, onAllRead }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -278,10 +291,28 @@ const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger
   const handleMarkAllRead = async () => {
     try {
       await fetchAPI('/notifications/read-all', { method: 'POST' });
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setNotifications([]);
       setUnreadCount(0);
+      setShowDropdown(false);
+      // Notify parent to refresh wave list (clears wave unread badges)
+      if (onAllRead) onAllRead();
     } catch (err) {
       console.error('Failed to mark all notifications as read:', err);
+    }
+  };
+
+  const handleDismissAll = async () => {
+    try {
+      // Mark all as read first (clears wave unread badges too)
+      await fetchAPI('/notifications/read-all', { method: 'POST' });
+      // Then dismiss all notification cards
+      await fetchAPI('/notifications', { method: 'DELETE' });
+      setNotifications([]);
+      setUnreadCount(0);
+      setShowDropdown(false);
+      if (onAllRead) onAllRead();
+    } catch (err) {
+      console.error('Failed to dismiss all notifications:', err);
     }
   };
 
@@ -357,6 +388,7 @@ const NotificationBell = ({ fetchAPI, onNavigateToWave, isMobile, refreshTrigger
           onDismiss={handleDismiss}
           onClick={handleNotificationClick}
           onReadAll={handleMarkAllRead}
+          onDismissAll={handleDismissAll}
           onClose={() => setShowDropdown(false)}
           isMobile={isMobile}
         />

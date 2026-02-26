@@ -5,6 +5,57 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.32.0] - 2026-02-26
+
+### Added
+
+#### Notification Preference System
+
+Complete overhaul of the notification system — preferences now persist, are honored across all delivery paths (in-app, browser, push), and support per-type granularity.
+
+- **Notification preferences persistence** — Added `notification_preferences` column to users table with auto-migration for existing databases; new `updateNotificationPreferences()` database method replaces the broken no-op `saveUsers()` path
+- **Per-type preference levels** — Each notification type (direct mentions, replies, wave activity, burst events) supports three levels: `always`, `app_closed` (only when tab is hidden), and `never`
+- **Browser notification filtering** — Client-side browser notifications (`new Notification()`) now fire from the server-filtered `notification` WebSocket event instead of the generic `new_message` event, honoring all per-type preferences
+- **Suppress while focused** — Browser notifications are suppressed when the user is actively viewing the notification's wave
+- **Per-user push throttle** — Configurable push debounce per user (None / 1 min / 5 min / 15 min / 30 min), replacing the global server-side `PUSH_DEBOUNCE_MINUTES` setting
+- **Push preference enforcement** — `broadcastToWaveWithPush()` now checks each user's notification preferences before sending push notifications
+- **Notification bell "Mark all read"** — Now marks all wave messages as read in addition to notification items, clearing wave unread badges in one click via new `markAllWavesAsRead()` bulk database method
+- **Notification bell "Clear all"** — New button dismisses all notification cards and marks everything as read; positioned away from the close button to prevent accidental clicks
+- **Dismiss all notifications endpoint** — `DELETE /api/notifications` dismisses all notifications for the authenticated user
+
+#### Push Notification Improvements
+
+- **Push cleanup on logout** — Both client and server clean up push subscriptions when a user logs out, preventing stale subscriptions when switching users on the same browser
+- **Clean-slate subscribe** — `subscribeToPush()` always clears any existing browser subscription before creating a new one, preventing conflicts from previous users
+- **Silent auto-subscribe** — Auto-subscribe on page load uses `{ silent: true }` mode that skips aggressive recovery strategies (service worker reset, cache clearing, retries)
+- **Opt-in push default** — `getPushEnabled()` now defaults to `false` instead of `true`; push notifications require explicit user opt-in
+- **Brave browser detection** — Push subscription errors in Brave show specific guidance pointing to `brave://settings/privacy` → "Use Google Services for Push Messaging"
+- **Persistent push error display** — Push subscription errors display as a persistent inline message with selectable text below the push button instead of a fleeting 4-second toast
+- **Stale Expo token cleanup** — `sendPushNotification()` auto-detects and removes legacy Expo push tokens and invalid web push subscriptions (missing `auth`/`p256dh` keys)
+
+### Changed
+
+- **`rippleEvents` → `burstEvents`** — Renamed all server-side notification preference references from `rippleEvents` to `burstEvents` to align with v2.0.0 terminology
+- **Version bumped to 2.32.0** — Updated `server/package.json`, `client/package.json`, and `client/src/config/constants.js`
+
+### Removed
+
+- **Expo push notifications** — Removed `expo-server-sdk` dependency, Expo import/singleton, `POST /api/push/register` and `POST /api/push/unregister` endpoints, and all Expo token classification/sending in `sendPushNotification()`
+
+### Fixed
+
+- **Notification preferences not persisting** — `saveUsers()` was a no-op in SQLite mode; preferences now persist via dedicated `updateNotificationPreferences()` method
+- **Burst events preference not saving** — Client sent `burstEvents` but server expected `rippleEvents`; server updated to match client
+- **Push notifications ignoring all preferences** — `broadcastToWaveWithPush()` sent push to all participants without any preference checks
+- **Browser notifications ignoring per-type preferences** — Client created `new Notification()` from generic WebSocket `new_message` events with no preference awareness; now uses server-filtered `notification` events
+- **React stale closure bug** — `handleWSMessage` useCallback captured initial `notifPrefs` (null) and never updated; fixed with `useRef` pattern that always reflects current state
+- **Stale Expo tokens causing push errors** — Legacy Expo tokens fell into web push path after Expo removal, failing with missing `auth`/`p256dh` keys; now auto-detected and removed
+- **Notification preferences not syncing to MainApp** — Added `onNotifPrefsChange` callback from ProfileSettings to MainApp
+- **"Mark all read" not clearing wave badges** — Notification bell's mark-all-read only marked notification items as read; now also marks all wave messages as read via bulk `INSERT INTO ping_read_by`
+- **Push subscription conflicts on user switch** — Stale push subscriptions from previous browser sessions caused failures; logout now cleans up subscriptions on both client and server
+
+---
+
 ## [2.31.2] - 2026-02-23
 
 ### Fixed
