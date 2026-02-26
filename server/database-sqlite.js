@@ -1818,6 +1818,17 @@ export class DatabaseSQLite {
     } catch (err) {
       // Column may already exist
     }
+
+    // v2.31.3: Add notification_preferences column to users table
+    try {
+      const userCols = this.db.prepare("PRAGMA table_info(users)").all();
+      if (!userCols.some(c => c.name === 'notification_preferences')) {
+        this.db.prepare('ALTER TABLE users ADD COLUMN notification_preferences TEXT DEFAULT NULL').run();
+        console.log('✅ Added notification_preferences column to users');
+      }
+    } catch (err) {
+      // Column may already exist
+    }
   }
 
   prepareStatements() {
@@ -1982,6 +1993,7 @@ export class DatabaseSQLite {
       lastSeen: row.last_seen,
       lastHandleChange: row.last_handle_change,
       preferences: row.preferences ? JSON.parse(row.preferences) : { theme: 'firefly', fontSize: 'medium' },
+      notificationPreferences: row.notification_preferences ? JSON.parse(row.notification_preferences) : null,
       handleHistory: this.getHandleHistory(row.id),
     };
   }
@@ -2151,6 +2163,30 @@ export class DatabaseSQLite {
 
     const updatedPrefs = { ...user.preferences, ...preferences };
     this.db.prepare('UPDATE users SET preferences = ? WHERE id = ?').run(
+      JSON.stringify(updatedPrefs),
+      userId
+    );
+    return updatedPrefs;
+  }
+
+  updateNotificationPreferences(userId, updates) {
+    const user = this.findUserById(userId);
+    if (!user) return null;
+
+    const DEFAULT_NOTIFICATION_PREFS = {
+      enabled: true,
+      directMentions: 'always',
+      replies: 'always',
+      waveActivity: 'app_closed',
+      burstEvents: 'app_closed',
+      soundEnabled: false,
+      suppressWhileFocused: true,
+      pushDebounceMinutes: 5,
+    };
+
+    const currentPrefs = user.notificationPreferences || DEFAULT_NOTIFICATION_PREFS;
+    const updatedPrefs = { ...currentPrefs, ...updates };
+    this.db.prepare('UPDATE users SET notification_preferences = ? WHERE id = ?').run(
       JSON.stringify(updatedPrefs),
       userId
     );
@@ -4400,6 +4436,37 @@ export class DatabaseSQLite {
     return true;
   }
 
+  // Mark all waves as read for a user (bulk operation for "mark all read")
+  markAllWavesAsRead(userId) {
+    const now = new Date().toISOString();
+
+    // Get all wave IDs the user participates in
+    const waveIds = this.db.prepare(
+      'SELECT wave_id FROM wave_participants WHERE user_id = ?'
+    ).all(userId).map(r => r.wave_id);
+
+    if (waveIds.length === 0) return 0;
+
+    // Update last_read on all participations
+    this.db.prepare(
+      'UPDATE wave_participants SET last_read = ? WHERE user_id = ?'
+    ).run(now, userId);
+
+    // Mark all unread pings across all waves as read
+    const result = this.db.prepare(`
+      INSERT OR IGNORE INTO ping_read_by (ping_id, user_id, read_at)
+      SELECT p.id, ?, ?
+      FROM pings p
+      INNER JOIN wave_participants wp ON wp.wave_id = p.wave_id AND wp.user_id = ?
+      WHERE p.deleted = 0
+        AND p.author_id != ?
+        AND NOT EXISTS (SELECT 1 FROM ping_read_by prb WHERE prb.ping_id = p.id AND prb.user_id = ?)
+    `).run(userId, now, userId, userId, userId);
+
+    console.log(`📖 Marked all waves as read for user ${userId}: ${waveIds.length} waves, ${result.changes} messages`);
+    return result.changes;
+  }
+
   deleteWave(waveId, userId) {
     const wave = this.getWave(waveId);
     if (!wave) return { success: false, error: 'Wave not found' };
@@ -6494,6 +6561,13 @@ export class DatabaseSQLite {
       UPDATE notifications SET dismissed = 1 WHERE id = ?
     `).run(notificationId);
     return result.changes > 0;
+  }
+
+  dismissAllNotifications(userId) {
+    const result = this.db.prepare(`
+      UPDATE notifications SET dismissed = 1 WHERE user_id = ? AND dismissed = 0
+    `).run(userId);
+    return result.changes;
   }
 
   markNotificationPushSent(notificationId) {

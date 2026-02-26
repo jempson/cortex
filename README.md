@@ -1,6 +1,6 @@
 # CORTEX - Secure Wave Communications
 
-**Version 2.29.0** | A privacy-first, federated communication platform inspired by Google Wave.
+**Version 2.32.0** | A privacy-first, federated communication platform inspired by Google Wave.
 
 > *"Can't stop the signal."*
 
@@ -54,6 +54,7 @@ Demo accounts (password: `Demo123!`, requires `SEED_DEMO_DATA=true`):
 - **Wave Categories** — User-defined categories with drag-and-drop organization
 - **Search** — Full-text search across all pings (SQLite FTS5)
 - **PWA** — Installable app with offline support and push notifications
+- **Notification Preferences** — Per-type controls (mentions, replies, wave activity, bursts) with always/app-closed/never levels, suppress-while-focused, and per-user push throttle
 - **Collapsible Messages** — Collapse long messages to compact previews
 
 ### End-to-End Encryption
@@ -226,6 +227,15 @@ GNEWS_API_KEY=your-key             # News headlines (backup)
 | POST | `/api/contacts/requests/:id/accept` | Accept request |
 | POST | `/api/crews/:id/invite` | Invite to crew |
 | POST | `/api/crews/invitations/:id/accept` | Accept invitation |
+
+### Notifications
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/notifications` | List notifications |
+| GET | `/api/notifications/count` | Get unread count by type |
+| PUT | `/api/notifications/preferences` | Update notification preferences |
+| POST | `/api/notifications/read-all` | Mark all read (notifications + wave messages) |
+| DELETE | `/api/notifications` | Dismiss all notifications |
 
 ### Bot API
 | Method | Endpoint | Description |

@@ -82,6 +82,8 @@ function MainApp({ sharePingId }) {
   const [showGhostProtocol, setShowGhostProtocol] = useState(false); // Ghost Protocol modal (v2.27.0)
   const [ghostMode, setGhostMode] = useState(false); // Showing hidden waves (v2.27.0)
   const [ghostHasPin, setGhostHasPin] = useState(false); // Whether user has set a ghost PIN (v2.27.0)
+  const [notifPrefs, setNotifPrefs] = useState(null); // Notification preferences (v2.32.0)
+  const notifPrefsRef = useRef(null); // Ref for WebSocket handler to avoid stale closure
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop, hasMeasured } = useWindowSize();
 
@@ -410,41 +412,8 @@ function MainApp({ sharePingId }) {
         setWaveReloadTrigger(prev => prev + 1);
       }
 
-      // Desktop notifications for new messages/pings
-      if ((data.type === 'new_message' || data.type === 'new_ping') && (data.data || data.ping)) {
-        // Handle both local (data.data) and federated (data.ping) message structures
-        const msgData = data.data || data.ping;
-        const authorId = msgData.author_id || msgData.authorId;
-        const senderName = msgData.sender_name || msgData.senderName || 'Unknown';
-        const content = msgData.content || '';
-
-        const isViewingDifferentWave = !selectedWave || eventWaveId !== selectedWave.id;
-        const isBackgrounded = document.visibilityState === 'hidden';
-        const isOwnMessage = authorId === user?.id;
-
-        // Show notification if viewing different wave or tab is in background
-        if ((isViewingDifferentWave || isBackgrounded) && !isOwnMessage) {
-          if ('Notification' in window && Notification.permission === 'granted') {
-            const waveName = waves.find(w => w.id === eventWaveId)?.name || 'Unknown Wave';
-            const notification = new Notification(`New ping in ${waveName}`, {
-              body: `${senderName}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
-              icon: '/favicon.ico',
-              tag: eventWaveId, // Group notifications by wave
-              requireInteraction: false,
-            });
-
-            notification.onclick = () => {
-              window.focus();
-              const wave = waves.find(w => w.id === eventWaveId);
-              if (wave) {
-                setSelectedWave(wave);
-                setActiveView('waves');
-              }
-              notification.close();
-            };
-          }
-        }
-      }
+      // Note: Browser notifications are handled by the 'notification' event (server-filtered)
+      // not here — see the notification handler below
     } else if (data.type === 'wave_deleted') {
       showToastMsg(NOTIFICATION.waveDeleted(data.wave?.title || 'Unknown'), 'info');
       if (selectedWave?.id === data.waveId) {
@@ -578,6 +547,47 @@ function MainApp({ sharePingId }) {
       fetchAPI('/notifications/by-wave').then(result => {
         setWaveNotifications(result.countsByWave || {});
       }).catch(e => console.error('Failed to update wave notifications:', e));
+
+      // Show browser notification popup
+      // Server already filters by per-type preferences (never = no event sent)
+      const notif = data.notification;
+      if (notif && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        const prefs = notifPrefsRef.current;
+        if (prefs && prefs.enabled !== false) {
+          // Suppress if user is actively viewing this wave
+          const viewingWave = selectedWave?.id === notif.waveId && document.hasFocus();
+          if (prefs.suppressWhileFocused && viewingWave) {
+            console.log('🔕 Suppressed browser notification (viewing wave)');
+          } else {
+            // Check app_closed level: skip popup if tab is visible
+            const typeToKey = { direct_mention: 'directMentions', reply: 'replies', wave_activity: 'waveActivity', ripple: 'burstEvents', burst: 'burstEvents' };
+            const prefKey = typeToKey[notif.type];
+            const level = prefKey ? (prefs[prefKey] || 'always') : 'always';
+            const tabVisible = document.visibilityState === 'visible';
+
+            if (level === 'app_closed' && tabVisible) {
+              console.log('🔕 Suppressed browser notification (app_closed + tab visible)');
+            } else {
+              try {
+                const n = new Notification(notif.title || 'Cortex', {
+                  body: notif.body || '',
+                  tag: notif.groupKey || notif.id,
+                  renotify: true,
+                });
+                n.onclick = () => {
+                  window.focus();
+                  if (notif.waveId) {
+                    setSelectedWave({ id: notif.waveId, title: '' });
+                    setActiveView('waves');
+                  }
+                };
+              } catch (e) {
+                console.error('Failed to show browser notification:', e);
+              }
+            }
+          }
+        }
+      }
     } else if (data.type === 'unread_count_update') {
       // Notification count changed - refresh wave notification badges and wave list
       console.log('🔔 Notification count updated');
@@ -937,33 +947,32 @@ function MainApp({ sharePingId }) {
     return () => navigator.serviceWorker.removeEventListener('message', handleSWMessage);
   }, [handleNavigateToWaveById]);
 
-  // Request notification permission and set up push on first load
+  // Re-subscribe to push on load if user previously opted in
   useEffect(() => {
     const token = storage.getToken();
     if (!token) return;
 
     const setupPushNotifications = async () => {
-      // Check if user has push enabled
+      // Only auto-subscribe if user has explicitly opted in before
       if (!storage.getPushEnabled()) {
-        console.log('[Push] Push notifications disabled by user');
+        console.log('[Push] Push not enabled, skipping auto-subscribe');
         return;
       }
 
-      // Request notification permission if not yet granted
-      if ('Notification' in window && Notification.permission === 'default') {
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
-          console.log('❌ Desktop notifications denied');
-          return;
+      // Capacitor native apps handle push via capacitor-push.js
+      if (window.Capacitor?.isNativePlatform) {
+        console.log('[Push] Capacitor detected — auto-subscribing via native push');
+        const result = await subscribeToPush(token, { silent: true });
+        if (!result.success) {
+          console.log('[Push] Native auto-subscribe failed (this is ok):', result.reason);
         }
-        console.log('✅ Desktop notifications enabled');
+        return;
       }
 
-      // If permission granted, subscribe to push (silently fail on startup)
+      // Only re-subscribe if permission already granted (don't prompt on startup)
       if ('Notification' in window && Notification.permission === 'granted') {
-        const result = await subscribeToPush(token);
+        const result = await subscribeToPush(token, { silent: true });
         if (!result.success) {
-          // Don't show error toast on auto-subscribe - user didn't initiate it
           console.log('[Push] Auto-subscribe failed (this is ok):', result.reason);
         }
       }
@@ -973,6 +982,20 @@ function MainApp({ sharePingId }) {
     const timer = setTimeout(setupPushNotifications, 2000);
     return () => clearTimeout(timer);
   }, [user]);
+
+  // Load notification preferences on startup (v2.32.0)
+  // Use a ref so the WebSocket handler always reads the latest prefs (avoids stale closure)
+  const updateNotifPrefs = useCallback((prefs) => {
+    setNotifPrefs(prefs);
+    notifPrefsRef.current = prefs;
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchAPI('/notifications/preferences')
+      .then(data => updateNotifPrefs(data.preferences))
+      .catch(err => console.error('Failed to load notification preferences:', err));
+  }, [user, fetchAPI, updateNotifPrefs]);
 
   // Set up Capacitor native push notification listeners (tap-to-navigate)
   useEffect(() => {
@@ -1128,6 +1151,7 @@ function MainApp({ sharePingId }) {
                 onNavigateToWave={handleNavigateToWaveById}
                 isMobile={true}
                 refreshTrigger={notificationRefreshTrigger}
+                onAllRead={() => { loadWaves(); loadWaveNotifications(); }}
               />
               <button
                 onClick={() => setShowSearch(true)}
@@ -1196,6 +1220,7 @@ function MainApp({ sharePingId }) {
               onNavigateToWave={handleNavigateToWaveById}
               isMobile={false}
               refreshTrigger={notificationRefreshTrigger}
+              onAllRead={() => { loadWaves(); loadWaveNotifications(); }}
             />
             <button
               onClick={() => setShowSearch(true)}
@@ -1363,7 +1388,7 @@ function MainApp({ sharePingId }) {
         )}
 
         {activeView === 'profile' && (
-          <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} onLogout={logout} federationRequestsRefresh={federationRequestsRefresh} />
+          <ProfileSettings user={user} fetchAPI={fetchAPI} showToast={showToastMsg} onUserUpdate={updateUser} onLogout={logout} federationRequestsRefresh={federationRequestsRefresh} onNotifPrefsChange={updateNotifPrefs} />
         )}
       </main>
 

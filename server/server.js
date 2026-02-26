@@ -16,7 +16,6 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import sharp from 'sharp';
 import webpush from 'web-push';
-import { Expo } from 'expo-server-sdk';
 import crypto from 'crypto';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
@@ -137,12 +136,7 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   console.log('⚠️  Web Push disabled: Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in .env');
 }
 
-// Initialize Expo push notification client for mobile apps
-const expo = new Expo();
-
-// Push notification debounce settings
-// Only send one push notification per user per debounce window to prevent flooding
-const PUSH_DEBOUNCE_MINUTES = parseInt(process.env.PUSH_DEBOUNCE_MINUTES) || 5;
+// Push notification debounce tracking (per-user debounce window set in notification preferences)
 const lastPushSent = new Map(); // userId -> timestamp
 
 // Ghost Protocol: track PIN verification timestamps per user (v2.27.0)
@@ -4695,6 +4689,14 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
   db.updateUserStatus(req.user.userId, 'offline');
 
+  // Clean up push subscriptions for this user (prevents stale subs when switching users on same browser)
+  try {
+    pushSubs.removeAllSubscriptions(req.user.userId);
+    console.log(`🔕 Push subscriptions cleaned up for: ${req.user.handle}`);
+  } catch (err) {
+    console.error(`Failed to clean push subscriptions for ${req.user.handle}:`, err.message);
+  }
+
   // Revoke the current session
   if (req.token) {
     const revoked = revokeSessionByToken(req.token);
@@ -6552,9 +6554,10 @@ const DEFAULT_NOTIFICATION_PREFS = {
   directMentions: 'always',      // always | app_closed | never
   replies: 'always',
   waveActivity: 'app_closed',
-  rippleEvents: 'app_closed',
+  burstEvents: 'app_closed',
   soundEnabled: false,
   suppressWhileFocused: true,
+  pushDebounceMinutes: 5,        // 0 = no debounce (every message), up to 30 min
 };
 
 // Get notification preferences
@@ -6587,8 +6590,8 @@ app.put('/api/notifications/preferences', authenticateToken, (req, res) => {
   if (req.body.waveActivity && validLevels.includes(req.body.waveActivity)) {
     updates.waveActivity = req.body.waveActivity;
   }
-  if (req.body.rippleEvents && validLevels.includes(req.body.rippleEvents)) {
-    updates.rippleEvents = req.body.rippleEvents;
+  if (req.body.burstEvents && validLevels.includes(req.body.burstEvents)) {
+    updates.burstEvents = req.body.burstEvents;
   }
   if (typeof req.body.soundEnabled === 'boolean') {
     updates.soundEnabled = req.body.soundEnabled;
@@ -6596,13 +6599,14 @@ app.put('/api/notifications/preferences', authenticateToken, (req, res) => {
   if (typeof req.body.suppressWhileFocused === 'boolean') {
     updates.suppressWhileFocused = req.body.suppressWhileFocused;
   }
+  if (typeof req.body.pushDebounceMinutes === 'number') {
+    updates.pushDebounceMinutes = Math.max(0, Math.min(30, Math.floor(req.body.pushDebounceMinutes)));
+  }
 
-  // Merge with existing preferences
-  const currentPrefs = user.notificationPreferences || DEFAULT_NOTIFICATION_PREFS;
-  user.notificationPreferences = { ...currentPrefs, ...updates };
-  db.saveUsers();
+  // Persist merged preferences to database
+  const updatedPrefs = db.updateNotificationPreferences(req.user.userId, updates);
 
-  res.json({ success: true, preferences: user.notificationPreferences });
+  res.json({ success: true, preferences: updatedPrefs });
 });
 
 // ============ Notification Routes ============
@@ -6649,9 +6653,15 @@ app.post('/api/notifications/:id/read', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
-// Mark all notifications as read
+// Mark all notifications as read AND mark all waves as read
 app.post('/api/notifications/read-all', authenticateToken, (req, res) => {
   const count = db.markAllNotificationsRead(req.user.userId);
+
+  // Also mark all wave messages as read so wave unread badges clear
+  const messagesMarked = db.markAllWavesAsRead ? db.markAllWavesAsRead(req.user.userId) : 0;
+  if (messagesMarked > 0) {
+    console.log(`📖 Mark all read: cleared ${messagesMarked} unread messages for ${req.user.handle}`);
+  }
 
   // Broadcast updated count to user
   broadcastToUser(req.user.userId, {
@@ -6670,6 +6680,13 @@ app.delete('/api/notifications/:id', authenticateToken, (req, res) => {
   }
 
   res.json({ success: true });
+});
+
+// Dismiss all notifications
+app.delete('/api/notifications', authenticateToken, (req, res) => {
+  const count = db.dismissAllNotifications(req.user.userId);
+  broadcastToUser(req.user.userId, { type: 'unread_count_update', count: 0 });
+  res.json({ success: true, count });
 });
 
 // Get wave notification settings
@@ -6795,67 +6812,6 @@ app.post('/api/push/test', authenticateToken, async (req, res) => {
   }
 
   res.json({ success: true, sent, total: subscriptions.length });
-});
-
-// ============ Expo Push Notifications (Mobile App) ============
-
-// Register Expo push token (for mobile apps)
-app.post('/api/push/register', authenticateToken, (req, res) => {
-  const { token, type, platform, deviceName, deviceId } = req.body;
-
-  if (!token) {
-    return res.status(400).json({ error: 'Push token is required' });
-  }
-
-  // Validate it's an Expo push token format
-  if (!token.startsWith('ExponentPushToken[') && !token.startsWith('ExpoPushToken[')) {
-    return res.status(400).json({ error: 'Invalid Expo push token format' });
-  }
-
-  try {
-    // Store as a push subscription with type='expo'
-    pushSubs.addSubscription(req.user.userId, {
-      endpoint: token,  // Use token as endpoint for Expo
-      keys: {
-        type: type || 'expo',
-        platform: platform || 'unknown',
-        deviceName: deviceName || 'Mobile Device',
-        deviceId: deviceId || null
-      }
-    });
-
-    console.log(`📱 Expo push token registered for user ${req.user.userId}: ${token.substring(0, 30)}...`);
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to register Expo push token:', error);
-    res.status(500).json({ error: 'Failed to register push token' });
-  }
-});
-
-// Unregister Expo push token
-app.post('/api/push/unregister', authenticateToken, (req, res) => {
-  const { token } = req.body;
-
-  try {
-    if (token) {
-      // Remove specific token
-      pushSubs.removeSubscription(req.user.userId, token);
-      console.log(`📱 Expo push token unregistered for user ${req.user.userId}`);
-    } else {
-      // Remove all Expo tokens for this user (tokens starting with Expo)
-      const subs = pushSubs.getSubscriptions(req.user.userId);
-      for (const sub of subs) {
-        if (sub.endpoint?.startsWith('ExponentPushToken[') || sub.endpoint?.startsWith('ExpoPushToken[')) {
-          pushSubs.removeSubscription(req.user.userId, sub.endpoint);
-        }
-      }
-      console.log(`📱 All Expo push tokens unregistered for user ${req.user.userId}`);
-    }
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to unregister Expo push token:', error);
-    res.status(500).json({ error: 'Failed to unregister push token' });
-  }
 });
 
 // ============ FCM Push Notifications (Capacitor Mobile App v2.31.0) ============
@@ -17668,9 +17624,10 @@ const DEFAULT_NOTIF_PREFS = {
   directMentions: 'always',
   replies: 'always',
   waveActivity: 'app_closed',
-  rippleEvents: 'app_closed',
+  burstEvents: 'app_closed',
   soundEnabled: false,
   suppressWhileFocused: true,
+  pushDebounceMinutes: 5,
 };
 
 // Check if a user should receive a notification based on their preferences
@@ -17688,7 +17645,7 @@ function shouldCreateNotification(userId, notificationType) {
     direct_mention: 'directMentions',
     reply: 'replies',
     wave_activity: 'waveActivity',
-    ripple: 'rippleEvents',
+    ripple: 'burstEvents',
   };
 
   const prefKey = prefKeyMap[notificationType];
@@ -17790,10 +17747,14 @@ function createDropletNotifications(droplet, wave, author) {
     if (!db.shouldNotifyForWave(participant.id, wave.id, 'wave_activity')) continue;
 
     // Skip wave_activity if user is currently viewing this wave (focus awareness)
-    const viewingState = userViewingState.get(participant.id);
-    if (viewingState && viewingState.waveId === wave.id) {
-      // User is actively viewing this wave - suppress wave_activity notification
-      continue;
+    const participantUser = db.findUserById(participant.id);
+    const participantPrefs = participantUser?.notificationPreferences || DEFAULT_NOTIF_PREFS;
+    if (participantPrefs.suppressWhileFocused) {
+      const viewingState = userViewingState.get(participant.id);
+      if (viewingState && viewingState.waveId === wave.id) {
+        // User is actively viewing this wave - suppress wave_activity notification
+        continue;
+      }
     }
 
     const notification = db.createNotification({
@@ -17940,61 +17901,25 @@ async function sendPushNotification(userId, payload) {
   if (subscriptions.length === 0) return;
 
   // Classify subscriptions by type
-  const expoTokens = [];
   const fcmTokens = [];
   const webPushSubs = [];
 
   for (const sub of subscriptions) {
-    if (sub.endpoint?.startsWith('ExponentPushToken[') || sub.endpoint?.startsWith('ExpoPushToken[')) {
-      expoTokens.push(sub);
-    } else if (sub.endpoint?.startsWith('fcm:')) {
+    if (sub.endpoint?.startsWith('fcm:')) {
       fcmTokens.push(sub);
     } else if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-      webPushSubs.push(sub);
-    }
-  }
-
-  // Send to Expo (mobile) tokens
-  if (expoTokens.length > 0) {
-    const messages = expoTokens
-      .filter(sub => Expo.isExpoPushToken(sub.endpoint))
-      .map(sub => ({
-        to: sub.endpoint,
-        sound: 'default',
-        title: payload.title || 'Cortex',
-        body: payload.body || payload.message || '',
-        data: {
-          type: payload.type,
-          waveId: payload.waveId,
-          messageId: payload.messageId,
-          senderId: payload.senderId,
-          senderHandle: payload.senderHandle,
-        },
-      }));
-
-    if (messages.length > 0) {
-      console.log(`📱 Sending ${messages.length} Expo push notification(s) to user ${userId}`);
-      try {
-        const chunks = expo.chunkPushNotifications(messages);
-        for (const chunk of chunks) {
-          const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-          console.log(`📱 Expo response:`, JSON.stringify(ticketChunk));
-
-          // Check for errors and clean up invalid tokens
-          ticketChunk.forEach((ticket, index) => {
-            if (ticket.status === 'error') {
-              console.error(`📱 Expo push error: ${ticket.message}`);
-              if (ticket.details?.error === 'DeviceNotRegistered') {
-                const token = messages[index].to;
-                pushSubs.removeByEndpoint(token);
-                console.log(`📱 Removed invalid Expo token: ${token.substring(0, 30)}...`);
-              }
-            }
-          });
-        }
-      } catch (error) {
-        console.error('📱 Expo push notification error:', error.message);
+      // Skip stale Expo tokens (legacy) and subscriptions without proper web push keys
+      if (sub.endpoint?.startsWith('ExponentPushToken[') || sub.endpoint?.startsWith('ExpoPushToken[')) {
+        pushSubs.removeByEndpoint(sub.endpoint);
+        console.log(`🧹 Removed stale Expo token for user ${userId}`);
+        continue;
       }
+      if (!sub.keys?.auth || !sub.keys?.p256dh) {
+        pushSubs.removeByEndpoint(sub.endpoint);
+        console.log(`🧹 Removed invalid web push subscription (missing keys) for user ${userId}`);
+        continue;
+      }
+      webPushSubs.push(sub);
     }
   }
 
@@ -18101,10 +18026,22 @@ function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs 
       }
     }
 
-    // Send push notification to mobile devices regardless of WebSocket connection
-    // Users expect mobile notifications even when web app is open
-    // Debounce: only send one push per user per PUSH_DEBOUNCE_MINUTES window
+    // Send push notification - respects user notification preferences (v2.32.0)
     if (pushPayload) {
+      const pushUser = db.findUserById(userId);
+      const pushPrefs = pushUser?.notificationPreferences || DEFAULT_NOTIF_PREFS;
+
+      // Skip push if notifications are globally disabled
+      if (!pushPrefs.enabled) continue;
+
+      // This is a generic wave activity push — respect the waveActivity preference
+      // 'never'     → no push
+      // 'app_closed' → only push if no active WebSocket
+      // 'always'     → always push
+      const waveLevel = pushPrefs.waveActivity || 'app_closed';
+      if (waveLevel === 'never') continue;
+      if (waveLevel === 'app_closed' && isConnected) continue;
+
       // v2.27.0: Suppress detailed push for hidden waves
       let finalPushPayload = pushPayload;
       const meta = participation.getMetadata(waveId, userId);
@@ -18113,20 +18050,21 @@ function broadcastToWaveWithPush(waveId, message, pushPayload = null, excludeWs 
           ...pushPayload,
           title: 'Cortex',
           body: 'New activity on the cortex',
-          // Preserve type and IDs but hide wave title
         };
       }
 
+      // Per-user debounce (v2.32.0) — 0 = no debounce, sends every push
+      const userDebounceMin = pushPrefs.pushDebounceMinutes ?? 5;
       const now = Date.now();
       const lastPush = lastPushSent.get(userId);
-      const debounceMs = PUSH_DEBOUNCE_MINUTES * 60 * 1000;
+      const debounceMs = userDebounceMin * 60 * 1000;
 
-      if (!lastPush || (now - lastPush) > debounceMs) {
+      if (userDebounceMin === 0 || !lastPush || (now - lastPush) > debounceMs) {
         console.log(`📱 Sending push notification to user ${userId} (wsConnected: ${isConnected})`);
         sendPushNotification(userId, finalPushPayload);
         lastPushSent.set(userId, now);
       } else {
-        console.log(`📱 Push debounced for user ${userId} (last push ${Math.round((now - lastPush) / 1000)}s ago)`);
+        console.log(`📱 Push debounced for user ${userId} (last push ${Math.round((now - lastPush) / 1000)}s ago, debounce: ${userDebounceMin}m)`);
       }
     }
   }

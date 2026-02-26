@@ -1,14 +1,14 @@
 // ============ CAPACITOR NATIVE PUSH NOTIFICATIONS ============
-// Uses dynamic import() for @capacitor/core so the module is only loaded inside
-// the Capacitor native shell. A static import would create a window.Capacitor
-// stub on web, breaking native-app detection in pwa.js and constants.js.
+// Uses dynamic import() so Capacitor plugin modules are only loaded inside
+// the native shell. Static imports would create a window.Capacitor stub on
+// web browsers, breaking native-app detection in pwa.js and constants.js.
 
 import { API_URL } from '../config/constants.js';
 
 const FCM_TOKEN_KEY = 'farhold_fcm_token';
 const DEVICE_ID_KEY = 'farhold_device_id';
 
-// Cached plugin proxies — initialized on first use via dynamic import
+// Cached plugin instances — initialized on first use via dynamic import
 let _PushNotifications = null;
 let _Haptics = null;
 let _initPromise = null;
@@ -19,12 +19,16 @@ async function ensurePlugins() {
 
   _initPromise = (async () => {
     try {
-      const { registerPlugin } = await import('@capacitor/core');
-      _PushNotifications = registerPlugin('PushNotifications');
-      _Haptics = registerPlugin('Haptics');
+      // Import the actual plugin packages (not raw registerPlugin proxies).
+      // Each plugin package exports a pre-configured instance with proper
+      // native method signatures, permission handling, and event listeners.
+      const pushMod = await import('@capacitor/push-notifications');
+      const hapticsMod = await import('@capacitor/haptics');
+      _PushNotifications = pushMod.PushNotifications;
+      _Haptics = hapticsMod.Haptics;
       return true;
     } catch (e) {
-      console.error('[CapPush] Failed to load @capacitor/core:', e.message);
+      console.error('[CapPush] Failed to load Capacitor plugins:', e.message);
       return false;
     }
   })();
@@ -79,6 +83,9 @@ export async function registerCapacitorPush(authToken) {
     if (permResult.receive !== 'granted') {
       return { success: false, reason: 'Push notification permission denied' };
     }
+
+    // Clean up any stale listeners from previous attempts before registering new ones
+    await _PushNotifications.removeAllListeners();
 
     // Register with the native push service (FCM/APNs)
     // The token arrives asynchronously via the 'registration' event
@@ -137,17 +144,24 @@ export async function registerCapacitorPush(authToken) {
  * Set up listeners for incoming push notifications.
  * @param {function} onNotificationTap - Called with { waveId } when user taps a notification
  */
+let _listenersSetUp = false;
+
 export async function setupCapacitorPushListeners(onNotificationTap) {
+  // Prevent duplicate listener registration (useEffect can re-run)
+  if (_listenersSetUp) return;
+
   const ready = await ensurePlugins();
   if (!ready || !_PushNotifications) return;
 
+  _listenersSetUp = true;
+
   // Foreground notification — log it (OS shows nothing by default, our config enables alert)
-  _PushNotifications.addListener('pushNotificationReceived', (notification) => {
+  await _PushNotifications.addListener('pushNotificationReceived', (notification) => {
     console.log('[CapPush] Foreground notification:', notification.title, notification.body);
   });
 
   // User tapped a notification (background or killed state)
-  _PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+  await _PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
     console.log('[CapPush] Notification tapped:', action.notification?.data);
     const data = action.notification?.data;
     if (data?.waveId && onNotificationTap) {

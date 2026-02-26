@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { API_URL } from '../config/constants.js';
 import { storage, getTokenExpiry } from '../utils/storage.js';
+import { unsubscribeFromPush } from '../utils/pwa.js';
 import { AuthContext } from '../hooks/useAPI.js';
 import { LoadingSpinner } from '../components/ui/SimpleComponents.jsx';
 
@@ -186,6 +187,16 @@ function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    // Clean up push subscription before revoking token
+    if (token && storage.getPushEnabled()) {
+      try {
+        await unsubscribeFromPush(token);
+        storage.setPushEnabled(false);
+        console.log('[Logout] Push subscription cleaned up');
+      } catch (err) {
+        console.error('[Logout] Push cleanup error:', err);
+      }
+    }
     // Revoke session on server
     if (token) {
       try {
