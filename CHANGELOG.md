@@ -5,6 +5,70 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.35.0] - 2026-02-27
+
+### Added
+
+#### macOS & iOS Build Targets Restored
+
+- **macOS Electron build** — Restored `mac:` section in `electron-builder.yml` with DMG and ZIP targets for both x64 and arm64 architectures, hardened runtime, dark mode support, and code signing entitlements
+- **macOS entitlements** — Added `electron/entitlements.mac.plist` with JIT, unsigned executable memory, and network client entitlements required for Electron on macOS
+- **Build script** — Added `electron:build:mac` npm script for one-command macOS builds
+
+#### Tabbed Waves
+
+Users can now open multiple waves simultaneously as tabs, enabling quick switching between active conversations without navigating back to the list.
+
+- **Tab bar** — Horizontal scrollable tab bar appears on desktop when tabs are open, with active tab highlighted in amber and close button on each tab
+- **Background tabs** — Ctrl+click or middle-click a wave in the list to open it in a background tab without switching focus
+- **Tab limit** — Maximum 10 simultaneous tabs; toast error shown when limit reached
+- **Duplicate prevention** — Clicking an already-open wave switches to its existing tab instead of opening a duplicate
+- **Tab close** — Close button (×) on each tab; closing active tab activates the adjacent tab
+- **Wave deletion** — WebSocket handler auto-closes tabs when their wave is deleted or user is removed
+- **Tab title sync** — Tab titles update automatically when wave data changes
+- **Mobile behavior** — Tab bar hidden on mobile; back button closes the current tab (functionally identical to previous behavior)
+- **Keyboard shortcuts** — Standard browser Ctrl+click / Cmd+click for background tabs
+
+#### Collapsible Wave List Sidebar
+
+The wave list sidebar on desktop can now be collapsed to maximize content space when focused on a conversation.
+
+- **Toggle button** — A narrow clickable strip between the sidebar and content area with directional arrow indicator
+- **Keyboard shortcut** — `Ctrl+B` (Windows/Linux) or `Cmd+B` (macOS) toggles the sidebar
+- **Smooth animation** — Sidebar transitions between 300px and 0px over 300ms with CSS transitions
+- **Mobile unaffected** — Collapse behavior is desktop-only; mobile layout remains unchanged
+- **No persistence** — Sidebar resets to expanded on page reload (stateless for v1)
+
+### Changed
+
+- **Version bumped to 2.35.0** — Updated `server/package.json`, `client/package.json`, and `client/src/config/constants.js`
+- **State architecture** — Replaced single `selectedWave` state with `openTabs` array and `activeTabId`; `selectedWave` derived for backward compatibility
+- **ErrorBoundary key** — Uses `activeTab.id` instead of `selectedWave.id` for proper remounting on tab switch
+- **WaveList sizing** — Removed hardcoded desktop width/minWidth/borderRight from WaveList root; parent wrapper now controls dimensions
+
+---
+
+## [2.33.1] - 2026-02-27
+
+### Added
+
+#### Right-Click Context Menus (Electron)
+
+The Electron desktop app now has full right-click context menu support via `electron-context-menu`.
+
+- **Copy/Cut/Paste/Select All** — Standard text editing actions in all text fields and content areas
+- **Spell check suggestions** — Misspelled words show correction suggestions in the context menu (spellcheck explicitly enabled in webPreferences)
+- **Image actions** — Right-click images to Save Image As, Copy Image, or Copy Image Address
+- **Inspect Element** — Available in development mode only (hidden in production builds)
+- **Look Up Selection** — macOS-only dictionary lookup for selected text
+- **Search with Google** — Search selected text via Google
+
+### Changed
+
+- **Version bumped to 2.33.1** — Updated `server/package.json`, `client/package.json`, and `client/src/config/constants.js`
+
+---
+
 ## [2.33.0] - 2026-02-26
 
 ### Added

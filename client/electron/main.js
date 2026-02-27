@@ -5,11 +5,21 @@ import { fileURLToPath } from 'node:url';
 import serve from 'electron-serve';
 import electronUpdater from 'electron-updater';
 const { autoUpdater } = electronUpdater;
+import contextMenu from 'electron-context-menu';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isDev = !app.isPackaged;
+
+contextMenu({
+  showSaveImageAs: true,
+  showCopyImage: true,
+  showCopyImageAddress: true,
+  showInspectElement: isDev,
+  showLookUpSelection: process.platform === 'darwin',
+  showSearchWithGoogle: true,
+});
 const APP_PROTOCOL = 'cortex';
 
 // Serve redirect page in production via custom protocol
@@ -138,6 +148,7 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
+      spellcheck: true,
     },
     // Hide frame on macOS for native title bar integration
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
