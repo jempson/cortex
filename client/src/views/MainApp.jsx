@@ -240,6 +240,68 @@ function MainApp({ sharePingId }) {
 
   const showToastMsg = useCallback((message, type) => setToast({ message, type }), []);
 
+  // ============ TAB MANAGEMENT (v2.35.0) ============
+
+  const openWaveTab = useCallback((wave, { background = false } = {}) => {
+    if (!wave?.id) return;
+
+    setOpenTabs(prev => {
+      // Check if wave is already open
+      const existing = prev.find(t => t.waveId === wave.id);
+      if (existing) {
+        // Switch to existing tab (unless background)
+        if (!background) {
+          setActiveTabId(existing.id);
+          setFocusStack([]);
+        }
+        return prev;
+      }
+
+      // Enforce tab limit
+      if (prev.length >= MAX_TABS) {
+        setToast({ message: `Maximum ${MAX_TABS} tabs allowed. Close a tab first.`, type: 'error' });
+        return prev;
+      }
+
+      // Create new tab
+      tabIdCounter.current += 1;
+      const newTab = { id: `tab-${tabIdCounter.current}`, waveId: wave.id, title: wave.title || '' };
+      if (!background) {
+        setActiveTabId(newTab.id);
+        setFocusStack([]);
+      }
+      return [...prev, newTab];
+    });
+  }, []);
+
+  const closeTab = useCallback((tabId) => {
+    setOpenTabs(prev => {
+      const idx = prev.findIndex(t => t.id === tabId);
+      if (idx === -1) return prev;
+
+      const next = prev.filter(t => t.id !== tabId);
+
+      // If closing the active tab, activate an adjacent one
+      if (tabId === activeTabId) {
+        if (next.length > 0) {
+          // Prefer the tab to the right, then left
+          const newIdx = Math.min(idx, next.length - 1);
+          setActiveTabId(next[newIdx].id);
+        } else {
+          setActiveTabId(null);
+        }
+        setFocusStack([]);
+      }
+
+      return next;
+    });
+  }, [activeTabId]);
+
+  const switchTab = useCallback((tabId) => {
+    setActiveTabId(tabId);
+    setFocusStack([]);
+  }, []);
+
   // Debounced loadWaves to prevent multiple simultaneous API calls
   const loadWavesTimerRef = useRef(null);
   const loadWavesInProgressRef = useRef(false);
@@ -883,68 +945,6 @@ function MainApp({ sharePingId }) {
       const currentWaveId = lastFocused.waveId;
       return [...prev, { waveId: currentWaveId, pingId: ping.id, ping }];
     });
-  }, []);
-
-  // ============ TAB MANAGEMENT (v2.35.0) ============
-
-  const openWaveTab = useCallback((wave, { background = false } = {}) => {
-    if (!wave?.id) return;
-
-    setOpenTabs(prev => {
-      // Check if wave is already open
-      const existing = prev.find(t => t.waveId === wave.id);
-      if (existing) {
-        // Switch to existing tab (unless background)
-        if (!background) {
-          setActiveTabId(existing.id);
-          setFocusStack([]);
-        }
-        return prev;
-      }
-
-      // Enforce tab limit
-      if (prev.length >= MAX_TABS) {
-        setToast({ message: `Maximum ${MAX_TABS} tabs allowed. Close a tab first.`, type: 'error' });
-        return prev;
-      }
-
-      // Create new tab
-      tabIdCounter.current += 1;
-      const newTab = { id: `tab-${tabIdCounter.current}`, waveId: wave.id, title: wave.title || '' };
-      if (!background) {
-        setActiveTabId(newTab.id);
-        setFocusStack([]);
-      }
-      return [...prev, newTab];
-    });
-  }, []);
-
-  const closeTab = useCallback((tabId) => {
-    setOpenTabs(prev => {
-      const idx = prev.findIndex(t => t.id === tabId);
-      if (idx === -1) return prev;
-
-      const next = prev.filter(t => t.id !== tabId);
-
-      // If closing the active tab, activate an adjacent one
-      if (tabId === activeTabId) {
-        if (next.length > 0) {
-          // Prefer the tab to the right, then left
-          const newIdx = Math.min(idx, next.length - 1);
-          setActiveTabId(next[newIdx].id);
-        } else {
-          setActiveTabId(null);
-        }
-        setFocusStack([]);
-      }
-
-      return next;
-    });
-  }, [activeTabId]);
-
-  const switchTab = useCallback((tabId) => {
-    setActiveTabId(tabId);
-    setFocusStack([]);
   }, []);
 
   // Sync tab titles when waves data updates
