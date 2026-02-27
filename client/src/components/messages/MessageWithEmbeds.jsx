@@ -473,6 +473,27 @@ const MessageWithEmbeds = ({ content, autoLoadEmbeds = false, participants = [],
     }
     // Process mentions
     result = processMentions(result);
+
+    // Transform file-attachment anchors into styled download cards
+    result = result.replace(
+      /<a\s+href="([^"]*?)"\s+class="file-attachment"\s+data-filename="([^"]*?)"\s+data-size="([^"]*?)"\s+download="[^"]*?">[^<]*?<\/a>/g,
+      (match, url, filename, size) => {
+        const ext = filename.split('.').pop()?.toLowerCase() || '';
+        let icon = '📄';
+        if (['pdf'].includes(ext)) icon = '📕';
+        else if (['doc', 'docx', 'odt', 'rtf', 'txt'].includes(ext)) icon = '📝';
+        else if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) icon = '📊';
+        else if (['ppt', 'pptx', 'odp'].includes(ext)) icon = '📽️';
+        else if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2'].includes(ext)) icon = '📦';
+        else if (['mp3', 'wav', 'ogg', 'flac', 'aac'].includes(ext)) icon = '🎵';
+        else if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) icon = '🎬';
+        else if (['json', 'xml', 'yaml', 'yml', 'toml'].includes(ext)) icon = '📋';
+        else if (['js', 'ts', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'css', 'html', 'jsx', 'tsx'].includes(ext)) icon = '💻';
+
+        return `<a href="${url}" download="${filename}" class="file-attachment-card" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:6px;text-decoration:none;color:var(--text-primary);margin:6px 0;max-width:320px;cursor:pointer;transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent-teal)'" onmouseout="this.style.borderColor='var(--border-subtle)'"><span style="font-size:1.5rem;flex-shrink:0;">${icon}</span><span style="flex:1;min-width:0;"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.85rem;font-family:monospace;color:var(--text-primary);">${filename}</span><span style="display:block;font-size:0.7rem;color:var(--text-muted);margin-top:2px;">${size}</span></span><span style="flex-shrink:0;color:var(--text-dim);font-size:0.9rem;" title="Download">⬇</span></a>`;
+      }
+    );
+
     return result;
   }, [content, embedUrls, embeds.length, allUsers]);
 

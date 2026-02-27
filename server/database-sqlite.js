@@ -115,7 +115,7 @@ const sanitizeMessageOptions = {
   allowedTags: ['img', 'a', 'br', 'p', 'strong', 'em', 'code', 'pre'],
   allowedAttributes: {
     'img': ['src', 'alt', 'width', 'height', 'class', 'style'],
-    'a': ['href', 'target', 'rel'],
+    'a': ['href', 'target', 'rel', 'class', 'data-filename', 'data-size', 'download'],
   },
   allowedSchemes: ['http', 'https', 'data'],
   allowedSchemesByTag: {
@@ -159,6 +159,19 @@ function detectAndEmbedMedia(content) {
       return `<img src="${match}" alt="Embedded media" style="${imgStyle}" class="zoomable-image" />`;
     }
     return `<a href="${match}" target="_blank" rel="noopener noreferrer">${match}</a>`;
+  });
+
+  // Detect file attachment markers and convert to styled download links
+  const fileMarkerRegex = /\[file:([^\]:]+):(\d+)\](\/uploads\/files\/[^\s<]+)/g;
+  content = content.replace(fileMarkerRegex, (match, filename, sizeStr, url) => {
+    const size = parseInt(sizeStr, 10);
+    let formatted;
+    if (size >= 1024 * 1024) formatted = (size / (1024 * 1024)).toFixed(1) + ' MB';
+    else if (size >= 1024) formatted = (size / 1024).toFixed(1) + ' KB';
+    else formatted = size + ' B';
+    const safeName = filename.replace(/[<>"'&]/g, '');
+    const safeUrl = url.replace(/[<>"'&]/g, '');
+    return `<a href="${safeUrl}" class="file-attachment" data-filename="${safeName}" data-size="${formatted}" download="${safeName}">${safeName} (${formatted})</a>`;
   });
 
   const uploadPathRegex = /(?<!["'>])(\/uploads\/(?:messages|avatars)\/[^\s<]+)(?![^<]*>|[^<>]*<\/)/gi;
