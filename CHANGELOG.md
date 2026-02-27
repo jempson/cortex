@@ -5,6 +5,27 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.34.0] - 2026-02-27
+
+### Added
+
+#### Collapsible Wave List Sidebar
+
+The wave list sidebar on desktop can now be collapsed to maximize content space when focused on a conversation.
+
+- **Toggle button** — A narrow clickable strip between the sidebar and content area with directional arrow indicator
+- **Keyboard shortcut** — `Ctrl+B` (Windows/Linux) or `Cmd+B` (macOS) toggles the sidebar
+- **Smooth animation** — Sidebar transitions between 300px and 0px over 300ms with CSS transitions
+- **Mobile unaffected** — Collapse behavior is desktop-only; mobile layout remains unchanged
+- **No persistence** — Sidebar resets to expanded on page reload (stateless for v1)
+
+### Changed
+
+- **Version bumped to 2.34.0** — Updated `server/package.json`, `client/package.json`, and `client/src/config/constants.js`
+- **WaveList sizing** — Removed hardcoded desktop width/minWidth/borderRight from WaveList root; parent wrapper now controls dimensions
+
+---
+
 ## [2.33.0] - 2026-02-26
 
 ### Added

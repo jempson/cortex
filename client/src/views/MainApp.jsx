@@ -55,6 +55,7 @@ function MainApp({ sharePingId }) {
   const [contacts, setContacts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selectedWave, setSelectedWave] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [scrollToMessageId, setScrollToMessageId] = useState(null); // Ping to scroll to after wave loads
   const [focusStack, setFocusStack] = useState([]); // Array of { waveId, pingId, ping } for Focus View navigation
   const [showNewWave, setShowNewWave] = useState(false);
@@ -86,6 +87,18 @@ function MainApp({ sharePingId }) {
   const notifPrefsRef = useRef(null); // Ref for WebSocket handler to avoid stale closure
   const typingTimeoutsRef = useRef({});
   const { width, isMobile, isTablet, isDesktop, hasMeasured } = useWindowSize();
+
+  // Keyboard shortcut: Ctrl+B / Cmd+B to toggle sidebar (desktop only)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b' && !isMobile) {
+        e.preventDefault();
+        setSidebarCollapsed(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobile]);
 
   // Calculate font scale from user preferences
   const fontSizePreference = user?.preferences?.fontSize || 'medium';
@@ -1263,24 +1276,58 @@ function MainApp({ sharePingId }) {
         {activeView === 'waves' && (
           <>
             {(!isMobile || !selectedWave) && (
-              <WaveList
-                waves={waves}
-                categories={waveCategories}
-                selectedWave={selectedWave}
-                onSelectWave={setSelectedWave}
-                onNewWave={() => setShowNewWave(true)}
-                showArchived={showArchived}
-                onToggleArchived={() => { setShowArchived(!showArchived); loadWaves(); }}
-                isMobile={isMobile}
-                waveNotifications={waveNotifications}
-                activeCalls={activeCalls}
-                onCategoryToggle={handleCategoryToggle}
-                onWaveMove={handleWaveMove}
-                onWavePin={handleWavePin}
-                onManageCategories={() => setCategoryManagementOpen(true)}
-                ghostMode={ghostMode}
-                onToggleGhostProtocol={handleToggleGhostProtocol}
-              />
+              <div style={{
+                width: sidebarCollapsed && !isMobile ? '0px' : (isMobile ? '100%' : '300px'),
+                minWidth: 0,
+                overflow: 'hidden',
+                transition: isMobile ? 'none' : 'width 0.3s ease',
+                borderRight: sidebarCollapsed || isMobile ? 'none' : '1px solid var(--border-subtle)',
+                flexShrink: 0,
+              }}>
+                <WaveList
+                  waves={waves}
+                  categories={waveCategories}
+                  selectedWave={selectedWave}
+                  onSelectWave={setSelectedWave}
+                  onNewWave={() => setShowNewWave(true)}
+                  showArchived={showArchived}
+                  onToggleArchived={() => { setShowArchived(!showArchived); loadWaves(); }}
+                  isMobile={isMobile}
+                  waveNotifications={waveNotifications}
+                  activeCalls={activeCalls}
+                  onCategoryToggle={handleCategoryToggle}
+                  onWaveMove={handleWaveMove}
+                  onWavePin={handleWavePin}
+                  onManageCategories={() => setCategoryManagementOpen(true)}
+                  ghostMode={ghostMode}
+                  onToggleGhostProtocol={handleToggleGhostProtocol}
+                />
+              </div>
+            )}
+            {/* Sidebar toggle button (desktop only) */}
+            {!isMobile && (
+              <div
+                onClick={() => setSidebarCollapsed(prev => !prev)}
+                title={`${sidebarCollapsed ? 'Expand' : 'Collapse'} sidebar (Ctrl+B)`}
+                style={{
+                  width: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  background: 'var(--bg-surface)',
+                  borderRight: '1px solid var(--border-subtle)',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.6rem',
+                  flexShrink: 0,
+                  userSelect: 'none',
+                  transition: 'color 0.2s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-amber)'; e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'var(--bg-surface)'; }}
+              >
+                {sidebarCollapsed ? '\u25B6' : '\u25C0'}
+              </div>
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
               {selectedWave && focusStack.length > 0 ? (
