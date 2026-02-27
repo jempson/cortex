@@ -27,23 +27,26 @@ Cortex is a privacy-first federated communication platform inspired by Google Wa
 
 ### Git Branching Strategy
 
-Three permanent branches are used:
+Three permanent branches with GitHub branch protection enforced:
 
-| Branch | Purpose |
-|--------|---------|
-| `develop` | Active development - ALL new code starts here |
-| `qa` | Testing/QA - merge from develop via PR for testing |
-| `master` | Production - only project owner merges from qa |
+| Branch | Purpose | PR Required | Approvals |
+|--------|---------|-------------|-----------|
+| `develop` | Active development - all new code merges here | Yes | 0 (self-merge OK) |
+| `qa` | Testing/QA - merge from develop for testing | Yes | 1 |
+| `master` | Production - merge from qa after QA approval | Yes | 1 (stale reviews dismissed) |
+
+All three branches enforce rules for admins — no one can bypass protections.
 
 **Workflow:**
-1. Always work in the `develop` branch
+1. Create a feature branch off `develop` (e.g. `feat/file-attachments`)
 2. Apply version at start of feature work, not at the end
-3. When ready for testing: create PR from `develop` → `qa`
-4. After QA approval: create PR from `qa` → `master` (owner merges)
+3. Commit to the feature branch and push
+4. Create PR from feature branch → `develop` (self-merge OK, no approval needed)
+5. When ready for testing: create PR from `develop` → `qa` (requires 1 approval)
+6. After QA approval: create PR from `qa` → `master` (requires 1 approval)
 
 **Never:**
-- Code directly on `master` or `qa`
-- Create feature branches (work in `develop` directly)
+- Push directly to `develop`, `qa`, or `master` (branch protection blocks this)
 - Cherry-pick commits between branches
 
 ### Version Numbering
