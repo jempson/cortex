@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### macOS & iOS Build Targets Restored
+
+- **macOS Electron build** — Restored `mac:` section in `electron-builder.yml` with DMG and ZIP targets for both x64 and arm64 architectures, hardened runtime, dark mode support, and code signing entitlements
+- **macOS entitlements** — Added `electron/entitlements.mac.plist` with JIT, unsigned executable memory, and network client entitlements required for Electron on macOS
+- **Build script** — Added `electron:build:mac` npm script for one-command macOS builds
+
 #### Tabbed Waves
 
 Users can now open multiple waves simultaneously as tabs, enabling quick switching between active conversations without navigating back to the list.
