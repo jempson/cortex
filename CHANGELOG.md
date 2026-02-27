@@ -23,11 +23,22 @@ Users can now open multiple waves simultaneously as tabs, enabling quick switchi
 - **Mobile behavior** — Tab bar hidden on mobile; back button closes the current tab (functionally identical to previous behavior)
 - **Keyboard shortcuts** — Standard browser Ctrl+click / Cmd+click for background tabs
 
+#### Collapsible Wave List Sidebar
+
+The wave list sidebar on desktop can now be collapsed to maximize content space when focused on a conversation.
+
+- **Toggle button** — A narrow clickable strip between the sidebar and content area with directional arrow indicator
+- **Keyboard shortcut** — `Ctrl+B` (Windows/Linux) or `Cmd+B` (macOS) toggles the sidebar
+- **Smooth animation** — Sidebar transitions between 300px and 0px over 300ms with CSS transitions
+- **Mobile unaffected** — Collapse behavior is desktop-only; mobile layout remains unchanged
+- **No persistence** — Sidebar resets to expanded on page reload (stateless for v1)
+
 ### Changed
 
 - **Version bumped to 2.35.0** — Updated `server/package.json`, `client/package.json`, and `client/src/config/constants.js`
 - **State architecture** — Replaced single `selectedWave` state with `openTabs` array and `activeTabId`; `selectedWave` derived for backward compatibility
 - **ErrorBoundary key** — Uses `activeTab.id` instead of `selectedWave.id` for proper remounting on tab switch
+- **WaveList sizing** — Removed hardcoded desktop width/minWidth/borderRight from WaveList root; parent wrapper now controls dimensions
 
 ---
 

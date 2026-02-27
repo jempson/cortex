@@ -381,9 +381,8 @@ const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCat
 
 const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWave, showArchived, onToggleArchived, isMobile, waveNotifications = {}, activeCalls = {}, onCategoryToggle, onWaveMove, onWavePin, onManageCategories, ghostMode = false, onToggleGhostProtocol }) => (
   <div style={{
-    width: isMobile ? '100%' : '300px',
-    minWidth: isMobile ? 'auto' : '280px',
-    borderRight: isMobile ? 'none' : '1px solid var(--border-subtle)',
+    width: '100%',
+    minWidth: 0,
     display: 'flex', flexDirection: 'column', height: '100%',
     borderBottom: isMobile ? '1px solid var(--border-subtle)' : 'none',
   }}>
