@@ -13,6 +13,7 @@
     "electron:dev": "electron .",
     "electron:build": "electron-builder",
     "electron:build:win": "electron-builder --win",
+    "electron:build:mac": "electron-builder --mac",
     "electron:build:linux": "electron-builder --linux",
     "cap:sync": "cap sync",
     "cap:open:android": "cap open android",
