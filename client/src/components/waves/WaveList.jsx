@@ -68,7 +68,19 @@ const WaveCategoryList = ({ waves, categories, selectedWave, onSelectWave, onCat
           setDraggedWave(null);
           setDropTarget(null);
         }}
-        onClick={() => onSelectWave(wave)}
+        onClick={(e) => {
+          if (e.ctrlKey || e.metaKey) {
+            onSelectWave(wave, { background: true });
+          } else {
+            onSelectWave(wave);
+          }
+        }}
+        onAuxClick={(e) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            onSelectWave(wave, { background: true });
+          }
+        }}
         onMouseEnter={(e) => {
           if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)';
         }}
@@ -461,7 +473,20 @@ const WaveList = ({ waves, categories = [], selectedWave, onSelectWave, onNewWav
         const callInfo = activeCalls[wave.id];
         const hasActiveCall = callInfo && callInfo.participantCount > 0;
         return (
-          <div key={wave.id} onClick={() => onSelectWave(wave)}
+          <div key={wave.id}
+            onClick={(e) => {
+              if (e.ctrlKey || e.metaKey) {
+                onSelectWave(wave, { background: true });
+              } else {
+                onSelectWave(wave);
+              }
+            }}
+            onAuxClick={(e) => {
+              if (e.button === 1) {
+                e.preventDefault();
+                onSelectWave(wave, { background: true });
+              }
+            }}
             onMouseEnter={(e) => {
               if (!isSelected) {
                 e.currentTarget.style.background = 'var(--bg-hover)';
