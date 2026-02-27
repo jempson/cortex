@@ -5,6 +5,27 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.33.1] - 2026-02-27
+
+### Added
+
+#### Right-Click Context Menus (Electron)
+
+The Electron desktop app now has full right-click context menu support via `electron-context-menu`.
+
+- **Copy/Cut/Paste/Select All** — Standard text editing actions in all text fields and content areas
+- **Spell check suggestions** — Misspelled words show correction suggestions in the context menu (spellcheck explicitly enabled in webPreferences)
+- **Image actions** — Right-click images to Save Image As, Copy Image, or Copy Image Address
+- **Inspect Element** — Available in development mode only (hidden in production builds)
+- **Look Up Selection** — macOS-only dictionary lookup for selected text
+- **Search with Google** — Search selected text via Google
+
+### Changed
+
+- **Version bumped to 2.33.1** — Updated `server/package.json`, `client/package.json`, and `client/src/config/constants.js`
+
+---
+
 ## [2.33.0] - 2026-02-26
 
 ### Added
