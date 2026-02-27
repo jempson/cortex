@@ -5,6 +5,32 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.35.0] - 2026-02-27
+
+### Added
+
+#### Tabbed Waves
+
+Users can now open multiple waves simultaneously as tabs, enabling quick switching between active conversations without navigating back to the list.
+
+- **Tab bar** — Horizontal scrollable tab bar appears on desktop when tabs are open, with active tab highlighted in amber and close button on each tab
+- **Background tabs** — Ctrl+click or middle-click a wave in the list to open it in a background tab without switching focus
+- **Tab limit** — Maximum 10 simultaneous tabs; toast error shown when limit reached
+- **Duplicate prevention** — Clicking an already-open wave switches to its existing tab instead of opening a duplicate
+- **Tab close** — Close button (×) on each tab; closing active tab activates the adjacent tab
+- **Wave deletion** — WebSocket handler auto-closes tabs when their wave is deleted or user is removed
+- **Tab title sync** — Tab titles update automatically when wave data changes
+- **Mobile behavior** — Tab bar hidden on mobile; back button closes the current tab (functionally identical to previous behavior)
+- **Keyboard shortcuts** — Standard browser Ctrl+click / Cmd+click for background tabs
+
+### Changed
+
+- **Version bumped to 2.35.0** — Updated `server/package.json`, `client/package.json`, and `client/src/config/constants.js`
+- **State architecture** — Replaced single `selectedWave` state with `openTabs` array and `activeTabId`; `selectedWave` derived for backward compatibility
+- **ErrorBoundary key** — Uses `activeTab.id` instead of `selectedWave.id` for proper remounting on tab switch
+
+---
+
 ## [2.33.1] - 2026-02-27
 
 ### Added
