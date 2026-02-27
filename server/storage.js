@@ -71,7 +71,8 @@ class StorageProvider {
       // Ensure directories exist
       [this.uploadsDir, this.mediaDir,
        path.join(this.uploadsDir, 'avatars'),
-       path.join(this.uploadsDir, 'messages')].forEach(dir => {
+       path.join(this.uploadsDir, 'messages'),
+       path.join(this.uploadsDir, 'files')].forEach(dir => {
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true });
         }

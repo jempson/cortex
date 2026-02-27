@@ -130,6 +130,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
 
   const playbackRef = useRef(null);
   const fileInputRef = useRef(null);
+  const fileAttachInputRef = useRef(null);
 
   // Helper functions for participant contact status
   const isContact = (userId) => contacts?.some(c => c.id === userId) || false;
@@ -1171,6 +1172,56 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Handle general file upload for messages
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+
+    // If it's an image, delegate to existing image upload handler
+    const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (imageTypes.includes(file.type)) {
+      handleImageUpload(file);
+      return;
+    }
+
+    // Validate file size (25MB max)
+    if (file.size > 25 * 1024 * 1024) {
+      showToast('File too large. Maximum size is 25MB', 'error');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const token = storage.getToken();
+      const response = await fetch(`${API_URL}/uploads/file`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      const data = await response.json();
+      // Insert file marker into the message
+      const marker = `[file:${data.filename}:${data.size}]${data.url}`;
+      setNewMessage(prev => prev + (prev ? '\n' : '') + marker);
+      showToast('File attached', 'success');
+      textareaRef.current?.focus();
+    } catch (err) {
+      showToast(err.message || 'Failed to upload file', 'error');
+    } finally {
+      setUploading(false);
+      if (fileAttachInputRef.current) {
+        fileAttachInputRef.current.value = '';
       }
     }
   };
@@ -2382,8 +2433,8 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
           e.preventDefault();
           setDragOver(false);
           const file = e.dataTransfer.files?.[0];
-          if (file && file.type.startsWith('image/')) {
-            handleImageUpload(file);
+          if (file) {
+            handleFileUpload(file);
           }
         }}
         style={{
@@ -2424,7 +2475,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
             fontSize: '0.85rem',
             fontFamily: 'monospace',
           }}>
-            Drop image to upload
+            Drop file to upload
           </div>
         )}
         {/* Media Recorder (v2.7.0) */}
@@ -2769,6 +2820,36 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
                 </div>
               )}
             </div>
+
+            {/* File attach button */}
+            <input
+              type="file"
+              ref={fileAttachInputRef}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileUpload(file);
+              }}
+              style={{ display: 'none' }}
+            />
+            <button
+              onClick={() => fileAttachInputRef.current?.click()}
+              disabled={uploading}
+              style={{
+                padding: isMobile ? '8px 10px' : '8px 10px',
+                minHeight: isMobile ? '38px' : '32px',
+                background: 'transparent',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-secondary)',
+                cursor: uploading ? 'wait' : 'pointer',
+                fontFamily: 'monospace',
+                fontSize: isMobile ? '0.7rem' : '0.65rem',
+                fontWeight: 700,
+                opacity: uploading ? 0.7 : 1,
+              }}
+              title="Attach file"
+            >
+              {uploading ? '...' : '📎'}
+            </button>
 
             {/* More actions menu (⋮) */}
             <div style={{ position: 'relative' }}>
