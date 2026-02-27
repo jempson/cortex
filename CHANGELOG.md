@@ -5,6 +5,37 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.33.0] - 2026-02-26
+
+### Added
+
+#### General File Attachment Support
+
+Users can now share PDFs, documents, ZIPs, spreadsheets, and other non-executable files in messages — not just images.
+
+- **File upload endpoint** — New `POST /api/uploads/file` accepts any non-executable file up to 25MB; files stored in `uploads/files/` with sanitized filenames (`[a-zA-Z0-9._-]` only, truncated to 100 chars)
+- **Executable blocklist** — Dangerous file types (`.exe`, `.bat`, `.cmd`, `.msi`, `.scr`, `.vbs`, `.ps1`, `.sh`, `.dll`, etc.) are rejected server-side with a clear error message
+- **File marker protocol** — Client inserts `[file:FILENAME:SIZE]URL` marker into message text; server's `detectAndEmbedMedia` converts it into a styled `<a class="file-attachment">` tag with `data-filename`, `data-size`, and `download` attributes
+- **Download cards** — `MessageWithEmbeds` transforms file-attachment anchors into visual cards with file-type icons (📕 PDF, 📊 spreadsheet, 📦 archive, 💻 code, etc.), filename with ellipsis overflow, formatted size, and download arrow
+- **Attach button** — New 📎 button in the compose area alongside existing photo/GIF buttons; opens a file picker that accepts all file types
+- **Universal drag-and-drop** — Compose area now accepts any file type via drag-and-drop (images still route through the existing image upload pipeline)
+- **Collapsed message indicator** — File attachments trigger the content-collapse affordance with a 📎 icon in the collapsed preview
+- **Storage directory** — `uploads/files/` directory auto-created on server and storage init
+
+### Changed
+
+- **Version bumped to 2.33.0** — Updated `server/package.json`, `client/package.json`, and `client/src/config/constants.js`
+
+### Security
+
+- Filename sanitized to `[a-zA-Z0-9._-]` on server before storage
+- Executable blocklist prevents dangerous file types from being uploaded
+- 25MB size limit on file uploads
+- `download` attribute on `<a>` tags prompts download instead of navigation
+- `sanitize-html` configured to allow only specific `<a>` attributes (`class`, `data-filename`, `data-size`, `download`)
+
+---
+
 ## [2.32.0] - 2026-02-26
 
 ### Added

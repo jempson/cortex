@@ -179,6 +179,7 @@ const AVATARS_DIR = path.join(UPLOADS_DIR, 'avatars');
 const DROPLETS_DIR = path.join(UPLOADS_DIR, 'droplets');
 const MESSAGES_DIR = path.join(UPLOADS_DIR, 'messages'); // Legacy alias
 const MEDIA_DIR = path.join(UPLOADS_DIR, 'media'); // Audio/Video recordings (v2.7.0)
+const FILES_DIR = path.join(UPLOADS_DIR, 'files'); // General file attachments
 
 // Ensure uploads directories exist
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -186,6 +187,7 @@ if (!fs.existsSync(AVATARS_DIR)) fs.mkdirSync(AVATARS_DIR, { recursive: true });
 if (!fs.existsSync(DROPLETS_DIR)) fs.mkdirSync(DROPLETS_DIR, { recursive: true });
 if (!fs.existsSync(MESSAGES_DIR)) fs.mkdirSync(MESSAGES_DIR, { recursive: true }); // Legacy support
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
+if (!fs.existsSync(FILES_DIR)) fs.mkdirSync(FILES_DIR, { recursive: true });
 
 // Multer configuration for avatar uploads
 const avatarStorage = multer.memoryStorage();
@@ -235,6 +237,21 @@ const mediaUpload = multer({
     } else {
       console.log(`❌ Media upload rejected: ${file.mimetype}`);
       cb(new Error('Invalid file type. Allowed: webm, mp4, ogg, mpeg, wav (audio/video)'), false);
+    }
+  },
+});
+
+// Multer configuration for general file uploads
+const fileStorage = multer.memoryStorage();
+const fileUpload = multer({
+  storage: fileStorage,
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB max
+  fileFilter: (req, file, cb) => {
+    const blockedExtensions = /\.(exe|bat|cmd|msi|scr|vbs|vbe|js|jse|wsf|wsh|ps1|psc1|sh|bash|csh|ksh|dll|com|pif|reg|inf|hta|cpl|msp|mst)$/i;
+    if (blockedExtensions.test(file.originalname)) {
+      cb(new Error('File type not allowed for security reasons'), false);
+    } else {
+      cb(null, true);
     }
   },
 });
@@ -565,7 +582,7 @@ const sanitizeMessageOptions = {
   allowedTags: ['img', 'a', 'br', 'p', 'strong', 'em', 'code', 'pre'],
   allowedAttributes: {
     'img': ['src', 'alt', 'width', 'height', 'class'],
-    'a': ['href', 'target', 'rel'],
+    'a': ['href', 'target', 'rel', 'class', 'data-filename', 'data-size', 'download'],
   },
   allowedSchemes: ['http', 'https', 'data'], // Allow data URIs for emojis
   allowedSchemesByTag: {
@@ -857,6 +874,19 @@ function detectAndEmbedMedia(content) {
     }
     // Otherwise, make it a clickable link
     return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
+  });
+
+  // Detect file attachment markers and convert to styled download links
+  const fileMarkerRegex = /\[file:([^\]:]+):(\d+)\](\/uploads\/files\/[^\s<]+)/g;
+  content = content.replace(fileMarkerRegex, (match, filename, sizeStr, url) => {
+    const size = parseInt(sizeStr, 10);
+    let formatted;
+    if (size >= 1024 * 1024) formatted = (size / (1024 * 1024)).toFixed(1) + ' MB';
+    else if (size >= 1024) formatted = (size / 1024).toFixed(1) + ' KB';
+    else formatted = size + ' B';
+    const safeName = filename.replace(/[<>"'&]/g, '');
+    const safeUrl = url.replace(/[<>"'&]/g, '');
+    return `<a href="${safeUrl}" class="file-attachment" data-filename="${safeName}" data-size="${formatted}" download="${safeName}">${safeName} (${formatted})</a>`;
   });
 
   // Also detect and embed relative upload paths (e.g., /uploads/messages/...)
@@ -6149,6 +6179,52 @@ app.post('/api/uploads', authenticateToken, (req, res, next) => {
   } catch (err) {
     console.error('Image upload error:', err);
     res.status(500).json({ error: 'Failed to upload image' });
+  }
+});
+
+// ============ General File Upload ============
+// Upload any file (non-executable) for use in messages
+app.post('/api/uploads/file', authenticateToken, (req, res, next) => {
+  fileUpload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large. Maximum size is 25MB' });
+      }
+      return res.status(400).json({ error: err.message || 'File upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const user = db.findUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Sanitize filename: strip unsafe chars, truncate to 100 chars
+    const safeName = req.file.originalname
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .slice(0, 100);
+    const timestamp = Date.now();
+    const filename = `${user.id}-${timestamp}-${safeName}`;
+    const storageKey = `files/${filename}`;
+
+    // Upload to storage (local or S3)
+    const fileUrl = await storage.upload(req.file.buffer, storageKey, req.file.mimetype);
+    console.log(`📎 File uploaded by ${user.handle}: ${safeName} (${req.file.size} bytes)`);
+
+    res.json({
+      success: true,
+      url: fileUrl,
+      filename: safeName,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+    });
+  } catch (err) {
+    console.error('File upload error:', err);
+    res.status(500).json({ error: 'Failed to upload file' });
   }
 });
 

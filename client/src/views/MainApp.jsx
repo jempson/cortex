@@ -953,19 +953,22 @@ function MainApp({ sharePingId }) {
     if (!token) return;
 
     const setupPushNotifications = async () => {
-      // Only auto-subscribe if user has explicitly opted in before
-      if (!storage.getPushEnabled()) {
-        console.log('[Push] Push not enabled, skipping auto-subscribe');
-        return;
-      }
-
-      // Capacitor native apps handle push via capacitor-push.js
+      // Capacitor native apps: always auto-register for FCM/APNs
+      // User accepted permissions at install, no need for explicit opt-in
       if (window.Capacitor?.isNativePlatform) {
         console.log('[Push] Capacitor detected — auto-subscribing via native push');
         const result = await subscribeToPush(token, { silent: true });
-        if (!result.success) {
+        if (result.success) {
+          storage.setPushEnabled(true); // Sync the flag for consistency
+        } else {
           console.log('[Push] Native auto-subscribe failed (this is ok):', result.reason);
         }
+        return;
+      }
+
+      // Web: require explicit opt-in
+      if (!storage.getPushEnabled()) {
+        console.log('[Push] Push not enabled, skipping auto-subscribe');
         return;
       }
 

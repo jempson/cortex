@@ -65,6 +65,7 @@ const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
     if (!message.content) return false;
     if (message.content.length > 150) return true;
     if (message.content.includes('<img')) return true;
+    if (message.content.includes('class="file-attachment"')) return true;
     return false;
   }, [message.content, message.media_type, message.deleted]);
 
@@ -525,6 +526,7 @@ const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
             {message.media_type === 'audio' && <span title="Audio">🎵</span>}
             {message.media_type === 'video' && <span title="Video">🎬</span>}
             {message.content?.includes('<img') && <span title="Image">🖼️</span>}
+            {message.content?.includes('class="file-attachment"') && <span title="File">📎</span>}
           </div>
         ) : (
           <div
