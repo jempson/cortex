@@ -5,6 +5,36 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+#### Notification Polling & Targeted Push
+
+Push notification delivery has been rearchitected to fix unreliable delivery caused by per-user debouncing that silently dropped notifications within a 5-minute window.
+
+- **Targeted push for mentions and replies** — `direct_mention` and `reply` notifications now send an immediate push notification to offline users (bypassing the debounce), while marking online users as delivered via WebSocket
+- **No push for wave_activity** — General wave activity notifications no longer trigger push; they are caught by the new client-side polling routine instead
+- **Notification polling sync** — New `NotificationSync` client utility polls `GET /api/notifications/pending` every 30 seconds, showing local browser `Notification()` popups for missed messages only when the tab is hidden
+- **Visibility-aware suppression** — When the user switches back to the app tab, polling refreshes the notification bell and wave badges but does not show popup notifications
+- **WebSocket reconnect awareness** — After a WebSocket reconnect, the sync polls after a 2-second delay to catch anything missed during the disconnect
+- **Read-message cleanup** — `getPendingNotifications()` automatically marks notifications as read if the user already read the underlying message, preventing stale notifications from surfacing
+- **Delivery tracking via `push_sent`** — The previously unused `push_sent` column on the `notifications` table is now the delivery-tracking flag: `1` means the notification was delivered (via WS, push, or polling)
+- **Removed blanket push on droplet creation** — Droplet creation and legacy message endpoints now use `broadcastToWave()` (WebSocket only) instead of `broadcastToWaveWithPush()`, since push delivery is handled per-notification-type in `createDropletNotifications()`
+- **Relaxed NotificationBell polling** — Self-polling interval increased from 60s to 120s since the sync routine now handles freshness; the `refreshTrigger` prop still forces immediate reloads
+
+**New server methods:**
+- `db.getPendingNotifications(userId)` — Cleans stale read notifications, returns pending undelivered notifications with actor/wave info (limit 50)
+- `db.markNotificationsPushSent(notificationIds)` — Batch marks notification IDs as delivered
+
+**New endpoint:**
+- `GET /api/notifications/pending` — Returns and marks as delivered all pending notifications for the authenticated user
+
+**New client file:**
+- `client/src/utils/notification-sync.js` — `NotificationSync` class with 30s polling, visibility handling, WS reconnect hook, and local notification display
+
+---
+
 ## [2.35.0] - 2026-02-27
 
 ### Added
