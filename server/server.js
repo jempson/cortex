@@ -17751,25 +17751,22 @@ function createDropletNotifications(droplet, wave, author) {
         groupKey: `mention:${wave.id}:${droplet.id}`
       });
 
-      // Delivery routing: WS-connected → mark delivered; offline → send push immediately
-      const mentionIsOnline = clients.has(mentionedUser.id) && clients.get(mentionedUser.id).size > 0;
-      if (mentionIsOnline) {
-        db.markNotificationPushSent(notification.id);
-      } else {
-        db.markNotificationPushSent(notification.id);
-        const isEncrypted = droplet.encrypted || droplet.nonce;
-        sendPushNotification(mentionedUser.id, {
-          type: 'direct_mention',
-          title: notification.title,
-          body: `in ${wave.title}`,
-          url: `/?wave=${wave.id}`,
-          waveId: wave.id,
-          messageId: droplet.id,
-          senderId: author.id,
-          senderHandle: author.handle,
-          encrypted: !!isEncrypted,
-        });
-      }
+      // Always send push for direct mentions — the service worker suppresses
+      // the popup when the app is visible, so double-delivery is safe.
+      // WS-connected doesn't mean the user is looking at the app (Android backgrounding).
+      db.markNotificationPushSent(notification.id);
+      const isEncrypted = droplet.encrypted || droplet.nonce;
+      sendPushNotification(mentionedUser.id, {
+        type: 'direct_mention',
+        title: notification.title,
+        body: `in ${wave.title}`,
+        url: `/?wave=${wave.id}`,
+        waveId: wave.id,
+        messageId: droplet.id,
+        senderId: author.id,
+        senderHandle: author.handle,
+        encrypted: !!isEncrypted,
+      });
 
       notificationsToSend.push({ userId: mentionedUser.id, notification });
     }
@@ -17793,24 +17790,20 @@ function createDropletNotifications(droplet, wave, author) {
           groupKey: `reply:${wave.id}:${parentDroplet.id}`
         });
 
-        const replyIsOnline = clients.has(parentDroplet.authorId) && clients.get(parentDroplet.authorId).size > 0;
-        if (replyIsOnline) {
-          db.markNotificationPushSent(notification.id);
-        } else {
-          db.markNotificationPushSent(notification.id);
-          const isEncrypted = droplet.encrypted || droplet.nonce;
-          sendPushNotification(parentDroplet.authorId, {
-            type: 'reply',
-            title: notification.title,
-            body: `in ${wave.title}`,
-            url: `/?wave=${wave.id}`,
-            waveId: wave.id,
-            messageId: droplet.id,
-            senderId: author.id,
-            senderHandle: author.handle,
-            encrypted: !!isEncrypted,
-          });
-        }
+        // Always send push for replies (same reasoning as direct_mention above)
+        db.markNotificationPushSent(notification.id);
+        const isEncrypted = droplet.encrypted || droplet.nonce;
+        sendPushNotification(parentDroplet.authorId, {
+          type: 'reply',
+          title: notification.title,
+          body: `in ${wave.title}`,
+          url: `/?wave=${wave.id}`,
+          waveId: wave.id,
+          messageId: droplet.id,
+          senderId: author.id,
+          senderHandle: author.handle,
+          encrypted: !!isEncrypted,
+        });
 
         notificationsToSend.push({ userId: parentDroplet.authorId, notification });
       }
@@ -17852,42 +17845,38 @@ function createDropletNotifications(droplet, wave, author) {
       groupKey: `wave:${wave.id}`
     });
 
-    // Delivery routing for wave_activity
-    const activityIsOnline = clients.has(participant.id) && clients.get(participant.id).size > 0;
-    if (activityIsOnline) {
-      db.markNotificationPushSent(notification.id);
+    // Delivery routing for wave_activity — always send push (SW suppresses when app visible)
+    // but respect preference level and per-user debounce to avoid flooding
+    const waveLevel = participantPrefs.waveActivity || 'app_closed';
+    if (waveLevel === 'never') {
+      db.markNotificationPushSent(notification.id); // won't push, just mark done
     } else {
-      // Offline — send push, respecting waveActivity preference and per-user debounce
-      const waveLevel = participantPrefs.waveActivity || 'app_closed';
-      if (waveLevel !== 'never') {
-        // Per-user debounce to avoid flooding
-        const userDebounceMin = participantPrefs.pushDebounceMinutes ?? 5;
-        const now = Date.now();
-        const lastPush = lastPushSent.get(participant.id);
-        const debounceMs = userDebounceMin * 60 * 1000;
+      const userDebounceMin = participantPrefs.pushDebounceMinutes ?? 5;
+      const now = Date.now();
+      const lastPush = lastPushSent.get(participant.id);
+      const debounceMs = userDebounceMin * 60 * 1000;
 
-        if (userDebounceMin === 0 || !lastPush || (now - lastPush) > debounceMs) {
-          db.markNotificationPushSent(notification.id);
-          // Suppress details for hidden waves (privacy)
-          const meta = participation.getMetadata(wave.id, participant.id);
-          const isEncrypted = droplet.encrypted || droplet.nonce;
-          const pushTitle = meta.hidden === 1 ? 'Cortex' : notification.title;
-          const pushBody = meta.hidden === 1 ? 'New activity on the cortex' : `from ${author.displayName}`;
-          sendPushNotification(participant.id, {
-            type: 'wave_activity',
-            title: pushTitle,
-            body: pushBody,
-            url: `/?wave=${wave.id}`,
-            waveId: wave.id,
-            messageId: droplet.id,
-            senderId: author.id,
-            senderHandle: author.handle,
-            encrypted: !!isEncrypted,
-          });
-          lastPushSent.set(participant.id, now);
-        } else {
-          // Debounced — leave push_sent=0 so polling catches it later
-        }
+      if (userDebounceMin === 0 || !lastPush || (now - lastPush) > debounceMs) {
+        db.markNotificationPushSent(notification.id);
+        // Suppress details for hidden waves (privacy)
+        const meta = participation.getMetadata(wave.id, participant.id);
+        const isEncrypted = droplet.encrypted || droplet.nonce;
+        const pushTitle = meta.hidden === 1 ? 'Cortex' : notification.title;
+        const pushBody = meta.hidden === 1 ? 'New activity on the cortex' : `from ${author.displayName}`;
+        sendPushNotification(participant.id, {
+          type: 'wave_activity',
+          title: pushTitle,
+          body: pushBody,
+          url: `/?wave=${wave.id}`,
+          waveId: wave.id,
+          messageId: droplet.id,
+          senderId: author.id,
+          senderHandle: author.handle,
+          encrypted: !!isEncrypted,
+        });
+        lastPushSent.set(participant.id, now);
+      } else {
+        // Debounced — leave push_sent=0 so polling catches it later
       }
     }
 
