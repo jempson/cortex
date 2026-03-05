@@ -17852,11 +17852,43 @@ function createDropletNotifications(droplet, wave, author) {
       groupKey: `wave:${wave.id}`
     });
 
-    // wave_activity: mark as delivered if online (WS handles it), leave push_sent=0 if offline
-    // No push sent for wave_activity — polling routine catches these
+    // Delivery routing for wave_activity
     const activityIsOnline = clients.has(participant.id) && clients.get(participant.id).size > 0;
     if (activityIsOnline) {
       db.markNotificationPushSent(notification.id);
+    } else {
+      // Offline — send push, respecting waveActivity preference and per-user debounce
+      const waveLevel = participantPrefs.waveActivity || 'app_closed';
+      if (waveLevel !== 'never') {
+        // Per-user debounce to avoid flooding
+        const userDebounceMin = participantPrefs.pushDebounceMinutes ?? 5;
+        const now = Date.now();
+        const lastPush = lastPushSent.get(participant.id);
+        const debounceMs = userDebounceMin * 60 * 1000;
+
+        if (userDebounceMin === 0 || !lastPush || (now - lastPush) > debounceMs) {
+          db.markNotificationPushSent(notification.id);
+          // Suppress details for hidden waves (privacy)
+          const meta = participation.getMetadata(wave.id, participant.id);
+          const isEncrypted = droplet.encrypted || droplet.nonce;
+          const pushTitle = meta.hidden === 1 ? 'Cortex' : notification.title;
+          const pushBody = meta.hidden === 1 ? 'New activity on the cortex' : `from ${author.displayName}`;
+          sendPushNotification(participant.id, {
+            type: 'wave_activity',
+            title: pushTitle,
+            body: pushBody,
+            url: `/?wave=${wave.id}`,
+            waveId: wave.id,
+            messageId: droplet.id,
+            senderId: author.id,
+            senderHandle: author.handle,
+            encrypted: !!isEncrypted,
+          });
+          lastPushSent.set(participant.id, now);
+        } else {
+          // Debounced — leave push_sent=0 so polling catches it later
+        }
+      }
     }
 
     notificationsToSend.push({ userId: participant.id, notification });
@@ -18022,7 +18054,10 @@ async function sendPushNotification(userId, payload) {
         await webpush.sendNotification({
           endpoint: sub.endpoint,
           keys: sub.keys
-        }, payloadString);
+        }, payloadString, {
+          urgency: 'high',
+          TTL: 86400, // 24 hours
+        });
       } catch (error) {
         // Clean up invalid subscriptions (expired, VAPID mismatch, or endpoint issues)
         if (error.statusCode === 410 || error.statusCode === 404 || error.statusCode === 401 ||
