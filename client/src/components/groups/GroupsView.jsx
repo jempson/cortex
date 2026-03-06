@@ -4,7 +4,6 @@ import { SUCCESS, EMPTY, CONFIRM_DIALOG, FEDERATION, formatError } from '../../.
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
 import { BASE_URL } from '../../config/constants.js';
 import GroupInvitationsPanel from './GroupInvitationsPanel.jsx';
-import SentCrewInvitationsPanel from './SentCrewInvitationsPanel.jsx';
 import InviteToGroupModal from './InviteToGroupModal.jsx';
 
 const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitations, onInvitationsChange, contacts }) => {
@@ -157,13 +156,6 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
             onGroupsChange={onGroupsChange}
             isMobile={isMobile}
           />
-          {!isMobile && <SentCrewInvitationsPanel
-            invitations={sentInvitations}
-            fetchAPI={fetchAPI}
-            showToast={showToast}
-            onInvitationsChange={loadSentInvitations}
-            isMobile={isMobile}
-          />}
           {groups.length === 0 && (!groupInvitations || groupInvitations.length === 0) ? (
             <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>{EMPTY.noCrews}</div>
           ) : groups.map(g => (
