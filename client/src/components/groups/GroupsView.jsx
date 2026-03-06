@@ -16,6 +16,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
   const [memberSearch, setMemberSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [sentInvitations, setSentInvitations] = useState([]);
   const { width, isMobile, isTablet, isDesktop } = useWindowSize();
 
   useEffect(() => {
@@ -37,6 +38,15 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
     }, 300);
     return () => clearTimeout(timeout);
   }, [memberSearch, fetchAPI, groupDetails]);
+
+  const loadSentInvitations = useCallback(async () => {
+    try {
+      const data = await fetchAPI('/crews/invitations/sent');
+      setSentInvitations(Array.isArray(data) ? data : []);
+    } catch (e) { console.error('Failed to load sent invitations:', e); }
+  }, [fetchAPI]);
+
+  useEffect(() => { loadSentInvitations(); }, [loadSentInvitations]);
 
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
@@ -124,12 +134,11 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: '100%' }}>
       {/* Group list */}
-      <div style={{
+      {(!isMobile || !selectedGroup) && <div style={{
         width: isMobile ? '100%' : '300px',
         borderRight: isMobile ? 'none' : '1px solid var(--border-subtle)',
-        borderBottom: isMobile ? '1px solid var(--border-subtle)' : 'none',
         display: 'flex', flexDirection: 'column',
-        maxHeight: isMobile ? '300px' : 'none',
+        flex: isMobile ? 1 : undefined,
       }}>
         <div style={{ padding: '16px', borderBottom: '1px solid var(--border-subtle)' }}>
           <button onClick={() => setShowNewGroup(true)} style={{
@@ -160,10 +169,10 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Crew details */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {(!isMobile || selectedGroup) && <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!selectedGroup ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--border-primary)' }}>
             <div style={{ textAlign: 'center' }}>
@@ -174,7 +183,15 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
         ) : !groupDetails ? (
           <LoadingSpinner />
         ) : (
-          <>
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {isMobile && (
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
+                <button onClick={() => setSelectedGroup(null)} style={{
+                  background: 'none', border: 'none', color: 'var(--accent-amber)',
+                  cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.85rem', padding: 0,
+                }}>← Crews</button>
+              </div>
+            )}
             <div style={{
               padding: '20px', borderBottom: '1px solid var(--border-subtle)',
               background: 'linear-gradient(90deg, var(--bg-surface), var(--bg-hover), var(--bg-surface))',
@@ -244,7 +261,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
               )}
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 20px' }}>
+            <div style={{ padding: '0 20px 20px' }}>
               {groupDetails.members?.map(member => (
                 <div key={member.id} style={{
                   padding: '12px', marginTop: '8px',
@@ -273,10 +290,49 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
                   )}
                 </div>
               ))}
+
+              {/* Per-crew pending invitations */}
+              {(() => {
+                const crewInvitations = sentInvitations.filter(inv => inv.group_id === selectedGroup);
+                if (crewInvitations.length === 0) return null;
+                return (
+                  <div style={{ marginTop: '20px' }}>
+                    <GlowText color="var(--accent-amber)" size="0.9rem">PENDING INVITATIONS</GlowText>
+                    {crewInvitations.map(inv => (
+                      <div key={inv.id} style={{
+                        padding: '12px', marginTop: '8px',
+                        background: 'linear-gradient(135deg, var(--bg-surface), var(--bg-hover))',
+                        border: '1px solid var(--accent-amber)30',
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <Avatar user={{ avatar: inv.invited_avatar, display_name: inv.invited_display_name, handle: inv.invited_handle }} size={36} />
+                          <div>
+                            <div style={{ color: 'var(--text-primary)' }}>{inv.invited_display_name || inv.invited_handle || 'Unknown User'}</div>
+                            <div style={{ color: 'var(--accent-amber)', fontSize: '0.7rem' }}>Pending</div>
+                          </div>
+                        </div>
+                        <button onClick={async () => {
+                          try {
+                            await fetchAPI(`/crews/invitations/${inv.id}`, { method: 'DELETE' });
+                            showToast('Crew invitation cancelled', 'info');
+                            loadSentInvitations();
+                          } catch (err) {
+                            showToast(err.message || formatError('Failed to cancel invitation'), 'error');
+                          }
+                        }} style={{
+                          padding: '4px 8px', background: 'transparent', border: '1px solid var(--border-primary)',
+                          color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.7rem', fontFamily: 'monospace',
+                        }}>CANCEL</button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
-          </>
+          </div>
         )}
-      </div>
+      </div>}
 
       {/* New Group Modal */}
       {showNewGroup && (
@@ -330,7 +386,7 @@ const GroupsView = ({ groups, fetchAPI, showToast, onGroupsChange, groupInvitati
       {/* Invite to Group Modal */}
       <InviteToGroupModal
         isOpen={showInviteModal}
-        onClose={() => setShowInviteModal(false)}
+        onClose={() => { setShowInviteModal(false); loadSentInvitations(); }}
         group={groupDetails}
         contacts={contacts || []}
         fetchAPI={fetchAPI}

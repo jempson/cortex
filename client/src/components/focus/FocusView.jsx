@@ -2,9 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useE2EE } from '../../../e2ee-context.jsx';
 import { useSwipeGesture } from '../../hooks/useSwipeGesture.js';
 import { SUCCESS, EMPTY, formatError, CONFIRM_DIALOG } from '../../../messages.js';
-import { PRIVACY_LEVELS, BASE_URL } from '../../config/constants.js';
+import { PRIVACY_LEVELS, API_URL, BASE_URL } from '../../config/constants.js';
 import { Avatar, GlowText, LoadingSpinner } from '../ui/SimpleComponents.jsx';
+import { storage } from '../../utils/storage.js';
 import Message from '../messages/Message.jsx';
+import MessageComposer from '../compose/MessageComposer.jsx';
+import GifSearchModal from '../search/GifSearchModal.jsx';
 
 const FocusView = ({
   wave,
@@ -30,15 +33,15 @@ const FocusView = ({
   const initialPing = currentFocus?.ping;
 
   const [replyingTo, setReplyingTo] = useState(null);
-  const [newMessage, setNewMessage] = useState('');
   const [collapsed, setCollapsed] = useState({});
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editContent, setEditContent] = useState('');
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [livePing, setLivePing] = useState(initialPing); // Live data that updates
+  const [uploading, setUploading] = useState(false);
+  const [showGifSearch, setShowGifSearch] = useState(false);
   const containerRef = useRef(null);
   const messagesRef = useRef(null);
-  const textareaRef = useRef(null);
+  const composerRef = useRef(null);
   const lastTypingSentRef = useRef(null);
 
   // Swipe-back gesture for mobile navigation
@@ -173,28 +176,95 @@ const FocusView = ({
   // Handle reply - set the target and focus the textarea
   const handleReply = (message) => {
     setReplyingTo(message);
-    // Focus the textarea after state updates
     setTimeout(() => {
-      textareaRef.current?.focus();
+      composerRef.current?.focus();
     }, 0);
   };
 
-  const handleSend = async () => {
-    if (!newMessage.trim() || !wave?.id) return;
+  const handleSend = async (content) => {
+    if (!content?.trim() || !wave?.id) return;
 
     try {
       const parentId = replyingTo?.id || focusedPing?.id;
       await fetchAPI('/pings', {
         method: 'POST',
-        body: { wave_id: wave.id, parent_id: parentId, content: newMessage }
+        body: { wave_id: wave.id, parent_id: parentId, content }
       });
-      setNewMessage('');
       setReplyingTo(null);
       showToast(SUCCESS.pingSent, 'success');
-      // Immediately refresh to show the new ping
       fetchFreshData();
     } catch (err) {
       showToast(err.message || formatError('Failed to send'), 'error');
+    }
+  };
+
+  const handleImageUpload = async (file) => {
+    if (!file) return;
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      showToast('Invalid file type. Allowed: jpg, png, gif, webp', 'error');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('File too large. Maximum size is 10MB', 'error');
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const token = storage.getToken();
+      const response = await fetch(`${API_URL}/uploads`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Upload failed');
+      }
+      const data = await response.json();
+      composerRef.current?.appendMessage(data.url);
+      composerRef.current?.focus();
+      showToast('Image uploaded', 'success');
+    } catch (err) {
+      showToast(err.message || formatError('Failed to upload image'), 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+    const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (imageTypes.includes(file.type)) { handleImageUpload(file); return; }
+    if (file.size > 25 * 1024 * 1024) {
+      showToast('File too large. Maximum size is 25MB', 'error');
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = storage.getToken();
+      const response = await fetch(`${API_URL}/uploads/file`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Upload failed');
+      }
+      const data = await response.json();
+      const marker = `[file:${data.filename}:${data.size}]${data.url}`;
+      composerRef.current?.appendMessage(marker);
+      composerRef.current?.focus();
+      showToast('File attached', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to upload file', 'error');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -556,158 +626,39 @@ const FocusView = ({
         background: 'var(--bg-elevated)',
         padding: isMobile ? '12px' : '16px',
       }}>
-        {replyingTo && (
-          <div style={{
-            marginBottom: '8px',
-            padding: '8px 12px',
-            background: 'var(--bg-hover)',
-            border: '1px solid var(--border-primary)',
-            borderLeft: `3px solid ${config.color}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '8px',
-          }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginBottom: '2px' }}>
-                Replying to {replyingTo.sender_name}
-              </div>
-              <div style={{
-                color: 'var(--text-muted)',
-                fontSize: '0.75rem',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-              }}>
-                {replyingTo.content?.replace(/<[^>]*>/g, '').substring(0, 50)}...
-              </div>
-            </div>
-            <button
-              onClick={() => setReplyingTo(null)}
-              style={{
-                padding: '4px 8px',
-                background: 'transparent',
-                border: '1px solid var(--text-dim)',
-                color: 'var(--text-dim)',
-                cursor: 'pointer',
-                fontFamily: 'monospace',
-                fontSize: '0.7rem',
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-          <div style={{ flex: 1, position: 'relative' }}>
-            <textarea
-              ref={textareaRef}
-              value={newMessage}
-              onChange={(e) => {
-                setNewMessage(e.target.value);
-                sendTypingIndicator();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}...` : 'Type a ping... (Shift+Enter for new line)'}
-              style={{
-                width: '100%',
-                minHeight: isMobile ? '50px' : '40px',
-                maxHeight: '150px',
-                padding: '10px 12px',
-                background: 'var(--bg-surface)',
-                border: `1px solid ${replyingTo ? config.color : 'var(--border-subtle)'}`,
-                color: 'var(--text-secondary)',
-                fontFamily: 'monospace',
-                fontSize: isMobile ? '0.95rem' : '0.85rem',
-                resize: 'vertical',
-              }}
-            />
-          </div>
-
-          {/* Emoji button */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              style={{
-                padding: isMobile ? '12px' : '10px',
-                minHeight: isMobile ? '44px' : 'auto',
-                background: showEmojiPicker ? 'var(--accent-amber)20' : 'transparent',
-                border: `1px solid ${showEmojiPicker ? 'var(--accent-amber)' : 'var(--border-primary)'}`,
-                color: showEmojiPicker ? 'var(--accent-amber)' : 'var(--text-dim)',
-                cursor: 'pointer',
-                fontSize: isMobile ? '1.1rem' : '1rem',
-              }}
-            >
-              {showEmojiPicker ? '✕' : '😀'}
-            </button>
-
-            {showEmojiPicker && (
-              <div style={{
-                position: 'absolute',
-                bottom: '100%',
-                right: 0,
-                marginBottom: '4px',
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-subtle)',
-                padding: '8px',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(8, 1fr)',
-                gap: '4px',
-                zIndex: 10,
-              }}>
-                {['😀', '😂', '❤️', '👍', '☝️', '👎', '🎉', '🤔', '😢', '😮', '🔥', '💯', '👏', '🙏', '💪', '✨', '🚀'].map(emoji => (
-                  <button
-                    key={emoji}
-                    onClick={() => {
-                      setNewMessage(prev => prev + emoji);
-                      setShowEmojiPicker(false);
-                      textareaRef.current?.focus();
-                    }}
-                    style={{
-                      width: '32px',
-                      height: '32px',
-                      background: 'transparent',
-                      border: '1px solid var(--border-subtle)',
-                      cursor: 'pointer',
-                      fontSize: '1.1rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Send button */}
-          <button
-            onClick={handleSend}
-            disabled={!newMessage.trim()}
-            style={{
-              padding: isMobile ? '12px 20px' : '10px 16px',
-              minHeight: isMobile ? '44px' : 'auto',
-              background: newMessage.trim() ? 'var(--accent-green)20' : 'transparent',
-              border: `1px solid ${newMessage.trim() ? 'var(--accent-green)' : 'var(--border-primary)'}`,
-              color: newMessage.trim() ? 'var(--accent-green)' : 'var(--text-muted)',
-              cursor: newMessage.trim() ? 'pointer' : 'not-allowed',
-              fontFamily: 'monospace',
-              fontSize: isMobile ? '0.85rem' : '0.75rem',
-              fontWeight: 600,
-            }}
-          >
-            SEND
-          </button>
-        </div>
+        <MessageComposer
+          ref={composerRef}
+          participants={participants}
+          contacts={contacts}
+          currentUser={currentUser}
+          isMobile={isMobile}
+          onSend={handleSend}
+          onTyping={sendTypingIndicator}
+          placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}...` : 'Type a ping... (Shift+Enter for new line, @ to mention)'}
+          replyingTo={replyingTo}
+          onCancelReply={() => setReplyingTo(null)}
+          uploading={uploading}
+          onGifClick={() => setShowGifSearch(true)}
+          onImageUpload={(file) => handleImageUpload(file)}
+          onFileUpload={(file) => handleFileUpload(file)}
+          onCameraClick={null}
+          showMoreMenu={false}
+          compact
+        />
       </div>
+
+      {showGifSearch && (
+        <GifSearchModal
+          isOpen={showGifSearch}
+          onClose={() => setShowGifSearch(false)}
+          onSelect={(gifUrl) => {
+            composerRef.current?.appendMessage(gifUrl);
+            setShowGifSearch(false);
+          }}
+          fetchAPI={fetchAPI}
+          isMobile={isMobile}
+        />
+      )}
     </div>
   );
 };
