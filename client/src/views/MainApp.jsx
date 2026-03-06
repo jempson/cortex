@@ -502,6 +502,13 @@ function MainApp({ sharePingId }) {
       console.log('🔌 [WS] Received message:', data.type, data);
     }
 
+    // Account moderated — show reason and force logout (v2.37.0)
+    if (data.type === 'account_moderated') {
+      showToastMsg(`Account ${data.status}: ${data.reason || 'Contact an administrator'}`, 'error');
+      setTimeout(() => logout?.(), 2000);
+      return;
+    }
+
     // Handle ping/wave read events - these are always followed by unread_count_update event
     // Don't call loadWaves() here to avoid duplicate API calls and race conditions
     if (data.type === 'ping_read' || data.type === 'message_read' || data.type === 'wave_read') {
@@ -765,7 +772,7 @@ function MainApp({ sharePingId }) {
         [waveId]: prev[waveId] ? { ...prev[waveId], participants } : prev[waveId]
       }));
     }
-  }, [loadWaves, selectedWave, showToastMsg, user, waves, openWaveTab, closeTab, openTabs, activeTabId, setActiveView, fetchAPI, watchPartyPlayer]);
+  }, [loadWaves, selectedWave, showToastMsg, user, waves, openWaveTab, closeTab, openTabs, activeTabId, setActiveView, fetchAPI, watchPartyPlayer, logout]);
 
   const { connected: wsConnected, sendMessage: sendWSMessage, serverVersion } = useWebSocket(token, handleWSMessage);
 
