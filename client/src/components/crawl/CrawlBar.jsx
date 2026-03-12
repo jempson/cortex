@@ -263,20 +263,48 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false, 
 
   // System Alerts (from admins) - displayed first, highest priority
   const alertPriorityConfig = {
-    critical: { icon: '🚨', color: 'var(--accent-orange)' },
-    warning: { icon: '⚠️', color: 'var(--accent-amber)' },
-    info: { icon: 'ℹ️', color: 'var(--accent-teal)' }
+    critical: { icon: '🚨', color: 'var(--accent-orange)', showLabel: true },
+    warning: { icon: '⚠️', color: 'var(--accent-amber)', showLabel: true },
+    info: { icon: 'ℹ️', color: 'var(--accent-teal)', showLabel: true },
+    celebration: { icon: '', color: 'var(--accent-purple)', showLabel: false },
   };
 
+  // Holiday icon images — place .png files in client/public/holidays/{key}.png
+  const holidayIconKeys = ['newYear', 'valentines', 'elderxeke', 'stPatricks', 'easter', 'independenceDay', 'halloween', 'thanksgiving', 'christmas', 'hanukkah'];
+
   if (data.alerts?.enabled && data.alerts?.data?.length > 0) {
-    // Sort by priority (critical first, then warning, then info)
-    const priorityOrder = { critical: 0, warning: 1, info: 2 };
+    // Sort by priority (critical first, then warning, then info/celebration)
+    const priorityOrder = { critical: 0, warning: 1, info: 2, celebration: 2 };
     const sortedAlerts = [...data.alerts.data].sort((a, b) =>
-      (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2)
+      (priorityOrder[a.priority] ?? 2) - (priorityOrder[b.priority] ?? 2)
     );
 
     sortedAlerts.forEach(alert => {
       const cfg = alertPriorityConfig[alert.priority] || alertPriorityConfig.info;
+
+      // For celebration alerts, resolve holiday icon from content tag or title match
+      let holidayIcon = null;
+      if (alert.priority === 'celebration') {
+        // Primary: extract holiday key from content tag [holiday:key]
+        if (alert.content) {
+          const match = alert.content.match(/\[holiday:(\w+)\]/);
+          if (match && holidayIconKeys.includes(match[1])) {
+            holidayIcon = `/holidays/${match[1]}.png`;
+          }
+        }
+        // Fallback: match holiday name in title against known keys (case-insensitive)
+        if (!holidayIcon) {
+          const holidayNameMap = { "new year": 'newYear', "valentine": 'valentines', "elderxeke": 'elderxeke', "patrick": 'stPatricks', "easter": 'easter', "independence": 'independenceDay', "halloween": 'halloween', "thanksgiving": 'thanksgiving', "christmas": 'christmas', "hanukkah": 'hanukkah' };
+          const titleLower = alert.title.toLowerCase();
+          for (const [name, key] of Object.entries(holidayNameMap)) {
+            if (titleLower.includes(name)) {
+              holidayIcon = `/holidays/${key}.png`;
+              break;
+            }
+          }
+        }
+      }
+
       items.push({
         type: 'system-alert',
         key: `system-alert-${alert.id}`,
@@ -289,9 +317,20 @@ const CrawlBar = ({ fetchAPI, enabled = true, userPrefs = {}, isMobile = false, 
             style={{
               cursor: 'pointer',
               color: cfg.color,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
             }}
           >
-            {cfg.icon} [{alert.priority.toUpperCase()}] {alert.title}
+            {holidayIcon && (
+              <img
+                src={holidayIcon}
+                alt=""
+                style={{ height: '1.1em', width: 'auto', verticalAlign: 'middle' }}
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            )}
+            {cfg.showLabel ? `${cfg.icon} [${alert.priority.toUpperCase()}] ${alert.title}` : alert.title}
             {alert.originNode && (
               <span style={{ fontSize: '0.7em', opacity: 0.7, marginLeft: '4px' }}>
                 (@{alert.originNode})
