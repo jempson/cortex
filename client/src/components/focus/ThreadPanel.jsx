@@ -124,12 +124,30 @@ const ThreadPanel = ({
     }
   }, [wave?.id, rootMessage?.id, fetchAPI, e2ee, decryptPingTree]);
 
+  // Track if user is at bottom before reload, so we can auto-scroll after
+  const wasAtBottomRef = useRef(true);
+
   // Refresh when reloadTrigger changes
   useEffect(() => {
     if (reloadTrigger > 0) {
+      const container = messagesRef.current;
+      if (container) {
+        wasAtBottomRef.current = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
+      }
       fetchFreshData();
     }
   }, [reloadTrigger, fetchFreshData]);
+
+  // Auto-scroll to bottom when liveRoot updates and user was at bottom
+  useEffect(() => {
+    if (wasAtBottomRef.current && messagesRef.current) {
+      setTimeout(() => {
+        if (messagesRef.current) {
+          messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+        }
+      }, 50);
+    }
+  }, [liveRoot]);
 
   const focusedRoot = liveRoot || rootMessage;
   const config = PRIVACY_LEVELS[wave?.privacy] || PRIVACY_LEVELS.private;
@@ -189,6 +207,7 @@ const ThreadPanel = ({
       });
       setReplyingTo(null);
       showToast(SUCCESS.pingSent, 'success');
+      wasAtBottomRef.current = true; // Always scroll to bottom after own send
       fetchFreshData();
     } catch (err) {
       showToast(err.message || formatError('Failed to send'), 'error');

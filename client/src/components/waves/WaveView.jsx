@@ -424,7 +424,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
       // Only save scroll position if not already pending restoration
       // (prevents overwriting correct position during race conditions)
       if (messagesRef.current && scrollPositionToRestore.current === null) {
-        scrollPositionToRestore.current = messagesRef.current.scrollTop;
+        const container = messagesRef.current;
+        const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
+        // Use Infinity sentinel to mean "scroll to bottom" after reload
+        scrollPositionToRestore.current = isAtBottom ? Infinity : container.scrollTop;
       }
       loadWave(true);
     }
@@ -436,7 +439,10 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     if (scrollPositionToRestore.current !== null && messagesRef.current) {
       // Set flag to suppress scroll handler during restoration
       userActionInProgressRef.current = true;
-      messagesRef.current.scrollTop = scrollPositionToRestore.current;
+      const target = scrollPositionToRestore.current === Infinity
+        ? messagesRef.current.scrollHeight
+        : scrollPositionToRestore.current;
+      messagesRef.current.scrollTop = target;
       scrollPositionToRestore.current = null;
       // Clear flag after scroll events have settled
       setTimeout(() => {
