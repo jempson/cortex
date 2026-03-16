@@ -290,7 +290,7 @@ self.addEventListener('notificationclick', (event) => {
             client.postMessage({
               type: 'navigate-to-wave',
               waveId: event.notification.data.waveId,
-              dropletId: event.notification.data.messageId
+              pingId: event.notification.data.messageId
             });
           }
           return client.focus();

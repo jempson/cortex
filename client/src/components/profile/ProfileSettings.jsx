@@ -1906,6 +1906,7 @@ const ProfileSettings = ({ user, fetchAPI, showToast, onUserUpdate, onLogout, fe
                 {[
                   { key: 'directMentions', label: '@MENTIONS', icon: '@', desc: 'When someone @mentions you' },
                   { key: 'replies', label: 'REPLIES', icon: '↩', desc: 'When someone replies to your ping' },
+                  { key: 'reactions', label: 'REACTIONS', icon: '♡', desc: 'When someone reacts to your ping' },
                   { key: 'waveActivity', label: 'WAVE ACTIVITY', icon: '◎', desc: 'New pings in your waves' },
                   { key: 'burstEvents', label: 'BURST EVENTS', icon: '◈', desc: 'When pings are burst to new waves' },
                 ].map(({ key, label, icon, desc }) => (

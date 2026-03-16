@@ -392,6 +392,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
   const scrollPositionToRestore = useRef(null);
   const lastTypingSentRef = useRef(null);
   const hasScrolledToUnreadRef = useRef(false);
+  const scrollToAroundAttemptedRef = useRef(null); // Track around-reload to prevent infinite loops
   const userActionInProgressRef = useRef(false); // Suppress WebSocket reloads during user actions
 
   useEffect(() => {
@@ -399,6 +400,7 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     hasMarkedAsReadRef.current = false; // Reset when switching waves
     hasCheckedInitialPositionRef.current = false; // Reset initial position check for new wave
     hasScrolledToUnreadRef.current = false; // Reset scroll-to-unread for new wave
+    scrollToAroundAttemptedRef.current = null; // Reset around-reload guard for new wave
 
     // Notify server that user is viewing this wave (for notification suppression)
     if (sendWSMessage) {
@@ -509,7 +511,17 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     // Check if the ping exists in our data
     const pingInData = waveData.all_messages?.some(m => m.id === scrollToMessageId);
     if (!pingInData) {
-      console.log(`⚠️ Target ping ${scrollToMessageId} not found in wave data (${waveData.all_messages?.length || 0} messages loaded)`);
+      // Only attempt the around-reload once per target to prevent infinite loops
+      if (scrollToAroundAttemptedRef.current !== scrollToMessageId) {
+        scrollToAroundAttemptedRef.current = scrollToMessageId;
+        console.log(`⚠️ Target ping ${scrollToMessageId} not in loaded data, reloading with around parameter...`);
+        loadWave(false, { around: scrollToMessageId });
+        return; // The effect will re-run when waveData updates with the target ping loaded
+      }
+      // Already tried and ping still not found — it may have been deleted
+      console.log(`❌ Target ping ${scrollToMessageId} not found even after around-reload, giving up`);
+      onScrollToMessageComplete?.();
+      return;
     }
 
     // Wait for render to complete, with multiple retries
@@ -742,14 +754,15 @@ const WaveView = ({ wave, onBack, fetchAPI, showToast, currentUser, groups, onWa
     }
   }, [newMessage]);
 
-  const loadWave = async (isRefresh = false) => {
+  const loadWave = async (isRefresh = false, { around } = {}) => {
     // Only show loading spinner on initial load, not on refresh
     // This prevents scroll position from being lost when the container is unmounted
     if (!isRefresh) {
       setLoading(true);
     }
     try {
-      const data = await fetchAPI(`/waves/${wave.id}`);
+      const query = around ? `?around=${encodeURIComponent(around)}` : '';
+      const data = await fetchAPI(`/waves/${wave.id}${query}`);
       console.log('Wave API response:', data);
 
       // Ensure required fields exist with defaults
