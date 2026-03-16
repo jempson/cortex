@@ -4,6 +4,7 @@ import { EMPTY } from '../../../messages.js';
 const NOTIFICATION_TYPES = {
   direct_mention: { icon: '@', color: 'var(--accent-amber)', label: 'Mentioned you' },
   reply: { icon: '↩', color: 'var(--accent-teal)', label: 'Replied to you' },
+  reaction: { icon: '♡', color: 'var(--accent-pink, #ff6b9d)', label: 'Reacted to your message' },
   wave_activity: { icon: '◎', color: 'var(--accent-green)', label: 'Wave activity' },
   burst: { icon: '◈', color: 'var(--accent-purple)', label: 'Burst' },
   system: { icon: '⚡', color: 'var(--accent-orange)', label: 'System' },

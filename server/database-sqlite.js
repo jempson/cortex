@@ -6255,16 +6255,18 @@ export class DatabaseSQLite {
     if (!reactions[emoji]) reactions[emoji] = [];
 
     const userIndex = reactions[emoji].indexOf(userId);
+    let added = false;
     if (userIndex > -1) {
       reactions[emoji].splice(userIndex, 1);
       if (reactions[emoji].length === 0) delete reactions[emoji];
     } else {
       reactions[emoji].push(userId);
+      added = true;
     }
 
     this.db.prepare('UPDATE pings SET reactions = ? WHERE id = ?').run(JSON.stringify(reactions), dropletId);
 
-    return { success: true, dropletId, reactions, waveId: droplet.wave_id };
+    return { success: true, dropletId, reactions, waveId: droplet.wave_id, authorId: droplet.author_id, added };
   }
 
   // Backward compatibility alias
@@ -6490,21 +6492,21 @@ export class DatabaseSQLite {
 
   // ============ Notification Methods ============
 
-  createNotification({ userId, type, waveId, dropletId, actorId, title, body, preview, groupKey }) {
+  createNotification({ userId, type, waveId, pingId, actorId, title, body, preview, groupKey }) {
     const id = uuidv4();
     const now = new Date().toISOString();
 
     this.db.prepare(`
       INSERT INTO notifications (id, user_id, type, wave_id, ping_id, actor_id, title, body, preview, read, dismissed, push_sent, created_at, group_key)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
-    `).run(id, userId, type, waveId || null, dropletId || null, actorId || null, title, body || null, preview || null, now, groupKey || null);
+    `).run(id, userId, type, waveId || null, pingId || null, actorId || null, title, body || null, preview || null, now, groupKey || null);
 
     return {
       id,
       userId,
       type,
       waveId,
-      dropletId,
+      pingId,
       actorId,
       title,
       body,
@@ -6550,7 +6552,7 @@ export class DatabaseSQLite {
       userId: r.user_id,
       type: r.type,
       waveId: r.wave_id,
-      dropletId: r.ping_id,
+      pingId: r.ping_id,
       actorId: r.actor_id,
       title: r.title,
       body: r.body,
@@ -6625,12 +6627,12 @@ export class DatabaseSQLite {
   }
 
   // Mark all notifications for a specific ping as read for a user
-  markNotificationsReadByDroplet(dropletId, userId) {
+  markNotificationsReadByPing(pingId, userId) {
     const now = new Date().toISOString();
     const result = this.db.prepare(`
       UPDATE notifications SET read = 1, read_at = ?
       WHERE ping_id = ? AND user_id = ? AND read = 0
-    `).run(now, dropletId, userId);
+    `).run(now, pingId, userId);
     return result.changes;
   }
 
@@ -6699,7 +6701,7 @@ export class DatabaseSQLite {
     `).all(userId);
 
     return rows.map(r => ({
-      id: r.id, type: r.type, waveId: r.wave_id, dropletId: r.ping_id,
+      id: r.id, type: r.type, waveId: r.wave_id, pingId: r.ping_id,
       actorId: r.actor_id, title: r.title, body: r.body, preview: r.preview,
       createdAt: r.created_at, groupKey: r.group_key,
       actorHandle: r.actor_handle, actorDisplayName: r.actor_display_name,
