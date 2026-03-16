@@ -90,8 +90,8 @@ export const HOLIDAYS = {
     isActive: (date) => {
       const month = date.getMonth();
       const day = date.getDate();
-      // Feb 12-15
-      return month === 1 && day >= 12 && day <= 15;
+      // Feb 13-15
+      return month === 1 && day >= 13 && day <= 15;
     }
   },
 
@@ -114,8 +114,8 @@ export const HOLIDAYS = {
     isActive: (date) => {
       const month = date.getMonth();
       const day = date.getDate();
-      // Mar 15-18
-      return month === 2 && day >= 15 && day <= 18;
+      // Mar 16-18
+      return month === 2 && day >= 16 && day <= 18;
     }
   },
 

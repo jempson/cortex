@@ -2398,13 +2398,13 @@ class Database {
   }
 
   // === Notification Methods ===
-  createNotification({ userId, type, waveId, dropletId, actorId, title, body, preview, groupKey }) {
+  createNotification({ userId, type, waveId, pingId, actorId, title, body, preview, groupKey }) {
     const notification = {
       id: uuidv4(),
       userId,
       type,
       waveId: waveId || null,
-      dropletId: dropletId || null,
+      pingId: pingId || null,
       actorId: actorId || null,
       title,
       body: body || null,
@@ -2501,13 +2501,13 @@ class Database {
     return true;
   }
 
-  // Mark all notifications for a specific droplet as read for a user
-  markNotificationsReadByDroplet(dropletId, userId) {
+  // Mark all notifications for a specific ping as read for a user
+  markNotificationsReadByPing(pingId, userId) {
     const now = new Date().toISOString();
     let count = 0;
 
     for (const n of this.notifications.notifications) {
-      if (n.dropletId === dropletId && n.userId === userId && !n.read) {
+      if (n.pingId === pingId && n.userId === userId && !n.read) {
         n.read = true;
         n.readAt = now;
         count++;
@@ -14993,15 +14993,42 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
     ? db.getDropletsForBreakoutWave(wave.id, req.user.userId)
     : db.getMessagesForWave(wave.id, req.user.userId);
 
-  // Pagination: limit initial droplets, return most recent ones
+  // Pagination: limit initial messages, return most recent or centered on target
   const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const around = req.query.around; // Ping ID to center the window around
   const totalDroplets = allMessages.length;
   const hasMoreDroplets = totalDroplets > limit;
 
-  // Get the most recent droplets (sorted by created_at, take last N)
-  const limitedDroplets = hasMoreDroplets
-    ? allMessages.slice(-limit) // Take last 'limit' droplets (most recent)
-    : allMessages;
+  let limitedDroplets;
+  let hasOlderMessages = false;
+  let hasNewerMessages = false;
+
+  if (around && hasMoreDroplets) {
+    // Center the message window around the target ping
+    const targetIndex = allMessages.findIndex(m => m.id === around);
+    if (targetIndex !== -1) {
+      const half = Math.floor(limit / 2);
+      let start = Math.max(0, targetIndex - half);
+      let end = start + limit;
+      if (end > allMessages.length) {
+        end = allMessages.length;
+        start = Math.max(0, end - limit);
+      }
+      limitedDroplets = allMessages.slice(start, end);
+      hasOlderMessages = start > 0;
+      hasNewerMessages = end < allMessages.length;
+    } else {
+      // Target not found, fall back to most recent
+      limitedDroplets = allMessages.slice(-limit);
+      hasOlderMessages = hasMoreDroplets;
+    }
+  } else {
+    // Default: most recent messages
+    limitedDroplets = hasMoreDroplets
+      ? allMessages.slice(-limit)
+      : allMessages;
+    hasOlderMessages = hasMoreDroplets;
+  }
 
   // Build droplet tree - treat droplets whose parent isn't in the set as root droplets
   function buildDropletTree(droplets, parentId = null) {
@@ -15028,12 +15055,13 @@ app.get('/api/waves/:id', authenticateToken, (req, res) => {
     droplets: buildDropletTree(limitedDroplets),
     all_droplets: limitedDroplets,
     total_droplets: totalDroplets,
-    hasMoreDroplets,
+    hasMoreDroplets: hasOlderMessages,
+    hasNewerMessages,
     // Legacy backward compatibility
     messages: buildDropletTree(limitedDroplets),
     all_messages: limitedDroplets,
     total_messages: totalDroplets,
-    hasMoreMessages: hasMoreDroplets,
+    hasMoreMessages: hasOlderMessages,
     group_name: group?.name,
     can_edit: wave.createdBy === req.user.userId,
   });
@@ -17057,11 +17085,11 @@ app.post('/api/droplets', authenticateToken, (req, res) => {
   // Create in-app notifications for mentions, replies, and wave activity
   const author = db.findUserById(req.user.userId);
   if (author) {
-    createDropletNotifications(droplet, wave, author);
+    createPingNotifications(droplet, wave, author);
   }
 
   // Broadcast to connected users via WebSocket only
-  // Push notifications are now handled by createDropletNotifications() for mentions/replies
+  // Push notifications are now handled by createPingNotifications() for mentions/replies
   broadcastToWave(waveId, { type: 'new_droplet', data: droplet });
 
   // Also broadcast legacy event for backward compatibility
@@ -17238,6 +17266,43 @@ app.post('/api/droplets/:id/react', authenticateToken, (req, res) => {
     waveId: result.waveId,
   });
 
+  // Notify the droplet author when someone reacts (not when removing, not self-reactions)
+  if (result.added && result.authorId && result.authorId !== req.user.userId) {
+    if (shouldCreateNotification(result.authorId, 'reaction')) {
+      const reactor = db.findUserById(req.user.userId);
+      const wave = db.getWave ? db.getWave(result.waveId) : null;
+      const waveTitle = wave?.title || 'a wave';
+      const reactorName = reactor?.displayName || reactor?.handle || 'Someone';
+
+      const notification = db.createNotification({
+        userId: result.authorId,
+        type: 'reaction',
+        waveId: result.waveId,
+        pingId: dropletId,
+        actorId: req.user.userId,
+        title: `${reactorName} reacted ${emoji}`,
+        body: `reacted ${emoji} to your message`,
+        groupKey: `reaction:${result.waveId}:${dropletId}`
+      });
+
+      // Send push notification
+      db.markNotificationPushSent(notification.id);
+      sendPushNotification(result.authorId, {
+        type: 'reaction',
+        title: notification.title,
+        body: `reacted ${emoji} to your message in ${waveTitle}`,
+        url: `/?wave=${result.waveId}`,
+        waveId: result.waveId,
+        messageId: dropletId,
+        senderId: req.user.userId,
+        senderHandle: reactor?.handle,
+      });
+
+      // Broadcast in-app notification via WebSocket
+      broadcastToUser(result.authorId, { type: 'notification', notification });
+    }
+  }
+
   res.json({ success: true, reactions: result.reactions });
 });
 
@@ -17258,7 +17323,7 @@ app.post('/api/droplets/:id/read', authenticateToken, (req, res) => {
   }
 
   // Also mark any notifications for this droplet as read
-  const notificationsMarked = db.markNotificationsReadByDroplet(dropletId, userId);
+  const notificationsMarked = db.markNotificationsReadByPing(dropletId, userId);
   if (notificationsMarked > 0) {
     console.log(`🔔 Marked ${notificationsMarked} notification(s) as read for droplet ${dropletId}`);
   }
@@ -17470,7 +17535,7 @@ app.post('/api/messages/:id/read', authenticateToken, deprecatedEndpoint, (req, 
   }
 
   // Also mark any notifications for this droplet as read
-  const notificationsMarked = db.markNotificationsReadByDroplet(messageId, userId);
+  const notificationsMarked = db.markNotificationsReadByPing(messageId, userId);
   if (notificationsMarked > 0) {
     console.log(`🔔 Marked ${notificationsMarked} notification(s) as read for message ${messageId}`);
     broadcast({ type: 'unread_count_update', userId });
@@ -18107,6 +18172,7 @@ const DEFAULT_NOTIF_PREFS = {
   enabled: true,
   directMentions: 'always',
   replies: 'always',
+  reactions: 'always',
   waveActivity: 'app_closed',
   burstEvents: 'app_closed',
   soundEnabled: false,
@@ -18128,6 +18194,7 @@ function shouldCreateNotification(userId, notificationType) {
   const prefKeyMap = {
     direct_mention: 'directMentions',
     reply: 'replies',
+    reaction: 'reactions',
     wave_activity: 'waveActivity',
     ripple: 'burstEvents',
   };
@@ -18157,8 +18224,8 @@ function extractMentions(content) {
   return [...new Set(mentions)]; // Remove duplicates
 }
 
-// Create notifications for a new droplet
-function createDropletNotifications(droplet, wave, author) {
+// Create notifications for a new ping
+function createPingNotifications(droplet, wave, author) {
   const notificationsToSend = [];
   const contentPreview = droplet.content.replace(/<[^>]*>/g, '').substring(0, 100);
 
@@ -18183,7 +18250,7 @@ function createDropletNotifications(droplet, wave, author) {
         userId: mentionedUser.id,
         type: 'direct_mention',
         waveId: wave.id,
-        dropletId: droplet.id,
+        pingId: droplet.id,
         actorId: author.id,
         title: `${author.displayName} mentioned you`,
         body: `in ${wave.title}`,
@@ -18222,7 +18289,7 @@ function createDropletNotifications(droplet, wave, author) {
           userId: parentDroplet.authorId,
           type: 'reply',
           waveId: wave.id,
-          dropletId: droplet.id,
+          pingId: droplet.id,
           actorId: author.id,
           title: `${author.displayName} replied to you`,
           body: `in ${wave.title}`,
@@ -18277,9 +18344,9 @@ function createDropletNotifications(droplet, wave, author) {
       userId: participant.id,
       type: 'wave_activity',
       waveId: wave.id,
-      dropletId: droplet.id,
+      pingId: droplet.id,
       actorId: author.id,
-      title: `New droplet in ${wave.title}`,
+      title: `New message in ${wave.title}`,
       body: `from ${author.displayName}`,
       preview: contentPreview,
       groupKey: `wave:${wave.id}`
