@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { PRIVACY_LEVELS, THREAD_DEPTH_LIMIT, canAccess } from '../../config/constants.js';
 import { Avatar, PrivacyBadge } from '../ui/SimpleComponents.jsx';
 import ImageLightbox from '../ui/ImageLightbox.jsx';
@@ -35,17 +35,6 @@ const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showMessageMenu, setShowMessageMenu] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
-
-  // Close menus on outside click
-  useEffect(() => {
-    if (!showMessageMenu && !showReactionPicker) return;
-    const handleOutsideClick = () => {
-      setShowMessageMenu(false);
-      setShowReactionPicker(false);
-    };
-    document.addEventListener('click', handleOutsideClick);
-    return () => document.removeEventListener('click', handleOutsideClick);
-  }, [showMessageMenu, showReactionPicker]);
   const isUnread = !isDeleted && message.is_unread && message.author_id !== currentUserId;
   const isReply = depth > 0 && message.parentId;
   const isAtDepthLimit = depth >= THREAD_DEPTH_LIMIT;
@@ -127,6 +116,13 @@ const Message = ({ message, depth = 0, onReply, onDelete, onEdit, onSaveEdit, on
 
   return (
     <div data-message-id={message.id}>
+      {/* Overlay to catch outside clicks when a menu is open — must intercept before message container stopPropagation */}
+      {(showMessageMenu || showReactionPicker) && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+          onClick={(e) => { e.stopPropagation(); setShowMessageMenu(false); setShowReactionPicker(false); }}
+        />
+      )}
       <div
         onClickCapture={isMoveTarget ? (e) => { e.stopPropagation(); e.preventDefault(); onCompleteMove(message.id); } : undefined}
         onClick={handleMessageClick}
