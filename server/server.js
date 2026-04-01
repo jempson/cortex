@@ -6525,6 +6525,7 @@ const DEFAULT_NOTIFICATION_PREFS = {
   enabled: true,
   directMentions: 'always',      // always | app_closed | never
   replies: 'always',
+  reactions: 'always',
   waveActivity: 'app_closed',
   burstEvents: 'app_closed',
   soundEnabled: false,
@@ -6558,6 +6559,9 @@ app.put('/api/notifications/preferences', authenticateToken, (req, res) => {
   }
   if (req.body.replies && validLevels.includes(req.body.replies)) {
     updates.replies = req.body.replies;
+  }
+  if (req.body.reactions && validLevels.includes(req.body.reactions)) {
+    updates.reactions = req.body.reactions;
   }
   if (req.body.waveActivity && validLevels.includes(req.body.waveActivity)) {
     updates.waveActivity = req.body.waveActivity;
