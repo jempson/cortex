@@ -207,18 +207,20 @@ async function createWindow() {
     mainWindow.show();
   });
 
-  // CORS: the app is served from app://-  but makes API calls to the remote
-  // server. Inject Access-Control-Allow-Origin into API responses so the
-  // browser's CORS check passes. Only applies to HTTPS responses (not local
-  // app:// assets which go through electron-serve directly).
+  // CORS: the app is served from app://- but makes API calls to the remote
+  // server. Inject Access-Control-Allow-Origin into API responses that don't
+  // already have the header — avoids producing the duplicate-value error that
+  // browsers reject when the server also sends its own ACAO header.
   if (!isDev) {
     mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Access-Control-Allow-Origin': ['app://-'],
-        },
-      });
+      const headers = { ...details.responseHeaders };
+      const hasCors = Object.keys(headers).some(
+        k => k.toLowerCase() === 'access-control-allow-origin'
+      );
+      if (!hasCors) {
+        headers['Access-Control-Allow-Origin'] = ['app://-'];
+      }
+      callback({ responseHeaders: headers });
     });
   }
 
