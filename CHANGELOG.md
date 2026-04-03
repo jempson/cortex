@@ -5,6 +5,19 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.45.1] - 2026-04-03
+
+### Fixed
+
+#### Easter Overlay Emoji Rendering on Linux
+The Easter holiday overlay (`PastelOverlay.jsx`) used three Unicode codepoints that rendered as Japanese symbols instead of the intended glyphs on Linux:
+
+- `0x1F95A` (egg) → `0x1F423` 🐣 hatching chick
+- `0x1F98B` (butterfly) → `0x1F407` 🐇 rabbit
+- `0x2740` (white flower) → `0x1F338` 🌸 cherry blossom
+
+---
+
 ## [2.45.0] - 2026-04-02
 
 ### Changed
