@@ -5,6 +5,19 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.45.2] - 2026-04-07
+
+### Fixed
+
+#### Session Duration Preference Not Persisted After Logout
+Users who selected a 7-day or 30-day session at login found the dropdown reset to "24 hours" on every subsequent login, causing unexpected daily logouts.
+
+- **Root cause (v2.44.0 regression):** Before v2.44.0, `JWT_EXPIRES_IN=7d` in the server config overrode all session requests — everyone accidentally received 7-day tokens regardless of what the dropdown said. v2.44.0 correctly honoured the user's selection, but the login form always initialised with `'24h'` and `removeSessionStart()` cleared the stored duration on logout. Users who never changed the dropdown kept requesting 24-hour tokens.
+- **Fix (`storage.js`):** `removeSessionStart()` no longer deletes `farhold_session_duration`. The value now persists across logouts as a user preference.
+- **Fix (`LoginScreen.jsx`):** `sessionDuration` state initialises from `storage.getSessionDuration()` instead of the hardcoded `'24h'`. Returning users see their last-used duration pre-selected; first-time users still default to 24 hours.
+
+---
+
 ## [2.45.1] - 2026-04-03
 
 ### Fixed

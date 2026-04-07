@@ -50,7 +50,8 @@ export const storage = {
   },
   removeSessionStart: () => {
     localStorage.removeItem('farhold_session_start');
-    localStorage.removeItem('farhold_session_duration');
+    // Intentionally keep 'farhold_session_duration' — it doubles as a preference
+    // so the login form can pre-fill the user's last-used duration next time.
   },
   getSessionDuration: () => localStorage.getItem('farhold_session_duration') || '24h',
   // Server URL override (v2.30.0)
