@@ -90,7 +90,6 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h'; // Default 24 hours 
 
 // Valid session duration options (user-selectable at login)
 const SESSION_DURATIONS = {
-  '10m': 10 * 60 * 1000,   // TEST ONLY 
   '24h': 24 * 60 * 60 * 1000,      // 24 hours (default)
   '7d': 7 * 24 * 60 * 60 * 1000,   // 7 days
   '30d': 30 * 24 * 60 * 60 * 1000  // 30 days
