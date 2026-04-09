@@ -136,7 +136,10 @@ function AuthProvider({ children }) {
 
         if (remaining <= 0) {
           const expiredAgo = -remaining;
-          if (expiredAgo < GRACE_PERIOD_MS) {
+          const issued = getTokenIssuedAt(token);
+          const originalDurationMs = issued ? (expiry - issued) : GRACE_PERIOD_MS;
+          const graceMs = Math.min(GRACE_PERIOD_MS, originalDurationMs);
+          if (expiredAgo < graceMs) {
             // Within grace period — show re-auth overlay instead of logging out
             console.log('⏰ Session expired, grace period active.');
             setSessionExpired(true);

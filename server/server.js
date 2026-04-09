@@ -4720,7 +4720,9 @@ app.post('/api/auth/reauth', loginLimiter, async (req, res) => {
     }
 
     const expiredAgo = Date.now() - decoded.exp * 1000;
-    if (expiredAgo > REAUTH_GRACE_MS) {
+    const originalDurationMs = decoded.iat ? (decoded.exp - decoded.iat) * 1000 : REAUTH_GRACE_MS;
+    const graceMs = Math.min(REAUTH_GRACE_MS, originalDurationMs);
+    if (expiredAgo > graceMs) {
       return res.status(401).json({ error: 'Grace period has elapsed. Please log in again.', code: 'GRACE_EXPIRED' });
     }
 

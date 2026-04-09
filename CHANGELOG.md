@@ -5,6 +5,17 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.46.4] - 2026-04-09
+
+### Fixed
+
+#### Grace Period Disproportionate for Short Session Durations
+The re-authentication grace period was hardcoded at 1 hour on both client and server. For short sessions (e.g. a 10-minute test token) this produced a grace period six times longer than the session itself, making the grace period meaningless as a security boundary. Conversely, in any scenario where the grace window was never triggered correctly (e.g. due to the jti collision bug), users were hard-logged-out with no overlay.
+
+**Fix:** Grace period is now `min(1 hour, original session duration)`, derived from the token's `iat` and `exp` claims — available on both sides without any additional data. A 10-minute session gets a 10-minute grace period; 24h and longer sessions retain the 1-hour cap. Client (`AuthProvider.jsx`) and server (`reauth` endpoint) use the same formula, keeping them in sync.
+
+---
+
 ## [2.46.3] - 2026-04-09
 
 ### Fixed
