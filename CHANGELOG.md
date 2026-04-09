@@ -9,12 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-#### Concurrent Auto-Renewal Requests Causing Duplicate Session Records
-Under certain conditions (30-second expiry check interval, visibility change, and focus events firing close together), `autoRenewSession` could be invoked concurrently. Because the in-flight guard used React state (`isAutoRenewing`), which is updated asynchronously, multiple calls could pass the `if (isAutoRenewing) return` check before the state update propagated. Two concurrent renewal requests issued within the same second produce identical JWTs (same `userId`, `handle`, `iat`, `exp` payload → same hash), causing a UNIQUE constraint failure on `user_sessions.token_hash`. The error was already caught server-side so no session was corrupted, but the log noise indicated the underlying race.
+#### Instant Logout After Login When Session Duration Is Within the Warning Window
+Logging in with a short session duration (such as the `2m` test duration) caused an immediate logout. The root cause was a collision between the new login token and the token produced by an auto-renewal that fired before the first second elapsed.
 
-**Fix (`AuthProvider.jsx`):**
-- Added `isAutoRenewingRef` (`useRef`) as a synchronous in-flight guard — checked and set before any async work, preventing concurrent calls regardless of React's render cycle.
-- `isAutoRenewing` state is retained for the UI (suppressing the expiry warning modal) but removed from `autoRenewSession`'s `useCallback` deps and from the expiry effect's dependency array, preventing the interval and event listeners from being torn down and re-registered on every renewal cycle.
+**Root cause:** The proportional warning window is capped at a minimum of 5 minutes. A 2-minute session is therefore immediately inside the warning window the moment it is issued, so `autoRenewSession` fires within milliseconds of login. `jwt.sign` timestamps at second precision — if the renewal request arrives within the same second as the login, the signed payload (`userId`, `handle`, `iat`, `exp`) is byte-for-byte identical, producing the same JWT string. The renewal endpoint revokes the old token and then issues the "new" token — which is the same string. The client's token is now revoked. Every subsequent API request returns 401, logging the user out immediately.
+
+The same collision can occur between any two operations (two concurrent auto-renewals, login + renewal, etc.) that produce tokens within the same second.
+
+**Fix (`server.js`):** Added a `jti: crypto.randomUUID()` claim to every `jwt.sign` call (registration, login, refresh, silent renewal, grace-period reauth, MFA completion). A random UUID in the payload guarantees a unique token string regardless of when within a second the token is issued, eliminating the collision entirely.
+
+**Fix (`AuthProvider.jsx`):** Added `isAutoRenewingRef` (`useRef`) as a synchronous in-flight guard alongside the existing `isAutoRenewing` state. The state guard was async — multiple callers (expiry interval, `visibilitychange`, `focus`) could all pass before a state update propagated. The ref is checked and set synchronously before any async work, preventing concurrent renewal calls. `isAutoRenewing` state is retained for the UI (suppressing the expiry warning modal) but removed from `autoRenewSession`'s `useCallback` deps and the expiry effect's dependency array, preventing the interval and listeners from tearing down on every renewal cycle.
 
 ---
 

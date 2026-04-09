@@ -90,6 +90,7 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h'; // Default 24 hours 
 
 // Valid session duration options (user-selectable at login)
 const SESSION_DURATIONS = {
+  '10m': 10 * 60 * 1000,   // TEST ONLY 
   '24h': 24 * 60 * 60 * 1000,      // 24 hours (default)
   '7d': 7 * 24 * 60 * 60 * 1000,   // 7 days
   '30d': 30 * 24 * 60 * 60 * 1000  // 30 days
@@ -4471,7 +4472,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
       nodeName: 'Local', status: 'online',
     });
 
-    const token = jwt.sign({ userId: id, handle: user.handle }, JWT_SECRET, { expiresIn: sessionDuration });
+    const token = jwt.sign({ userId: id, handle: user.handle, jti: crypto.randomUUID() }, JWT_SECRET, { expiresIn: sessionDuration });
     console.log(`✅ New user registered: ${handle}`);
 
     // Create session for the new user
@@ -4562,7 +4563,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     // Check if user needs to change password (set by admin reset)
     const requirePasswordChange = db.requiresPasswordChange ? db.requiresPasswordChange(user.id) : false;
 
-    const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: sessionDuration });
+    const token = jwt.sign({ userId: user.id, handle: user.handle, jti: crypto.randomUUID() }, JWT_SECRET, { expiresIn: sessionDuration });
     console.log(`✅ User logged in: ${handle} with ${sessionDuration} session`);
 
     // Create session for the login
@@ -4646,7 +4647,7 @@ app.post('/api/auth/refresh', loginLimiter, authenticateToken, async (req, res) 
     }
 
     // Issue new token
-    const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: sessionDuration });
+    const token = jwt.sign({ userId: user.id, handle: user.handle, jti: crypto.randomUUID() }, JWT_SECRET, { expiresIn: sessionDuration });
     const session = createSession(user.id, token, req);
     console.log(`🔄 Session refreshed for: ${user.handle} with ${sessionDuration} session`);
 
@@ -4676,7 +4677,7 @@ app.post('/api/auth/renew', loginLimiter, authenticateToken, async (req, res) =>
     revokeSessionByToken(req.token);
 
     const newToken = jwt.sign(
-      { userId: req.user.userId, handle: req.user.handle },
+      { userId: req.user.userId, handle: req.user.handle, jti: crypto.randomUUID() },
       JWT_SECRET,
       { expiresIn: originalDurationSecs }
     );
@@ -4729,7 +4730,7 @@ app.post('/api/auth/reauth', loginLimiter, async (req, res) => {
 
     const sessionDuration = getSessionDuration(requestedDuration);
     const newToken = jwt.sign(
-      { userId: user.id, handle: user.handle },
+      { userId: user.id, handle: user.handle, jti: crypto.randomUUID() },
       JWT_SECRET,
       { expiresIn: sessionDuration }
     );
@@ -5628,7 +5629,7 @@ app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
     // Generate JWT token with session duration from challenge
     const sessionDuration = challenge.sessionDuration || '24h';
     const token = jwt.sign(
-      { userId: user.id, handle: user.handle },
+      { userId: user.id, handle: user.handle, jti: crypto.randomUUID() },
       JWT_SECRET,
       { expiresIn: sessionDuration }
     );
