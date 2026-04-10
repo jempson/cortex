@@ -5,7 +5,112 @@ All notable changes to Cortex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.46.0] - 2026-04-07
+## [2.46.8] - 2026-04-09
+
+### Fixed
+
+#### Wave Creator Token Permission Error
+Wave creators were blocked from creating bot tokens on their own waves with the error "Only the wave creator can manage tokens". The server was checking `wave.created_by` (snake_case) but `db.getWave()` → `rowToWave()` returns camelCase properties — so the field was `wave.createdBy`. The comparison always evaluated to `undefined !== userId` → `true`, blocking all token creation regardless of who the creator was. Fixed by updating all server-side `wave.created_by` checks to `wave.createdBy` (7 occurrences: bot token GET/POST/DELETE, and E2EE enable/migrate endpoints).
+
+#### Admin Panel Bots Black Screen
+Clicking "Create Bot" in the Bots & Webhooks admin panel caused a black screen. `BotsAdminPanel.jsx` referenced `<GlowText>` in the create modal and the API key modal but did not import it from `SimpleComponents.jsx`, causing a React render error. Fixed by adding `GlowText` to the import.
+
+---
+
+## [2.46.7] - 2026-04-09
+
+### Changed
+
+- Removed `10m` test session duration from server `SESSION_DURATIONS`, login form, and session expiry modal — testing complete.
+
+---
+
+## [2.46.6] - 2026-04-09
+
+### Fixed
+
+#### UI Reset on Silent Token Renewal
+After a successful silent renewal, the app briefly reset — the wave list re-fetched, the active wave reloaded, and any scroll position was lost. Two separate causes:
+
+1. **`fetchAPI` instability** — `token` was in `fetchAPI`'s `useCallback` dep array. Every renewal created a new `fetchAPI` reference, which caused every component with `fetchAPI` in its `useEffect` deps to re-run its data-fetch effect, reloading all content.
+
+2. **Redundant `/auth/me` call** — `setToken(newToken)` triggered `useEffect([token])` in `AuthProvider`, which called `/auth/me` and then `setUser()`. This was a wasted round-trip: the renewal response already contains fresh user data, which `autoRenewSession` had already applied via `setUser(data.user)`. The extra `setUser()` caused another context update, triggering a second wave of re-renders.
+
+**Fix (`useAPI.js`):** `token` moved out of `fetchAPI`'s dep array. Instead a `tokenRef` (`useEffect` + `useRef`) tracks the latest token. `fetchAPI`'s reference is now stable across renewals. The stale-401 detection (v2.46.5) continues to work because `requestToken` is still captured from the ref at call time and compared against `storage.getToken()`.
+
+**Fix (`AuthProvider.jsx`):** Added `tokenJustRenewedRef`. `autoRenewSession` sets the flag before calling `setToken`; `useEffect([token])` checks it on entry and exits early (skipping `/auth/me` and `setUser`) when the token change came from a renewal.
+
+---
+
+## [2.46.5] - 2026-04-09
+
+### Fixed
+
+#### Hard Logout on Stale 401 After Token Renewal
+After a successful silent renewal, in-flight API requests that were sent with the old token (wave polling, WebSocket reconnects, etc.) could arrive at the server after the old token was revoked. These returned a 401 with `"Session revoked"` — not `TOKEN_EXPIRED` — so `useAPI.js` called `logout()` immediately, hard-logging the user out despite the client already holding a valid new token. This was the primary cause of users being logged out right after a successful silent renewal.
+
+**Fix (`useAPI.js`):** At the start of each `fetchAPI` call the current token is captured as `requestToken`. On any 401 response, if `requestToken !== storage.getToken()`, the token was rotated during the request's flight — the 401 is stale and is dropped silently (the component receives the error but no logout is triggered). If the tokens match, the 401 is genuine and the existing handling applies (`TOKEN_EXPIRED` → grace period overlay, anything else → logout).
+
+---
+
+## [2.46.4] - 2026-04-09
+
+### Fixed
+
+#### Grace Period Disproportionate for Short Session Durations
+The re-authentication grace period was hardcoded at 1 hour on both client and server. For short sessions (e.g. a 10-minute test token) this produced a grace period six times longer than the session itself, making the grace period meaningless as a security boundary. Conversely, in any scenario where the grace window was never triggered correctly (e.g. due to the jti collision bug), users were hard-logged-out with no overlay.
+
+**Fix:** Grace period is now `min(1 hour, original session duration)`, derived from the token's `iat` and `exp` claims — available on both sides without any additional data. A 10-minute session gets a 10-minute grace period; 24h and longer sessions retain the 1-hour cap. Client (`AuthProvider.jsx`) and server (`reauth` endpoint) use the same formula, keeping them in sync.
+
+---
+
+## [2.46.3] - 2026-04-09
+
+### Fixed
+
+#### Instant Logout After Login When Session Duration Is Within the Warning Window
+Logging in with a short session duration (such as the `2m` test duration) caused an immediate logout. The root cause was a collision between the new login token and the token produced by an auto-renewal that fired before the first second elapsed.
+
+**Root cause:** The proportional warning window is capped at a minimum of 5 minutes. A 2-minute session is therefore immediately inside the warning window the moment it is issued, so `autoRenewSession` fires within milliseconds of login. `jwt.sign` timestamps at second precision — if the renewal request arrives within the same second as the login, the signed payload (`userId`, `handle`, `iat`, `exp`) is byte-for-byte identical, producing the same JWT string. The renewal endpoint revokes the old token and then issues the "new" token — which is the same string. The client's token is now revoked. Every subsequent API request returns 401, logging the user out immediately.
+
+The same collision can occur between any two operations (two concurrent auto-renewals, login + renewal, etc.) that produce tokens within the same second.
+
+**Fix (`server.js`):** Added a `jti: crypto.randomUUID()` claim to every `jwt.sign` call (registration, login, refresh, silent renewal, grace-period reauth, MFA completion). A random UUID in the payload guarantees a unique token string regardless of when within a second the token is issued, eliminating the collision entirely.
+
+**Fix (`server.js` — renewal order):** The silent renewal endpoint previously revoked the old token before sending the response. If the network dropped after the server logged "silently renewed" but before the client received the new token, the client was left holding a revoked token — causing a hard logout on the next request or on startup. The revocation now happens after `res.json()` is called, so if the response is lost in transit the old token remains valid and the client can retry or enter the grace-period re-auth overlay instead of being hard-logged-out.
+
+**Fix (`AuthProvider.jsx`):** Added `isAutoRenewingRef` (`useRef`) as a synchronous in-flight guard alongside the existing `isAutoRenewing` state. The state guard was async — multiple callers (expiry interval, `visibilitychange`, `focus`) could all pass before a state update propagated. The ref is checked and set synchronously before any async work, preventing concurrent renewal calls. `isAutoRenewing` state is retained for the UI (suppressing the expiry warning modal) but removed from `autoRenewSession`'s `useCallback` deps and the expiry effect's dependency array, preventing the interval and listeners from tearing down on every renewal cycle.
+
+---
+
+## [2.46.2] - 2026-04-09
+
+### Fixed
+
+#### Double Password Entry When E2EE Unlock Coincides with Grace-Period Session Expiry
+If a user's session expired while they were away and their E2EE passphrase also needed re-entry (e.g. after a page reload or PWA reopen), they were prompted for their password twice in succession — once in the E2EE `PassphraseUnlockModal` and again immediately after in the `SessionExpiryModal`. The two passwords are almost always identical (the E2EE passphrase defaults to the login password), making the double prompt purely redundant friction.
+
+**Fix (`E2EEAuthenticatedApp.jsx`):** When the `PassphraseUnlockModal` `onUnlock` callback completes successfully and `sessionExpired` is true, `reauth` is called concurrently with the same passphrase. If it succeeds, the grace-period re-auth is handled silently and `sessionExpired` is cleared before `SessionExpiryModal` ever renders. If it fails (passphrase differs from login password — an edge case), the `SessionExpiryModal` remains as the fallback with no change in behaviour.
+
+---
+
+## [2.46.1] - 2026-04-09
+
+### Fixed
+
+#### Electron Blank Screen with Spinner on Startup (Auth Check Timeout)
+After extended use — particularly when the Electron app had been running for ~24 hours and a silent session renewal had occurred — the app could become stuck on a blank screen showing only a partial loading spinner with nothing in the console. Force-reloading the renderer did not resolve it; clearing app data was the only recovery.
+
+**Root cause:** The `/auth/me` fetch in `AuthProvider.jsx` had no timeout and no `AbortController`. If the fetch hung indefinitely (no response, no rejection) — which can happen in Electron after sleep/wake cycles or a transient network stall — `loading` remained `true` permanently, rendering only `<LoadingSpinner />`. A hanging fetch never rejects, so no console warnings were produced, making the issue difficult to diagnose.
+
+**Fix (`AuthProvider.jsx`):**
+- Added a 10-second `AbortController` timeout to the startup `/auth/me` fetch.
+- On timeout: logs a warning, retains cached session data (avoids a spurious logout on a slow/stale network), and sets `loading = false` so the app renders normally.
+- Added a `useEffect` cleanup function that cancels the in-flight request if the token changes (e.g. mid-flight during auto-renew) or the component unmounts, preventing stale-closure races between concurrent auth checks.
+
+---
+
+## [2.46.0] - 2026-04-08
 
 ### Changed
 

@@ -4471,7 +4471,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
       nodeName: 'Local', status: 'online',
     });
 
-    const token = jwt.sign({ userId: id, handle: user.handle }, JWT_SECRET, { expiresIn: sessionDuration });
+    const token = jwt.sign({ userId: id, handle: user.handle, jti: crypto.randomUUID() }, JWT_SECRET, { expiresIn: sessionDuration });
     console.log(`✅ New user registered: ${handle}`);
 
     // Create session for the new user
@@ -4562,7 +4562,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     // Check if user needs to change password (set by admin reset)
     const requirePasswordChange = db.requiresPasswordChange ? db.requiresPasswordChange(user.id) : false;
 
-    const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: sessionDuration });
+    const token = jwt.sign({ userId: user.id, handle: user.handle, jti: crypto.randomUUID() }, JWT_SECRET, { expiresIn: sessionDuration });
     console.log(`✅ User logged in: ${handle} with ${sessionDuration} session`);
 
     // Create session for the login
@@ -4646,7 +4646,7 @@ app.post('/api/auth/refresh', loginLimiter, authenticateToken, async (req, res) 
     }
 
     // Issue new token
-    const token = jwt.sign({ userId: user.id, handle: user.handle }, JWT_SECRET, { expiresIn: sessionDuration });
+    const token = jwt.sign({ userId: user.id, handle: user.handle, jti: crypto.randomUUID() }, JWT_SECRET, { expiresIn: sessionDuration });
     const session = createSession(user.id, token, req);
     console.log(`🔄 Session refreshed for: ${user.handle} with ${sessionDuration} session`);
 
@@ -4673,10 +4673,11 @@ app.post('/api/auth/renew', loginLimiter, authenticateToken, async (req, res) =>
     }
     const originalDurationSecs = decoded.exp - decoded.iat;
 
-    revokeSessionByToken(req.token);
-
+    // Issue new token BEFORE revoking old one. If the response is lost in transit,
+    // the client still holds a valid old token and can retry or enter grace period
+    // rather than being hard-logged-out with a revoked token.
     const newToken = jwt.sign(
-      { userId: req.user.userId, handle: req.user.handle },
+      { userId: req.user.userId, handle: req.user.handle, jti: crypto.randomUUID() },
       JWT_SECRET,
       { expiresIn: originalDurationSecs }
     );
@@ -4690,6 +4691,9 @@ app.post('/api/auth/renew', loginLimiter, authenticateToken, async (req, res) =>
       token: newToken,
       user: { id: user.id, handle: user.handle, email: user.email, displayName: user.displayName, avatar: user.avatar, avatarUrl: user.avatarUrl || null, bio: user.bio || null, nodeName: user.nodeName, status: user.status, isAdmin: user.isAdmin, role: user.role || (user.isAdmin ? 'admin' : 'user'), preferences: user.preferences || { theme: 'serenity', fontSize: 'medium' } }
     });
+
+    // Revoke old token after response is sent — client already has the new one
+    revokeSessionByToken(req.token);
   } catch (err) {
     console.error('Auto-renew error:', err);
     res.status(500).json({ error: 'Renewal failed' });
@@ -4715,7 +4719,9 @@ app.post('/api/auth/reauth', loginLimiter, async (req, res) => {
     }
 
     const expiredAgo = Date.now() - decoded.exp * 1000;
-    if (expiredAgo > REAUTH_GRACE_MS) {
+    const originalDurationMs = decoded.iat ? (decoded.exp - decoded.iat) * 1000 : REAUTH_GRACE_MS;
+    const graceMs = Math.min(REAUTH_GRACE_MS, originalDurationMs);
+    if (expiredAgo > graceMs) {
       return res.status(401).json({ error: 'Grace period has elapsed. Please log in again.', code: 'GRACE_EXPIRED' });
     }
 
@@ -4729,7 +4735,7 @@ app.post('/api/auth/reauth', loginLimiter, async (req, res) => {
 
     const sessionDuration = getSessionDuration(requestedDuration);
     const newToken = jwt.sign(
-      { userId: user.id, handle: user.handle },
+      { userId: user.id, handle: user.handle, jti: crypto.randomUUID() },
       JWT_SECRET,
       { expiresIn: sessionDuration }
     );
@@ -5628,7 +5634,7 @@ app.post('/api/auth/mfa/verify', mfaLimiter, (req, res) => {
     // Generate JWT token with session duration from challenge
     const sessionDuration = challenge.sessionDuration || '24h';
     const token = jwt.sign(
-      { userId: user.id, handle: user.handle },
+      { userId: user.id, handle: user.handle, jti: crypto.randomUUID() },
       JWT_SECRET,
       { expiresIn: sessionDuration }
     );
@@ -10889,7 +10895,7 @@ app.get('/api/waves/:id/tokens', authenticateToken, (req, res) => {
   try {
     const wave = db.getWave(req.params.id);
     if (!wave) return res.status(404).json({ error: 'Wave not found' });
-    if (wave.created_by !== req.user.userId) return res.status(403).json({ error: 'Only the wave creator can manage tokens' });
+    if (wave.createdBy !== req.user.userId) return res.status(403).json({ error: 'Only the wave creator can manage tokens' });
 
     const tokens = db.getWaveTokens(wave.id);
     res.json({ tokens });
@@ -10906,7 +10912,7 @@ app.post('/api/waves/:id/tokens', authenticateToken, (req, res) => {
   try {
     const wave = db.getWave(req.params.id);
     if (!wave) return res.status(404).json({ error: 'Wave not found' });
-    if (wave.created_by !== req.user.userId) return res.status(403).json({ error: 'Only the wave creator can manage tokens' });
+    if (wave.createdBy !== req.user.userId) return res.status(403).json({ error: 'Only the wave creator can manage tokens' });
 
     const name = sanitizeInput(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Token name is required' });
@@ -10939,7 +10945,7 @@ app.delete('/api/waves/:id/tokens/:tokenId', authenticateToken, (req, res) => {
   try {
     const wave = db.getWave(req.params.id);
     if (!wave) return res.status(404).json({ error: 'Wave not found' });
-    if (wave.created_by !== req.user.userId) return res.status(403).json({ error: 'Only the wave creator can manage tokens' });
+    if (wave.createdBy !== req.user.userId) return res.status(403).json({ error: 'Only the wave creator can manage tokens' });
 
     db.deleteWaveToken(req.params.tokenId, wave.id);
     db.logActivity(req.user.userId, 'wave_token_revoked', 'wave', wave.id, { tokenId: req.params.tokenId });
@@ -17023,7 +17029,7 @@ app.post('/api/waves/:id/encrypt', authenticateToken, (req, res) => {
     }
 
     // Only wave creator can enable encryption
-    if (wave.created_by !== req.user.userId) {
+    if (wave.createdBy !== req.user.userId) {
       return res.status(403).json({ error: 'Only wave creator can enable encryption' });
     }
 
@@ -17107,7 +17113,7 @@ app.get('/api/waves/:id/encryption-status', authenticateToken, (req, res) => {
       allParticipantsReady: allHaveE2EE,
       readyCount,
       totalParticipants: participants.length,
-      canEnableEncryption: wave.created_by === req.user.userId && allHaveE2EE
+      canEnableEncryption: wave.createdBy === req.user.userId && allHaveE2EE
     });
   } catch (err) {
     console.error('Wave encryption status error:', err);
@@ -17127,7 +17133,7 @@ app.get('/api/waves/:id/unencrypted-pings', authenticateToken, (req, res) => {
     }
 
     // Only wave creator can migrate encryption
-    if (wave.created_by !== req.user.userId) {
+    if (wave.createdBy !== req.user.userId) {
       return res.status(403).json({ error: 'Only wave creator can migrate encryption' });
     }
 
@@ -17163,7 +17169,7 @@ app.post('/api/waves/:id/encrypt-pings', authenticateToken, (req, res) => {
     }
 
     // Only wave creator can migrate encryption
-    if (wave.created_by !== req.user.userId) {
+    if (wave.createdBy !== req.user.userId) {
       return res.status(403).json({ error: 'Only wave creator can migrate encryption' });
     }
 

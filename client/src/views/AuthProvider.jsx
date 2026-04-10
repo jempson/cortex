@@ -34,23 +34,42 @@ function AuthProvider({ children }) {
   const [sessionExpiring, setSessionExpiring] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [isAutoRenewing, setIsAutoRenewing] = useState(false);
+  const isAutoRenewingRef = useRef(false); // Synchronous guard — state is async and can't prevent concurrent calls
+  const tokenJustRenewedRef = useRef(false); // Skip /auth/me re-check after renewal (user data already fresh)
   const [sessionExpiresAt, setSessionExpiresAt] = useState(() => getTokenExpiry(storage.getToken()));
   const dismissedUntilRef = useRef(0);
   const lastAutoRenewalRef = useRef(0);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     // Check for browser session timeout (24 hours for non-PWA browser tabs)
     if (token && storage.isSessionExpired()) {
+      clearTimeout(timeoutId);
       console.log('⏰ Browser session expired. Logging out...');
       storage.removeToken(); storage.removeUser(); storage.removeSessionStart();
       setToken(null); setUser(null);
       setLoading(false);
-      return;
+      return () => controller.abort();
+    }
+
+    // Skip /auth/me after silent renewal — user data was already refreshed from the renewal response.
+    // Avoids a redundant context update that would cause all fetchAPI consumers to re-fetch.
+    if (tokenJustRenewedRef.current) {
+      tokenJustRenewedRef.current = false;
+      clearTimeout(timeoutId);
+      setLoading(false);
+      return () => controller.abort();
     }
 
     if (token) {
-      fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal
+      })
         .then(res => {
+          clearTimeout(timeoutId);
           if (res.ok) return res.json();
           // Clear session on 401 (invalid/expired token/session)
           if (res.status === 401) {
@@ -65,21 +84,32 @@ function AuthProvider({ children }) {
           storage.setUser(userData); // Save to localStorage
         })
         .catch(err => {
-          // Network errors - don't clear session, user may still have valid token
-          // They can retry or the periodic check will handle it
-          console.warn('Auth check failed, keeping cached session:', err.message);
+          if (err.name === 'AbortError') {
+            // Fetch timed out — keep cached session so user isn't logged out on slow/stale network
+            console.warn('Auth check timed out, keeping cached session');
+          } else {
+            // Network errors - don't clear session, user may still have valid token
+            console.warn('Auth check failed, keeping cached session:', err.message);
+          }
         })
         .finally(() => setLoading(false));
     } else {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [token]);
 
   // Silently renew session — no password required, active users only (v2.46.0)
   // Must be declared before the expiry useEffect that references it.
   const autoRenewSession = useCallback(async () => {
-    if (isAutoRenewing) return;
+    if (isAutoRenewingRef.current) return; // Synchronous check — prevents concurrent calls
     if (Date.now() - lastAutoRenewalRef.current < AUTO_RENEW_COOLDOWN_MS) return;
+    isAutoRenewingRef.current = true;
     setIsAutoRenewing(true);
     try {
       const res = await fetch(`${API_URL}/auth/renew`, {
@@ -93,15 +123,17 @@ function AuthProvider({ children }) {
       storage.setSessionStart(storage.getSessionDuration());
       setSessionExpiresAt(getTokenExpiry(data.token));
       setSessionExpiring(false);
+      tokenJustRenewedRef.current = true; // suppress /auth/me re-check on token change
       setToken(data.token);
       setUser(data.user);
       lastAutoRenewalRef.current = Date.now();
     } catch {
       // Silent failure — warning modal will surface on next check cycle
     } finally {
+      isAutoRenewingRef.current = false;
       setIsAutoRenewing(false);
     }
-  }, [token, isAutoRenewing]);
+  }, [token]);
 
   // Session expiry monitoring timer (v2.29.0)
   useEffect(() => {
@@ -115,7 +147,10 @@ function AuthProvider({ children }) {
 
         if (remaining <= 0) {
           const expiredAgo = -remaining;
-          if (expiredAgo < GRACE_PERIOD_MS) {
+          const issued = getTokenIssuedAt(token);
+          const originalDurationMs = issued ? (expiry - issued) : GRACE_PERIOD_MS;
+          const graceMs = Math.min(GRACE_PERIOD_MS, originalDurationMs);
+          if (expiredAgo < graceMs) {
             // Within grace period — show re-auth overlay instead of logging out
             console.log('⏰ Session expired, grace period active.');
             setSessionExpired(true);
@@ -140,7 +175,7 @@ function AuthProvider({ children }) {
             autoRenewSession();
           }
           // Show warning modal only when not actively renewing
-          if (!isAutoRenewing && Date.now() > dismissedUntilRef.current) {
+          if (!isAutoRenewingRef.current && Date.now() > dismissedUntilRef.current) {
             setSessionExpiring(true);
           }
         } else {
@@ -169,7 +204,7 @@ function AuthProvider({ children }) {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [token, autoRenewSession, isAutoRenewing]);
+  }, [token, autoRenewSession]);
 
   // Get pending password for E2EE unlock (one-time read, clears after access)
   const getPendingPassword = () => {
